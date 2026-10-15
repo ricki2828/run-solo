@@ -20,6 +20,7 @@ import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../state/progress_snapshot.dart';
 import '../widgets/home_b/home_b.dart';
+import '../widgets/pace_nudge_line.dart';
 import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
@@ -259,7 +260,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([services.settings, services.plans]),
+      listenable: Listenable.merge([
+        services.settings,
+        services.plans,
+        services.targetPaces,
+      ]),
       builder: (context, _) {
         final settings = services.settings.settings;
         final perms = _perms;
@@ -424,6 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     next.session,
                                     planCtx?.vdot,
                                     settings.units,
+                                    paces: services.currentTargetPaces(),
                                   ),
                             startLabel: hardPick ? 'Easy run ›' : startLabel,
                             onStart: () => _start(
@@ -543,6 +549,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          PaceNudgeLine(runs: runs, now: _now),
                           ReadinessLine(runs: runs, now: _now),
                           FutureBuilder<engine.HomeEstimates?>(
                             future: _estimates,

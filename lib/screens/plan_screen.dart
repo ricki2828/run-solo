@@ -383,7 +383,14 @@ class _SessionRow extends StatelessWidget {
       ),
       engine.BlockStatus.planned => (Icons.circle_outlined, '', t.inkMuted),
     };
-    final target = open ? PlanText.targetLine(s, ctx.vdot, units) : null;
+    final target = open
+        ? PlanText.targetLine(
+            s,
+            ctx.vdot,
+            units,
+            paces: AppServices.of(context).currentTargetPaces(),
+          )
+        : null;
     final body = Padding(
       padding: const EdgeInsets.symmetric(vertical: Space.x8),
       child: Row(

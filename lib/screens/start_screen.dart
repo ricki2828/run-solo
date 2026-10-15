@@ -20,6 +20,8 @@ import '../state/load_guard.dart';
 import '../state/recording_controller.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
+import '../state/target_pace.dart';
+import '../state/today_target.dart';
 import '../state/voice_coach_plan.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
@@ -372,10 +374,98 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     );
     _loadFlag = ctx.loadCheck.flag;
     _planCtx = ctx;
+    _refreshPaces();
   }
 
   PlanContext? _planCtx;
   BlockPlanController? _plans;
+
+  /// Target paces from the runner's own runs (see `TargetPaces`), and the
+  /// weather where they last ran, for the heat on a hand-picked preset.
+  engine.TargetPaces? _paces;
+  engine.WeatherRecord? _weatherNow;
+  bool _weatherAsked = false;
+
+  void _refreshPaces() {
+    final services = _services;
+    if (services == null) return;
+    _paces = services.currentTargetPaces();
+    final runs = _runs, w = services.weather;
+    if (_weatherAsked || runs == null || w == null) return;
+    final at = lastRunLocation(runs);
+    if (at == null) return;
+    _weatherAsked = true;
+    w.currentAt(at.lat, at.lon).then((rec) {
+      if (mounted && rec != null) setState(() => _weatherNow = rec);
+    }, onError: (Object _) {});
+  }
+
+  /// The True Pace target of the hand-picked structured set (a VO2 set or
+  /// tempo reps); null for any other run, a plan session (the plan has its
+  /// own line), a goal or the event. No weather in it: the coach and the
+  /// band compare it with the live True Pace, which has the heat out.
+  engine.TargetPace? _presetTarget(AppServices services, AppSettings s) {
+    final paces = _paces;
+    if (paces == null ||
+        s.lastMode != RecordMode.intervals ||
+        s.goalRun ||
+        s.eventRun ||
+        _plannedToday(services, s) != null) {
+      return null;
+    }
+    final id = services.pickedSession.templateId;
+    final intensity = switch (id) {
+      engine.SessionSpec.norwegian4x4Id ||
+      '30-30s' ||
+      '1-min-reps' ||
+      'pyramid' => engine.PaceIntensity.vo2max,
+      'tempo' => engine.PaceIntensity.tempo,
+      _ => null,
+    };
+    return intensity == null ? null : paces[intensity];
+  }
+
+  /// The card's version of it, today's heat in. Heat is shown at its full
+  /// size ("up to") because the set's length is not known here.
+  engine.AdjustedPace? _presetPace(AppServices services, AppSettings s) {
+    final pace = _presetTarget(services, s);
+    if (pace == null) return null;
+    return engine.TargetPaces.adjust(
+      pace,
+      tempC: _weatherNow?.tempC,
+      dewPointC: _weatherNow?.dewPointC,
+      zones: services.hrZones,
+    );
+  }
+
+  /// "Work reps at 4:17/km (heat +9 s/km) · VO2 max, Daniels VDOT, from
+  /// your 5K on Sat 12 Sep", or for a trail run the effort to go by.
+  String? _paceLine(AppServices services, AppSettings s) {
+    final paces = _paces;
+    if (paces == null) return null;
+    final a = _presetPace(services, s);
+    if (a != null) {
+      return TargetPaceText.sessionLine(
+        a,
+        s.units,
+        verb: 'Work reps at',
+        source: paces.sourceLine.isEmpty ? null : paces.sourceLine,
+      );
+    }
+    final easy = paces[engine.PaceIntensity.easy];
+    if (s.lastMode == RecordMode.trail &&
+        !s.goalRun &&
+        !s.eventRun &&
+        easy != null &&
+        _plannedToday(services, s) == null) {
+      // Hills make pace the wrong guide on a trail: effort by zone, the flat
+      // pace only as a reference.
+      return '${engine.TargetPaces.effortLine(engine.PaceIntensity.easy, services.hrZones)}'
+          ' on the climbs · flat easy pace ${Fmt.paceUnit(easy.trueSecPerKm, s.units)} or slower'
+          '${easy.adopted ? ', moved by you' : ''}';
+    }
+    return null;
+  }
 
   /// A plan made, swapped or ended while Start is open.
   void _onPlanChanged() {
@@ -456,6 +546,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         planned: _plannedToday(services, s),
         vdot: _planCtx?.vdot,
         goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
+        sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
+        paces: _paces,
       );
 
   VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
@@ -470,6 +562,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           _samePick(PlanStart.easyRun(s), s),
       vdot: _planCtx?.vdot,
       goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
+      sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
+      paces: _paces,
     );
   }
 
@@ -734,8 +828,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         : '${today.name}'
               '${today.kind != engine.BlockKind.interval ? ' · ${today.size}' : ''}';
     final todayTarget = today == null
-        ? null
-        : PlanText.targetLine(today, _planCtx?.vdot, s.units);
+        ? _paceLine(services, s)
+        : PlanText.targetLine(today, _planCtx?.vdot, s.units, paces: _paces);
     if (s.eventRun) {
       return (
         runType: '5 KM',

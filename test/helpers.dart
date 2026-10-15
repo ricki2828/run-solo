@@ -16,6 +16,7 @@ import 'package:run_solo/splash/intro_gate.dart';
 import 'package:run_solo/state/companion.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
+import 'package:run_solo/state/target_pace.dart';
 import 'package:run_solo/state/progress/seen_moments_store.dart';
 import 'package:run_solo/state/send_runs.dart';
 import 'package:run_solo/state/sessions.dart';
@@ -62,8 +63,10 @@ AppServices fakeServices({
   FakePlaceGateway? places,
   List<ExportTarget>? exportTargets,
   CompanionController? companion,
+  TargetPaceController? targetPaces,
 }) => AppServices.fake(
   companion: companion,
+  targetPaces: targetPaces,
   places: places,
   exportTargets: exportTargets,
   live: live,

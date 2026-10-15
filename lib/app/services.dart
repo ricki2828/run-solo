@@ -39,6 +39,7 @@ import '../state/send_runs.dart';
 import '../state/watch_export.dart';
 import '../state/sessions.dart';
 import '../state/settings.dart';
+import '../state/target_pace.dart';
 import '../state/weather.dart';
 import '../state/zone_memento.dart';
 import '../topo/pack_manager.dart';
@@ -69,6 +70,7 @@ class AppServices {
     CourseNamesController? courseNames,
     SeenMomentsStore? seenMoments,
     BlockPlanController? plans,
+    TargetPaceController? targetPaces,
     RouteLibrary? routes,
     RecordingController? recording,
     DateTime Function()? now,
@@ -113,6 +115,8 @@ class AppServices {
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
        seenMoments = seenMoments ?? MemorySeenMomentsStore(),
        plans = plans ?? BlockPlanController(MemoryBlockPlanStore()),
+       targetPaces =
+           targetPaces ?? TargetPaceController(MemoryTargetPaceStore()),
        routes = routes ?? RouteLibrary(MemoryRouteStore(), now: now),
        recording =
            recording ??
@@ -347,6 +351,24 @@ class AppServices {
   /// The 4-week progress block (`state/plan.json`), if one is running.
   final BlockPlanController plans;
 
+  /// The paces the runner accepted from a nudge (`state/target_paces.json`).
+  final TargetPaceController targetPaces;
+
+  /// The one source of session target paces: the last prepared runs with the
+  /// runner's accepted paces. Null before a prepare or with no fitness figure.
+  engine.TargetPaces? currentTargetPaces() {
+    try {
+      final paces = live?.targetPaces(
+        adopted: targetPaces.adopted,
+        adoptedFrom: targetPaces.adoptedFrom,
+      );
+      if (paces != null) targetPaces.prune(paces);
+      return paces;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
   final SessionsController sessions;
 
@@ -388,6 +410,7 @@ class AppServices {
     PlaceGateway? places,
     List<ExportTarget>? exportTargets,
     CompanionController? companion,
+    TargetPaceController? targetPaces,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -425,6 +448,7 @@ class AppServices {
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
       plans: BlockPlanController(MemoryBlockPlanStore(plan))..preload(plan),
+      targetPaces: targetPaces,
       routes: RouteLibrary(
         MemoryRouteStore(routes),
         now: now,
@@ -469,6 +493,10 @@ class AppServices {
       FileBlockPlanStore(Directory('${support.path}/state')),
     );
     await plans.load();
+    final targetPaces = TargetPaceController(
+      FileTargetPaceStore(Directory('${support.path}/state')),
+    );
+    await targetPaces.load();
     final routes = RouteLibrary(
       FileRouteStore(Directory('${support.path}/state')),
     );
@@ -534,6 +562,7 @@ class AppServices {
       courseNames: courseNames,
       seenMoments: FileSeenMomentsStore(Directory('${support.path}/state')),
       plans: plans,
+      targetPaces: targetPaces,
       routes: routes,
     );
     services.startWeather();

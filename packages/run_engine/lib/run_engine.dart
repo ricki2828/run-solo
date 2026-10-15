@@ -39,6 +39,7 @@ export 'src/engine/max_hr.dart';
 export 'src/engine/metrics.dart';
 export 'src/engine/predictor.dart';
 export 'src/engine/start_target.dart';
+export 'src/engine/target_paces.dart';
 export 'src/engine/today_target.dart';
 export 'src/engine/race_estimates.dart';
 export 'src/engine/readiness.dart';

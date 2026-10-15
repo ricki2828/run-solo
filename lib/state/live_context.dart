@@ -73,6 +73,9 @@ class LiveContextSource {
   final DateTime Function() now;
 
   String? _cachedVersion;
+
+  /// Which index the last prepare read; changes when a run lands.
+  String? get indexVersion => _cachedVersion;
   List<engine.LiveCandidate> _cached = const [];
   Future<void>? _preparing;
 
@@ -280,6 +283,21 @@ class LiveContextSource {
   engine.RaceEstimates? raceEstimates() => _cachedVersion == null
       ? null
       : engine.RaceEstimates.of(_cached, now: now(), names: names);
+
+  /// Session target paces from the last prepare (with the runner's accepted
+  /// [adopted] paces); null when never prepared or with no fitness figure.
+  engine.TargetPaces? targetPaces({
+    Map<engine.PaceIntensity, double> adopted = const {},
+    Map<engine.PaceIntensity, double> adoptedFrom = const {},
+  }) => _cachedVersion == null
+      ? null
+      : engine.TargetPaces.of(
+          _cached,
+          now: now(),
+          names: names,
+          adopted: adopted,
+          adoptedFrom: adoptedFrom,
+        );
 
   /// The Start card's target for [spec] (the event or a goal), from the
   /// last prepare; null for other sessions or with nothing to go on.

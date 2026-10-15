@@ -717,6 +717,9 @@ abstract final class BlockPaces {
     return 3600 / ((lo + hi) / 2 / 1000);
   }
 
+  /// Pace (s/km) of the race-equivalent effort over [metres] for [vdot].
+  static double? race(double vdot, double metres) => _race(vdot, metres);
+
   static double? _race(double vdot, double metres) {
     final t = RacePercentileNorms.equivalentSeconds(vdot, metres);
     return t == null ? null : t / (metres / 1000);
@@ -737,7 +740,7 @@ abstract final class BlockPaces {
         return _race(vdot, 5000);
       case BlockKind.interval:
         return switch (s.presetId) {
-          'tempo' => th,
+          'tempo' => _race(vdot, 21097.5),
           '1km-repeats' => _race(vdot, 5000),
           '400s' => _race(vdot, 1500),
           _ => _race(vdot, 3000),

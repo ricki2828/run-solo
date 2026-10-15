@@ -498,5 +498,35 @@ void main() {
     test('a cool start is a zero slowdown, not null', () async {
       expect((await ask((_) => hour(10, 4))).$1, 0);
     });
+
+    test(
+      'readers share one request; a miss is retried, a reading kept',
+      () async {
+        final provider = FakeWeatherProvider([
+          (_) => const WeatherRetryLater('offline'),
+          (_) => hour(30, 22),
+        ]);
+        final q = WeatherQueue(
+          file: File('${dir.path}/state/weather-queue.json'),
+          store: FileRunStore(runsDir),
+          provider: provider,
+          now: () => d1,
+          enabled: () => true,
+        );
+        // Two readers at once share the (failed) request.
+        final both = await Future.wait([
+          q.currentAt(-33.87, 151.21),
+          q.currentAt(-33.87, 151.21),
+        ]);
+        expect(both, [null, null]);
+        expect(provider.requests, hasLength(1));
+        // The miss was forgotten: the next ask tries again and gets a reading.
+        expect(await q.currentAt(-33.87, 151.21), isNotNull);
+        expect(provider.requests, hasLength(2));
+        // The reading is kept for the hour.
+        expect(await q.currentAt(-33.87, 151.21), isNotNull);
+        expect(provider.requests, hasLength(2));
+      },
+    );
   });
 }

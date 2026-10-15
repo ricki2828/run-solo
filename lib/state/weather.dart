@@ -170,9 +170,45 @@ class WeatherQueue {
   /// The weather now at a coarse (0.1 degree) location: one request, sent
   /// only when "Weather for each run" is on; null when off, offline, or the
   /// hour is not served. Nothing is stored.
-  Future<engine.WeatherRecord?> currentAt(double lat, double lon) async {
-    if (!enabled()) return null;
+  Future<engine.WeatherRecord?> currentAt(double lat, double lon) {
+    if (!enabled()) return Future.value(null);
     final at = now();
+    // Start's several readers (aim line, target pace) share one request per
+    // place and hour. Only a reading is kept: a miss (offline, hour not
+    // served) is forgotten at once, so the next caller tries again.
+    final key =
+        '${lat.toStringAsFixed(1)},${lon.toStringAsFixed(1)},'
+        '${at.year}-${at.month}-${at.day}T${at.hour}';
+    final hit = _currentMemo[key];
+    if (hit != null) return hit;
+    final f = _fetchCurrent(lat, lon, at);
+    _currentMemo[key] = f;
+    if (_currentMemo.length > _memoMax) {
+      _currentMemo.remove(_currentMemo.keys.first);
+    }
+    unawaited(
+      f.then(
+        (r) {
+          if (r == null && identical(_currentMemo[key], f)) {
+            _currentMemo.remove(key);
+          }
+        },
+        onError: (Object _) {
+          if (identical(_currentMemo[key], f)) _currentMemo.remove(key);
+        },
+      ),
+    );
+    return f;
+  }
+
+  static const int _memoMax = 8;
+  final Map<String, Future<engine.WeatherRecord?>> _currentMemo = {};
+
+  Future<engine.WeatherRecord?> _fetchCurrent(
+    double lat,
+    double lon,
+    DateTime at,
+  ) async {
     final req = engine.WeatherRequest.forStart(lat, lon, now: at);
     final res = await provider.fetch(req.uri);
     if (res is! WeatherFetched) return null;
