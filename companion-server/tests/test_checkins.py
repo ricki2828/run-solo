@@ -240,7 +240,7 @@ def test_the_morning_card_goes_before_the_usual_start_and_skip_asks_why_then_mov
     assert env.step(at(2026, 10, 15, 6, 40)) == 0           # not yet: due 06:45 for a 07:00 runner
     assert env.step(at(2026, 10, 15, 6, 45)) == 1
     [msg] = env.sends()
-    assert msg["text"].startswith("Today: Quality session, 6 km\nPlanned for around 7:00. Going?")
+    assert msg["text"].startswith("Today: Quality session, 6 km\nPlanned for around 7:00. Run it, move it or skip it?")
     now = at(2026, 10, 15, 6, 50)
     assert edited_text(env.tap("t.skip", now))[0].startswith("No problem\nWhat's up?")
     assert env.answers() == {("today", "2026-10-15"): "skip"}
@@ -467,7 +467,7 @@ def test_when_the_message_was_deleted_the_edit_becomes_a_fresh_message_and_the_i
     new = env.slot()["message_id"]
     assert new != old and env.sends()[-1]["text"].startswith("No problem")
     # the next tap is on the new message
-    assert edited_text(env.tap("w.busy", now + timedelta(minutes=2)))[0].startswith("Moved")
+    assert edited_text(env.tap("w.busy", now + timedelta(minutes=2)))[0].startswith("Short on time")
     assert env.answers()[("why", "2026-10-15")] == "busy"
 
 

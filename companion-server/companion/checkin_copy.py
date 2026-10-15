@@ -25,6 +25,7 @@ class Ctx:
     moved_to: date | None = None
     easier: bool = False
     original_word: str | None = None   # what the plan had, when "flat" made it easy
+    heat_s_km: int | None = None       # extra s/km on an easy pace in today's forecast heat; the morning card only
 
 
 def session_label(typ: str, minutes: int | None, distance_m: int | None, name: str | None = None) -> str:
@@ -65,21 +66,30 @@ def ready(stage: str | None, c: Ctx) -> tuple[str, str, Keyboard]:
     return ("Moved", move, again)
 
 
+def heat_line(s_km: int | None) -> str:
+    return f"\nHot one: about +{s_km} s/km on easy pace." if s_km else ""
+
+
 def today(stage: str | None, c: Ctx, why: str | None = None) -> tuple[str, str, Keyboard]:
     label = c.label or "Today's run"
     if stage is None:
         when = f"Planned for {c.when}." if c.when else "It's on the plan for today."
-        return (f"Today: {label}", f"{when} Going?",
-                _kb([("Going now", "t.go"), ("Later today", "t.later"), ("Skip", "t.skip")]))
+        return (f"Today: {label}", f"{when} Run it, move it or skip it?{heat_line(c.heat_s_km)}",
+                _kb([("Run", "t.go"), ("Move", "t.move"), ("Skip", "t.skip")]))
     change = _kb([("Change", "u.undo")])
     if stage == "going":
-        return ("Go well", "Tell me how it went after.", change)
-    if stage == "later":
+        return ("Go well", f"{label} is on. Tell me how it went after.", change)
+    if stage == "later":   # a retired button; an old message can still carry it
         return ("Later it is", "No rush. It's still on for today.", change)
+    if stage == "short":   # the Busy card's "Run 20 min" button
+        move = f"{label} moves to {day_label(c.moved_to)}." if c.moved_to else "The planned run waits a day."
+        return ("Go well", f"20 easy minutes today. {move} Tell me how it went after.", change)
+    if stage == "move":
+        move = f"{label} moves to {day_label(c.moved_to)}." if c.moved_to else "The run waits a day."
+        return ("Move it", f"A walk, some strength or mobility today counts. {move}", change)
     if why is None:   # skip, reason not given yet
         return ("No problem", "What's up? It changes what I suggest next.",
-                _kb([("Busy", "w.busy"), ("Tired", "w.tired"), ("Sore", "w.sore")],
-                    [("Travelling", "w.trav"), ("Feeling ill", "w.ill")]))
+                _kb([("Tired", "w.tired"), ("Sore", "w.sore"), ("Ill", "w.ill")], [("Busy", "w.busy"), ("Weather", "w.weather")]))
     undo = _kb([("Undo", "u.undo")])
     move = f"{label} moves to {day_label(c.moved_to)}." if c.moved_to else "Today's session is off."
     if why == "ill":
@@ -87,6 +97,11 @@ def today(stage: str | None, c: Ctx, why: str | None = None) -> tuple[str, str, 
                 undo)
     if why == "sore":
         return ("Moved", f"{move} I'll keep the next 3 days light. If it's still sore after that, get it looked at.", undo)
+    if why == "busy":
+        return ("Short on time", f"Do 20 easy minutes today instead. {move}",
+                _kb([("Run 20 min", "t.short")], [("Undo", "u.undo")]))
+    if why == "weather":
+        return ("Moved", f"{move} Nothing lost, the weather can wait.", undo)
     return ("Moved", f"{move} I'll keep the next 3 days light.", undo)
 
 
