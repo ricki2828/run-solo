@@ -467,7 +467,7 @@ def test_when_the_message_was_deleted_the_edit_becomes_a_fresh_message_and_the_i
     new = env.slot()["message_id"]
     assert new != old and env.sends()[-1]["text"].startswith("No problem")
     # the next tap is on the new message
-    assert edited_text(env.tap("w.busy", now + timedelta(minutes=2)))[0].startswith("Moved")
+    assert edited_text(env.tap("w.busy", now + timedelta(minutes=2)))[0].startswith("Short on time")
     assert env.answers()[("why", "2026-10-15")] == "busy"
 
 

@@ -18,7 +18,7 @@ from .timeutil import parse_iso, to_local
 RETENTION_DAYS = 14
 
 READY = ("fresh", "normal", "flat", "sore", "not_tomorrow")
-TODAY = ("going", "later", "skip", "move")   # going = the "Run" button; later is a retired button, still read
+TODAY = ("going", "later", "skip", "move", "short")   # going = the "Run" button; later is a retired button, still read
 WHY = ("busy", "tired", "sore", "travelling", "ill", "weather")   # travelling is a retired button, still read
 POSTRUN = ("sleep", "stress", "heat", "none")
 SHAPE = ("3", "4", "5", "away")
@@ -48,7 +48,7 @@ POSTRUN_DELAY_MIN = 20
 CODES: dict[str, tuple[str, str]] = {
     "r.fresh": ("ready", "fresh"), "r.normal": ("ready", "normal"), "r.flat": ("ready", "flat"),
     "r.sore": ("ready", "sore"), "r.not": ("ready", "not_tomorrow"), "r.chg": ("ready", ""),
-    "t.go": ("today", "going"), "t.later": ("today", "later"), "t.skip": ("today", "skip"), "t.move": ("today", "move"),
+    "t.go": ("today", "going"), "t.later": ("today", "later"), "t.skip": ("today", "skip"), "t.move": ("today", "move"), "t.short": ("today", "short"),
     "w.busy": ("why", "busy"), "w.tired": ("why", "tired"), "w.sore": ("why", "sore"),
     "w.trav": ("why", "travelling"), "w.ill": ("why", "ill"), "w.weather": ("why", "weather"), "u.undo": ("undo", ""),
     "p.sleep": ("postrun", "sleep"), "p.stress": ("postrun", "stress"), "p.heat": ("postrun", "heat"),
@@ -150,7 +150,7 @@ def _move_from(d: date, a: Answers, usual: frozenset[int] | None) -> date | None
     """Where a session planned for `d` goes when the answers say it is not happening that day, or None to stay."""
     if a.get("today", d) == "skip":
         return _next_usual(d + timedelta(days=lighter_days(a.get("why", d)) + 1), usual)
-    if a.get("today", d) == "move":   # a walk, strength or mobility today instead: the run waits a day
+    if a.get("today", d) in ("move", "short"):   # a walk, strength or mobility, or 20 easy minutes, today instead: the run waits a day
         return _next_usual(d + timedelta(days=1), usual)
     ready = a.get("ready", d)
     if ready == "not_tomorrow":

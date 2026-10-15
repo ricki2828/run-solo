@@ -75,7 +75,7 @@ def test_move_swaps_the_run_for_a_walk_strength_or_mobility_and_the_run_waits_a_
     ("tired", ["Moved", "moves to Mon 19", "next 3 days light"], "2026-10-19", True),
     ("sore", ["Moved", "moves to Mon 19", "get it looked at"], "2026-10-19", True),
     ("ill", ["Rest up", "a week", "see a doctor", "Fri 23"], "2026-10-23", True),
-    ("busy", ["Moved", "moves to Fri 16", "20 easy minutes still counts"], "2026-10-16", False),
+    ("busy", ["Short on time", "Do 20 easy minutes today instead", "moves to Fri 16"], "2026-10-16", False),
     ("weather", ["Moved", "moves to Fri 16", "weather can wait"], "2026-10-16", False),
 ])
 def test_each_skip_reason_has_its_own_templated_line_and_effect(env, reason, needles, new_day, lighter):
@@ -89,6 +89,18 @@ def test_each_skip_reason_has_its_own_templated_line_and_effect(env, reason, nee
     a = ci.Answers().with_("today", date(2026, 10, 15), "skip").with_("why", date(2026, 10, 15), reason)
     assert (ci.lighter_until(a, date(2026, 10, 15)) is not None) is lighter
     assert ("light" in text) is lighter or reason == "ill"
+
+
+def test_busy_offers_20_easy_minutes_today_and_run_20_confirms_it(env):
+    env.step(STEP)
+    env.tap("t.skip", TAP)
+    [(_, edit)] = [c for c in env.tap("w.busy", TAP) if c[0] == "editMessageText"]
+    assert labels(edit["reply_markup"]) == [["Run 20 min"], ["Undo"]]
+    text = edited_text(env.tap("t.short", TAP))[0]
+    assert text.startswith("Go well\n20 easy minutes today.") and "moves to Fri 16" in text
+    assert env.answers() == {("today", DAY): "short"}
+    assert env.svc.next_session(env.uid, TAP)["next_session"]["date"] == "2026-10-16"
+    assert len(env.sends()) == 1 and len(env.q("SELECT * FROM question_cap")) == 1
 
 
 # ---------------------------------------------------------------- idempotent, editable
@@ -192,7 +204,7 @@ def test_no_button_value_or_heat_line_reaches_the_writer(env):
     hot_env(env)
     env.step(STEP)
     seen = spy_writer(env)
-    for code in ("t.move", "t.skip", "w.weather", "w.busy", "w.tired", "t.go"):
+    for code in ("t.move", "t.skip", "w.weather", "w.busy", "t.short", "w.tired", "t.go"):
         env.tap(code, TAP)
     start = at(2026, 10, 15, 7, 0)
     env.run("thu", start, now=start + timedelta(minutes=45), type="easy", verdict="slower")
@@ -207,7 +219,7 @@ def test_buttons_add_no_stored_field():
     """New answer values reuse the same two kinds in the same table, so nothing new is kept and the 14 day purge, backup
     exclusion and export already cover them."""
     assert set(ci.VALUES) == {"ready", "today", "why", "postrun", "shape"}
-    assert {"move"} <= set(ci.TODAY) and {"weather"} <= set(ci.WHY)
+    assert {"move", "short"} <= set(ci.TODAY) and {"weather"} <= set(ci.WHY)
 
 
 # ---------------------------------------------------------------- review fixes

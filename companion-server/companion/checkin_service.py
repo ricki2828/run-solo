@@ -521,7 +521,7 @@ class CheckinMixin:
             return None
         ans, *_ = self._ci_state(c, user, now)
         stage, why = self._ci_stage(slot, ans, for_date)
-        if (stage == "skip" and why) or stage == "move":
+        if (stage == "skip" and why) or stage in ("move", "short"):
             facts = self._ci_moved_facts(c, user, for_date, now)
             return self._ci_media("moved", facts) if facts else None
         if stage in (None, "skip"):

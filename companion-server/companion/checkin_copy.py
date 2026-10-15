@@ -81,6 +81,9 @@ def today(stage: str | None, c: Ctx, why: str | None = None) -> tuple[str, str, 
         return ("Go well", f"{label} is on. Tell me how it went after.", change)
     if stage == "later":   # a retired button; an old message can still carry it
         return ("Later it is", "No rush. It's still on for today.", change)
+    if stage == "short":   # the Busy card's "Run 20 min" button
+        move = f"{label} moves to {day_label(c.moved_to)}." if c.moved_to else "The planned run waits a day."
+        return ("Go well", f"20 easy minutes today. {move} Tell me how it went after.", change)
     if stage == "move":
         move = f"{label} moves to {day_label(c.moved_to)}." if c.moved_to else "The run waits a day."
         return ("Move it", f"A walk, some strength or mobility today counts. {move}", change)
@@ -95,7 +98,8 @@ def today(stage: str | None, c: Ctx, why: str | None = None) -> tuple[str, str, 
     if why == "sore":
         return ("Moved", f"{move} I'll keep the next 3 days light. If it's still sore after that, get it looked at.", undo)
     if why == "busy":
-        return ("Moved", f"{move} Short on time? 20 easy minutes still counts.", undo)
+        return ("Short on time", f"Do 20 easy minutes today instead. {move}",
+                _kb([("Run 20 min", "t.short")], [("Undo", "u.undo")]))
     if why == "weather":
         return ("Moved", f"{move} Nothing lost, the weather can wait.", undo)
     return ("Moved", f"{move} I'll keep the next 3 days light.", undo)
