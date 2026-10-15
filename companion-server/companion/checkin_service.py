@@ -25,6 +25,7 @@ from typing import Any
 from . import checkin_copy as cc
 from . import checkins as ci
 from . import db
+from . import heat
 from .channels import ChannelError
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
@@ -115,10 +116,34 @@ class CheckinMixin:
             return (t, ans.get("why", for_date)) if t else (None, None)
         return ans.get(slot, for_date), None
 
-    def _ci_text(self, c, user: dict, slot: str, for_date: date, now: datetime):
+    def _ci_heat(self, user: dict, slot: str, for_date: date, now: datetime) -> int | None:
+        """Seconds per km that today's forecast heat adds to the runner's easy pace, for the morning card's "Hot one"
+        line, or None. Only the unanswered card carries the line, so nothing is fetched for any other stage. Uses the
+        weather the server already has (the opted-in 0.1 degree area and the forecast cache); no new data is stored and
+        no answer goes out. Call it outside a write transaction: it may make one network request."""
+        if slot != "today" or not self.s.weather_enabled:
+            return None
+        with db.ro(self.s.db_path) as c:
+            ans, *_ = self._ci_state(c, user, now)
+            if ans.get("today", for_date) is not None:
+                return None
+            lat, lon = self._area(c, user["id"], None, now)
+            paces = [r["p"] for r in c.execute(
+                "SELECT COALESCE(true_pace_s_per_km, pace_s_per_km) p FROM runs WHERE user_id=? AND type='easy' "
+                "AND start_utc>=? AND COALESCE(true_pace_s_per_km, pace_s_per_km) IS NOT NULL "
+                "ORDER BY start_utc DESC LIMIT 6", (user["id"], iso(now - timedelta(days=42))))]
+        if lat is None or lon is None or len(paces) < 2:
+            return None
+        fc = self.weather.tomorrow(lat, lon, user["zone_id"], for_date)   # any day inside the next three
+        if fc is None or fc.dew_point_c is None:
+            return None
+        paces.sort()
+        return heat.extra_s_per_km(paces[len(paces) // 2], fc.morning_temp_c, fc.dew_point_c)
+
+    def _ci_text(self, c, user: dict, slot: str, for_date: date, now: datetime, heat_s_km: int | None = None):
         ans, *_ = self._ci_state(c, user, now)
         stage, why = self._ci_stage(slot, ans, for_date)
-        ctx = self._ci_ctx(c, user, slot, for_date, now)
+        ctx = dataclasses.replace(self._ci_ctx(c, user, slot, for_date, now), heat_s_km=heat_s_km)
         head, body, kb = cc.today(stage, ctx, why) if slot == "today" else cc.RENDER[slot](stage, ctx)
         return head, body, kb
 
@@ -305,6 +330,7 @@ class CheckinMixin:
         if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
             return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
+        hot = self._ci_heat(user, slot, for_date, now)   # before the write transaction: it may call the weather service
         with db.tx(self.s.db_path) as c:
             if c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                          (uid, slot, d_s)).fetchone():
@@ -314,7 +340,7 @@ class CheckinMixin:
             if self._ci_cap_taken(c, uid, now):
                 log.info("check-in %s held back: today's question is taken", slot)
                 return "skipped", None
-            head, body, kb = self._ci_text(c, user, slot, for_date, now)
+            head, body, kb = self._ci_text(c, user, slot, for_date, now, hot)
             self._ci_claim_question(c, uid, slot, now)
             card_id = secrets.token_hex(16)
             c.execute("INSERT INTO checkin_slots (user_id, slot, local_date, card_id, state, claimed_at) VALUES (?,?,?,?,?,?)",
@@ -418,6 +444,7 @@ class CheckinMixin:
         "Not modified" is success. A message that is gone or cannot be edited (C3) is replaced by a fresh one and the
         stored message id updated. Anything else (429, transport) raises ChannelError."""
         ch = self.channels.get("telegram")
+        hot = self._ci_heat(user, slot, for_date, now)
         with db.ro(self.s.db_path) as c:
             if not self._ci_consented(c, user["id"]):
                 return False
@@ -426,7 +453,7 @@ class CheckinMixin:
             if ch is None or r is None or r["state"] != "sent" or not r["message_id"]:
                 return False
             srow = dict(r)
-            head, body, kb = self._ci_text(c, user, slot, for_date, now)
+            head, body, kb = self._ci_text(c, user, slot, for_date, now, hot)
             pic = self._ci_stage_media(c, user, slot, for_date, now) if srow["is_photo"] else None
         text = f"{head}\n{body}"
         try:

@@ -18,8 +18,8 @@ from .timeutil import parse_iso, to_local
 RETENTION_DAYS = 14
 
 READY = ("fresh", "normal", "flat", "sore", "not_tomorrow")
-TODAY = ("going", "later", "skip")
-WHY = ("busy", "tired", "sore", "travelling", "ill")
+TODAY = ("going", "later", "skip", "move")   # going = the "Run" button; later is a retired button, still read
+WHY = ("busy", "tired", "sore", "travelling", "ill", "weather")   # travelling is a retired button, still read
 POSTRUN = ("sleep", "stress", "heat", "none")
 SHAPE = ("3", "4", "5", "away")
 VALUES: dict[str, tuple[str, ...]] = {"ready": READY, "today": TODAY, "why": WHY, "postrun": POSTRUN, "shape": SHAPE}
@@ -48,9 +48,9 @@ POSTRUN_DELAY_MIN = 20
 CODES: dict[str, tuple[str, str]] = {
     "r.fresh": ("ready", "fresh"), "r.normal": ("ready", "normal"), "r.flat": ("ready", "flat"),
     "r.sore": ("ready", "sore"), "r.not": ("ready", "not_tomorrow"), "r.chg": ("ready", ""),
-    "t.go": ("today", "going"), "t.later": ("today", "later"), "t.skip": ("today", "skip"),
+    "t.go": ("today", "going"), "t.later": ("today", "later"), "t.skip": ("today", "skip"), "t.move": ("today", "move"),
     "w.busy": ("why", "busy"), "w.tired": ("why", "tired"), "w.sore": ("why", "sore"),
-    "w.trav": ("why", "travelling"), "w.ill": ("why", "ill"), "u.undo": ("undo", ""),
+    "w.trav": ("why", "travelling"), "w.ill": ("why", "ill"), "w.weather": ("why", "weather"), "u.undo": ("undo", ""),
     "p.sleep": ("postrun", "sleep"), "p.stress": ("postrun", "stress"), "p.heat": ("postrun", "heat"),
     "p.none": ("postrun", "none"),
     "s.3": ("shape", "3"), "s.4": ("shape", "4"), "s.5": ("shape", "5"), "s.away": ("shape", "away"), "s.chg": ("shape", ""),
@@ -138,14 +138,20 @@ def _next_usual(earliest: date, usual: frozenset[int] | None) -> date:
     return earliest
 
 
+# A skip for these reasons says nothing about the body: the session just waits a day, and nothing goes light.
+NOT_LIGHTER = ("busy", "weather")
+
+
 def lighter_days(why: str | None) -> int:
-    return ILL_DAYS if why == "ill" else LIGHTER_DAYS
+    return ILL_DAYS if why == "ill" else 0 if why in NOT_LIGHTER else LIGHTER_DAYS
 
 
 def _move_from(d: date, a: Answers, usual: frozenset[int] | None) -> date | None:
     """Where a session planned for `d` goes when the answers say it is not happening that day, or None to stay."""
     if a.get("today", d) == "skip":
         return _next_usual(d + timedelta(days=lighter_days(a.get("why", d)) + 1), usual)
+    if a.get("today", d) == "move":   # a walk, strength or mobility today instead: the run waits a day
+        return _next_usual(d + timedelta(days=1), usual)
     ready = a.get("ready", d)
     if ready == "not_tomorrow":
         return _next_usual(d + timedelta(days=1), usual)
@@ -181,7 +187,7 @@ def lighter_windows(a: Answers) -> list[tuple[date, date, str]]:
     from the run day. Derived on read, never stored, so the purge removes it with the answers."""
     out: list[tuple[date, date, str]] = []
     for d, v in a.by["today"].items():
-        if v == "skip":
+        if v == "skip" and lighter_days(a.get("why", d)):
             why = a.get("why", d)
             out.append((d, d + timedelta(days=lighter_days(why)), "ill" if why == "ill" else "skip"))
     for d, v in a.by["ready"].items():

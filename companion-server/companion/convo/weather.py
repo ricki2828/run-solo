@@ -32,6 +32,7 @@ class RunWeather:
 class Forecast:
     morning_temp_c: int
     rain_pct: int  # peak chance of rain between 06:00 and 10:00 local
+    dew_point_c: int | None = None  # at 07:00 local; None when the source did not say (the heat line then stays off)
 
 
 CELL = 1  # decimal places kept: 0.1 degree is about 11 km
@@ -70,7 +71,7 @@ class OpenMeteo:
         try:
             r = self.http.get(self.forecast, timeout=8, params={
                 "latitude": ll[0], "longitude": ll[1], "timezone": zone_id,
-                "hourly": "temperature_2m,precipitation_probability", "daily": "sunrise",
+                "hourly": "temperature_2m,precipitation_probability,dew_point_2m", "daily": "sunrise",
                 "past_days": past, "forecast_days": ahead})
             d = r.json() if r.status_code == 200 else None
         except (httpx.HTTPError, ValueError):
@@ -114,6 +115,8 @@ class OpenMeteo:
                 return None
             t7 = temps[idx.get(7, morning[0])]
             peak = max(rain[i] for i in morning if rain[i] is not None)
-            return Forecast(round(t7), int(peak))
+            dews = d["hourly"].get("dew_point_2m")
+            dew = dews[idx.get(7, morning[0])] if dews else None
+            return Forecast(round(t7), int(peak), round(dew) if isinstance(dew, (int, float)) else None)
         except (KeyError, ValueError, TypeError, IndexError):
             return None
