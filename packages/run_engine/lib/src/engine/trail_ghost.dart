@@ -161,6 +161,7 @@ class GhostConfig {
   final double skipM = 150;
   final double skipFrac = 0.05;
   final double dropOffM = 500;
+  final double rejoinM = 100;
   final int slipFloorMs = 30000;
   final double slipFrac = 0.03;
   final int slipHoldMs = 120000;
@@ -345,6 +346,8 @@ class _Cand {
   int? lastFixT;
   bool racingLast = false;
   double offDistM = 0;
+  bool dormant = false;
+  double? rejoinFrom;
   int? behindSince;
   int? calmSince;
   int rebaseAt = -(1 << 60);
@@ -457,10 +460,16 @@ class _Cand {
     } else {
       backSince = null;
     }
-    // Kotlin twin: gone for good, the ghost lets the trail go.
-    if (off && runDistM - offDistM > cfg.dropOffM) {
-      dead = true;
-      return;
+    // Kotlin twin: gone a long way, the trail goes dormant until a clean rejoin.
+    if (off && runDistM - offDistM > cfg.dropOffM) dormant = true;
+    if (off) {
+      rejoinFrom = null;
+    } else if (dormant) {
+      final from = rejoinFrom ??= along;
+      if (along - from >= cfg.rejoinM) {
+        dormant = false;
+        rejoinFrom = null;
+      }
     }
     if (!confirmed && along - a0 >= cfg.confirmM && onN >= cfg.minCover * n) {
       confirmed = true;
@@ -524,12 +533,12 @@ class TrailGhostTracker {
     for (final c in _cands) {
       if (!c.dead) c.step(t, lat, lon, accuracyM, activeMs, runDistM);
     }
-    if (_leader?.dead ?? false) _leader = null;
+    if ((_leader?.dead ?? false) || (_leader?.dormant ?? false)) _leader = null;
     final cur = _leader;
     if (cur == null || cur.off) {
       _Cand? next;
       for (final c in _cands) {
-        if (c.confirmed && !c.dead && !c.off) {
+        if (c.confirmed && !c.dead && !c.off && !c.dormant) {
           if (next == null || c.meanOffM < next.meanOffM) next = c;
         }
       }

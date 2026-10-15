@@ -253,6 +253,13 @@ void main() {
       ]),
     ),
     vector(
+      'leaves_far_and_rejoins',
+      [trail(straight)],
+      runner([
+        const [(0, 0), (700, 0), (700, 800), (700, 0), (1500, 0)],
+      ]),
+    ),
+    vector(
       'shared_start_hands_over',
       [a, b],
       runner(

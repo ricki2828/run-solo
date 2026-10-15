@@ -64,9 +64,9 @@ void main() {
     final store = await storeWith(runs);
     final trails = trailsOf(store);
     expect(trails, hasLength(2));
-    // The busiest first (the loop, three runs), then the northern trail (run 4).
-    expect(trails.last.best.runId, runs[3].id);
-    final loop = trails.first;
+    // Most recently run first: the northern trail (run 4), then the loop.
+    expect(trails.first.best.runId, runs[3].id);
+    final loop = trails.last;
     expect(loop.best.runId, runs[1].id); // the 380 s/km run
     expect(loop.last!.runId, runs[2].id); // the latest
     final n = loop.latLon.length ~/ 2;
@@ -82,7 +82,7 @@ void main() {
     'a later run on the trail is matched and compared, another is not',
     () async {
       final store = await storeWith(runs);
-      final loop = trailsOf(store).first;
+      final loop = trailsOf(store).last;
       // 360 s/km: faster than the best (380) over about 6 km.
       final again = trailLoopRun(
         n: 5,
@@ -141,7 +141,7 @@ void main() {
     'the trail carries its smoothed elevation and climbs to Pigeon',
     () async {
       final store = await storeWith(runs);
-      final loop = trailsOf(store).first;
+      final loop = trailsOf(store).last;
       final n = loop.latLon.length ~/ 2;
       expect(loop.elevSrc, 'baro');
       expect(loop.elevM, hasLength(n));

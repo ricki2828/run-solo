@@ -473,7 +473,7 @@ class TrailGhostTest {
     }
 
     @Test
-    fun `gone for good the readout ends instead of saying off the trail for the rest of the run`() {
+    fun `gone a long way the readout goes quiet instead of saying off the trail`() {
         val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
         val r = Runner(g)
         r.run(listOf(0.0 to 0.0, 700.0 to 0.0))
@@ -481,7 +481,7 @@ class TrailGhostTest {
         // Leaves the line and keeps going away: off first, with the figures gone...
         r.run(listOf(700.0 to 0.0, 700.0 to 300.0))
         assertTrue(r.states.last()!!.off)
-        // ...then, 500 m on, the ghost lets go for the rest of the run.
+        // ...then, 500 m on, the readout goes quiet (dormant), not off the trail for ever.
         r.run(listOf(700.0 to 300.0, 700.0 to 900.0))
         assertNull(r.states.last())
         assertTrue(r.states.takeLast(30).all { it == null })
@@ -494,5 +494,22 @@ class TrailGhostTest {
         r.run(listOf(0.0 to 0.0, 700.0 to 0.0, 700.0 to 120.0, 700.0 to 0.0, 1_100.0 to 0.0))
         assertEquals("t1", r.states.last()?.trailId)
         assertFalse(r.states.last()!!.off)
+    }
+
+    @Test
+    fun `800 m away and back on the trail the readout returns after a clean rejoin`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g)
+        r.run(listOf(0.0 to 0.0, 700.0 to 0.0, 700.0 to 800.0))
+        assertNull(r.states.last(), "quiet while far away")
+        // Back to the line at 700 m: still quiet until 100 m of clean progress on it...
+        r.run(listOf(700.0 to 800.0, 700.0 to 0.0))
+        r.run(listOf(700.0 to 0.0, 760.0 to 0.0))
+        assertNull(r.states.last())
+        // ...then it is back, with figures only after the usual 100 m since the compare restarted.
+        r.run(listOf(760.0 to 0.0, 1_400.0 to 0.0))
+        val s = r.states.last()!!
+        assertEquals("t1", s.trailId)
+        assertFalse(s.off)
     }
 }

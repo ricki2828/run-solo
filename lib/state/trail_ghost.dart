@@ -72,18 +72,11 @@ class TrailGhostSource {
     ];
     // Only trails the runner has really run feed the ghost: two or more runs,
     // or a single Trail-mode run. A one-off Free run is not a known trail and
-    // must not crowd a real one out of the six slots. The busiest trails
-    // first, then the most recently run.
-    final groups =
-        [
-          for (final g in engine.Trails.group(facts))
-            if (g.runs.length >= 2 || g.runs.single.trailMode) g,
-        ]..sort((a, b) {
-          final byRuns = b.runs.length.compareTo(a.runs.length);
-          return byRuns != 0
-              ? byRuns
-              : b.runs.last.start.compareTo(a.runs.last.start);
-        });
+    // must not crowd a real one out of the six slots. Most recently run first.
+    final groups = [
+      for (final g in engine.Trails.group(facts))
+        if (g.runs.length >= 2 || g.runs.single.trailMode) g,
+    ]..sort((a, b) => b.runs.last.start.compareTo(a.runs.last.start));
     final out = <engine.GhostTrail>[];
     for (final g in groups) {
       if (out.length >= engine.GhostTrail.maxTrails) break;
