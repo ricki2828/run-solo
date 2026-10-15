@@ -173,19 +173,36 @@ class WeatherQueue {
   Future<engine.WeatherRecord?> currentAt(double lat, double lon) {
     if (!enabled()) return Future.value(null);
     final at = now();
-    final key = '${lat.toStringAsFixed(1)},${lon.toStringAsFixed(1)}';
+    // Start's several readers (aim line, target pace) share one request per
+    // place and hour. Only a reading is kept: a miss (offline, hour not
+    // served) is forgotten at once, so the next caller tries again.
+    final key =
+        '${lat.toStringAsFixed(1)},${lon.toStringAsFixed(1)},'
+        '${at.year}-${at.month}-${at.day}T${at.hour}';
     final hit = _currentMemo[key];
-    // Start's several readers (aim line, target pace) share one request.
-    if (hit != null && at.difference(hit.$1) < const Duration(minutes: 5)) {
-      return hit.$2;
-    }
+    if (hit != null) return hit;
     final f = _fetchCurrent(lat, lon, at);
-    _currentMemo[key] = (at, f);
+    _currentMemo[key] = f;
+    if (_currentMemo.length > _memoMax) {
+      _currentMemo.remove(_currentMemo.keys.first);
+    }
+    unawaited(
+      f.then(
+        (r) {
+          if (r == null && identical(_currentMemo[key], f)) {
+            _currentMemo.remove(key);
+          }
+        },
+        onError: (Object _) {
+          if (identical(_currentMemo[key], f)) _currentMemo.remove(key);
+        },
+      ),
+    );
     return f;
   }
 
-  final Map<String, (DateTime, Future<engine.WeatherRecord?>)> _currentMemo =
-      {};
+  static const int _memoMax = 8;
+  final Map<String, Future<engine.WeatherRecord?>> _currentMemo = {};
 
   Future<engine.WeatherRecord?> _fetchCurrent(
     double lat,

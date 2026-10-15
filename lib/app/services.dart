@@ -354,6 +354,19 @@ class AppServices {
   /// The paces the runner accepted from a nudge (`state/target_paces.json`).
   final TargetPaceController targetPaces;
 
+  /// The one source of session target paces: the last prepared runs with the
+  /// runner's accepted paces. Null before a prepare or with no fitness figure.
+  engine.TargetPaces? currentTargetPaces() {
+    try {
+      return live?.targetPaces(
+        adopted: targetPaces.adopted,
+        adoptedFrom: targetPaces.adoptedFrom,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Saved custom Intervals templates (`state/sessions.json`, plan §3.4).
   final SessionsController sessions;
 
@@ -395,6 +408,7 @@ class AppServices {
     PlaceGateway? places,
     List<ExportTarget>? exportTargets,
     CompanionController? companion,
+    TargetPaceController? targetPaces,
   }) {
     final rec = recorder ?? FakeRecorderGateway(autoTick: true, now: now);
     final settingsCtl = SettingsController(
@@ -432,6 +446,7 @@ class AppServices {
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
       plans: BlockPlanController(MemoryBlockPlanStore(plan))..preload(plan),
+      targetPaces: targetPaces,
       routes: RouteLibrary(
         MemoryRouteStore(routes),
         now: now,

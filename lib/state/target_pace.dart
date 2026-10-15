@@ -45,10 +45,18 @@ class PaceAnswer {
 }
 
 class TargetPaceState {
-  const TargetPaceState({this.adopted = const {}, this.answers = const {}});
+  const TargetPaceState({
+    this.adopted = const {},
+    this.adoptedFrom = const {},
+    this.answers = const {},
+  });
 
   /// True Pace s/km the runner said yes to, per intensity.
   final Map<engine.PaceIntensity, double> adopted;
+
+  /// What the tables said when they said yes: the accepted pace lapses once
+  /// the tables pass it.
+  final Map<engine.PaceIntensity, double> adoptedFrom;
   final Map<engine.PaceIntensity, PaceAnswer> answers;
 
   static const TargetPaceState empty = TargetPaceState();
@@ -56,6 +64,7 @@ class TargetPaceState {
   Map<String, Object?> toJson() => {
     'v': 1,
     'adopted': {for (final e in adopted.entries) e.key.name: e.value},
+    'adopted_from': {for (final e in adoptedFrom.entries) e.key.name: e.value},
     'answers': {for (final e in answers.entries) e.key.name: e.value.toJson()},
   };
 
@@ -63,6 +72,7 @@ class TargetPaceState {
   static TargetPaceState tryParse(Object? j) {
     if (j is! Map) return empty;
     final adopted = <engine.PaceIntensity, double>{};
+    final adoptedFrom = <engine.PaceIntensity, double>{};
     final answers = <engine.PaceIntensity, PaceAnswer>{};
     final a = j['adopted'];
     if (a is Map) {
@@ -74,6 +84,16 @@ class TargetPaceState {
         }
       }
     }
+    final f = j['adopted_from'];
+    if (f is Map) {
+      for (final e in f.entries) {
+        final i = engine.PaceIntensity.byName('${e.key}');
+        final v = e.value;
+        if (i != null && v is num && v.isFinite && v > 0) {
+          adoptedFrom[i] = v.toDouble();
+        }
+      }
+    }
     final r = j['answers'];
     if (r is Map) {
       for (final e in r.entries) {
@@ -82,7 +102,11 @@ class TargetPaceState {
         if (i != null && v != null) answers[i] = v;
       }
     }
-    return TargetPaceState(adopted: adopted, answers: answers);
+    return TargetPaceState(
+      adopted: adopted,
+      adoptedFrom: adoptedFrom,
+      answers: answers,
+    );
   }
 }
 
@@ -138,14 +162,22 @@ class TargetPaceController extends ChangeNotifier {
   /// What [engine.TargetPaces.of] takes as `adopted`.
   Map<engine.PaceIntensity, double> get adopted => _state.adopted;
 
+  /// And its `adoptedFrom`.
+  Map<engine.PaceIntensity, double> get adoptedFrom => _state.adoptedFrom;
+
   Future<void> load() async {
     _state = await store.load();
     notifyListeners();
   }
 
   /// The runner tapped Yes: the target becomes the nudge's pace.
-  Future<void> accept(engine.PaceNudge n, {required DateTime now}) =>
-      _answer(n, now, accepted: true);
+  /// [modelSecPerKm] is what the tables say now, so the move can lapse once
+  /// they catch up.
+  Future<void> accept(
+    engine.PaceNudge n, {
+    required DateTime now,
+    double? modelSecPerKm,
+  }) => _answer(n, now, accepted: true, model: modelSecPerKm);
 
   /// The runner tapped Keep: the target stays and the nudge goes quiet.
   Future<void> keep(engine.PaceNudge n, {required DateTime now}) =>
@@ -155,9 +187,15 @@ class TargetPaceController extends ChangeNotifier {
     engine.PaceNudge n,
     DateTime now, {
     required bool accepted,
+    double? model,
   }) async {
+    final before = _state;
     _state = TargetPaceState(
       adopted: {..._state.adopted, if (accepted) n.intensity: n.toSecPerKm},
+      adoptedFrom: {
+        ..._state.adoptedFrom,
+        if (accepted && model != null) n.intensity: model,
+      },
       answers: {
         ..._state.answers,
         n.intensity: PaceAnswer(
@@ -168,17 +206,31 @@ class TargetPaceController extends ChangeNotifier {
       },
     );
     notifyListeners();
-    await store.save(_state);
+    await _persist(before);
+  }
+
+  /// Saves [_state]; a failed save puts [before] back and rethrows, so the
+  /// screen never shows a pace that did not stick.
+  Future<void> _persist(TargetPaceState before) async {
+    try {
+      await store.save(_state);
+    } catch (_) {
+      _state = before;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   /// Back to the tables for one intensity (a nudge's undo).
   Future<void> reset(engine.PaceIntensity i) async {
+    final before = _state;
     _state = TargetPaceState(
       adopted: {..._state.adopted}..remove(i),
+      adoptedFrom: {..._state.adoptedFrom}..remove(i),
       answers: _state.answers,
     );
     notifyListeners();
-    await store.save(_state);
+    await _persist(before);
   }
 
   /// The one nudge to show, or null. Pure over the state: calling it moves
@@ -235,7 +287,7 @@ Map<engine.PaceIntensity, List<engine.PaceObservation>> paceEvidence(
       final i = vo2Sets.contains(id)
           ? engine.PaceIntensity.vo2max
           : id == 'tempo'
-          ? engine.PaceIntensity.threshold
+          ? engine.PaceIntensity.tempo
           : null;
       if (i != null) {
         out[i]!.add(

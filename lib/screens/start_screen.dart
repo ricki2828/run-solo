@@ -389,13 +389,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   void _refreshPaces() {
     final services = _services;
     if (services == null) return;
-    try {
-      _paces = services.live?.targetPaces(
-        adopted: services.targetPaces.adopted,
-      );
-    } catch (_) {
-      _paces = null;
-    }
+    _paces = services.currentTargetPaces();
     final runs = _runs, w = services.weather;
     if (_weatherAsked || runs == null || w == null) return;
     final at = lastRunLocation(runs);
@@ -406,10 +400,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     }, onError: (Object _) {});
   }
 
-  /// The target for the hand-picked structured set (a VO2 set or tempo
-  /// reps), today's heat in; null for any other run, a plan session (the
-  /// plan has its own line), a goal or the event.
-  engine.AdjustedPace? _presetPace(AppServices services, AppSettings s) {
+  /// The True Pace target of the hand-picked structured set (a VO2 set or
+  /// tempo reps); null for any other run, a plan session (the plan has its
+  /// own line), a goal or the event. No weather in it: the coach and the
+  /// band compare it with the live True Pace, which has the heat out.
+  engine.TargetPace? _presetTarget(AppServices services, AppSettings s) {
     final paces = _paces;
     if (paces == null ||
         s.lastMode != RecordMode.intervals ||
@@ -424,10 +419,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       '30-30s' ||
       '1-min-reps' ||
       'pyramid' => engine.PaceIntensity.vo2max,
-      'tempo' => engine.PaceIntensity.threshold,
+      'tempo' => engine.PaceIntensity.tempo,
       _ => null,
     };
-    final pace = intensity == null ? null : paces[intensity];
+    return intensity == null ? null : paces[intensity];
+  }
+
+  /// The card's version of it, today's heat in. Heat is shown at its full
+  /// size ("up to") because the set's length is not known here.
+  engine.AdjustedPace? _presetPace(AppServices services, AppSettings s) {
+    final pace = _presetTarget(services, s);
     if (pace == null) return null;
     return engine.TargetPaces.adjust(
       pace,
@@ -545,7 +546,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         planned: _plannedToday(services, s),
         vdot: _planCtx?.vdot,
         goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
-        sessionPaceSecPerKm: _presetPace(services, s)?.secPerKm,
+        sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
+        paces: _paces,
       );
 
   VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
@@ -560,7 +562,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           _samePick(PlanStart.easyRun(s), s),
       vdot: _planCtx?.vdot,
       goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
-      sessionPaceSecPerKm: _presetPace(services, s)?.secPerKm,
+      sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
+      paces: _paces,
     );
   }
 
@@ -826,7 +829,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               '${today.kind != engine.BlockKind.interval ? ' · ${today.size}' : ''}';
     final todayTarget = today == null
         ? _paceLine(services, s)
-        : PlanText.targetLine(today, _planCtx?.vdot, s.units);
+        : PlanText.targetLine(today, _planCtx?.vdot, s.units, paces: _paces);
     if (s.eventRun) {
       return (
         runType: '5 KM',

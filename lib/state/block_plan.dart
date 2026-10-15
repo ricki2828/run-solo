@@ -260,8 +260,16 @@ abstract final class PlanText {
   /// How hard to run it, in plain words. With a pace estimate it names the
   /// pace; with none (no scores yet, or a VDOT the pace model cannot place)
   /// it falls back to effort only, so the guidance never just disappears.
-  static String targetLine(engine.BlockSession s, double? vdot, Units units) {
-    final pace = engine.BlockPaces.target(s, vdot);
+  ///
+  /// [paces] is the one source of targets (accepted nudges, trail runs); the
+  /// plan's own [vdot] is only the fallback before they exist.
+  static String targetLine(
+    engine.BlockSession s,
+    double? vdot,
+    Units units, {
+    engine.TargetPaces? paces,
+  }) {
+    final pace = paces?.sessionPace(s) ?? engine.BlockPaces.target(s, vdot);
     if (pace == null) {
       return switch (s.kind) {
         engine.BlockKind.easy ||

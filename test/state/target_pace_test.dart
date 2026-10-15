@@ -72,14 +72,14 @@ void main() {
       expect(ev[engine.PaceIntensity.easy]!.single.trueSecPerKm, 350);
     });
 
-    test('4x4 reps are VO2 max, tempo reps are threshold', () {
+    test('4x4 reps are VO2 max, tempo reps are tempo', () {
       final ev = paceEvidence([
         set('v', 3, engine.SessionSpec.norwegian4x4Id, 255),
         set('t', 5, 'tempo', 300),
         set('y', 9, 'yasso-800s', 280),
       ], zones: zones);
       expect(ev[engine.PaceIntensity.vo2max]!.single.trueSecPerKm, 255);
-      expect(ev[engine.PaceIntensity.threshold]!.single.trueSecPerKm, 300);
+      expect(ev[engine.PaceIntensity.tempo]!.single.trueSecPerKm, 300);
       expect(
         [for (final l in ev.values) ...l].map((o) => o.runId),
         isNot(contains('y')),
@@ -164,5 +164,35 @@ void main() {
         isEmpty,
       );
     });
+
+    test('a failed save puts the old pace back and says so', () async {
+      final c = TargetPaceController(_FailingStore());
+      final n = c.nudge(paces, {
+        engine.PaceIntensity.easy: quicker(easyTarget - 15),
+      }, now: now)!;
+      await expectLater(c.accept(n, now: now), throwsStateError);
+      expect(c.adopted, isEmpty);
+      expect(c.state.answers, isEmpty);
+    });
+
+    test('accepting remembers the tables so the move can lapse', () async {
+      final c = TargetPaceController(MemoryTargetPaceStore());
+      final n = c.nudge(paces, {
+        engine.PaceIntensity.easy: quicker(easyTarget - 15),
+      }, now: now)!;
+      await c.accept(n, now: now, modelSecPerKm: easyTarget);
+      expect(c.adoptedFrom[engine.PaceIntensity.easy], easyTarget);
+      await c.reset(engine.PaceIntensity.easy);
+      expect(c.adoptedFrom, isEmpty);
+    });
   });
+}
+
+class _FailingStore implements TargetPaceStore {
+  @override
+  Future<TargetPaceState> load() async => TargetPaceState.empty;
+
+  @override
+  Future<void> save(TargetPaceState state) async =>
+      throw StateError('disk full');
 }

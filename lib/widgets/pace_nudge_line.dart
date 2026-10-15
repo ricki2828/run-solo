@@ -13,10 +13,18 @@ final ButtonStyle _tap = TextButton.styleFrom(minimumSize: const Size(48, 48));
 /// Shows only when the engine finds sustained evidence; a target never
 /// changes until Yes is tapped. Nothing at all otherwise.
 class PaceNudgeLine extends StatefulWidget {
-  const PaceNudgeLine({super.key, required this.runs, required this.now});
+  const PaceNudgeLine({
+    super.key,
+    required this.runs,
+    required this.now,
+    this.pacesOverride,
+  });
 
   final List<RunSummary> runs;
   final DateTime now;
+
+  /// Tests: targets to judge against, in place of the prepared index.
+  final engine.TargetPaces? pacesOverride;
 
   @override
   State<PaceNudgeLine> createState() => _PaceNudgeLineState();
@@ -25,6 +33,14 @@ class PaceNudgeLine extends StatefulWidget {
 class _PaceNudgeLineState extends State<PaceNudgeLine> {
   bool _prepared = false;
 
+  // Home rebuilds often; the fitness figure and the evidence are only
+  // recomputed when their inputs move.
+  Object? _pacesKey;
+  engine.TargetPaces? _paces;
+  List<RunSummary>? _evidenceRuns;
+  int _evidenceLen = -1;
+  Map<engine.PaceIntensity, List<engine.PaceObservation>> _evidence = const {};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -32,8 +48,36 @@ class _PaceNudgeLineState extends State<PaceNudgeLine> {
     if (_prepared || live == null) return;
     _prepared = true;
     live.prepare().then((_) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          _pacesKey = null;
+          _evidenceRuns = null;
+        });
+      }
     }, onError: (Object _) {});
+  }
+
+  engine.PaceNudge? _find(AppServices services, TargetPaceController c) {
+    try {
+      final key = (c.state, widget.now.year, widget.now.month, widget.now.day);
+      if (widget.pacesOverride != null) {
+        _paces = widget.pacesOverride;
+      } else if (_pacesKey != key) {
+        _paces = services.currentTargetPaces();
+        _pacesKey = key;
+      }
+      final paces = _paces;
+      if (paces == null) return null;
+      if (!identical(_evidenceRuns, widget.runs) ||
+          _evidenceLen != widget.runs.length) {
+        _evidence = paceEvidence(widget.runs, zones: services.hrZones);
+        _evidenceRuns = widget.runs;
+        _evidenceLen = widget.runs.length;
+      }
+      return c.nudge(paces, _evidence, now: widget.now);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -43,21 +87,14 @@ class _PaceNudgeLineState extends State<PaceNudgeLine> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        engine.PaceNudge? nudge;
-        try {
-          final paces = services.live?.targetPaces(adopted: controller.adopted);
-          if (paces != null) {
-            nudge = controller.nudge(
-              paces,
-              paceEvidence(widget.runs, zones: services.hrZones),
-              now: widget.now,
-            );
-          }
-        } catch (_) {
-          nudge = null;
-        }
+        final nudge = _find(services, controller);
         if (nudge == null) return const SizedBox.shrink();
-        return _Line(nudge: nudge, controller: controller, now: widget.now);
+        return _Line(
+          nudge: nudge,
+          controller: controller,
+          now: widget.now,
+          modelSecPerKm: _paces?[nudge.intensity]?.modelSecPerKm,
+        );
       },
     );
   }
@@ -68,11 +105,58 @@ class _Line extends StatelessWidget {
     required this.nudge,
     required this.controller,
     required this.now,
+    this.modelSecPerKm,
   });
 
+  final double? modelSecPerKm;
   final engine.PaceNudge nudge;
   final TargetPaceController controller;
   final DateTime now;
+
+  void _say(BuildContext context, String text, {SnackBarAction? action}) =>
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text(text), action: action));
+
+  Future<void> _yes(BuildContext context, String paceText) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await controller.accept(nudge, now: now, modelSecPerKm: modelSecPerKm);
+    } catch (_) {
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Could not save that. The pace is unchanged.'),
+        ),
+      );
+      return;
+    }
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text('${nudge.intensity.label} pace is now $paceText.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            try {
+              await controller.reset(nudge.intensity);
+            } catch (_) {
+              messenger?.showSnackBar(
+                const SnackBar(content: Text('Could not undo that.')),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _keep(BuildContext context) async {
+    try {
+      await controller.keep(nudge, now: now);
+    } catch (_) {
+      if (context.mounted) {
+        _say(context, 'Could not save that. It will ask again.');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,27 +178,14 @@ class _Line extends StatelessWidget {
               TextButton(
                 key: const ValueKey('pace-nudge-yes'),
                 style: _tap,
-                onPressed: () {
-                  controller.accept(nudge, now: now);
-                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${nudge.intensity.label} pace is now '
-                        '${Fmt.paceUnit(nudge.toSecPerKm, units)}.',
-                      ),
-                      action: SnackBarAction(
-                        label: 'Undo',
-                        onPressed: () => controller.reset(nudge.intensity),
-                      ),
-                    ),
-                  );
-                },
+                onPressed: () =>
+                    _yes(context, Fmt.paceUnit(nudge.toSecPerKm, units)),
                 child: Text('Yes, ${Fmt.paceUnit(nudge.toSecPerKm, units)}'),
               ),
               TextButton(
                 key: const ValueKey('pace-nudge-keep'),
                 style: _tap,
-                onPressed: () => controller.keep(nudge, now: now),
+                onPressed: () => _keep(context),
                 child: Text('Keep ${Fmt.paceUnit(nudge.fromSecPerKm, units)}'),
               ),
               TextButton(

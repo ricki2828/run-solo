@@ -260,7 +260,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([services.settings, services.plans]),
+      listenable: Listenable.merge([
+        services.settings,
+        services.plans,
+        services.targetPaces,
+      ]),
       builder: (context, _) {
         final settings = services.settings.settings;
         final perms = _perms;
@@ -425,6 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     next.session,
                                     planCtx?.vdot,
                                     settings.units,
+                                    paces: services.currentTargetPaces(),
                                   ),
                             startLabel: hardPick ? 'Easy run ›' : startLabel,
                             onStart: () => _start(

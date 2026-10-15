@@ -285,6 +285,7 @@ class LiveContextSource {
   /// [adopted] paces); null when never prepared or with no fitness figure.
   engine.TargetPaces? targetPaces({
     Map<engine.PaceIntensity, double> adopted = const {},
+    Map<engine.PaceIntensity, double> adoptedFrom = const {},
   }) => _cachedVersion == null
       ? null
       : engine.TargetPaces.of(
@@ -292,6 +293,7 @@ class LiveContextSource {
           now: now(),
           names: names,
           adopted: adopted,
+          adoptedFrom: adoptedFrom,
         );
 
   /// The Start card's target for [spec] (the event or a goal), from the

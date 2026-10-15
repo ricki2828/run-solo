@@ -106,6 +106,43 @@ void main() {
       expect(easy.method, endsWith('moved by you'));
       expect(t[PaceIntensity.tempo]!.adopted, isFalse);
     });
+
+    test('an accepted pace lapses once the tables catch up with it', () {
+      final base = TargetPaces.of([road('a', 4, 1470)], now: now)!;
+      final modelEasy = base[PaceIntensity.easy]!.trueSecPerKm;
+      // Accepted 10 s quicker than a model that was 15 s slower than today's.
+      TargetPaces at(double from) => TargetPaces.of(
+        [road('a', 4, 1470)],
+        now: now,
+        adopted: {PaceIntensity.easy: modelEasy - 10},
+        adoptedFrom: {PaceIntensity.easy: from},
+      )!;
+      expect(at(modelEasy + 5)[PaceIntensity.easy]!.adopted, isTrue);
+      expect(
+        at(modelEasy + 5)[PaceIntensity.easy]!.trueSecPerKm,
+        modelEasy - 10,
+      );
+      // The model now sits quicker than the accepted pace: back to tables.
+      final fast = TargetPaces.fromVdot(
+        60,
+        adopted: {PaceIntensity.easy: modelEasy},
+        adoptedFrom: {PaceIntensity.easy: modelEasy + 20},
+      )!;
+      expect(fast[PaceIntensity.easy]!.adopted, isFalse);
+    });
+
+    test('plan sessions read the same targets, nudges included', () {
+      final plan = BlockPlanner.build(
+        lane: IdentityLane.aerobic,
+        perWeek: 3,
+        start: now,
+      );
+      final easySession = plan.sessions.firstWhere(
+        (s) => s.kind == BlockKind.easy,
+      );
+      final t = TargetPaces.fromVdot(45, adopted: {PaceIntensity.easy: 330})!;
+      expect(t.sessionPace(easySession), 330);
+    });
   });
 
   group('heat and grade', () {
@@ -118,10 +155,29 @@ void main() {
       expect(a.notes, isEmpty);
     });
 
-    test('28 C with a 21 C dew point slows the target by about 4.9%', () {
+    test('28 C with a 21 C dew point slows the target by 4.7% (the Hadley fraction)', () {
       final a = TargetPaces.adjust(th, tempC: 28, dewPointC: 21);
       expect(a.secPerKm, closeTo(th.trueSecPerKm / (1 - 0.047), 0.5));
-      expect(a.notes.single, startsWith('heat +'));
+      expect(a.notes.single, startsWith('heat up to +'));
+    });
+
+    test('heat builds with distance: none for a 3 km set, full by 9 km', () {
+      final short = TargetPaces.adjust(
+        th,
+        tempC: 28,
+        dewPointC: 21,
+        runMetres: 3000,
+      );
+      expect(short.secPerKm, th.trueSecPerKm);
+      expect(short.notes, isEmpty);
+      final long = TargetPaces.adjust(
+        th,
+        tempC: 28,
+        dewPointC: 21,
+        runMetres: 9000,
+      );
+      expect(long.secPerKm, closeTo(th.trueSecPerKm / (1 - 0.047), 0.5));
+      expect(long.notes.single, startsWith('heat +'));
     });
 
     test('a moderate climb slows it, a gentle descent speeds it', () {

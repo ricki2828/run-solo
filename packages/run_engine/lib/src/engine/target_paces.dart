@@ -149,16 +149,23 @@ class TargetPaces {
     required DateTime now,
     EventNames names = EventNames.generic,
     Map<PaceIntensity, double> adopted = const {},
+    Map<PaceIntensity, double> adoptedFrom = const {},
   }) {
     final hero = FitnessHero.of(runs, now: now, names: names);
     if (hero == null) return null;
-    return fromVdot(hero.vo2, sourceLine: _sourceLine(hero), adopted: adopted);
+    return fromVdot(
+      hero.vo2,
+      sourceLine: _sourceLine(hero),
+      adopted: adopted,
+      adoptedFrom: adoptedFrom,
+    );
   }
 
   static TargetPaces? fromVdot(
     double vdot, {
     String sourceLine = '',
     Map<PaceIntensity, double> adopted = const {},
+    Map<PaceIntensity, double> adoptedFrom = const {},
   }) {
     final th = BlockPaces.threshold(vdot);
     final half = BlockPaces.race(vdot, 21097.5);
@@ -170,6 +177,20 @@ class TargetPaces {
       PaceIntensity.threshold: th,
       PaceIntensity.vo2max: vo2,
     };
+    // An accepted pace stands only until the tables catch up with it: once
+    // the model is at or past the adopted pace (from the side it started on),
+    // the move has done its job and the tables take over again.
+    double? kept(PaceIntensity i) {
+      final a = adopted[i];
+      if (a == null) return null;
+      final from = adoptedFrom[i];
+      if (from == null) return a;
+      final m = model[i]!;
+      if (a < from && m <= a) return null;
+      if (a > from && m >= a) return null;
+      return a;
+    }
+
     return TargetPaces._(
       vdot: vdot,
       sourceLine: sourceLine,
@@ -178,13 +199,36 @@ class TargetPaces {
           e.key: TargetPace(
             intensity: e.key,
             modelSecPerKm: e.value,
-            trueSecPerKm: adopted[e.key] ?? e.value,
+            trueSecPerKm: kept(e.key) ?? e.value,
             method:
                 '${methods[e.key]}'
-                '${adopted[e.key] == null ? '' : ' · moved by you'}',
+                '${kept(e.key) == null ? '' : ' · moved by you'}',
           ),
       },
     );
+  }
+
+  /// The True Pace a plan session aims at, from these same targets (so an
+  /// accepted nudge and trail-run fitness count): easy and long sit on the
+  /// easy target, tempo on the tempo target, VO2 sets on the VO2 target;
+  /// the 5K goal and the short-rep presets are race equivalents of [vdot].
+  double? sessionPace(BlockSession s) {
+    switch (s.kind) {
+      case BlockKind.easy:
+        return paces[PaceIntensity.easy]?.trueSecPerKm;
+      case BlockKind.long:
+        final e = paces[PaceIntensity.easy]?.trueSecPerKm;
+        return e == null ? null : e * 1.2 / 1.25;
+      case BlockKind.goal:
+        return BlockPaces.race(vdot, 5000);
+      case BlockKind.interval:
+        return switch (s.presetId) {
+          'tempo' => paces[PaceIntensity.tempo]?.trueSecPerKm,
+          '1km-repeats' => BlockPaces.race(vdot, 5000),
+          '400s' => BlockPaces.race(vdot, 1500),
+          _ => paces[PaceIntensity.vo2max]?.trueSecPerKm,
+        };
+    }
   }
 
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -210,11 +254,16 @@ class TargetPaces {
   /// [pace] for today: heat from [tempC] and [dewPointC], and the sustained
   /// grade [gradePct] (+ uphill) of the stretch. Returns an effort by
   /// heart-rate zone when the grade is steep or it is too hot to compare.
+  ///
+  /// [runMetres] is how far the run goes: heat builds with distance (the
+  /// display ramp, none under 3 km, all of it from 9 km), so a short rep set
+  /// gets little. Without it the full heat is shown, labelled "up to".
   static AdjustedPace adjust(
     TargetPace pace, {
     double? tempC,
     double? dewPointC,
     double? gradePct,
+    double? runMetres,
     HrZones? zones,
   }) {
     final notes = <String>[];
@@ -239,10 +288,19 @@ class TargetPaces {
       if (f == null) {
         effort = true;
         notes.add('too hot to compare');
-      } else if (f >= 0.005) {
-        final before = actual;
-        actual /= 1 - f;
-        notes.add('heat ${_signed((actual - before).round())} s/km');
+      } else {
+        final share = runMetres == null
+            ? 1.0
+            : HeatModel.distanceRamp(runMetres);
+        final fe = f * share;
+        if (fe >= 0.005) {
+          final before = actual;
+          actual /= 1 - fe;
+          notes.add(
+            'heat ${runMetres == null ? 'up to ' : ''}'
+            '${_signed((actual - before).round())} s/km',
+          );
+        }
       }
     }
     if (!effort) {
