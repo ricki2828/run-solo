@@ -45,6 +45,9 @@ def _render_one(op: str, kind: str, facts: dict, out: Path) -> None:
               "pinned_week": render_pinned_week, "trail_board": render_trail_board,
               "trail_record": render_trail_record}[kind]
         out.write_bytes(fn(facts, {}))  # no memory: nothing here draws a name
+    elif kind == "ghostclip":
+        from .motion.ghost_clip import render_ghost_clip, spec_from_facts
+        render_ghost_clip(spec_from_facts(facts), out)
     elif kind == "run":
         from .motion import render_run_video
         from .motion.run_video import spec_from_facts

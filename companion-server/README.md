@@ -106,5 +106,12 @@ number is a whole number, there are no coordinates and no dates, and an unknown 
 Cards: `trail_record` when today's `time_s` is strictly under every other row (a trail PB; replaces the generic PB card, no video);
 otherwise `trail_board` from the 3rd run (`n >= 3`, at least 3 rows). One card per run, built once. Both go to the runner's own
 Telegram chat with `has_spoiler` and a neutral caption; the coach line follows as its own message inside Telegram spoiler formatting (tap to reveal; `COMPANION_TRAIL_SPOILER=0` turns it off, a refusal falls back to a plain photo).
-`COMPANION_TRAIL_CARDS=0` turns the cards off. The render worker's kinds `trail_board` and `trail_record` take the keys in
+`COMPANION_TRAIL_CARDS=0` turns the cards off.
+
+Ghost race clip: a trail record whose block has `ghost_gap` and a profile (n >= 2) goes out as a silent 6 s, 1080x1350 MP4 of today
+racing the old best along the relative profile, via Telegram `sendAnimation` (autoplays and loops; same spoiler and neutral caption as
+the still), instead of the still. The static record card is rendered beside it as the fallback if Telegram refuses the animation, and
+is sent alone when the clip cannot be made (worker down, ffmpeg missing). The render is the worker's `video` kind `ghostclip`
+(PIL frames, about 10 s, serial like every render). Telegram's `file_id` is kept in `media_file_ids` (cascades with the run), so a
+repeat send is one JSON call. Forwarding the clip from Telegram keeps the elevation profile in it (the clip is the record card's picture, moving), the same as forwarding the still. A repeat send also renders the still beside the cached id, so a refused id falls back to a photo, not text; the id is deleted with the 30-day trail block. `COMPANION_TRAIL_CLIP=0` keeps the still. The render worker's kinds `trail_board` and `trail_record` take the keys in
 `render/protocol.py` `TRAIL_KEYS` (`elev_profile`, `elev_src`, `ghost_gap`, `trail_board`, `trail_runs`, `turn_idx`, `trail_shape`, `trail_name`).

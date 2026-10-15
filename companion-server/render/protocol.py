@@ -25,7 +25,7 @@ OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
                        "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record"}),
-    "video": frozenset({"run", "weekly"}),
+    "video": frozenset({"run", "weekly", "ghostclip"}),
 }
 ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
 ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
@@ -57,7 +57,7 @@ ALLOWED_FACT_KEYS = frozenset({
     "trail_runs", "trail_board", "elev_profile", "elev_src", "ghost_gap", "turn_idx", "trail_shape", "trail_name",
 })
 
-TRAIL_KINDS = frozenset({"trail_board", "trail_record"})
+TRAIL_KINDS = frozenset({"trail_board", "trail_record", "ghostclip"})
 TRAIL_KEYS = frozenset({"type", "distance_km", "duration_s", "pace_s_per_km", "climb_m", "trail_runs", "trail_board", "elev_profile", "elev_src",
                         "ghost_gap", "turn_idx", "trail_shape", "trail_name"})
 TRAIL_SHAPES = frozenset({"out_and_back", "loop", "one_way"})
@@ -125,6 +125,7 @@ KIND_FACT_KEYS = {
     "moved": frozenset({"type", "session", "distance_km", "duration_s", "units", "to_day", "from_day", "skip_reason"}),
     "pinned_week": frozenset({"week_label", "days", "duration_s", "units", "today_idx"}),
     "trail_board": TRAIL_KEYS, "trail_record": TRAIL_KEYS,
+    "ghostclip": TRAIL_KEYS,   # the ghost race clip: the trail record card's facts, played as a race
 }
 MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
 MONTHLY_MAX_RUNS = 62
@@ -155,6 +156,9 @@ def check_request(req: Any) -> tuple[str, str, dict]:
             raise ProtocolError("bad_request")
         if kind in TRAIL_KINDS and not _trail_values_ok(facts):
             raise ProtocolError("bad_request")
+        if kind == "ghostclip" and not (isinstance(facts.get("elev_profile"), list) and len(facts["elev_profile"]) >= 8
+                                        and "ghost_gap" in facts and len(facts["trail_board"]) >= 2):
+            raise ProtocolError("bad_request")   # a race needs a hill to run along and a ghost to run against
     return op, kind, facts
 
 

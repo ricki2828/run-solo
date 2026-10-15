@@ -464,6 +464,34 @@ def trail_record_no_gap() -> dict[str, Any]:
     return {k: v for k, v in trail_record_six().items() if k not in ("ghost_gap", "trail_name")}
 
 
+def _comeback_gap(n: int = 64) -> list[int]:
+    """Down 22 s at 2 km of 4.7, level by the turn, then ahead by 1 s at the line."""
+    pts = [(0.0, 0), (1.0, -9), (2.0, -22), (2.9, -14), (3.6, -6), (4.2, -2), (4.7, 1)]
+    out = []
+    for i in range(n):
+        d = i / (n - 1) * 4.7
+        k = max(j for j, (x, _) in enumerate(pts) if x <= d) if d < 4.7 else len(pts) - 2
+        (x0, y0), (x1, y1) = pts[k], pts[k + 1]
+        out.append(round(y0 + (y1 - y0) * (d - x0) / (x1 - x0)))
+    return out
+
+
+def ghost_clip_comeback() -> dict[str, Any]:
+    """The ghost clip's drama: 22 s down at 2 km, a second clear at the line. A 4.7 km out-and-back, run 4 of 4."""
+    return {"type": "trail", "distance_km": 4.7, "duration_s": 1621, "pace_s_per_km": 345, "climb_m": 98, "trail_runs": 4,
+            "trail_board": _board([(1, 1702), (2, 1655), (3, 1650), (4, 1649)], 4),
+            "elev_profile": _trail_profile(top=98), "elev_src": "baro", "ghost_gap": _comeback_gap(), "turn_idx": 31, "trail_shape": "out_and_back"}
+
+
+def ghost_clip_clear_win() -> dict[str, Any]:
+    """Ahead the whole way (the stock record fixture, with the place opt-in name)."""
+    return trail_record_six()
+
+
+GHOST_CLIPS = {"comeback": ghost_clip_comeback, "clear_win": ghost_clip_clear_win,
+               "gps_profile": trail_record_gps}
+
+
 TRAIL_CARDS = {
     "trail_board_five": ("trail_board", trail_board_five), "trail_board_third_private": ("trail_board", trail_board_third_private),
     "trail_board_many_runs": ("trail_board", trail_board_many_runs), "trail_board_no_profile": ("trail_board", trail_board_no_profile),
