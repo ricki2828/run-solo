@@ -567,6 +567,73 @@ void main() {
       });
     });
 
+    group('the work pace on the morning card', () {
+      final p = plan();
+      final fourByFour = p.withSession(
+        p.sessions[1].copyWith(
+          kind: engine.BlockKind.interval,
+          presetId: engine.SessionSpec.norwegian4x4Id,
+        ),
+      );
+      // The tables say one thing; the runner moved the VO2 pace to 4:48.
+      final moved = engine.TargetPaces.fromVdot(
+        40,
+        adopted: {engine.PaceIntensity.vo2max: 288},
+      );
+
+      Map<String, Object?> next(
+        engine.BlockPlan plan, [
+        engine.TargetPaces? paces,
+      ]) =>
+          companionPlanFacts(
+                view(plan),
+                'y',
+                runStart: at,
+                paces: paces,
+              )['plan_next']!
+              as Map<String, Object?>;
+
+      test('matches the JSON the server validator is tested with', () {
+        final fixture = jsonDecode(
+          File('companion-server/tests/fixtures/app_plan_next_pace.json')
+              .readAsStringSync(),
+        ) as Map<String, Object?>;
+        expect(next(fourByFour, moved), fixture);
+      });
+
+      test('the tables name their method; a move says so', () {
+        final tables = next(fourByFour, engine.TargetPaces.fromVdot(40));
+        expect(tables['target_pace_method'], 'vdot');
+        expect(tables['target_pace_lo_s'], tables['target_pace_hi_s']);
+        expect(next(fourByFour, moved)['target_pace_method'], 'moved');
+      });
+
+      test('no targets, no fields (an unprepared index, no fitness yet)', () {
+        final n = next(fourByFour);
+        expect(n.keys.where((k) => k.startsWith('target_pace')), isEmpty);
+      });
+
+      test(
+        'an easy or long session carries no pace: a ceiling, not a target',
+        () {
+          final n = next(p, engine.TargetPaces.fromVdot(40)); // Wednesday easy
+          expect(n['type'], 'easy');
+          expect(n.keys.where((k) => k.startsWith('target_pace')), isEmpty);
+        },
+      );
+
+      test('a pace off the range the server accepts is left out', () {
+        final slow = engine.TargetPaces.fromVdot(
+          40,
+          adopted: {engine.PaceIntensity.vo2max: 2000},
+        );
+        expect(
+          next(fourByFour, slow).keys.where((k) => k.startsWith('target_pace')),
+          isEmpty,
+        );
+      });
+    });
+
     test('every built-in template id and name fits the wire rules', () {
       final id = RegExp(r'^[a-z0-9_]{1,40}$');
       for (final preset in engine.SessionCatalogue.presets) {

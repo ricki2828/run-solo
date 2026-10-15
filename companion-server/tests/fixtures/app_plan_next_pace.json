@@ -1,0 +1,11 @@
+{
+  "type": "quality",
+  "day": "2026-10-07",
+  "week": 1,
+  "minutes": 30,
+  "session_id": "norwegian_4x4",
+  "session_name": "Norwegian 4x4",
+  "target_pace_lo_s": 288.0,
+  "target_pace_hi_s": 288.0,
+  "target_pace_method": "moved"
+}

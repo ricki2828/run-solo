@@ -106,7 +106,18 @@ class CheckinMixin:
         moved_to = ci._move_from(for_date, ans, usual)
         easier = ans.get("ready", for_date) == "flat" and bool(planned) and planned.type != "easy"
         return cc.Ctx(label=label, when=self._ci_when(c, user["id"], user, for_date, now), moved_to=moved_to,
-                      easier=easier, original_word=cc.WORD.get(planned.type) if easier and planned else None)
+                      easier=easier, original_word=cc.WORD.get(planned.type) if easier and planned else None,
+                      work_pace_s=self._ci_work_pace(planned, typ))
+
+    @staticmethod
+    def _ci_work_pace(planned: ci.Planned | None, typ: str | None) -> float | None:
+        """The app's work pace for the planned quality session, the midpoint of its range, or None: no pace sent, or the
+        session is no longer the quality one (a "flat" made it easy), so the pace no longer belongs to it."""
+        if not planned or typ != "quality" or planned.type != "quality":
+            return None
+        if planned.pace_lo_s is None or planned.pace_hi_s is None:
+            return None
+        return (planned.pace_lo_s + planned.pace_hi_s) / 2
 
     @staticmethod
     def _ci_stage(slot: str, ans: ci.Answers, for_date: date) -> tuple[str | None, str | None]:
@@ -494,6 +505,11 @@ class CheckinMixin:
             facts["distance_km"] = round(planned.distance_m / 1000, 1)
         elif planned.minutes:
             facts["duration_s"] = planned.minutes * 60
+        work = self._ci_work_pace(planned, typ)
+        if work is not None:               # the card's TARGET plate, in the renderer's own vocabulary
+            facts["target_pace_lo_s"] = round(planned.pace_lo_s, 1)
+            facts["target_pace_hi_s"] = round(planned.pace_hi_s, 1)
+            facts["target_kind"] = "work"
         if typ == "easy":
             facts["guide"] = "chatty"      # an easy session never renders the bare block
         elif typ == "long":

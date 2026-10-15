@@ -162,6 +162,7 @@ class AppServices {
       ),
       d.run.id,
       runStart: PlanInputs.wallClock(d.summary),
+      paces: currentTargetPaces(),
     );
   }
 

@@ -208,6 +208,21 @@ class TargetPaces {
     );
   }
 
+  /// Whether the target behind [sessionPace] is one the runner moved by
+  /// accepting a nudge (so the method label says "moved by you").
+  bool sessionPaceMoved(BlockSession s) {
+    final i = switch (s.kind) {
+      BlockKind.easy || BlockKind.long => PaceIntensity.easy,
+      BlockKind.goal => null,
+      BlockKind.interval => switch (s.presetId) {
+        'tempo' => PaceIntensity.tempo,
+        '1km-repeats' || '400s' => null,
+        _ => PaceIntensity.vo2max,
+      },
+    };
+    return i != null && (paces[i]?.adopted ?? false);
+  }
+
   /// The True Pace a plan session aims at, from these same targets (so an
   /// accepted nudge and trail-run fitness count): easy and long sit on the
   /// easy target, tempo on the tempo target, VO2 sets on the VO2 target;
