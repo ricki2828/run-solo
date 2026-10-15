@@ -32,7 +32,6 @@ class RunWeather:
 class Forecast:
     morning_temp_c: int
     rain_pct: int  # peak chance of rain between 06:00 and 10:00 local
-    dew_point_c: int | None = None  # at 07:00 local; None when the source did not say (the heat line then stays off)
 
 
 CELL = 1  # decimal places kept: 0.1 degree is about 11 km
@@ -47,6 +46,7 @@ class Weather(Protocol):
     def at_run(self, lat: float | None, lon: float | None, zone_id: str, start_utc: datetime,
                now: datetime) -> RunWeather | None: ...
     def tomorrow(self, lat: float | None, lon: float | None, zone_id: str, tomorrow: date) -> Forecast | None: ...
+    def heat_at(self, lat: float | None, lon: float | None, zone_id: str, day: date, hour: int) -> tuple[int, int] | None: ...
 
 
 class NoWeather:
@@ -54,6 +54,9 @@ class NoWeather:
         return None
 
     def tomorrow(self, *_a, **_k) -> Forecast | None:
+        return None
+
+    def heat_at(self, *_a, **_k) -> tuple[int, int] | None:
         return None
 
 
@@ -115,8 +118,21 @@ class OpenMeteo:
                 return None
             t7 = temps[idx.get(7, morning[0])]
             peak = max(rain[i] for i in morning if rain[i] is not None)
-            dews = d["hourly"].get("dew_point_2m")
-            dew = dews[idx.get(7, morning[0])] if dews else None
-            return Forecast(round(t7), int(peak), round(dew) if isinstance(dew, (int, float)) else None)
+            return Forecast(round(t7), int(peak))
         except (KeyError, ValueError, TypeError, IndexError):
             return None
+
+    def heat_at(self, lat, lon, zone_id, day, hour):
+        """(temperature, dew point) in whole degrees C at `hour` local on `day`, for the morning card's heat line.
+        None when the source has no figure for that hour (the line then stays off)."""
+        if lat is None or lon is None:
+            return None
+        d = self._get(cell(lat, lon), zone_id, 0, 3, day.isoformat())
+        if not d:
+            return None
+        try:
+            i = d["hourly"]["time"].index(f"{day.isoformat()}T{hour:02d}:00")
+            t, dew = d["hourly"]["temperature_2m"][i], d["hourly"]["dew_point_2m"][i]
+        except (KeyError, ValueError, TypeError, IndexError):
+            return None
+        return (round(t), round(dew)) if isinstance(t, (int, float)) and isinstance(dew, (int, float)) else None

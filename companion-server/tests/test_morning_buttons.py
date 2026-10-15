@@ -10,7 +10,6 @@ import pytest
 
 from companion import checkins as ci
 from companion import db, heat
-from companion.convo.weather import Forecast
 from test_checkins import at, edited_text, env, spy_writer  # noqa: F401  (env is a fixture)
 
 STEP = at(2026, 10, 15, 6, 45)
@@ -26,15 +25,18 @@ class FakeWx:
     def __init__(self, fc):
         self.fc, self.calls = fc, []
 
-    def tomorrow(self, lat, lon, zone_id, day):
-        self.calls.append((lat, lon, zone_id, day))
+    def heat_at(self, lat, lon, zone_id, day, hour):
+        self.calls.append((lat, lon, zone_id, day, hour))
         return self.fc
+
+    def tomorrow(self, *a, **k):
+        return None
 
     def at_run(self, *a, **k):
         return None
 
 
-def hot_env(env, fc=Forecast(30, 5, 24), area=(1.3, 103.8)):
+def hot_env(env, fc=(30, 24), area=(1.3, 103.8)):
     env.svc.weather = FakeWx(fc)
     env.svc._area = lambda c, uid, run_id=None, now=None: area
     return env
@@ -152,11 +154,10 @@ def test_the_line_is_only_on_the_unanswered_card_and_comes_back_with_undo(env):
 
 
 @pytest.mark.parametrize("fc, area", [
-    (Forecast(21, 5, 14), (1.3, 103.8)),     # mild: a 1.5% slowdown is under the 2% threshold
-    (Forecast(30, 5, None), (1.3, 103.8)),   # no dew point from the source: no guess
-    (Forecast(45, 5, 30), (1.3, 103.8)),     # too hot to compare: the app does not adjust, so no number
-    (None, (1.3, 103.8)),                    # the forecast failed
-    (Forecast(30, 5, 24), (None, None)),     # no stored area (weather switch off): the weather service is never asked
+    ((21, 14), (1.3, 103.8)),     # mild: a 1.5% slowdown is under the 2% threshold
+    (None, (1.3, 103.8)),   # no dew point from the source: no guess
+    ((45, 30), (1.3, 103.8)),     # too hot to compare: the app does not adjust, so no number
+    ((30, 24), (None, None)),     # no stored area (weather switch off): the weather service is never asked
 ])
 def test_no_line_when_it_is_mild_unknown_or_the_runner_has_no_weather(env, fc, area):
     hot_env(env, fc, area)
@@ -207,3 +208,32 @@ def test_buttons_add_no_stored_field():
     exclusion and export already cover them."""
     assert set(ci.VALUES) == {"ready", "today", "why", "postrun", "shape"}
     assert {"move"} <= set(ci.TODAY) and {"weather"} <= set(ci.WHY)
+
+
+# ---------------------------------------------------------------- review fixes
+def test_the_heat_line_uses_the_forecast_hour_of_the_usual_start(env):
+    hot_env(env)
+    env.step(STEP)
+    assert env.svc.weather.calls[0][4] == 7   # the fixture runner starts around 7:00
+
+
+def test_a_card_that_will_not_go_out_makes_no_weather_request(env):
+    hot_env(env)
+    env.step(STEP)
+    env.svc.weather.calls.clear()
+    env.step(STEP)   # the slot is already sent
+    assert env.svc.weather.calls == []
+
+
+def test_move_redraws_the_week_card_and_shows_the_moved_picture(env):
+    seen = []
+    env.svc._ci_week_enqueue = lambda *a, **k: seen.append("week")
+    env.step(STEP)
+    env.tap("t.move", TAP)
+    assert seen == ["week"]
+    asked = []
+    env.svc._ci_media = lambda kind, facts: asked.append(kind) or kind
+    with db.ro(env.path) as c:
+        user = dict(c.execute("SELECT * FROM users WHERE id=?", (env.uid,)).fetchone())
+        assert env.svc._ci_stage_media(c, user, "today", date(2026, 10, 15), TAP) == "moved"
+    assert asked == ["moved"]

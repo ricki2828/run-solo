@@ -128,17 +128,21 @@ class CheckinMixin:
             if ans.get("today", for_date) is not None:
                 return None
             lat, lon = self._area(c, user["id"], None, now)
+            hist = [dict(r) for r in c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? ORDER BY start_utc "
+                                               "DESC LIMIT 80", (user["id"],))]
+            start_m = ci.usual_start_min(hist, for_date.weekday(), user["zone_id"], now)
             paces = [r["p"] for r in c.execute(
                 "SELECT COALESCE(true_pace_s_per_km, pace_s_per_km) p FROM runs WHERE user_id=? AND type='easy' "
                 "AND start_utc>=? AND COALESCE(true_pace_s_per_km, pace_s_per_km) IS NOT NULL "
                 "ORDER BY start_utc DESC LIMIT 6", (user["id"], iso(now - timedelta(days=42))))]
         if lat is None or lon is None or len(paces) < 2:
             return None
-        fc = self.weather.tomorrow(lat, lon, user["zone_id"], for_date)   # any day inside the next three
-        if fc is None or fc.dew_point_c is None:
+        hr = (start_m // 60) if start_m is not None else 7   # the hour the runner usually starts
+        td = self.weather.heat_at(lat, lon, user["zone_id"], for_date, hr)   # (temp C, dew point C) or None
+        if td is None:
             return None
         paces.sort()
-        return heat.extra_s_per_km(paces[len(paces) // 2], fc.morning_temp_c, fc.dew_point_c)
+        return heat.extra_s_per_km(paces[len(paces) // 2], td[0], td[1])
 
     def _ci_text(self, c, user: dict, slot: str, for_date: date, now: datetime, heat_s_km: int | None = None):
         ans, *_ = self._ci_state(c, user, now)
@@ -330,6 +334,11 @@ class CheckinMixin:
         if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
             return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
+        with db.ro(self.s.db_path) as c:   # cheap gates first, so a card that will not go out never costs a weather request
+            if (c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
+                          (uid, slot, d_s)).fetchone() or not self._ci_wanted(c, user, slot, for_date, now)
+                    or self._ci_cap_taken(c, uid, now)):
+                return "skipped", None
         hot = self._ci_heat(user, slot, for_date, now)   # before the write transaction: it may call the weather service
         with db.tx(self.s.db_path) as c:
             if c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
@@ -345,7 +354,8 @@ class CheckinMixin:
             card_id = secrets.token_hex(16)
             c.execute("INSERT INTO checkin_slots (user_id, slot, local_date, card_id, state, claimed_at) VALUES (?,?,?,?,?,?)",
                       (uid, slot, d_s, card_id, "claimed", iso(now)))
-            # The card row carries only the neutral question: what a tap changes is rebuilt from the answers, never stored
+            # The card row carries the unanswered question (and the heat line, a number from the forecast); what a tap
+            # changes is rebuilt from the answers, never stored
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)", (card_id, uid, f"ci:{slot}:{d_s}", f"ci_{slot}", head, body, "[]",
                                                      "template", iso(now)))
@@ -409,7 +419,7 @@ class CheckinMixin:
             return
         ch.answer_callback(inb.callback_id)   # first: the button stops spinning whatever the edit does
         self._ci_sync_or_queue(user, slot, for_date, now)
-        if parsed[0] in ("why", "undo", "ready", "shape"):   # only answers that move or soften a session redraw the week
+        if parsed[0] in ("today", "why", "undo", "ready", "shape"):   # only answers that move or soften a session redraw the week
             self._ci_week_enqueue(user, now)
 
     @staticmethod
@@ -511,7 +521,7 @@ class CheckinMixin:
             return None
         ans, *_ = self._ci_state(c, user, now)
         stage, why = self._ci_stage(slot, ans, for_date)
-        if stage == "skip" and why:
+        if (stage == "skip" and why) or stage == "move":
             facts = self._ci_moved_facts(c, user, for_date, now)
             return self._ci_media("moved", facts) if facts else None
         if stage in (None, "skip"):
