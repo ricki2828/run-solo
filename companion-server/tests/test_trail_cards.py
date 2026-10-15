@@ -183,13 +183,13 @@ def test_a_refused_spoiler_falls_back_to_the_plain_photo(tmp_path):
 def test_the_cards_render_at_full_size_when_chromium_is_present():
     pytest.importorskip("playwright")
     from render.cards import _engine
-    from render.cards.trail import render_trail_board, render_trail_record
+    from render.cards.trail import render_trail_board, render_trail_heart, render_trail_record
     try:
         _engine._ensure_browser()
     except Exception:
         pytest.skip("no chromium")
     for name, (kind, fn) in F.TRAIL_CARDS.items():
-        png = (render_trail_board if kind == "trail_board" else render_trail_record)(fn(), {})
+        png = {"trail_board": render_trail_board, "trail_heart": render_trail_heart}.get(kind, render_trail_record)(fn(), {})
         assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) < 10 * 1024 * 1024, name
 
 
