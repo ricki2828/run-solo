@@ -767,7 +767,7 @@ class Service(CheckinMixin):
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
+                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, plan_next_pace_lo, plan_next_pace_hi, plan_next_pace_method, feel, session_name, work_pace_s_per_km, reps_done, "
                 "rep_spread_s, recovery_pace_s_per_km, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(

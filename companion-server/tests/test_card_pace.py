@@ -89,3 +89,12 @@ def test_flat_legs_make_it_easy_and_the_work_pace_goes(env):
     facts = card_facts(env)
     assert "target_pace_lo_s" not in facts
 
+
+
+def test_the_data_export_shows_the_stored_pace(env):
+    newest(env, BASE | PACE)
+    me = env.svc.get_me(env.uid)
+    row = [r for r in me["runs_received"] if r["run_id"] == "newest"][0]
+    assert (row["plan_next_pace_lo"], row["plan_next_pace_hi"], row["plan_next_pace_method"]) == (288.0, 288.0, "vdot")
+    old = [r for r in me["runs_received"] if r["run_id"] == "last"][0]
+    assert old["plan_next_pace_lo"] is None
