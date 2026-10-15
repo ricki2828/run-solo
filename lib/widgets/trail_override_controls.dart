@@ -62,13 +62,21 @@ Future<void> applyTrailOverride(
 }) async {
   final svc = AppServices.of(context);
   final messenger = ScaffoldMessenger.of(context);
+  // [after] reloads the index (one list()); without it, reload here.
+  Future<void> refresh() async {
+    if (after != null) {
+      after();
+    } else {
+      await svc.history.list();
+    }
+  }
+
   final previous = (await svc.history.list())
       .where((r) => r.id == runId)
       .firstOrNull
       ?.trailOverride;
   await svc.history.setTrailOverride(runId, override);
-  await svc.history.list();
-  after?.call();
+  await refresh();
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
@@ -78,8 +86,7 @@ Future<void> applyTrailOverride(
           label: 'UNDO',
           onPressed: () async {
             await svc.history.setTrailOverride(runId, previous);
-            await svc.history.list();
-            after?.call();
+            await refresh();
           },
         ),
       ),
@@ -177,7 +184,8 @@ class _CandidateTile extends StatelessWidget {
                       style: RunSoloType.body17.copyWith(color: t.inkPrimary),
                     ),
                     Text(
-                      '$runs · best ${Fmt.clock(g.normMs(g.best))} · $away',
+                      '$runs · best ${Fmt.clock(g.normMs(g.best))} · $away · '
+                      '${(candidate.similarity * 100).round()}% same ground',
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
                   ],

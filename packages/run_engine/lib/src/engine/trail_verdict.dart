@@ -151,6 +151,18 @@ abstract final class Trails {
       final next = <TrailRunFacts>[];
       for (final r in pending) {
         final target = r.override!.joinRunId;
+        if (splitIds.contains(target)) {
+          // The target left its trail: follow it to where it matches by
+          // itself, never into the group of one it now sits in.
+          final t = sorted.firstWhere((x) => x.id == target);
+          final home = _autoHome(groups, anchors, splitIds, t);
+          if (home < 0) {
+            _place(groups, anchors, splitIds, r);
+          } else {
+            _insert(groups[home], r);
+          }
+          continue;
+        }
         final home = groups.indexWhere(
           (g) => g.any((x) => x.id == target && x.id != r.id),
         );
@@ -161,11 +173,16 @@ abstract final class Trails {
         }
       }
       if (next.length == pending.length) {
-        // Nothing moved: the targets are gone or point at each other.
-        for (final r in next) {
-          _place(groups, anchors, splitIds, r);
-        }
-        break;
+        // Nothing moved: a target is gone, or the joins point at each other.
+        // Fall back one run at a time, a run whose target is not itself
+        // waiting first, so the runs joined to it follow it (B -> A, A gone).
+        final waiting = {for (final r in next) r.id};
+        final first = next.firstWhere(
+          (r) => !waiting.contains(r.override!.joinRunId),
+          orElse: () => next.first,
+        );
+        _place(groups, anchors, splitIds, first);
+        next.remove(first);
       }
       pending = next;
     }
@@ -183,6 +200,20 @@ abstract final class Trails {
           return c != 0 ? c : a.key.compareTo(b.key);
         });
     return out;
+  }
+
+  /// The group [r] would match by its route alone, or -1.
+  static int _autoHome(
+    List<List<TrailRunFacts>> groups,
+    List<TrailRunFacts> anchors,
+    Set<String> splitIds,
+    TrailRunFacts r,
+  ) {
+    for (var i = 0; i < groups.length; i++) {
+      if (splitIds.contains(anchors[i].id)) continue;
+      if (RouteMatch.same(anchors[i].route!, r.route!)) return i;
+    }
+    return -1;
   }
 
   /// Puts [r] in the first group whose anchor it matches, else a new one.
@@ -225,6 +256,9 @@ abstract final class Trails {
   /// own, by how far its start is from the trail's start, within
   /// [maxStartGapM]. Each carries the overlap so the picker can say how close
   /// the ground is.
+  /// The picker offers no trail sharing less ground than this with the run.
+  static const double minCandidateCover = 0.3;
+
   static List<TrailCandidate> candidates(
     TrailRunFacts run,
     List<TrailGroup> groups, {
@@ -236,17 +270,17 @@ abstract final class Trails {
     final out = <TrailCandidate>[];
     for (final g in groups) {
       if (g.runs.any((r) => r.id == run.id)) continue;
+      // A run the runner split out is not a trail to join.
+      if (g.runs.length == 1 && g.runs.single.override?.isSplit == true) {
+        continue;
+      }
       final theirs = g.anchor.route;
       if (theirs == null) continue;
       final gap = RouteMatch.startGapM(mine, theirs);
       if (gap > maxStartGapM) continue;
-      out.add(
-        TrailCandidate(
-          group: g,
-          startGapM: gap,
-          similarity: RouteMatch.similarity(mine, theirs),
-        ),
-      );
+      final sim = RouteMatch.similarity(mine, theirs);
+      if (sim < minCandidateCover) continue;
+      out.add(TrailCandidate(group: g, startGapM: gap, similarity: sim));
     }
     out.sort((a, b) {
       final c = a.startGapM.compareTo(b.startGapM);

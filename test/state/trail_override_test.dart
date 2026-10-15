@@ -143,15 +143,15 @@ void main() {
       [loop[0].id, loop[2].id],
     ]);
 
-    // The ghost: the loop's best is no longer the split run. The split run is
-    // a trail of its own, as a single Trail run always is.
+    // The ghost: the loop's best is no longer the split run, and the split
+    // run is no ghost of its own (a near-copy of trail A could lead on it).
     trails = ghostOf(store);
-    expect(trails, hasLength(3));
+    expect(trails, hasLength(2));
     final theLoop = trails.firstWhere((t) => lastIdOf(t) == loop[2].id);
     expect(theLoop.best.runId, loop[2].id); // 400 beats 420 once 380 is out
-    final alone = trails.firstWhere((t) => t.best.runId == loop[1].id);
-    expect(alone.id, isNot(theLoop.id));
-    expect(lastIdOf(alone), loop[1].id);
+    for (final t in trails) {
+      expect({t.best.runId, lastIdOf(t)}, isNot(contains(loop[1].id)));
+    }
   });
 
   test('a split run has no same-trail verdict', () async {
@@ -202,8 +202,13 @@ void main() {
 
     final trails = ghostOf(store);
     expect(trails, hasLength(1));
-    // It is the latest run on the trail, so it is the ghost's last run.
-    expect(lastIdOf(trails.single), small.id);
+    // The ghost's geometry stays with the automatic runs: the forced join is
+    // on the board but never the figure the runner chases.
+    expect(lastIdOf(trails.single), loop[2].id);
+    expect({
+      trails.single.best.runId,
+      lastIdOf(trails.single),
+    }, isNot(contains(small.id)));
   });
 
   test('the companion trail block counts a merged run on its trail', () async {

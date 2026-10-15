@@ -135,17 +135,38 @@ void main() {
         _run('x', 1, a, override: const TrailOverride.join('y')),
         _run('y', 2, b, override: const TrailOverride.join('x')),
       ]);
-      expect(groups, hasLength(2));
+      // The loop breaks at the first run, which falls back; the other then
+      // joins it. Both runs are kept.
+      expect(groups.expand(_ids).toSet(), {'x', 'y'});
     });
 
-    test('a join onto a split run joins that run alone', () {
+    test('a join onto a split run follows it to its automatic trail', () {
       final groups = Trails.group([
         _run('a1', 1, a, override: const TrailOverride.split()),
         _run('a2', 2, a),
         _run('b1', 3, b, override: const TrailOverride.join('a1')),
       ]);
-      expect(_ids(Trails.groupOf('a1', groups)!), ['a1', 'b1']);
-      expect(_ids(Trails.groupOf('a2', groups)!), ['a2']);
+      expect(_ids(Trails.groupOf('b1', groups)!), ['a2', 'b1']);
+      expect(_ids(Trails.groupOf('a1', groups)!), ['a1']);
+    });
+
+    test('a join onto a split run with no automatic trail stands alone', () {
+      final groups = Trails.group([
+        _run('a1', 1, a, override: const TrailOverride.split()),
+        _run('b1', 3, b, override: const TrailOverride.join('a1')),
+      ]);
+      expect(_ids(Trails.groupOf('b1', groups)!), ['b1']);
+      expect(_ids(Trails.groupOf('a1', groups)!), ['a1']);
+    });
+
+    test('fallback joins cascade: C -> B -> A with A gone', () {
+      final c = _oab(1500, y: 6000);
+      final groups = Trails.group([
+        _run('b1', 2, b, override: const TrailOverride.join('gone')),
+        _run('c1', 3, c, override: const TrailOverride.join('b1')),
+      ]);
+      expect(groups, hasLength(1));
+      expect(_ids(groups.single), ['b1', 'c1']);
     });
 
     test('a joined run feeds the verdict as a run on that trail', () {
@@ -158,8 +179,8 @@ void main() {
 
   group('candidates', () {
     test('nearest start first, own trail left out, far trails dropped', () {
-      final near = _oab(1500, y: 200);
-      final mid = _oab(1500, y: 1200);
+      final near = _oab(1300, y: 20);
+      final mid = _oab(1500, y: 4000);
       final far = _oab(1500, y: 9000);
       final groups = Trails.group([
         _run('own', 9, a),
@@ -169,8 +190,26 @@ void main() {
       ]);
       final me = _run('own', 9, a);
       final c = Trails.candidates(me, groups);
-      expect(c.map((x) => x.group.anchor.id), ['near', 'mid']);
-      expect(c.first.startGapM, closeTo(200, 5));
+      expect(c.map((x) => x.group.anchor.id), ['near']);
+      expect(c.first.startGapM, closeTo(20, 5));
+    });
+
+    test('a trail sharing no ground is not offered', () {
+      final groups = Trails.group([
+        _run('own', 9, a),
+        _run('x', 1, _oab(1500, y: 1200)),
+      ]);
+      expect(Trails.candidates(_run('own', 9, a), groups), isEmpty);
+    });
+
+    test('a run split out is not a trail to join', () {
+      final groups = Trails.group([
+        _run('own', 9, _oab(1300, y: 900)),
+        _run('s', 1, _oab(1300, y: 20), override: const TrailOverride.split()),
+        _run('t', 2, a),
+      ]);
+      final c = Trails.candidates(_run('own', 9, _oab(1300, y: 900)), groups);
+      expect(c.map((x) => x.group.anchor.id), isNot(contains('s')));
     });
 
     test('a run with no route has none', () {

@@ -95,9 +95,12 @@ class _TrailRunsSectionState extends State<TrailRunsSection> {
             const SizedBox(height: Space.x8),
             if (group.runs.length < 2)
               Text(
-                set
+                me.override?.isSplit == true
                     ? 'You moved this run off its trail. It is on its own '
                           'until you join it to one.'
+                    : set
+                    ? 'The run you joined this to has moved on, so this one '
+                          'is on its own until you join it to a trail.'
                     : 'First run on ${group.name}. Run it again to see how '
                           'you stack up.',
                 style: RunSoloType.body15.copyWith(color: t.inkSecondary),

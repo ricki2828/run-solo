@@ -165,7 +165,8 @@ class RunSidecar {
   final bool streetTried;
 
   /// The runner's own call on which trail this run is on (null = automatic).
-  /// Display and grouping only: never an input to a verdict word.
+  /// Read by trail grouping, so it decides which runs a trail verdict compares
+  /// against; it never changes how a run is scored.
   final TrailOverride? trailOverride;
 
   /// The runner's own name for the run; replaces the automatic title.
