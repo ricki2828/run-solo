@@ -169,6 +169,8 @@
     (a list of up to 10 whole-second times with the attempt number of each, so "Run 4, 1:01:23"; no dates), how many times you have run
     it, a rough elevation profile of the trail (with the position of its turning point, and whether your phone measured it with its barometer or with GPS), how far ahead of or behind your best you were along the way, and whether it is an out and back, a
     loop or one way, and the trail's name only if you turned on the place option. See "Trail pictures" below. Only your own runs: no other runner is ever compared with you.</li>
+    <li><strong>only if you turn on "Heart rate on cards"</strong> (Settings, Companion, off until you turn it on), and only for a trail run recorded with
+    a heart rate strap: your heart rate along the run as at most 64 whole bpm values, each with your own zone (1 to 5). See "Heart rate on trail pictures" below;</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
     quality), which week of the plan it fell in (for example week 3 of 4), the distance the plan asked for when it names
     one, and the next planned session: its type, its planned day (a date), its week, its minutes or distance when the
@@ -184,7 +186,7 @@
   suggestion follow the session your plan already has for the next day. If you have no plan in the app, none of this is sent
   and suggestions work as before. They are in the data the server returns about you (the data export); the app's "What the
   companion knows" screen does not show them. Delete everything removes them with the run they came from.</p>
-  <p>It never sends your GPS points, your position, a map, the street, or your heart rate trace. Runs recorded before you
+  <p>It never sends your GPS points, your position, a map, the street, or your heart rate trace (the one exception is the separate, off-by-default "Heart rate on cards" switch, see "Heart rate on trail pictures" below). Runs recorded before you
   turned the companion on are not sent. If the phone is offline the summary is queued and sent later.</p>
 
   <h3>The Mini App (optional)</h3>
@@ -212,7 +214,7 @@
   each point of the elevation profile), plus the heart rate zone (1 to 5) your phone worked out for each of them from your own zone
   settings, so the coach can draw a "Heart vs hill" picture in your own Telegram chat. Nothing else about your heart is sent: no
   resting rate, no maximum, no times and no dates. Our server keeps the series for 30 days after its run, then deletes it, and it is in the
-  data the server returns about you. Turning "Heart rate on cards" off deletes every series we hold at once, as soon as your phone can reach our server, or the next
+  data the server returns about you. It is left out of the server's nightly backup, so turning the switch off really removes everything. Turning "Heart rate on cards" off deletes every series we hold at once, as soon as your phone can reach our server, or the next
   time the app connects if you were offline, and the phone stops sending it straight away. The same picture is only drawn for you:
   if you forward it from Telegram, anyone you send it to can see what it shows.</p>
 
@@ -369,9 +371,9 @@
   start time, the type of run, distance, duration and pace, any climb, your time in each heart rate zone, the name of the suburb or town of the
   run (never the street), any personal best, for an interval session its work pace (hills and heat taken out), and, on the weekly recap, how your scores moved and the week's average pace and quickest run (both worked out from the paces and distances you already sent), plus the coach's one-line note for that run. In your chat, a run picture's caption is that one line of judgement under a short title; the figures are on the picture itself.
   Unless you turned off "Show route shape on cards", a run picture or video can also draw an outline of your route with its ends cut off (section 2b):
-  no coordinates and no street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, heart rate
-  readings, your name or a phone number. The per-kilometre paces or rep times can be drawn as bars.</p>
-  <p>Four more kinds of picture show a little beyond the run summary itself:</p>
+  no coordinates and no street, but a distinctive route could still be recognised by someone who knows it. It never contains a map, your name or a phone number, and no heart rate readings unless you turned on "Heart rate on cards"
+  (the Heart vs hill picture below). The per-kilometre paces or rep times can be drawn as bars.</p>
+  <p>Five more kinds of picture show a little beyond the run summary itself:</p>
   <ul>
     <li><strong>Tomorrow's suggestion.</strong> The date, the session (for example "Tempo, 8 km") and a one-line reason. When the
     reason is the weather (heat, rain, or good conditions) it carries the forecast: the temperature, the hour and the chance
@@ -380,6 +382,8 @@
     distance and time, plus the month's totals, including its average pace (total time over total distance). No route and no place names.</li>
     <li><strong>Trail board and trail record.</strong> Your own runs of one trail, ranked by time, the trail's elevation profile shaded by
     steepness, and where you gained or lost time against your best (section 2b, "Trail pictures"). Your own runs only, no dates, no map.</li>
+    <li><strong>Heart vs hill.</strong> Only if you turned on "Heart rate on cards": your heart rate along a trail run, as at most 64 bpm values
+    coloured by your own zones, drawn over the trail's elevation profile (section 2b, "Heart rate on trail pictures"). Your own runs only, no dates, no map.</li>
     <li><strong>Milestones and race countdowns.</strong> The milestone number (for example your 100th run, or 1,000 km) and the
     weeks to your race, with the distance you told the coach you are training for.</li>
   </ul>

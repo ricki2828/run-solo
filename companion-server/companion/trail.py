@@ -19,6 +19,16 @@ TRAIL_KINDS = ("trail_record", "trail_board", "trail_heart")
 HR_MIN, HR_MAX = 30, 250     # bpm bounds of one heart-rate point
 
 
+def zones_follow_bpm(hr, zones) -> bool:
+    """A zone is a function of bpm, so a higher bpm never sits in a lower zone. Catches a mismatched or made-up pair."""
+    best = 0
+    for _, z in sorted(zip(hr, zones)):
+        if z < best:
+            return False
+        best = z
+    return True
+
+
 class BoardRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
     attempt: StrictInt = Field(ge=1, le=999)
@@ -80,6 +90,8 @@ class TrailIn(BaseModel):
             raise ValueError("hr must have one point per profile point")
         if (self.hr_z is None) != (self.hr is None) or (self.hr is not None and len(self.hr_z) != len(self.hr)):
             raise ValueError("hr and hr_z come together, one zone per point")
+        if self.hr is not None and not zones_follow_bpm(self.hr, self.hr_z):
+            raise ValueError("a higher bpm cannot sit in a lower zone")
         return self
 
     @field_validator("name", mode="wrap")
@@ -98,6 +110,12 @@ def parse(raw: Any) -> TrailIn | None:
     try:
         return TrailIn.model_validate(raw)
     except ValidationError:
+        if isinstance(raw, dict) and ("hr" in raw or "hr_z" in raw):
+            # a bad heart-rate series costs only the heart rate: the board, profile and gap are still good
+            try:
+                return TrailIn.model_validate({k: v for k, v in raw.items() if k not in ("hr", "hr_z")})
+            except ValidationError:
+                return None
         return None
 
 
@@ -109,7 +127,7 @@ def dump(t: TrailIn | None, keep_name: bool = False, keep_hr: bool = False) -> s
     d = t.model_dump(exclude_none=True)
     if not keep_name:
         d.pop("name", None)
-    if not keep_hr:
+    if not (keep_hr and card_kind(d) == "trail_heart"):   # stored only for a board run, the one card that draws it
         d.pop("hr", None)
         d.pop("hr_z", None)
     return json.dumps(d, separators=(",", ":"))
