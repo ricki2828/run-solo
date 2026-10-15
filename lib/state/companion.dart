@@ -986,7 +986,9 @@ class CompanionController extends ChangeNotifier {
       try {
         _placeNames = await store.read(placeNamesName) == '1';
       } catch (e) {
-        companionLog('could not read the trail names switch (${e.runtimeType})');
+        companionLog(
+          'could not read the trail names switch (${e.runtimeType})',
+        );
       }
     }
     // The route choice outlives a wipe, so it is read with or without a token.
@@ -1763,7 +1765,7 @@ Map<String, Object?>? companionSummary(
     ...companionIntervalFacts(s),
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
-    if (trail != null) 'trail': trail,
+    'trail': ?trail,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
     // degree (about 11 km) here on the phone, so the server never gets more.
     if (withArea && s.startPoint != null) ...{

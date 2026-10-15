@@ -50,7 +50,14 @@ void expectValidBlock(Map<String, Object?> b) {
     expect((b['name']! as String).length, lessThanOrEqualTo(30));
   }
   const known = {
-    'n', 'board', 'profile', 'elev_src', 'ghost_gap', 'turn', 'shape', 'name',
+    'n',
+    'board',
+    'profile',
+    'elev_src',
+    'ghost_gap',
+    'turn',
+    'shape',
+    'name',
   };
   expect(b.keys.toSet().difference(known), isEmpty);
 }
@@ -94,11 +101,7 @@ void main() {
   test('a trail with fewer than 3 runs sends no block', () {
     final runs = loops([400, 390]);
     expect(
-      trailBlock(
-        runId: runs.last.id,
-        runs: allFacts(runs),
-        run: runs.last,
-      ),
+      trailBlock(runId: runs.last.id, runs: allFacts(runs), run: runs.last),
       isNull,
     );
   });
@@ -131,11 +134,7 @@ void main() {
     final secs = [for (var i = 0; i < 12; i++) 300 + ((i * 7) % 12) * 10];
     final runs = loops(secs);
     final today = runs[8];
-    final b = trailBlock(
-      runId: today.id,
-      runs: allFacts(runs),
-      run: today,
-    )!;
+    final b = trailBlock(runId: today.id, runs: allFacts(runs), run: today)!;
     expectValidBlock(b);
     expect(b['n'], 12);
     final board = (b['board']! as List).cast<Map<String, Object?>>();
@@ -146,10 +145,7 @@ void main() {
     }
     // The all-time best and today are both in, today once.
     expect(board.any((r) => r['rank'] == 1), isTrue);
-    expect(
-      board.where((r) => r['today'] == true).single['attempt'],
-      9,
-    );
+    expect(board.where((r) => r['today'] == true).single['attempt'], 9);
     // Sorted best first.
     final ranks = [for (final r in board) r['rank']! as int];
     expect(ranks, [...ranks]..sort());

@@ -82,7 +82,7 @@ Map<String, Object?>? trailBlock({
           prof.length - 1,
         ),
     },
-    if (gap != null) 'ghost_gap': gap,
+    'ghost_gap': ?gap,
     'shape': shape,
     'name': ?name,
   };
@@ -112,15 +112,15 @@ List<Map<String, Object?>>? _board(engine.TrailGroup g, String runId) {
     picked.add(rows.indexOf(today.first));
     final bestI = rows.indexWhere((r) => r.rank == 1);
     picked.add(bestI);
-    final rest = [
-      for (var i = 0; i < rows.length; i++)
-        if (!picked.contains(i)) i,
-    ]
-      ..sort((a, b) {
-        final da = (rows[a].rank - todayRank).abs();
-        final db = (rows[b].rank - todayRank).abs();
-        return da != db ? da.compareTo(db) : a.compareTo(b);
-      });
+    final rest =
+        [
+          for (var i = 0; i < rows.length; i++)
+            if (!picked.contains(i)) i,
+        ]..sort((a, b) {
+          final da = (rows[a].rank - todayRank).abs();
+          final db = (rows[b].rank - todayRank).abs();
+          return da != db ? da.compareTo(db) : a.compareTo(b);
+        });
     for (final i in rest) {
       if (picked.length >= kTrailBoardRows) break;
       picked.add(i);
@@ -182,9 +182,7 @@ List<int>? _ghostGap(
       if (now[i] >= 0 && then[i] >= 0) (then[i] - now[i]) / 1000,
   ];
   if (gaps.length < 2) return null;
-  return [
-    for (final v in _resample(gaps)) v.round().clamp(-3600, 3600),
-  ];
+  return [for (final v in _resample(gaps)) v.round().clamp(-3600, 3600)];
 }
 
 /// [vals] (evenly spaced) cut to at most [kTrailPoints] by linear
