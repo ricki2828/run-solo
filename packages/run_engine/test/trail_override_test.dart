@@ -194,6 +194,16 @@ void main() {
       expect(c.first.startGapM, closeTo(20, 5));
     });
 
+    test('a run turned early counts as wholly on the longer trail', () {
+      final long = _oab(3000);
+      final groups = Trails.group([_run('long', 1, long)]);
+      final short = _run('short', 9, _oab(750));
+      expect(RouteMatch.similarity(short.route!, long), lessThan(0.3));
+      final c = Trails.candidates(short, groups);
+      expect(c.map((x) => x.group.anchor.id), ['long']);
+      expect(c.single.similarity, greaterThan(0.9));
+    });
+
     test('a trail sharing no ground is not offered', () {
       final groups = Trails.group([
         _run('own', 9, a),

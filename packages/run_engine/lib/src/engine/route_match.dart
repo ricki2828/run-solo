@@ -316,6 +316,16 @@ abstract final class RouteMatch {
     return math.min(_cover(pa, pb), _cover(pb, pa));
   }
 
+  /// The share of the SHORTER route that lies within [coverTolM] of the
+  /// other, 0..1. A route turned early lies wholly on the longer one, so it
+  /// reads about 1 here where [similarity] reads the short share of the long.
+  static double containment(RouteSignature a, RouteSignature b) {
+    final local = _Local(a.start);
+    final pa = [for (final p in a.points) local.project(p)];
+    final pb = [for (final p in b.points) local.project(p)];
+    return a.lengthM <= b.lengthM ? _cover(pa, pb) : _cover(pb, pa);
+  }
+
   /// How far apart the two routes start, metres.
   static double startGapM(RouteSignature a, RouteSignature b) {
     final local = _Local(a.start);

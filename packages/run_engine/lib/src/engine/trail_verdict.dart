@@ -278,7 +278,8 @@ abstract final class Trails {
       if (theirs == null) continue;
       final gap = RouteMatch.startGapM(mine, theirs);
       if (gap > maxStartGapM) continue;
-      final sim = RouteMatch.similarity(mine, theirs);
+      // Containment, so a run turned early (wholly on a longer trail) counts.
+      final sim = RouteMatch.containment(mine, theirs);
       if (sim < minCandidateCover) continue;
       out.add(TrailCandidate(group: g, startGapM: gap, similarity: sim));
     }

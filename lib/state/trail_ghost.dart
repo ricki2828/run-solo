@@ -92,9 +92,14 @@ class TrailGhostSource {
           (r) => r.override == null,
           orElse: () => g.runs.last,
         );
+        // Runs the runner joined by hand never lead or draw the line, unless
+        // the trail has no automatic run.
+        final forced = g.runs.any((r) => r.override != null);
         final fits = [
           for (final r in g.runs)
-            if (_turnsAlike(r, geom)) r,
+            if ((!forced || r.override == null || geom.override != null) &&
+                _turnsAlike(r, geom))
+              r,
         ];
         // Fastest first. A run the runner joined by hand may not share the
         // trail's geometry, and then no profile can be built from it: the
@@ -112,6 +117,7 @@ class TrailGhostSource {
               name: g.name,
               best: best,
               last: last,
+              geometryFrom: forced ? last : null,
             );
           } catch (e) {
             debugPrint('trail ghost: ${f.id} does not fit ${g.key} ($e)');

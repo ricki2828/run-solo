@@ -211,6 +211,33 @@ void main() {
     }, isNot(contains(small.id)));
   });
 
+  test(
+    'a faster, longer forced join neither leads nor draws the ghost',
+    () async {
+      // 8 km, 1.1 km north, fastest of all: it shares nothing with the loop.
+      final far = trailLoopRun(
+        n: 7,
+        start: d1.add(const Duration(days: 9)),
+        secPerKm: 300,
+        km: 8,
+        loopKm: 8,
+        dLat: 0.01,
+      );
+      final store = await storeWith([...loop, far]);
+      await store.setTrailOverride(
+        far.id,
+        engine.TrailOverride.join(loop[0].id),
+      );
+      final runs = await store.list();
+      expect(trailBoards(runs).single.runs.map((r) => r.id), contains(far.id));
+      final t = ghostOf(store).single;
+      expect(t.best.runId, isNot(far.id));
+      expect(lastIdOf(t), loop[2].id);
+      // The line is the loop's (lat 37.40), not the far run's (37.41).
+      expect(t.latLon.first, closeTo(37.4, 0.003));
+    },
+  );
+
   test('the companion trail block counts a merged run on its trail', () async {
     final small = trailLoopRun(
       n: 6,
