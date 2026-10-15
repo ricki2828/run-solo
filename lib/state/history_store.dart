@@ -181,6 +181,7 @@ class RunSummary {
     this.routeName,
     this.routeOffCount,
     this.hrHist,
+    this.trailOverride,
   });
 
   /// From the index (W5b): no file decoded, no analysis.
@@ -210,6 +211,7 @@ class RunSummary {
     routeName: e.row!.routeName,
     routeOffCount: e.row!.routeOffCount,
     hrHist: e.row!.hrHist,
+    trailOverride: e.row!.trailOverride,
   );
 
   final String id;
@@ -270,6 +272,39 @@ class RunSummary {
   /// Moving seconds per bpm (index row, or the file on the memory store);
   /// null without a strap. Zone strips and the week bars read it.
   final HrHist? hrHist;
+
+  /// The runner's own call on this run's trail (split out, or joined to
+  /// another run's); null = the automatic match. Sidecar `trail_override`.
+  final engine.TrailOverride? trailOverride;
+
+  /// This summary with the runner's trail call set (null = automatic).
+  RunSummary withTrailOverride(engine.TrailOverride? override) => RunSummary(
+    id: id,
+    mode: mode,
+    start: start,
+    durationMs: durationMs,
+    distanceM: distanceM,
+    laps: laps,
+    spec: spec,
+    missing: missing,
+    verdict: verdict,
+    analysis: analysis,
+    row: row,
+    indexedComparisonKey: indexedComparisonKey,
+    indexedOfficialTime: indexedOfficialTime,
+    parkrun: parkrun,
+    indexedHeatFraction: indexedHeatFraction,
+    eventStart: eventStart,
+    startPoint: startPoint,
+    place: place,
+    street: street,
+    customTitle: customTitle,
+    utcOffsetMin: utcOffsetMin,
+    routeName: routeName,
+    routeOffCount: routeOffCount,
+    hrHist: hrHist,
+    trailOverride: override,
+  );
 
   /// The start as the runner lived it (see [engine.RunIdentity.localStart]).
   DateTime get localStart => engine.RunIdentity.localStart(start, utcOffsetMin);
@@ -489,6 +524,11 @@ abstract class RunStore implements HistoryStore {
   /// The runner's own title for the run (null clears it). Display only.
   Future<void> setTitle(String id, String? title);
 
+  /// The runner's call on this run's trail: split it out, join it to another
+  /// run's trail, or null to go back to the automatic match. Grouping only:
+  /// no verdict word is touched.
+  Future<void> setTrailOverride(String id, engine.TrailOverride? override);
+
   /// Record the phone's UTC offset (minutes) for the run, once, at finish.
   /// Keeps an offset already recorded.
   Future<void> setUtcOffset(String id, int minutes);
@@ -694,6 +734,7 @@ RunSummary _summaryOf(
   routeName: run.route?.name,
   routeOffCount: run.route?.offRouteCount,
   hrHist: HrHist.of(run),
+  trailOverride: sidecar?.trailOverride,
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
@@ -804,7 +845,12 @@ class MemoryRunStore implements RunStore {
   Future<List<RunSummary>> list() async {
     final analyses = _analyse();
     final all = [
-      ...runs.where((r) => !_deleted.contains(r.id)),
+      for (final r in runs)
+        if (!_deleted.contains(r.id))
+          // A prefilled summary takes the runner's call from its sidecar.
+          sidecars.containsKey(r.id)
+              ? r.withTrailOverride(sidecars[r.id]!.trailOverride)
+              : r,
       for (final f in files.where((f) => !_deleted.contains(f.id)))
         _summaryOf(f, sidecars[f.id], analyses[f.id]),
       ...?fake?.finalised
@@ -897,6 +943,15 @@ class MemoryRunStore implements RunStore {
   Future<void> setTitle(String id, String? title) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(title: title);
+  }
+
+  @override
+  Future<void> setTrailOverride(
+    String id,
+    engine.TrailOverride? override,
+  ) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(trailOverride: override);
   }
 
   @override
@@ -1674,6 +1729,13 @@ class FileRunStore implements RunStore {
   @override
   Future<void> setTitle(String id, String? title) =>
       _writeIdentity(id, (current) => current.copyWith(title: title));
+
+  @override
+  Future<void> setTrailOverride(String id, engine.TrailOverride? override) =>
+      _writeIdentity(
+        id,
+        (current) => current.copyWith(trailOverride: override),
+      );
 
   @override
   Future<void> setUtcOffset(String id, int minutes) => _writeIdentity(

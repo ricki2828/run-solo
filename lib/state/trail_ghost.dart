@@ -75,33 +75,55 @@ class TrailGhostSource {
     // must not crowd a real one out of the six slots. Most recently run first.
     final groups = [
       for (final g in engine.Trails.group(facts))
-        if (g.runs.length >= 2 || g.runs.single.trailMode) g,
+        if (g.runs.length >= 2 ||
+            (g.runs.single.trailMode && g.runs.single.override == null))
+          g,
     ]..sort((a, b) => b.runs.last.start.compareTo(a.runs.last.start));
     final out = <engine.GhostTrail>[];
     for (final g in groups) {
       if (out.length >= engine.GhostTrail.maxTrails) break;
       try {
-        // The geometry is the latest run's. The best is the fastest run
+        // The geometry is the latest automatic run's, never a forced join's
+        // (its route may not be the trail's). The best is the fastest run
         // whose turn point is within [maxTurnGapM] of its: a run that turned
         // much earlier has no time for the stretch it never ran, and would
         // read as minutes ahead on the way back.
-        final geom = g.runs.last;
+        final geom = g.runs.lastWhere(
+          (r) => r.override == null,
+          orElse: () => g.runs.last,
+        );
+        // Runs the runner joined by hand never lead or draw the line, unless
+        // the trail has no automatic run.
+        final forced = g.runs.any((r) => r.override != null);
         final fits = [
           for (final r in g.runs)
-            if (_turnsAlike(r, geom)) r,
+            if ((!forced || r.override == null || geom.override != null) &&
+                _turnsAlike(r, geom))
+              r,
         ];
-        final bestFacts = fits.reduce(
-          (a, b) => g.normMs(b) < g.normMs(a) ? b : a,
-        );
-        final best = _load(bestFacts.id, runDirPaths);
+        // Fastest first. A run the runner joined by hand may not share the
+        // trail's geometry, and then no profile can be built from it: the
+        // next fastest takes the slot.
+        fits.sort((a, b) => g.normMs(a).compareTo(g.normMs(b)));
         final last = _load(geom.id, runDirPaths);
-        if (best == null || last == null) continue;
-        final t = engine.TrailGhostBuilder.build(
-          id: g.key,
-          name: g.name,
-          best: best,
-          last: last,
-        );
+        if (last == null) continue;
+        engine.GhostTrail? t;
+        for (final f in fits) {
+          final best = f.id == geom.id ? last : _load(f.id, runDirPaths);
+          if (best == null) continue;
+          try {
+            t = engine.TrailGhostBuilder.build(
+              id: g.key,
+              name: g.name,
+              best: best,
+              last: last,
+              geometryFrom: forced ? last : null,
+            );
+          } catch (e) {
+            debugPrint('trail ghost: ${f.id} does not fit ${g.key} ($e)');
+          }
+          if (t != null) break;
+        }
         if (t != null) out.add(t);
       } catch (e) {
         debugPrint('trail ghost: skipped ${g.key} ($e)');
@@ -111,7 +133,7 @@ class TrailGhostSource {
   }
 
   /// Out-and-backs turned round no further apart than this share a ghost.
-  static const double maxTurnGapM = 75;
+  static const double maxTurnGapM = engine.RouteMatch.maxTurnGapM;
 
   static bool _turnsAlike(engine.TrailRunFacts r, engine.TrailRunFacts geom) {
     if (identical(r, geom) || r.id == geom.id) return true;

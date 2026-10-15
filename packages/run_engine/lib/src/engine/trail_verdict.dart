@@ -1,4 +1,5 @@
 import '../model/run_file.dart';
+import '../model/trail_override.dart';
 import 'format.dart';
 import 'true_pace.dart';
 import 'route_match.dart';
@@ -19,6 +20,7 @@ class TrailRunFacts {
     this.place,
     this.street,
     this.trailMode = true,
+    this.override,
   });
 
   final String id;
@@ -42,6 +44,11 @@ class TrailRunFacts {
   /// matches (its boards, its verdicts, the in-run ghost) like any other, but
   /// is not a trail run for the effort fallback.
   final bool trailMode;
+
+  /// The runner's own call (split out of, or joined to, a trail). Honoured
+  /// before any route match by [Trails.group], and so by every board, verdict,
+  /// ghost and companion block built from the grouping.
+  final TrailOverride? override;
 
   TruePaceFactors get factors =>
       TruePaceFactors(grade: gradeFactor ?? 1, heat: heatFactor);
@@ -107,35 +114,180 @@ abstract final class Trails {
   /// Groups [runs] into trails. A run with no route, or one that matches no
   /// other, still forms a group of one (the verdict needs it); boards show
   /// only groups with two or more.
+  ///
+  /// The runner's overrides come first. A split run is a group of its own and
+  /// nothing matches through it; a joined run goes into the group holding its
+  /// target run, whatever the routes say. Only the overridden run moves: the
+  /// runs it used to match keep their group (re-anchored if it was the
+  /// anchor). A join whose target is gone (deleted, or a loop of joins) falls
+  /// back to the automatic match.
   static List<TrailGroup> group(Iterable<TrailRunFacts> runs) {
     final sorted = [
       for (final r in runs)
         if (r.route != null) r,
     ]..sort((a, b) => a.start.compareTo(b.start));
     final groups = <List<TrailRunFacts>>[];
+    // The run each group is matched against and named after: its earliest
+    // automatic member (a forced run only anchors a group of its own).
+    final anchors = <TrailRunFacts>[];
+    final splitIds = <String>{};
+    final joins = <TrailRunFacts>[];
     for (final r in sorted) {
-      List<TrailRunFacts>? home;
-      for (final g in groups) {
-        if (RouteMatch.same(g.first.route!, r.route!)) {
-          home = g;
-          break;
+      final o = r.override;
+      if (o != null && !o.isSplit) {
+        joins.add(r);
+        continue;
+      }
+      if (o != null) {
+        splitIds.add(r.id);
+        groups.add([r]);
+        anchors.add(r);
+        continue;
+      }
+      _place(groups, anchors, splitIds, r);
+    }
+    var pending = joins;
+    while (pending.isNotEmpty) {
+      final next = <TrailRunFacts>[];
+      for (final r in pending) {
+        final target = r.override!.joinRunId;
+        if (splitIds.contains(target)) {
+          // The target left its trail: follow it to where it matches by
+          // itself, never into the group of one it now sits in.
+          final t = sorted.firstWhere((x) => x.id == target);
+          final home = _autoHome(groups, anchors, splitIds, t);
+          if (home < 0) {
+            _place(groups, anchors, splitIds, r);
+          } else {
+            _insert(groups[home], r);
+          }
+          continue;
+        }
+        final home = groups.indexWhere(
+          (g) => g.any((x) => x.id == target && x.id != r.id),
+        );
+        if (home < 0) {
+          next.add(r);
+        } else {
+          _insert(groups[home], r);
         }
       }
-      if (home == null) {
-        groups.add([r]);
-      } else {
-        home.add(r);
+      if (next.length == pending.length) {
+        // Nothing moved: a target is gone, or the joins point at each other.
+        // Fall back one run at a time, a run whose target is not itself
+        // waiting first, so the runs joined to it follow it (B -> A, A gone).
+        final waiting = {for (final r in next) r.id};
+        final first = next.firstWhere(
+          (r) => !waiting.contains(r.override!.joinRunId),
+          orElse: () => next.first,
+        );
+        _place(groups, anchors, splitIds, first);
+        next.remove(first);
+      }
+      pending = next;
+    }
+    final out =
+        [
+          for (var i = 0; i < groups.length; i++)
+            TrailGroup(
+              key: 'trail:${anchors[i].id}',
+              name: nameOf(anchors[i]),
+              runs: groups[i],
+              anchorId: anchors[i].id,
+            ),
+        ]..sort((a, b) {
+          final c = a.runs.first.start.compareTo(b.runs.first.start);
+          return c != 0 ? c : a.key.compareTo(b.key);
+        });
+    return out;
+  }
+
+  /// The group [r] would match by its route alone, or -1.
+  static int _autoHome(
+    List<List<TrailRunFacts>> groups,
+    List<TrailRunFacts> anchors,
+    Set<String> splitIds,
+    TrailRunFacts r,
+  ) {
+    for (var i = 0; i < groups.length; i++) {
+      if (splitIds.contains(anchors[i].id)) continue;
+      if (RouteMatch.same(anchors[i].route!, r.route!)) return i;
+    }
+    return -1;
+  }
+
+  /// Puts [r] in the first group whose anchor it matches, else a new one.
+  /// Split groups never take a run.
+  static void _place(
+    List<List<TrailRunFacts>> groups,
+    List<TrailRunFacts> anchors,
+    Set<String> splitIds,
+    TrailRunFacts r,
+  ) {
+    for (var i = 0; i < groups.length; i++) {
+      if (splitIds.contains(anchors[i].id)) continue;
+      if (RouteMatch.same(anchors[i].route!, r.route!)) {
+        _insert(groups[i], r);
+        return;
       }
     }
-    return [
-      for (final g in groups)
-        TrailGroup(
-          key: 'trail:${g.first.id}',
-          name: nameOf(g.first),
-          runs: g,
-          anchorId: g.first.id,
-        ),
-    ];
+    groups.add([r]);
+    anchors.add(r);
+  }
+
+  static void _insert(List<TrailRunFacts> g, TrailRunFacts r) {
+    var at = g.length;
+    while (at > 0 && g[at - 1].start.isAfter(r.start)) {
+      at--;
+    }
+    g.insert(at, r);
+  }
+
+  /// How close [r] sits to the edge of matching its trail [g], or null when
+  /// it is the anchor or sits comfortably inside every gate. For the quiet
+  /// "looks off" hint, shown on a run the runner may want to move.
+  static MatchMargin? marginOf(TrailGroup g, TrailRunFacts r) {
+    final a = g.anchor;
+    if (a.id == r.id || a.route == null || r.route == null) return null;
+    return RouteMatch.margin(a.route!, r.route!);
+  }
+
+  /// The trails [run] could be joined to, nearest first: every group but its
+  /// own, by how far its start is from the trail's start, within
+  /// [maxStartGapM]. Each carries the overlap so the picker can say how close
+  /// the ground is.
+  /// The picker offers no trail sharing less ground than this with the run.
+  static const double minCandidateCover = 0.3;
+
+  static List<TrailCandidate> candidates(
+    TrailRunFacts run,
+    List<TrailGroup> groups, {
+    int limit = 5,
+    double maxStartGapM = 5000,
+  }) {
+    final mine = run.route;
+    if (mine == null) return const [];
+    final out = <TrailCandidate>[];
+    for (final g in groups) {
+      if (g.runs.any((r) => r.id == run.id)) continue;
+      // A run the runner split out is not a trail to join.
+      if (g.runs.length == 1 && g.runs.single.override?.isSplit == true) {
+        continue;
+      }
+      final theirs = g.anchor.route;
+      if (theirs == null) continue;
+      final gap = RouteMatch.startGapM(mine, theirs);
+      if (gap > maxStartGapM) continue;
+      // Containment, so a run turned early (wholly on a longer trail) counts.
+      final sim = RouteMatch.containment(mine, theirs);
+      if (sim < minCandidateCover) continue;
+      out.add(TrailCandidate(group: g, startGapM: gap, similarity: sim));
+    }
+    out.sort((a, b) {
+      final c = a.startGapM.compareTo(b.startGapM);
+      return c != 0 ? c : b.similarity.compareTo(a.similarity);
+    });
+    return out.length > limit ? out.sublist(0, limit) : out;
   }
 
   /// The group [runId] belongs to, or null.
@@ -156,6 +308,22 @@ abstract final class Trails {
     }
     return '${base.trim()} ${loop ? 'loop' : 'trail'}';
   }
+}
+
+/// A trail a run could be joined to (the "Same trail as..." picker).
+class TrailCandidate {
+  const TrailCandidate({
+    required this.group,
+    required this.startGapM,
+    required this.similarity,
+  });
+  final TrailGroup group;
+
+  /// Metres between the two trails' start points.
+  final double startGapM;
+
+  /// Share of the run's ground that lies on the trail (0..1).
+  final double similarity;
 }
 
 enum TrailBasis { sameTrail, effortPace, baseline, none }

@@ -679,15 +679,18 @@ abstract final class TrailGhostBuilder {
   static const double reachSlackM = 20;
 
   /// The trail for [id]/[name] from the group's [best] and [last] runs (the
-  /// same run is fine). The geometry is the longer of the two. Null when
-  /// neither has a usable track.
+  /// same run is fine). The geometry is [geometryFrom] when given (a trail
+  /// with runs the runner joined by hand must not take its line from one),
+  /// else the longer of the two. Null when neither has a usable track.
   static GhostTrail? build({
     required String id,
     required String name,
     required RunFile best,
     required RunFile last,
+    RunFile? geometryFrom,
   }) {
-    final geomRun = last.distanceM >= best.distanceM ? last : best;
+    final geomRun =
+        geometryFrom ?? (last.distanceM >= best.distanceM ? last : best);
     final geo = geometry(geomRun);
     if (geo == null) return null;
     final path = GhostPath(geo);
