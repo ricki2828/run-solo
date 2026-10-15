@@ -52,6 +52,9 @@ void main() {
     [runsDir.path, s.archiveDir.path],
   );
 
+  // A null `last` means the last run is the best (see GhostTrail.last).
+  String lastIdOf(engine.GhostTrail t) => t.last?.runId ?? t.best.runId;
+
   Future<List<List<String>>> groupsOf(FileRunStore s) async => [
     for (final g in engine.Trails.group(trailFactsOfAll(await s.list())))
       [for (final r in g.runs) r.id],
@@ -126,7 +129,7 @@ void main() {
     var trails = ghostOf(store);
     expect(trails, hasLength(2));
     expect(
-      trails.firstWhere((t) => t.best.runId == loop[1].id).last!.runId,
+      lastIdOf(trails.firstWhere((t) => t.best.runId == loop[1].id)),
       loop[2].id,
     );
 
@@ -144,11 +147,11 @@ void main() {
     // a trail of its own, as a single Trail run always is.
     trails = ghostOf(store);
     expect(trails, hasLength(3));
-    final theLoop = trails.firstWhere((t) => t.last?.runId == loop[2].id);
+    final theLoop = trails.firstWhere((t) => lastIdOf(t) == loop[2].id);
     expect(theLoop.best.runId, loop[2].id); // 400 beats 420 once 380 is out
     final alone = trails.firstWhere((t) => t.best.runId == loop[1].id);
     expect(alone.id, isNot(theLoop.id));
-    expect(alone.last?.runId, loop[1].id);
+    expect(lastIdOf(alone), loop[1].id);
   });
 
   test('a split run has no same-trail verdict', () async {
@@ -200,7 +203,7 @@ void main() {
     final trails = ghostOf(store);
     expect(trails, hasLength(1));
     // It is the latest run on the trail, so it is the ghost's last run.
-    expect(trails.single.last!.runId, small.id);
+    expect(lastIdOf(trails.single), small.id);
   });
 
   test('the companion trail block counts a merged run on its trail', () async {
@@ -245,10 +248,10 @@ void main() {
     expect(trails, hasLength(2));
     // North run 5 stays a trail of its own: it is in no loop profile.
     final ownTrail = trails.firstWhere((t) => t.best.runId == north[1].id);
-    expect(ownTrail.last?.runId, north[1].id);
+    expect(lastIdOf(ownTrail), north[1].id);
     final theLoop = trails.firstWhere((t) => t.id != ownTrail.id);
-    for (final p in [theLoop.best, theLoop.last!]) {
-      expect(p.runId, isNot(north[1].id));
+    for (final id in [theLoop.best.runId, lastIdOf(theLoop)]) {
+      expect(id, isNot(north[1].id));
     }
   });
 
