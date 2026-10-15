@@ -281,6 +281,19 @@ class LiveContextSource {
       ? null
       : engine.RaceEstimates.of(_cached, now: now(), names: names);
 
+  /// Session target paces from the last prepare (with the runner's accepted
+  /// [adopted] paces); null when never prepared or with no fitness figure.
+  engine.TargetPaces? targetPaces({
+    Map<engine.PaceIntensity, double> adopted = const {},
+  }) => _cachedVersion == null
+      ? null
+      : engine.TargetPaces.of(
+          _cached,
+          now: now(),
+          names: names,
+          adopted: adopted,
+        );
+
   /// The Start card's target for [spec] (the event or a goal), from the
   /// last prepare; null for other sessions or with nothing to go on.
   engine.StartTarget? targetFor(SessionSpec? spec, {String? courseKey}) =>

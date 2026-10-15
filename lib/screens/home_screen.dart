@@ -20,6 +20,7 @@ import '../state/home_progress.dart';
 import '../theme/theme.dart';
 import '../state/progress_snapshot.dart';
 import '../widgets/home_b/home_b.dart';
+import '../widgets/pace_nudge_line.dart';
 import '../widgets/readiness_line.dart';
 import '../widgets/load_warning.dart';
 import '../widgets/recent_activity.dart';
@@ -543,6 +544,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          PaceNudgeLine(runs: runs, now: _now),
                           ReadinessLine(runs: runs, now: _now),
                           FutureBuilder<engine.HomeEstimates?>(
                             future: _estimates,

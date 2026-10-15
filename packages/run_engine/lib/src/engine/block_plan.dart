@@ -717,6 +717,9 @@ abstract final class BlockPaces {
     return 3600 / ((lo + hi) / 2 / 1000);
   }
 
+  /// Pace (s/km) of the race-equivalent effort over [metres] for [vdot].
+  static double? race(double vdot, double metres) => _race(vdot, metres);
+
   static double? _race(double vdot, double metres) {
     final t = RacePercentileNorms.equivalentSeconds(vdot, metres);
     return t == null ? null : t / (metres / 1000);

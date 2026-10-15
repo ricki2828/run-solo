@@ -14,6 +14,8 @@ abstract final class VoiceCoachPlan {
   /// [planned] is the plan session being run (null for any other run) and
   /// [vdot] the plan's fitness estimate. [goalPaceSecPerKm] is a goal run's
   /// own pace (target time over distance); it wins over the plan's estimate.
+  /// [sessionPaceSecPerKm] is the heat-adjusted target pace of a hand-picked
+  /// preset (see `TargetPaces`); a goal or plan session wins over it.
   /// [zones] gives the zone bottoms drift is measured against.
   ///
   /// Target status: a goal's pace, or a plan session's True Pace estimate
@@ -27,11 +29,12 @@ abstract final class VoiceCoachPlan {
     bool warnedEasy = false,
     double? vdot,
     double? goalPaceSecPerKm,
+    double? sessionPaceSecPerKm,
   }) {
     final on = settings.cues && settings.voiceCoaching;
     final full = settings.coachingDetail == CoachingDetail.full;
     final kind = planned?.kind;
-    final pace = _pace(planned, vdot, goalPaceSecPerKm);
+    final pace = _pace(planned, vdot, goalPaceSecPerKm, sessionPaceSecPerKm);
     // Home's warned "Start Easy run" is an easy run with no plan session:
     // no pace, but heart rate is held to zone 2 like a plan easy session.
     final easy = kind == engine.BlockKind.easy || warnedEasy;
@@ -70,8 +73,9 @@ abstract final class VoiceCoachPlan {
     engine.BlockSession? planned,
     double? vdot,
     double? goalPaceSecPerKm,
+    double? sessionPaceSecPerKm,
   }) {
-    final pace = _pace(planned, vdot, goalPaceSecPerKm);
+    final pace = _pace(planned, vdot, goalPaceSecPerKm, sessionPaceSecPerKm);
     if (pace == null) return null;
     return CoachTarget(
       paceSecPerKm: pace,
@@ -85,12 +89,16 @@ abstract final class VoiceCoachPlan {
   static double? _pace(
     engine.BlockSession? planned,
     double? vdot,
-    double? goalPaceSecPerKm,
-  ) {
+    double? goalPaceSecPerKm, [
+    double? sessionPaceSecPerKm,
+  ]) {
     double? pace = goalPaceSecPerKm;
     if (pace == null && planned != null) {
       pace = engine.BlockPaces.target(planned, vdot);
     }
+    // A preset set with no plan session behind it (a Norwegian 4x4 picked
+    // by hand): the runner's own target pace for that effort.
+    pace ??= planned == null ? sessionPaceSecPerKm : null;
     return pace != null && pace.isFinite && pace > 0 ? pace : null;
   }
 
