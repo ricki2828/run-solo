@@ -184,12 +184,12 @@ class _CandidateTile extends StatelessWidget {
                       style: RunSoloType.body17.copyWith(color: t.inkPrimary),
                     ),
                     Text(
-                      '$runs · best ${Fmt.clock(g.normMs(g.best))} · '
-                      '${(candidate.similarity * 100).round()}% same ground',
+                      '$runs · best ${Fmt.clock(g.normMs(g.best))}',
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
                     Text(
-                      away,
+                      '${(candidate.similarity * 100).round()}% same ground · '
+                      '$away',
                       style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                     ),
                   ],
