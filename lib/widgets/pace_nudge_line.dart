@@ -138,7 +138,7 @@ class _Line extends StatelessWidget {
             try {
               await controller.reset(nudge.intensity);
             } catch (_) {
-              messenger?.showSnackBar(
+              messenger.showSnackBar(
                 const SnackBar(content: Text('Could not undo that.')),
               );
             }
