@@ -152,8 +152,8 @@ void main() {
       aLoop,
       _run('l4', _rot(loop, 2), seed: 4),
       boards: true,
-      ghostSays: 'matched then off',
-      note: 'joined mid-loop, the ghost reaches the end of the trail line before the run ends and drops its figures',
+      ghostSays: 'no match',
+      note: 'joined mid-loop, the ghost reaches the end of the trail line before the run ends, goes off, and lets go after 500 m',
     );
     check(
       'Loop run the other way',
@@ -260,8 +260,8 @@ void main() {
       aOab,
       _run('o7', [(0, 0), (1000, 0), (1500, 500), (1000, 0), (0, 0)], seed: 17),
       boards: false,
-      ghostSays: 'matched then off',
-      note: 'the ghost follows the shared first km then loses the line',
+      ghostSays: 'no match',
+      note: 'the ghost follows the shared first km, then lets go 500 m after it loses the line',
     );
   });
 

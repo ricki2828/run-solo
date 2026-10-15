@@ -231,11 +231,14 @@ abstract final class RouteMatch {
     // the two share the ground (the cover above): where each run turned round
     // is the runner's choice on the day, not another trail. Walked in step,
     // two turn points more than about 75 m apart fail the Frechet check below.
-    if (loops &&
-        _dist(pa.first, pb.first) <= endTolM &&
-        _isOutAndBack(pa) &&
-        _isOutAndBack(pb)) {
-      return true;
+    if (loops && _dist(pa.first, pb.first) <= endTolM) {
+      final oa = _outAndBack(pa), ob = _outAndBack(pb);
+      if (oa != null && ob != null) {
+        // The shorter run's turn must lie on the longer one's way out: the
+        // same road turned round early, not another branch at a fork.
+        final (shortOut, longOut) = oa.out <= ob.out ? (oa, ob) : (ob, oa);
+        return _distToPolyline(shortOut.apex, longOut.outPts) <= frechetTolM;
+      }
     }
 
     final step = math.max(stepM, longer / maxSamples);
@@ -268,14 +271,13 @@ abstract final class RouteMatch {
     return (ta - tb).abs();
   }
 
-  /// Out and back: it ends where it started and its way home lies on its way
-  /// out ([minCover] of the return within [coverTolM] of the outward leg),
-  /// the turn in the middle half of the route.
-  static bool _isOutAndBack(List<_Pt> p) => _turnAlong(p) != null;
-
   /// Distance along [p] to its turn point (the vertex furthest from the
-  /// start as the crow flies), or null when [p] is not an out-and-back.
-  static double? _turnAlong(List<_Pt> p) {
+  /// start as the crow flies), or null when [p] is not an out-and-back: it
+  /// ends where it started, the turn is in the middle half of the route, and
+  /// its way home lies on its way out ([minCover] within [coverTolM]).
+  static double? _turnAlong(List<_Pt> p) => _outAndBack(p)?.out;
+
+  static ({double out, _Pt apex, List<_Pt> outPts})? _outAndBack(List<_Pt> p) {
     if (p.length < 3 || _dist(p.first, p.last) > endTolM) return null;
     var apex = 0;
     var far = -1.0;
@@ -293,7 +295,15 @@ abstract final class RouteMatch {
     final along = _length(out);
     if (along < total * 0.25 || along > total * 0.75) return null;
     if (_cover(back, out) < minCover) return null;
-    return along;
+    return (out: along, apex: p[apex], outPts: out);
+  }
+
+  static double _distToPolyline(_Pt q, List<_Pt> line) {
+    var best = double.infinity;
+    for (var i = 0; i + 1 < line.length; i++) {
+      best = math.min(best, _segDist(q, line[i], line[i + 1]));
+    }
+    return best;
   }
 
   /// The overlap figure, 0..1: the smaller of the two shares of a route that

@@ -246,6 +246,13 @@ void main() {
       ),
     ),
     vector(
+      'leaves_for_good',
+      [trail(straight)],
+      runner([
+        const [(0, 0), (700, 0), (700, 900)],
+      ]),
+    ),
+    vector(
       'shared_start_hands_over',
       [a, b],
       runner(

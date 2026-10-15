@@ -70,6 +70,22 @@ void main() {
       expect(RouteMatch.turnGapM(base, oab(1400)), closeTo(100, 5));
     });
 
+    test(
+      'a fork near the end is not the same trail, a turn on the road is',
+      () {
+        final fork = _sig([
+          [0, 0],
+          [1400, 0],
+          [1500, 150],
+          [1400, 0],
+          [0, 0],
+        ], 3150);
+        expect(RouteMatch.same(base, fork), isFalse);
+        // The same road turned round at 1400 m: the turn is on the way out.
+        expect(RouteMatch.same(base, oab(1400)), isTrue);
+      },
+    );
+
     test('lengths still have to be within 10 percent', () {
       expect(RouteMatch.same(base, oab(1300)), isFalse);
       expect(RouteMatch.same(base, oab(1700)), isFalse);

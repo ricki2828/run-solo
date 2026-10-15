@@ -471,4 +471,28 @@ class TrailGhostTest {
         assertTrue(r.ghost.drainSwitches().isNotEmpty())
         assertTrue(r.ghost.drainSwitches().isEmpty(), "drained once, gone")
     }
+
+    @Test
+    fun `gone for good the readout ends instead of saying off the trail for the rest of the run`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g)
+        r.run(listOf(0.0 to 0.0, 700.0 to 0.0))
+        assertEquals("t1", r.states.last()?.trailId)
+        // Leaves the line and keeps going away: off first, with the figures gone...
+        r.run(listOf(700.0 to 0.0, 700.0 to 300.0))
+        assertTrue(r.states.last()!!.off)
+        // ...then, 500 m on, the ghost lets go for the rest of the run.
+        r.run(listOf(700.0 to 300.0, 700.0 to 900.0))
+        assertNull(r.states.last())
+        assertTrue(r.states.takeLast(30).all { it == null })
+    }
+
+    @Test
+    fun `a short detour comes back to the readout`() {
+        val g = TrailGhost(listOf(TrailGhostKit.trail(straight)))
+        val r = Runner(g)
+        r.run(listOf(0.0 to 0.0, 700.0 to 0.0, 700.0 to 120.0, 700.0 to 0.0, 1_100.0 to 0.0))
+        assertEquals("t1", r.states.last()?.trailId)
+        assertFalse(r.states.last()!!.off)
+    }
 }

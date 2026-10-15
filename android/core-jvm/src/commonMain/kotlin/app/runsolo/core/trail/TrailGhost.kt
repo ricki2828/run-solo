@@ -58,6 +58,8 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         /** A jump along the trail over max(this, [skipFrac] of it) is ground not covered: the compare restarts from there. */
         val skipM: Double = 150.0,
         val skipFrac: Double = 0.05,
+        /** Off a confirmed trail for this much run distance: the ghost lets it go for the rest of the run. */
+        val dropOffM: Double = 500.0,
         /** Adaptive lead: clearly behind the best by more than max(this, [slipFrac] of the best's time over the stretch)... */
         val slipFloorMs: Long = 30_000,
         val slipFrac: Double = 0.03,
@@ -135,6 +137,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
         var lastOnT: Long? = null
         var lastFixT: Long? = null
         var racingLast = false
+        var offDistM = 0.0
         var behindSince: Long? = null
         var calmSince: Long? = null
         var rebaseAt = Long.MIN_VALUE / 2
@@ -192,6 +195,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                     if (t - since >= config.offAfterMs) {
                         if (confirmed) {
                             off = true
+                            offDistM = runDistM
                             offSince = null
                             backSince = null
                         } else if (runDistM <= config.engageWithinM) {
@@ -225,6 +229,11 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                 }
             } else {
                 backSince = null
+            }
+            // Gone for good: far past where it left the line, the readout and the compare end for the rest of the run.
+            if (off && runDistM - offDistM > config.dropOffM) {
+                dead = true
+                return
             }
             if (!confirmed && along - a0 >= config.confirmM && onN >= config.minCover * n) confirmed = true
             apex?.let { crowToApexM = hypot(x - it.first, y - it.second) }
@@ -270,6 +279,7 @@ class TrailGhost(refs: List<TrailRef>, private val config: Config = Config()) {
                 c.dead = true
             }
         }
+        if (leader?.dead == true) leader = null
         val cur = leader
         if (cur == null || cur.off) {
             val next = cands.filter { it.confirmed && !it.dead && !it.off }.minByOrNull { it.meanOffM }

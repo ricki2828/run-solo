@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -63,9 +64,9 @@ void main() {
     final store = await storeWith(runs);
     final trails = trailsOf(store);
     expect(trails, hasLength(2));
-    // Most recently run first: the northern trail (run 4), then the loop.
-    expect(trails.first.best.runId, runs[3].id);
-    final loop = trails.last;
+    // The busiest first (the loop, three runs), then the northern trail (run 4).
+    expect(trails.last.best.runId, runs[3].id);
+    final loop = trails.first;
     expect(loop.best.runId, runs[1].id); // the 380 s/km run
     expect(loop.last!.runId, runs[2].id); // the latest
     final n = loop.latLon.length ~/ 2;
@@ -81,7 +82,7 @@ void main() {
     'a later run on the trail is matched and compared, another is not',
     () async {
       final store = await storeWith(runs);
-      final loop = trailsOf(store).last;
+      final loop = trailsOf(store).first;
       // 360 s/km: faster than the best (380) over about 6 km.
       final again = trailLoopRun(
         n: 5,
@@ -140,7 +141,7 @@ void main() {
     'the trail carries its smoothed elevation and climbs to Pigeon',
     () async {
       final store = await storeWith(runs);
-      final loop = trailsOf(store).last;
+      final loop = trailsOf(store).first;
       final n = loop.latLon.length ~/ 2;
       expect(loop.elevSrc, 'baro');
       expect(loop.elevM, hasLength(n));
@@ -212,14 +213,110 @@ void main() {
     },
   );
 
+  // An out and back along a straight road, [turnM] to the turn, at
+  // [secPerKm]: the road is the same, only where the runner turned differs.
+  engine.RunFile oabRun({
+    required int n,
+    required DateTime start,
+    required double turnM,
+    required int secPerKm,
+    engine.RunMode mode = engine.RunMode.trail,
+  }) {
+    const lat0 = 37.4, lon0 = 24.9, mPerDeg = 111194.9;
+    final kx = math.cos(lat0 * math.pi / 180) * mPerDeg;
+    final base = freeRunFile(
+      n: n,
+      start: start,
+      seconds: (secPerKm * 2 * turnM / 1000).round(),
+      secPerKm: secPerKm,
+    );
+    final total = base.distanceM;
+    return base.copyWith(
+      mode: mode,
+      elevSrc: engine.ElevSource.baro,
+      samples: [
+        for (final s in base.samples)
+          s.copyWith(
+            lat: lat0,
+            lon: lon0 + turnM * (1 - (2 * s.distM / total - 1).abs()) / kx,
+            elevM: 40.0,
+          ),
+      ],
+    );
+  }
+
+  test('a run that turned much earlier is not the ghost\'s best', () async {
+    // 4000 m and 4250 m out: the same road, 250 m apart at the turn. The
+    // faster run is the early one; it must not be the reference for a run
+    // that goes to the far turn, or the way back reads minutes behind.
+    final early = oabRun(n: 1, start: d1, turnM: 4000, secPerKm: 330);
+    final late = oabRun(
+      n: 2,
+      start: d1.add(const Duration(days: 2)),
+      turnM: 4250,
+      secPerKm: 400,
+    );
+    final store = await storeWith([early, late]);
+    final trails = trailsOf(store);
+    expect(trails, hasLength(1));
+    expect(trails.single.best.runId, late.id, reason: 'the early turn is out');
+    // A third run, the late turn at the late pace: level all the way back.
+    final again = oabRun(
+      n: 3,
+      start: d1.add(const Duration(days: 4)),
+      turnM: 4250,
+      secPerKm: 400,
+    );
+    final g = engine.TrailGhostTracker(trails);
+    var worst = 0;
+    var back = 0;
+    for (final s in again.samples) {
+      g.offer(s.tMs, s.lat!, s.lon!, 5, s.tMs, s.distM);
+      final st = g.state;
+      if (st != null && st.aheadBestMs != null && s.distM > 4500) {
+        back++;
+        worst = math.max(worst, st.aheadBestMs!.abs());
+      }
+    }
+    expect(back, greaterThan(100), reason: 'a way back was run and read');
+    expect(worst, lessThan(15000));
+  });
+
+  test('turn points close together share one best', () async {
+    final a = oabRun(n: 1, start: d1, turnM: 4000, secPerKm: 330);
+    final b = oabRun(
+      n: 2,
+      start: d1.add(const Duration(days: 2)),
+      turnM: 4040,
+      secPerKm: 400,
+    );
+    final trails = trailsOf(await storeWith([a, b]));
+    expect(trails.single.best.runId, a.id);
+  });
+
+  test('six one-off Free runs do not evict a two-run trail', () async {
+    final trailRuns = [
+      trailLoopRun(n: 1, start: d1, secPerKm: 420),
+      trailLoopRun(n: 2, start: d1.add(const Duration(days: 1)), secPerKm: 400),
+    ];
+    final oneOffs = [
+      for (var i = 0; i < 6; i++)
+        trailLoopRun(
+          n: 10 + i,
+          start: d1.add(Duration(days: 10 + i)),
+          dLat: 0.03 * (i + 1),
+        ).copyWith(mode: engine.RunMode.free),
+    ];
+    final trails = trailsOf(await storeWith([...trailRuns, ...oneOffs]));
+    expect(trails, hasLength(1));
+    expect(trails.single.best.runId, trailRuns[1].id);
+  });
+
   test('no trail runs gives no trails and no context', () async {
     final store = await storeWith([
-      freeRunFile(
-        n: 1,
-        start: d1,
-        seconds: 1800,
-      ).copyWith(mode: engine.RunMode.laps),
+      freeRunFile(n: 1, start: d1, seconds: 1800),
     ]);
+    // A one-off Free run is not a known trail.
     expect(trailsOf(store), isEmpty);
     final src = LiveContextSource(
       indexFile: store.indexFile,
