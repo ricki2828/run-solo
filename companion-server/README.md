@@ -113,5 +113,5 @@ racing the old best along the relative profile, via Telegram `sendAnimation` (au
 the still), instead of the still. The static record card is rendered beside it as the fallback if Telegram refuses the animation, and
 is sent alone when the clip cannot be made (worker down, ffmpeg missing). The render is the worker's `video` kind `ghostclip`
 (PIL frames, about 10 s, serial like every render). Telegram's `file_id` is kept in `media_file_ids` (cascades with the run), so a
-repeat send is one JSON call. `COMPANION_TRAIL_CLIP=0` keeps the still. The render worker's kinds `trail_board` and `trail_record` take the keys in
+repeat send is one JSON call. Forwarding the clip from Telegram keeps the elevation profile in it (the clip is the record card's picture, moving), the same as forwarding the still. A repeat send also renders the still beside the cached id, so a refused id falls back to a photo, not text; the id is deleted with the 30-day trail block. `COMPANION_TRAIL_CLIP=0` keeps the still. The render worker's kinds `trail_board` and `trail_record` take the keys in
 `render/protocol.py` `TRAIL_KEYS` (`elev_profile`, `elev_src`, `ghost_gap`, `trail_board`, `trail_runs`, `turn_idx`, `trail_shape`, `trail_name`).

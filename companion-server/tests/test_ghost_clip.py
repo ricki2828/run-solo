@@ -3,7 +3,7 @@ service path (sendAnimation, file_id cache, still fallback). The render itself n
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -396,3 +396,65 @@ def test_the_cached_id_goes_with_the_run(tmp_path):
     with db.tx(e.s.db_path) as c:
         c.execute("DELETE FROM runs WHERE run_id='r01'")
     assert e.q("SELECT 1 FROM media_file_ids") == []
+
+
+# ---------------------------------------------------------------- review fixes
+
+def test_the_clip_cache_is_per_runner_not_per_run_id():
+    calls = []
+    r = renderer(lambda facts, out: (calls.append(1), out.write_bytes(MP4)))
+    a, b = _trail_runs(), _trail_runs()
+    a[0]["user_id"], b[0]["user_id"] = "u_a", "u_b"     # two runners can both have a run called r1
+    r.render(PLAN, {"run_id": "r1", "headline": "h"}, a)
+    r.render(PLAN, {"run_id": "r1", "headline": "h"}, b)
+    r.render(PLAN, {"run_id": "r1", "headline": "h"}, a)
+    assert len(calls) == 2
+
+
+def test_a_cached_id_carries_the_still_so_a_refused_id_falls_back_to_a_photo(tmp_path):
+    e = record_env(tmp_path, ClipRec())
+    cid = e.svc._build_run_card(UID, "r01", NOW)
+    assert e.svc._send_card(e.user(), cid, NOW)
+    with db.tx(e.s.db_path) as c:
+        c.execute("UPDATE cards SET sent_at=NULL WHERE card_id=?", (cid,))
+    card = dict(e.q("SELECT * FROM cards WHERE card_id=?", cid)[0])
+    media = e.svc._render_media(e.user(), card, NOW)
+    assert media.animation_file_id and media.photo and media.animation
+
+
+def test_a_cached_id_is_not_used_once_the_trail_block_is_gone(tmp_path):
+    rec = ClipRec()
+    e = record_env(tmp_path, rec)
+    cid = e.svc._build_run_card(UID, "r01", NOW)
+    assert e.svc._send_card(e.user(), cid, NOW)
+    with db.tx(e.s.db_path) as c:
+        c.execute("UPDATE run_shape SET trail_json=NULL")
+        c.execute("UPDATE cards SET sent_at=NULL WHERE card_id=?", (cid,))
+    e.svc._send_card(e.user(), cid, NOW)
+    assert [b.get("animation") for m, b in e.fakes.tg if m == "sendAnimation"].count(
+        e.q("SELECT file_id FROM media_file_ids")[0]["file_id"]) == 0
+
+
+def test_the_cached_id_is_purged_with_the_30_day_trail_block(tmp_path):
+    e = record_env(tmp_path, ClipRec())
+    cid = e.svc._build_run_card(UID, "r01", NOW)
+    e.svc._send_card(e.user(), cid, NOW)
+    assert len(e.q("SELECT 1 FROM media_file_ids")) == 1
+    e.svc.purge(NOW + timedelta(days=40))
+    assert e.q("SELECT 1 FROM media_file_ids") == []
+
+
+def test_the_hook_uses_m_ss_from_a_minute():
+    from render.motion.ghost_clip import GhostClipSpec, gap_text, hook_lines
+    assert gap_text(59) == "59 S" and gap_text(60) == "1:00" and gap_text(125) == "2:05"
+    gap = [0] * 10 + [-125] * 20 + [8] * 34
+    s = GhostClipSpec(profile=list(range(20)), gap=gap, today_s=3000, best_s=3008, attempt=3, distance_km=9.0)
+    assert hook_lines(s)[0].startswith("DOWN 2:05 AT")
+
+
+def test_the_ghost_is_drawn_apart_from_you_on_the_hill():
+    from render.motion import ghost_clip as G
+    spec = G.spec_from_facts(F.ghost_clip_comeback())
+    clip = G.GhostClip(spec)
+    you, ghost, _ = clip.state(1.6)
+    assert abs(clip._x(min(1, max(0, you + (ghost - you) * G.GHOST_SPREAD))) - clip._x(you)) > 40

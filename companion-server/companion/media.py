@@ -229,7 +229,7 @@ class MediaRenderer:
     def __init__(self, card_fns: Mapping[str, Callable[..., bytes]] | None = None,
                  video_fns: Mapping[str, Callable[..., Any]] | None = None, client: RenderClient | None = None):
         self._cards, self._videos = card_fns, video_fns
-        self._clips: dict[str, bytes] = {}
+        self._clips: dict[tuple[str, str], bytes] = {}   # (user_id, run_id): a run id is only unique per runner
         self._client = client or RenderClient(default_socket_path())
 
     @property
@@ -266,16 +266,16 @@ class MediaRenderer:
         return (int(facts.get("trail_runs") or 0) >= 2 and isinstance(facts.get("ghost_gap"), list)
                 and isinstance(facts.get("elev_profile"), list) and len(facts["elev_profile"]) >= 8)
 
-    def _ghost_media(self, run_id: str, facts: dict, memory: Mapping[str, Any] | None) -> Media | None:
+    def _ghost_media(self, key: tuple[str, str], facts: dict, memory: Mapping[str, Any] | None) -> Media | None:
         """The race clip for a trail record, with the static record card beside it as the fallback the channel uses when
         Telegram refuses the animation. None when the clip cannot be made: the caller then sends the card as before. One
         render at a time, in the worker: the clip first, then the card."""
-        video = self._clips.get(run_id) or self._video("ghostclip", facts)
+        video = self._clips.get(key) or self._video("ghostclip", facts)
         if video is None:
             return None
         while len(self._clips) >= CLIP_CACHE_MAX:
             self._clips.pop(next(iter(self._clips)))
-        self._clips[run_id] = video
+        self._clips[key] = video
         try:
             photo = self.cards["trail_record"](facts, memory or {})
         except Exception as e:   # the clip alone is enough to send
@@ -316,7 +316,7 @@ class MediaRenderer:
                     raise MediaError("trail block gone")
                 facts = trail_card_facts(run, trail)
                 if kind == "trail_record" and clip and self.ghost_clip_ok(facts):
-                    ghost = self._ghost_media(str(card["run_id"]), facts, memory)
+                    ghost = self._ghost_media((str(run.get("user_id") or ""), str(card["run_id"])), facts, memory)
                     if ghost is not None:
                         return ghost
                 vkind, vfacts = "run", None   # no video: the picture is the moment

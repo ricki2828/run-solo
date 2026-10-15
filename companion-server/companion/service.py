@@ -1508,14 +1508,21 @@ class Service(CheckinMixin):
                                        "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None,
                                        "trail": cv_trail.load(sh["trail_json"])}
         try:
-            if plan.get("card") == "trail_record" and self.s.trail_clip:
-                # a clip already sent for this run is one id, not another render and upload (an outbox retry)
+            if plan.get("card") == "trail_record" and self.s.trail_clip and any((r.get("_shape") or {}).get("trail") for r in runs):
+                # a clip already sent for this run is one id, not another render and upload (an outbox retry). Only while the trail
+                # block it was made from is still stored (it ages out at 30 days, and so does the id). The still rides beside it, so
+                # a refused id falls back to a photo and not to text.
                 with db.ro(self.s.db_path) as c:
                     hit = c.execute("SELECT file_id FROM media_file_ids WHERE user_id=? AND run_id=? AND kind='ghostclip'",
                                     (user["id"], card.get("run_id"))).fetchone()
                 if hit:
-                    return dataclasses.replace(Media(), animation=True, animation_file_id=hit["file_id"], duration_s=GHOST_CLIP_S,
-                                               spoiler=self.s.trail_spoiler)
+                    still = None
+                    try:
+                        still = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs, clip=False)
+                    except Exception as e:   # the id alone is still worth trying
+                        log.warning("ghost clip cached still skipped: %s", type(e).__name__)
+                    return dataclasses.replace(Media(), photo=still.photo if still else None, animation=True,
+                                               animation_file_id=hit["file_id"], duration_s=GHOST_CLIP_S, spoiler=self.s.trail_spoiler)
             # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
             media = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs, clip=self.s.trail_clip)
             if media is not None and self.s.trail_spoiler and (
@@ -1783,6 +1790,9 @@ class Service(CheckinMixin):
             c.execute("UPDATE run_shape SET trail_json=NULL WHERE trail_json IS NOT NULL AND EXISTS (SELECT 1 FROM runs r "
                       "WHERE r.user_id=run_shape.user_id AND r.run_id=run_shape.run_id AND r.start_utc < ?)" + held,
                       (iso(now - timedelta(days=RETENTION_ROUTE_DAYS)),))   # the trail block ages like the route outline
+            c.execute("DELETE FROM media_file_ids WHERE EXISTS (SELECT 1 FROM runs r WHERE r.user_id=media_file_ids.user_id "
+                      "AND r.run_id=media_file_ids.run_id AND r.start_utc < ?)" + held,
+                      (iso(now - timedelta(days=RETENTION_ROUTE_DAYS)),))   # the clip's Telegram id goes with the trail block it came from
             c.execute("DELETE FROM run_shape WHERE route_json IS NULL AND splits_json IS NULL AND reps_json IS NULL "
                       "AND trail_json IS NULL")
             c.execute("DELETE FROM run_shape WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=run_shape.user_id "

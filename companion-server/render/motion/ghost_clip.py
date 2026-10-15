@@ -28,6 +28,7 @@ from ._draw import saira as _saira
 DURATION = 6.0
 N_FRAMES = int(round(DURATION * FPS))
 
+GHOST_SPREAD = 8.0      # the ghost's lead or lag on the hill is drawn this many times larger, or the two dots sit on one another
 RACE = (0.45, 4.25)      # the clock runs
 LAND = 4.25              # you are over the line; the ghost may still be running
 HOOK = (4.8, 5.3)        # the hook replaces "YOU VS YOUR BEST"
@@ -97,6 +98,11 @@ def _interp(values: Sequence[float], x: float) -> float:
     return values[lo] + (values[hi] - values[lo]) * (pos - lo)
 
 
+def gap_text(s: int) -> str:
+    """Seconds under a minute, m:ss from 60 (the hero and the hook say it the same way)."""
+    return f"{s} S" if s < 60 else f"{s // 60}:{s % 60:02d}"
+
+
 def hook_lines(spec: GhostClipSpec) -> tuple[str, str]:
     """The two lines of the hook, from the gap series: how far down the run got, and where it finished."""
     gap, n = spec.gap, len(spec.gap)
@@ -108,18 +114,18 @@ def hook_lines(spec: GhostClipSpec) -> tuple[str, str]:
         where = f"AT {km} KM"
     else:
         where = "ON THE WAY"
-    down = f"DOWN {-low} S {where}." if low <= -5 else None
+    down = f"DOWN {gap_text(-low)} {where}." if low <= -5 else None
     if final > 0:
         if down:
-            return down, "WON IT AT THE LINE." if final < 10 else f"HOME {final} S CLEAR."
+            return down, "WON IT AT THE LINE." if final < 10 else f"HOME {gap_text(final)} CLEAR."
         if low >= -2:
-            return "AHEAD ALL THE WAY.", f"{final} S FASTER."
+            return "AHEAD ALL THE WAY.", f"{gap_text(final)} FASTER."
         if final >= 10:
-            return "PULLED AWAY.", f"{final} S FASTER."
-        return "NECK AND NECK.", f"{final} S FASTER AT THE LINE."
+            return "PULLED AWAY.", f"{gap_text(final)} FASTER."
+        return "NECK AND NECK.", f"{gap_text(final)} FASTER AT THE LINE."
     if final == 0:
         return down or "NECK AND NECK.", "LEVEL AT THE LINE."
-    return "THE GHOST HELD ON.", f"{-final} S OFF YOUR BEST."
+    return "THE GHOST HELD ON.", f"{gap_text(-final)} OFF YOUR BEST."
 
 
 class GhostClip:
@@ -156,7 +162,7 @@ class GhostClip:
             span = max(self.ghost_t[j] - self.ghost_t[j - 1], 1e-9)
             ghost = (j - 1 + (tau - self.ghost_t[j - 1]) / span) / (BAKED - 1)
         live = self.final if you >= 1.0 else round(_interp(self.dense_gap, you))
-        return you, clamp(ghost), live
+        return you, ghost, live
 
     # ---- drawing ------------------------------------------------------------------------------
     @staticmethod
@@ -199,24 +205,27 @@ class GhostClip:
         if you <= 0:
             return
         steps = max(2, int(you * 150))
-        pts = [(self._x(i / steps * you), y0 - _interp(self.dense_gap, i / steps * you) * self.gap_scale) for i in range(steps + 1)]
-        for a, b in zip(pts, pts[1:]):
-            col = brand.MINT if (a[1] + b[1]) / 2 < y0 else brand.VERMILLION
+        vals = [_interp(self.dense_gap, i / steps * you) for i in range(steps + 1)]
+        pts = [(self._x(i / steps * you), y0 - v * self.gap_scale) for i, v in enumerate(vals)]
+        # one rounding for the colour and the big number: a gap that reads "0 S" is mint in both
+        cols = [brand.MINT if round((u + v) / 2) >= 0 else brand.VERMILLION for u, v in zip(vals, vals[1:])]
+        for a, b, col in zip(pts, pts[1:], cols):
             cv.poly([(a[0], y0), a, b, (b[0], y0)], mix(WHITE, col, 0.20))
-        for a, b in zip(pts, pts[1:]):
-            cv.line([a, b], 8, brand.MINT if (a[1] + b[1]) / 2 < y0 else brand.VERMILLION)
+        for a, b, col in zip(pts, pts[1:], cols):
+            cv.line([a, b], 8, col)
         cv.circle(pts[-1][0], pts[-1][1], 15, fill=brand.INK)
 
     def _markers(self, cv: Canvas, you: float, ghost: float, done: bool):
+        ghost = clamp(you + (ghost - you) * GHOST_SPREAD)   # drawn spread out; it still lands on the line with you
         gx, gy = self._x(ghost), self._y(ghost)
         yx, yy = self._x(you), self._y(you)
         cv.circle(gx, gy, 19, fill=WHITE, outline=brand.QUIET, width=7)
         cv.circle(yx, yy, 21, fill=brand.ARC if done and self.final > 0 else brand.INK, outline=WHITE, width=5)
-        cv.text((gx, gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
-        if abs(gx - yx) < 74:   # level with the ghost: the label sits beside the dot, clear of the BEST label above
-            right = yx < W / 2
-            cv.text((yx + 36 if right else yx - 36, yy + 12), "YOU", saira(34), brand.INK, anchor="ls" if right else "rs")
+        if abs(gx - yx) < 74:   # still close (the start, the line): stack YOU above BEST, both kept inside the panel and off the stroke
+            cv.text((min(max(gx, PX0 + 40), PX1 - 40), gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
+            cv.text((min(max(yx, PX0 + 40), PX1 - 40), min(yy, gy) - 84), "YOU", saira(34), brand.INK, anchor="ms")
         else:
+            cv.text((gx, gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
             cv.text((yx, yy - 38), "YOU", saira(34), brand.INK, anchor="ms")
 
     def frame(self, t: float):
