@@ -5,6 +5,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/live_context.dart';
+import 'package:run_solo/state/trails.dart';
 import 'package:run_solo/state/trail_ghost.dart';
 
 import '../run_fixtures.dart';
@@ -181,9 +182,43 @@ void main() {
     },
   );
 
+  test(
+    'a Free run on the same route joins the trail: boards and ghost',
+    () async {
+      final trail1 = trailLoopRun(n: 1, start: d1, secPerKm: 420);
+      final free2 = trailLoopRun(
+        n: 2,
+        start: d1.add(const Duration(days: 2)),
+        secPerKm: 380,
+      ).copyWith(mode: engine.RunMode.free);
+      final store = await storeWith([trail1, free2]);
+      final all = await store.list();
+      expect(all.firstWhere((r) => r.id == free2.id).row?.route, isNotNull);
+      final boards = trailBoards(all);
+      expect(boards, hasLength(1));
+      expect(boards.single.runs.map((r) => r.id), [trail1.id, free2.id]);
+      // The ghost knows it too: the Free run is the best (and the last) on it.
+      final trails = trailsOf(store);
+      expect(trails, hasLength(1));
+      expect(trails.single.best.runId, free2.id);
+      // A road run on other ground in Free mode is a group of one: no board.
+      final other = trailLoopRun(
+        n: 3,
+        start: d1.add(const Duration(days: 3)),
+        dLat: 0.05,
+      ).copyWith(mode: engine.RunMode.free);
+      final store2 = await storeWith([trail1, free2, other]);
+      expect(trailBoards(await store2.list()), hasLength(1));
+    },
+  );
+
   test('no trail runs gives no trails and no context', () async {
     final store = await storeWith([
-      freeRunFile(n: 1, start: d1, seconds: 1800),
+      freeRunFile(
+        n: 1,
+        start: d1,
+        seconds: 1800,
+      ).copyWith(mode: engine.RunMode.laps),
     ]);
     expect(trailsOf(store), isEmpty);
     final src = LiveContextSource(

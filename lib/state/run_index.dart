@@ -400,7 +400,8 @@ class IndexRow {
   /// 13: [restingHrBpm].
   /// 14: [avgHr], [hrCoverage] (the load check's heart-rate intensity).
   /// 15: [hrHist] (moving seconds per bpm: zone charts and strips).
-  static const int currentVersion = 15;
+  /// 16: [route] is also kept for Free runs (they join a trail they match).
+  static const int currentVersion = 16;
 
   final int version;
   final int lapCount;
@@ -606,9 +607,12 @@ class IndexRow {
           : dp4(a!.workFactors.grade),
       avgHr: hr == null ? null : dp1(hr.avgHr),
       hrCoverage: hr == null ? null : dp4(hr.coverage),
+      // Trail runs, and Free runs (which join a trail they match).
       route:
-          (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
-              engine.RunMode.trail
+          const {
+            engine.RunMode.trail,
+            engine.RunMode.free,
+          }.contains(sidecar?.runTypeOverride ?? a?.mode ?? run.mode)
           ? engine.RouteSignature.of(run)
           : null,
       routeName: run.route?.name,

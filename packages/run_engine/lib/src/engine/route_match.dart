@@ -227,6 +227,17 @@ abstract final class RouteMatch {
     }
     if (math.min(_cover(pa, pb), _cover(pb, pa)) < minCover) return false;
 
+    // An out-and-back is the same trail when it leaves from the same end and
+    // the two share the ground (the cover above): where each run turned round
+    // is the runner's choice on the day, not another trail. Walked in step,
+    // two turn points more than about 75 m apart fail the Frechet check below.
+    if (loops &&
+        _dist(pa.first, pb.first) <= endTolM &&
+        _isOutAndBack(pa) &&
+        _isOutAndBack(pb)) {
+      return true;
+    }
+
     final step = math.max(stepM, longer / maxSamples);
     final n = math.max(8, (longer / step).round());
     final ra = _resample(pa, n);
@@ -242,6 +253,47 @@ abstract final class RouteMatch {
       if (_frechet(ra, rot) <= tol) return true;
     }
     return false;
+  }
+
+  /// How far apart the two runs' turn points are along the shared ground, in
+  /// metres (the difference of their out-and-back legs); null unless both
+  /// are out-and-backs from the same end. For "0.2 km shorter" style copy.
+  static double? turnGapM(RouteSignature a, RouteSignature b) {
+    final local = _Local(a.start);
+    final pa = [for (final p in a.points) local.project(p)];
+    final pb = [for (final p in b.points) local.project(p)];
+    if (_dist(pa.first, pb.first) > endTolM) return null;
+    final ta = _turnAlong(pa), tb = _turnAlong(pb);
+    if (ta == null || tb == null) return null;
+    return (ta - tb).abs();
+  }
+
+  /// Out and back: it ends where it started and its way home lies on its way
+  /// out ([minCover] of the return within [coverTolM] of the outward leg),
+  /// the turn in the middle half of the route.
+  static bool _isOutAndBack(List<_Pt> p) => _turnAlong(p) != null;
+
+  /// Distance along [p] to its turn point (the vertex furthest from the
+  /// start as the crow flies), or null when [p] is not an out-and-back.
+  static double? _turnAlong(List<_Pt> p) {
+    if (p.length < 3 || _dist(p.first, p.last) > endTolM) return null;
+    var apex = 0;
+    var far = -1.0;
+    for (var i = 0; i < p.length; i++) {
+      final d = _d2(p.first, p[i]);
+      if (d > far) {
+        far = d;
+        apex = i;
+      }
+    }
+    if (apex == 0 || apex == p.length - 1) return null;
+    final out = p.sublist(0, apex + 1);
+    final back = p.sublist(apex);
+    final total = _length(p);
+    final along = _length(out);
+    if (along < total * 0.25 || along > total * 0.75) return null;
+    if (_cover(back, out) < minCover) return null;
+    return along;
   }
 
   /// The overlap figure, 0..1: the smaller of the two shares of a route that

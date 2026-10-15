@@ -18,6 +18,7 @@ class TrailRunFacts {
     this.route,
     this.place,
     this.street,
+    this.trailMode = true,
   });
 
   final String id;
@@ -36,6 +37,11 @@ class TrailRunFacts {
   final RouteSignature? route;
   final String? place;
   final String? street;
+
+  /// A Trail-mode run. A Free-mode run with a route groups with the runs it
+  /// matches (its boards, its verdicts, the in-run ghost) like any other, but
+  /// is not a trail run for the effort fallback.
+  final bool trailMode;
 
   TruePaceFactors get factors =>
       TruePaceFactors(grade: gradeFactor ?? 1, heat: heatFactor);
@@ -66,7 +72,12 @@ class TrailRunFacts {
 /// earliest run is the anchor every later run is matched against, so a trail
 /// never drifts as more runs join it.
 class TrailGroup {
-  const TrailGroup({required this.key, required this.name, required this.runs});
+  const TrailGroup({
+    required this.key,
+    required this.name,
+    required this.runs,
+    this.anchorId,
+  });
 
   /// `trail:<anchor run id>`; stable for as long as the anchor stays.
   final String key;
@@ -75,7 +86,11 @@ class TrailGroup {
   final String name;
   final List<TrailRunFacts> runs;
 
-  TrailRunFacts get anchor => runs.first;
+  /// The run that started the group (its earliest).
+  final String? anchorId;
+
+  TrailRunFacts get anchor =>
+      runs.firstWhere((r) => r.id == anchorId, orElse: () => runs.first);
 
   /// The distance every run on this trail is compared over: the anchor's.
   double get refDistanceM => anchor.distanceM;
@@ -114,7 +129,12 @@ abstract final class Trails {
     }
     return [
       for (final g in groups)
-        TrailGroup(key: 'trail:${g.first.id}', name: nameOf(g.first), runs: g),
+        TrailGroup(
+          key: 'trail:${g.first.id}',
+          name: nameOf(g.first),
+          runs: g,
+          anchorId: g.first.id,
+        ),
     ];
   }
 
@@ -226,7 +246,10 @@ abstract final class TrailVerdict {
   }) {
     final earlier = [
       for (final r in others)
-        if (r.id != current.id && r.start.isBefore(current.start)) r,
+        if (r.trailMode &&
+            r.id != current.id &&
+            r.start.isBefore(current.start))
+          r,
     ]..sort((a, b) => a.start.compareTo(b.start));
 
     if (current.route != null) {

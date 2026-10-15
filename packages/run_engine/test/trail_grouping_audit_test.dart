@@ -228,9 +228,9 @@ void main() {
       'Turned 100 m early (-7%)',
       aOab,
       _run('o3', [(0, 0), (1400, 0), (0, 0)], seed: 13),
-      boards: false,
+      boards: true,
       ghostSays: 'matched',
-      note: 'a turn point 100 m off splits the trail on the boards (Frechet 50 m + step), though the length is within 10%',
+      note: 'out and backs group on the shared ground, so a turn point 100 m off is still one trail (was split by the Frechet check)',
     );
     check(
       'Turned 200 m early (-13%)',
@@ -289,10 +289,10 @@ void main() {
         108,
         groups.length == 1,
         'n/a',
-        'groups: ${desc.join(' | ')}; C is within 60 m of B but 120 m from the anchor',
+        'groups: ${desc.join(' | ')}; out and backs no longer chain-split on turn points',
       ),
     );
-    expect(desc, ['oab+b', 'c']);
+    expect(desc, ['oab+b+c']);
   });
 
   tearDownAll(() {
