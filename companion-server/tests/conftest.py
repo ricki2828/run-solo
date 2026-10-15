@@ -72,7 +72,10 @@ class Fakes:
                 return httpx.Response(status, json=err)
             self.tg.append((method, body))
             self.mid += 1
-            return httpx.Response(200, json={"ok": True, "result": {"message_id": self.mid}})
+            result = {"message_id": self.mid}
+            if method == "sendAnimation":   # Telegram answers an animation with its file_id
+                result["animation"] = {"file_id": f"AnimFileId{self.mid}"}
+            return httpx.Response(200, json={"ok": True, "result": result})
         if host == "graph.facebook.com":
             self.wa.append(body)
             self.mid += 1

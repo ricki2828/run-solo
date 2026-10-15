@@ -85,6 +85,7 @@ class Settings:
     # Cards and videos as Telegram photos/videos. Off by default: it needs Chromium (and ffmpeg for video) on the host.
     media_enabled: bool = False
     trail_cards: bool = True      # trail board and trail record cards (COMPANION_TRAIL_CARDS=0 turns them off)
+    trail_clip: bool = True       # a trail record with a ghost series goes out as the race clip, not the still (COMPANION_TRAIL_CLIP=0)
     trail_spoiler: bool = True    # trail cards go out with Telegram's has_spoiler: a tap to reveal (COMPANION_TRAIL_SPOILER=0)
     # Unix socket of the render worker (deploy/companion-render.service). COMPANION_MEDIA=1 means "use this socket";
     # Chromium and ffmpeg never run in the companion process.
@@ -157,6 +158,7 @@ class Settings:
             weather_enabled=_flag(e.get("COMPANION_WEATHER")),
             media_enabled=_flag(e.get("COMPANION_MEDIA")),
             trail_cards=e.get("COMPANION_TRAIL_CARDS", "1").strip().lower() not in ("0", "false", "no", "off"),
+            trail_clip=e.get("COMPANION_TRAIL_CLIP", "1").strip().lower() not in ("0", "false", "no", "off"),
             trail_spoiler=e.get("COMPANION_TRAIL_SPOILER", "1").strip().lower() not in ("0", "false", "no", "off"),
             render_socket=os.path.expanduser(e.get("COMPANION_RENDER_SOCKET", "~/companion-data/render/render.sock")),
             deeplink_base=_https_base(e.get("COMPANION_DEEPLINK_BASE")),

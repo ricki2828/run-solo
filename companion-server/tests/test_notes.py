@@ -465,7 +465,7 @@ def test_the_recap_quote_path_sends_nothing_to_the_writer_or_the_renderer(tmp_pa
     seen = []
 
     class Recorder:
-        def render(self, plan, card, runs, memory=None):
+        def render(self, plan, card, runs, memory=None, clip=True):
             seen.append(json.dumps({"plan": plan, "card": card, "runs": runs}, default=str))
             return None
 

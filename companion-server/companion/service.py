@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import secrets
+import sqlite3
 import string
 import unicodedata
 from datetime import date, datetime, timedelta
@@ -25,7 +26,7 @@ from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppC
 from .checkin_service import CheckinMixin
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
-from .media import Media, MediaError, from_settings
+from .media import GHOST_CLIP_S, Media, MediaError, from_settings
 from . import notes as cv_notes
 from . import trail as cv_trail
 from .convo import engine as cv_engine
@@ -325,6 +326,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
     "checkin_slots": "which check-in messages were sent (ids and dates, no answer)",
     "question_cap": "one row per local day a question was sent (the daily cap)",
+    "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
     "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
     "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
 }
@@ -1359,6 +1361,13 @@ class Service(CheckinMixin):
             try:
                 self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
+                if media.sent.get("file_id"):
+                    with db.tx(self.s.db_path) as c:   # the clip's Telegram id; a run that was deleted meanwhile just fails the FK
+                        try:
+                            c.execute("INSERT OR REPLACE INTO media_file_ids (user_id, run_id, kind, file_id, created_at) VALUES (?,?,?,?,?)",
+                                      (user["id"], card.get("run_id"), "ghostclip", media.sent["file_id"], iso(now)))
+                        except sqlite3.IntegrityError:
+                            pass
             except ChannelError as e:
                 if not e.permanent:
                     raise
@@ -1499,8 +1508,16 @@ class Service(CheckinMixin):
                                        "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None,
                                        "trail": cv_trail.load(sh["trail_json"])}
         try:
+            if plan.get("card") == "trail_record" and self.s.trail_clip:
+                # a clip already sent for this run is one id, not another render and upload (an outbox retry)
+                with db.ro(self.s.db_path) as c:
+                    hit = c.execute("SELECT file_id FROM media_file_ids WHERE user_id=? AND run_id=? AND kind='ghostclip'",
+                                    (user["id"], card.get("run_id"))).fetchone()
+                if hit:
+                    return dataclasses.replace(Media(), animation=True, animation_file_id=hit["file_id"], duration_s=GHOST_CLIP_S,
+                                               spoiler=self.s.trail_spoiler)
             # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
-            media = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs)
+            media = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs, clip=self.s.trail_clip)
             if media is not None and self.s.trail_spoiler and (
                     plan.get("card") in cv_trail.TRAIL_KINDS
                     or (card["kind"] == "run" and runs and runs[0].get("app_type") == "trail")):

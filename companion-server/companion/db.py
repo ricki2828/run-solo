@@ -158,6 +158,17 @@ CREATE TABLE IF NOT EXISTS run_shape (
   PRIMARY KEY (user_id, run_id),
   FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
 );
+-- Telegram's file_id of an animation already sent for a run (the ghost race clip), so a repeat send is one id and not another
+-- render and upload. Only an opaque id the runner's own chat already holds. It lives and dies with its run (cascade) and the user.
+CREATE TABLE IF NOT EXISTS media_file_ids (
+  user_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  file_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, run_id, kind),
+  FOREIGN KEY (user_id, run_id) REFERENCES runs (user_id, run_id) ON DELETE CASCADE
+);
 -- "Add a note" was tapped: the next free-text message is that run's note, until expires_at. One row per user.
 CREATE TABLE IF NOT EXISTS note_mode (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

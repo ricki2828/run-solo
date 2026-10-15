@@ -205,7 +205,7 @@ class TelegramChannel:
 
     def send_card(self, ref: str, card: OutCard, **_: Any) -> str:
         text = f"{card.headline}\n{card.body}"
-        if card.media and (card.media.photo or card.media.video):
+        if card.media and card.media.has_content:
             return self._send_media(ref, card, photo_caption(card))
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         kb = self._keyboard(card, media=False)
@@ -217,7 +217,7 @@ class TelegramChannel:
     def followups(card: OutCard) -> list[str]:
         """Messages a media card needs after the media itself: "caption" when the text does not fit a caption (the
         buttons ride that text), "question" when question buttons were kept off the media."""
-        if not (card.media and (card.media.photo or card.media.video)):
+        if not (card.media and card.media.has_content):
             return []
         if card.media.spoiler and card.neutral_caption:
             # the coach line (the verdict) goes as its own message after the photo; question buttons follow as before
@@ -275,8 +275,22 @@ class TelegramChannel:
             fields["caption"] = text
             if kb:
                 fields["reply_markup"] = json.dumps({"inline_keyboard": kb})
-        attempts: list[tuple[str, dict, dict]] = []
-        if m.video and len(m.video) <= VIDEO_MAX_BYTES:
+        attempts: list[tuple[str, dict, dict | None]] = []
+        if m.animation and (m.animation_file_id or (m.video and len(m.video) <= VIDEO_MAX_BYTES)):
+            # sendAnimation autoplays and loops in the chat (and a forward keeps it); the spoiler is tried first and dropped on refusal
+            anim = {"width": m.width, "height": m.height, "duration": m.duration_s}
+            for spoiler in ((True, False) if m.spoiler else (False,)):
+                extra = {"has_spoiler": "true"} if spoiler else {}
+                if m.animation_file_id:   # an id Telegram already holds: a JSON call, no upload
+                    body = {"chat_id": int(ref), "animation": m.animation_file_id, **anim, **({"has_spoiler": True} if spoiler else {})}
+                    if "caption" in fields:
+                        body["caption"] = fields["caption"]
+                        if kb:
+                            body["reply_markup"] = {"inline_keyboard": kb}
+                    attempts.append(("sendAnimation", body, None))
+                else:
+                    attempts.append(("sendAnimation", {**fields, **anim, **extra}, {"animation": ("ghost.mp4", m.video, "video/mp4")}))
+        elif m.video and len(m.video) <= VIDEO_MAX_BYTES:
             attempts.append(("sendVideo", {**fields, "supports_streaming": "true", "width": m.width, "height": m.height,
                                            "duration": m.duration_s, **({"has_spoiler": "true"} if m.spoiler else {})},
                              {"video": ("run.mp4", m.video, "video/mp4")}))
@@ -289,7 +303,12 @@ class TelegramChannel:
         last: ChannelError | None = None
         for method, payload, files in attempts:
             try:
-                return str(self._call(method, payload, files)["result"]["message_id"])
+                result = self._call(method, payload, files)["result"]
+                if method == "sendAnimation":   # kept by the service so a repeat send is one id, not another upload
+                    fid = (result.get("animation") or {}).get("file_id")
+                    if isinstance(fid, str) and fid:
+                        m.sent["file_id"] = fid
+                return str(result["message_id"])
             except ChannelError as e:
                 if not e.permanent:
                     raise

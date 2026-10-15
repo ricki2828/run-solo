@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -33,6 +33,8 @@ SCORE_KEYS = ("aerobic", "speed", "mid", "long")
 PB_LABEL = {"5k": "5 KM BEST", "10k": "10 KM BEST", "half": "HALF MARATHON BEST", "longest": "LONGEST RUN",
             "fastest_km": "FASTEST KM"}
 VERDICTS = frozenset({"faster", "holding", "slower", "noRealChange", "baselineSet", "indoorRun"})
+GHOST_CLIP_S = 6      # the clip's length (render/motion/ghost_clip.py DURATION)
+CLIP_CACHE_MAX = 4    # rendered clips kept for an outbox retry, so a retried send does not render again
 
 
 class MediaError(Exception):
@@ -47,6 +49,13 @@ class Media:
     height: int = HEIGHT
     duration_s: int = 0
     spoiler: bool = False   # Telegram has_spoiler on the photo: a tap to reveal
+    animation: bool = False             # send `video` with sendAnimation: it autoplays and loops in the chat (the ghost race clip)
+    animation_file_id: str | None = None   # Telegram's id of an animation this bot already sent: re-sent without an upload
+    sent: dict = field(default_factory=dict, compare=False)   # the channel notes what Telegram answered here (file_id)
+
+    @property
+    def has_content(self) -> bool:
+        return bool(self.photo or self.video or self.animation_file_id)
 
 
 def _zone_s(row: Mapping[str, Any]) -> list[float]:
@@ -200,7 +209,9 @@ def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable
 
     def weekly(facts: dict, out: Path) -> Any:
         out.write_bytes(_client(client).video("weekly", facts))
-    return {"run": run, "weekly": weekly}
+    def ghostclip(facts: dict, out: Path) -> Any:
+        out.write_bytes(_client(client).video("ghostclip", facts))
+    return {"run": run, "weekly": weekly, "ghostclip": ghostclip}
 
 
 def _client(client: RenderClient | None) -> RenderClient:
@@ -218,6 +229,7 @@ class MediaRenderer:
     def __init__(self, card_fns: Mapping[str, Callable[..., bytes]] | None = None,
                  video_fns: Mapping[str, Callable[..., Any]] | None = None, client: RenderClient | None = None):
         self._cards, self._videos = card_fns, video_fns
+        self._clips: dict[str, bytes] = {}
         self._client = client or RenderClient(default_socket_path())
 
     @property
@@ -248,9 +260,35 @@ class MediaRenderer:
             return None
         return data
 
+    @staticmethod
+    def ghost_clip_ok(facts: Mapping[str, Any]) -> bool:
+        """The ghost race clip needs a hill to run along, a ghost series and another run to race: n >= 2 on the trail."""
+        return (int(facts.get("trail_runs") or 0) >= 2 and isinstance(facts.get("ghost_gap"), list)
+                and isinstance(facts.get("elev_profile"), list) and len(facts["elev_profile"]) >= 8)
+
+    def _ghost_media(self, run_id: str, facts: dict, memory: Mapping[str, Any] | None) -> Media | None:
+        """The race clip for a trail record, with the static record card beside it as the fallback the channel uses when
+        Telegram refuses the animation. None when the clip cannot be made: the caller then sends the card as before. One
+        render at a time, in the worker: the clip first, then the card."""
+        video = self._clips.get(run_id) or self._video("ghostclip", facts)
+        if video is None:
+            return None
+        while len(self._clips) >= CLIP_CACHE_MAX:
+            self._clips.pop(next(iter(self._clips)))
+        self._clips[run_id] = video
+        try:
+            photo = self.cards["trail_record"](facts, memory or {})
+        except Exception as e:   # the clip alone is enough to send
+            log.warning("ghost clip fallback card skipped: %s", type(e).__name__)
+            photo = None
+        if photo and len(photo) > PHOTO_MAX_BYTES:
+            photo = None
+        return Media(photo=photo or None, video=video, duration_s=GHOST_CLIP_S, animation=True)
+
     def render(self, plan: Mapping[str, Any], card: Mapping[str, Any], runs: Sequence[Mapping[str, Any]],
-               memory: Mapping[str, Any] | None = None) -> Media | None:
-        """None when the plan has no media. Raises MediaError when a planned still card cannot be made."""
+               memory: Mapping[str, Any] | None = None, clip: bool = True) -> Media | None:
+        """None when the plan has no media. Raises MediaError when a planned still card cannot be made. A trail record
+        with a ghost series goes out as the race clip instead of the still (`clip=False` keeps the still)."""
         kind = plan.get("card")
         if kind == "suggestion":
             # The evening suggestion's facts were stored when the coach decided to send it. An older card, written
@@ -277,6 +315,10 @@ class MediaRenderer:
                 if not trail:
                     raise MediaError("trail block gone")
                 facts = trail_card_facts(run, trail)
+                if kind == "trail_record" and clip and self.ghost_clip_ok(facts):
+                    ghost = self._ghost_media(str(card["run_id"]), facts, memory)
+                    if ghost is not None:
+                        return ghost
                 vkind, vfacts = "run", None   # no video: the picture is the moment
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
