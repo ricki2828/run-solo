@@ -1764,6 +1764,7 @@ Map<String, Object?> companionPlanFacts(
   engine.BlockView? view,
   String runId, {
   DateTime? runStart,
+  engine.TargetPaces? paces,
 }) {
   if (view == null) return const {};
   engine.BlockSessionState? own;
@@ -1808,7 +1809,34 @@ Map<String, Object?> companionPlanFacts(
         'minutes': ?minutes,
         'distance_m': ?dist,
         ...companionTemplateFacts(next.session),
+        ...companionPaceFacts(next.session, paces),
       },
+  };
+}
+
+/// The work pace the coach's morning card shows for a quality session:
+/// `target_pace_lo_s`, `target_pace_hi_s` (the same True Pace, whole seconds
+/// per km) and `target_pace_method` (`vdot`, or `moved` after a nudge the
+/// runner accepted). Quality sessions only: an easy or long pace is a
+/// ceiling, not a target to hit. Nothing without targets or off the range the
+/// server accepts.
+Map<String, Object?> companionPaceFacts(
+  engine.BlockSession session,
+  engine.TargetPaces? paces,
+) {
+  if (paces == null ||
+      (session.kind != engine.BlockKind.interval &&
+          session.kind != engine.BlockKind.goal)) {
+    return const {};
+  }
+  final p = paces.sessionPace(session);
+  if (p == null || !p.isFinite) return const {};
+  final s = p.roundToDouble();
+  if (s < 120 || s > 1200) return const {};
+  return {
+    'target_pace_lo_s': s,
+    'target_pace_hi_s': s,
+    'target_pace_method': paces.sessionPaceMoved(session) ? 'moved' : 'vdot',
   };
 }
 

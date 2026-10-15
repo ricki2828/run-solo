@@ -142,6 +142,29 @@ class PlanNextIn(BaseModel):
     session_name: str | None = Field(default=None, min_length=1, max_length=40)
     session_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")   # a hint from the app's template id
     session_ref: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,16}$")
+    # Optional: the work pace the app targets for it, True Pace in s/km (a runner's own paces, so 2:00 to 20:00 per km),
+    # and which method it came from. A bad or inconsistent value drops the pace, never the plan. Older apps send none.
+    target_pace_lo_s: float | None = Field(default=None, ge=120, le=1200)
+    target_pace_hi_s: float | None = Field(default=None, ge=120, le=1200)
+    target_pace_method: str | None = Field(default=None, pattern=r"^(vdot|moved)$")
+
+    @field_validator("target_pace_lo_s", "target_pace_hi_s", "target_pace_method", mode="wrap")
+    @classmethod
+    def _optional_pace(cls, v, handler):
+        try:
+            out = handler(v)
+        except ValidationError:
+            return None
+        if isinstance(out, float) and not math.isfinite(out):
+            return None
+        return out
+
+    @model_validator(mode="after")
+    def _pace_is_a_range(self):
+        lo, hi = self.target_pace_lo_s, self.target_pace_hi_s
+        if lo is None or hi is None or lo > hi or self.target_pace_method is None:   # half a range, backwards, or no method: no pace
+            self.target_pace_lo_s = self.target_pace_hi_s = self.target_pace_method = None
+        return self
 
     @field_validator("session_name", "session_id", "session_ref", mode="wrap")
     @classmethod
@@ -744,7 +767,7 @@ class Service(CheckinMixin):
             runs = [dict(r) for r in c.execute(
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
-                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, feel, session_name, work_pace_s_per_km, reps_done, "
+                "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, plan_next_pace_lo, plan_next_pace_hi, plan_next_pace_method, feel, session_name, work_pace_s_per_km, reps_done, "
                 "rep_spread_s, recovery_pace_s_per_km, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
@@ -968,6 +991,10 @@ class Service(CheckinMixin):
                   (nx.session_ref if nx else None, nx.session_name if nx else None, uid, run.run_id))
         c.execute("UPDATE runs SET plan_next_session_id=? WHERE user_id=? AND run_id=?",
                   (nx.session_id if nx else None, uid, run.run_id))
+        c.execute("UPDATE runs SET plan_next_pace_lo=?, plan_next_pace_hi=?, plan_next_pace_method=? "
+                  "WHERE user_id=? AND run_id=?",
+                  (nx.target_pace_lo_s if nx else None, nx.target_pace_hi_s if nx else None,
+                   nx.target_pace_method if nx else None, uid, run.run_id))
 
     @staticmethod
     def _keep_shape(c, uid: str, run: RunIn) -> None:

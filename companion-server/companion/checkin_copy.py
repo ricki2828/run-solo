@@ -26,6 +26,7 @@ class Ctx:
     easier: bool = False
     original_word: str | None = None   # what the plan had, when "flat" made it easy
     heat_s_km: int | None = None       # extra s/km on an easy pace in today's forecast heat; the morning card only
+    work_pace_s: float | None = None   # the planned quality session's work pace (True Pace s/km); the morning card only
 
 
 def session_label(typ: str, minutes: int | None, distance_m: int | None, name: str | None = None) -> str:
@@ -66,6 +67,14 @@ def ready(stage: str | None, c: Ctx) -> tuple[str, str, Keyboard]:
     return ("Moved", move, again)
 
 
+def pace_clause(s_km: float | None) -> str:
+    """" · 4:48/km work pace", or nothing when the app sent no pace."""
+    if not s_km:
+        return ""
+    s = round(s_km)
+    return f" · {s // 60}:{s % 60:02d}/km work pace"
+
+
 def heat_line(s_km: int | None) -> str:
     return f"\nHot one: about +{s_km} s/km on easy pace." if s_km else ""
 
@@ -74,7 +83,7 @@ def today(stage: str | None, c: Ctx, why: str | None = None) -> tuple[str, str, 
     label = c.label or "Today's run"
     if stage is None:
         when = f"Planned for {c.when}." if c.when else "It's on the plan for today."
-        return (f"Today: {label}", f"{when} Run it, move it or skip it?{heat_line(c.heat_s_km)}",
+        return (f"Today: {label}{pace_clause(c.work_pace_s)}", f"{when} Run it, move it or skip it?{heat_line(c.heat_s_km)}",
                 _kb([("Run", "t.go"), ("Move", "t.move"), ("Skip", "t.skip")]))
     change = _kb([("Change", "u.undo")])
     if stage == "going":
