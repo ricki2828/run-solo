@@ -43,7 +43,7 @@ const String kCompanionSent =
     'done, work pace, how far apart the reps were and recovery pace. Plus how '
     'a run felt when '
     'you tap Easy, Right or Hard. Never your GPS points, never the street, '
-    'never your heart rate trace.';
+    'never your heart rate trace, unless you turn on Heart rate on cards.';
 
 const String kCompanionWhere =
     'To our server, which keeps it to write your notes. A writing service '
@@ -67,6 +67,13 @@ const String kCompanionRouteBlurb =
 const String kCompanionPlaceNamesBlurb =
     'Puts the name of your trail on its cards, like "Kastro loop". It comes '
     'from the street or place you started in. Off, no name leaves your phone.';
+
+/// "Heart rate on cards" (off until the runner turns it on). One line under
+/// the switch; same words as the privacy page.
+const String kCompanionHeartRateBlurb =
+    'Draws your heart rate over the hill on a trail card, when you ran with '
+    'a heart rate strap. It is health data, so it is off until you turn it '
+    'on. Off, no heart rate leaves your phone.';
 
 /// "Weather in suggestions" (off until the runner turns it on). The blurb
 /// sits under the switch; the sheet is the disclosure shown before it turns
@@ -417,6 +424,14 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
     setState(() => _problem = ctl.problem);
   }
 
+  Future<void> _setHeartRate(bool on) async {
+    final ctl = AppServices.of(context).companion!;
+    setState(() => _problem = null);
+    await ctl.setHeartRate(on);
+    if (!mounted) return;
+    setState(() => _problem = ctl.problem);
+  }
+
   Future<void> _setRouteShape(bool on) async {
     final ctl = AppServices.of(context).companion!;
     setState(() => _problem = null);
@@ -581,6 +596,16 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
             switchKey: const ValueKey('companion-place-names-switch'),
             on: services.companion!.placeNamesOn,
             onChanged: _busy ? null : _setPlaceNames,
+          ),
+        ),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => _SwitchRow(
+            title: 'Heart rate on cards',
+            blurb: kCompanionHeartRateBlurb,
+            switchKey: const ValueKey('companion-heart-rate-switch'),
+            on: services.companion!.heartRateOn,
+            onChanged: _busy ? null : _setHeartRate,
           ),
         ),
         const _Heading('Weather'),

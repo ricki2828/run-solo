@@ -9,6 +9,7 @@ The plaintext snapshot lives only in memory; nothing unencrypted is written unde
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -45,6 +46,17 @@ def _snapshot(db_path: str) -> bytes:
                 mem.execute(f"DELETE FROM {t}")
             except sqlite3.OperationalError:   # a database from before the check-ins has no such table
                 pass
+        # Heart rate is health data behind an off-by-default switch: turning it off deletes the live copy at once, so a
+        # backup must not keep one for 14 days. The series is emptied from the snapshot's trail blocks (the rest stays).
+        try:
+            for run_id, user_id, raw in mem.execute("SELECT run_id, user_id, trail_json FROM run_shape WHERE trail_json LIKE '%\"hr\"%'").fetchall():
+                d = json.loads(raw)
+                d.pop("hr", None)
+                d.pop("hr_z", None)
+                mem.execute("UPDATE run_shape SET trail_json=? WHERE user_id=? AND run_id=?",
+                            (json.dumps(d, separators=(",", ":")), user_id, run_id))
+        except sqlite3.OperationalError:
+            pass
         mem.commit()
         mem.execute("VACUUM")   # so the deleted rows are not left in free pages of the snapshot
         return mem.serialize()

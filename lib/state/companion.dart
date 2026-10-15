@@ -25,8 +25,9 @@
 /// - `GET /v1/me/next-session` (Bearer): the coach's next session and latest
 ///   line, for Home. 404 from a server without check-ins means "nothing".
 /// - `PUT /v1/me/settings` `{weather: bool}`, `{route_shape: bool}` or
-///   `{place_names: bool}` (Bearer): the weather switch, the "Show route shape
-///   on cards" switch and the "Show trail names on cards" switch
+///   `{place_names: bool}` or `{heart_rate: bool}` (Bearer): the weather
+///   switch, the "Show route shape on cards" switch, the "Show trail names on
+///   cards" switch and the "Heart rate on cards" switch
 ///
 /// A run summary carries, besides its totals, `splits` (per km), `reps` (a
 /// structured run) and, while "Show route shape on cards" is on, `route`: a
@@ -384,6 +385,17 @@ class CompanionClient {
       uri: _uri(['v1', 'me', 'settings']),
       headers: _headers(token, json: true),
       body: utf8.encode(jsonEncode({'route_shape': on})),
+    ),
+  );
+
+  /// `PUT /v1/me/settings {heart_rate}`: the "Heart rate on cards" switch.
+  /// Off also makes the server delete every heart-rate series it holds.
+  Future<CompanionReply> putHeartRate(String token, bool on) => http.send(
+    CompanionRequest(
+      method: 'PUT',
+      uri: _uri(['v1', 'me', 'settings']),
+      headers: _headers(token, json: true),
+      body: utf8.encode(jsonEncode({'heart_rate': on})),
     ),
   );
 
@@ -833,6 +845,13 @@ class CompanionController extends ChangeNotifier {
   /// Set while the server has not yet confirmed "forget my trail names".
   static const String placeNamesForgetName = 'companion_place_names_forget';
 
+  /// "Heart rate on cards" is OFF unless this holds '1'. Heart rate is health
+  /// data: nothing leaves the phone unless the runner turned this on.
+  static const String heartRateName = 'companion_heart_rate';
+
+  /// Set while the server has not yet confirmed "forget my heart-rate series".
+  static const String heartRateForgetName = 'companion_heart_rate_forget';
+
   /// "Show route shape on cards" is ON unless this holds '1'.
   static const String routeOffName = 'companion_route_off';
 
@@ -864,6 +883,7 @@ class CompanionController extends ChangeNotifier {
   int _consent = 0;
   bool _weather = false;
   bool _placeNames = false;
+  bool _heartRate = false;
   CoachNext? _coachNext;
   bool _nextBusy = false;
   DateTime? _nextAt;
@@ -876,6 +896,10 @@ class CompanionController extends ChangeNotifier {
   /// "Show trail names on cards" (off until the runner turns it on). The
   /// trail block carries a name only while this is true.
   bool get placeNamesOn => _placeNames && enrolled;
+
+  /// "Heart rate on cards" (off until the runner turns it on). The trail
+  /// block carries a heart-rate series only while this is true.
+  bool get heartRateOn => _heartRate && enrolled;
 
   /// "Show route shape on cards" (on until the runner turns it off). The run
   /// summary carries the route SHAPE only while this is true: an outline with
@@ -990,6 +1014,11 @@ class CompanionController extends ChangeNotifier {
           'could not read the trail names switch (${e.runtimeType})',
         );
       }
+      try {
+        _heartRate = await store.read(heartRateName) == '1';
+      } catch (e) {
+        companionLog('could not read the heart rate switch (${e.runtimeType})');
+      }
     }
     // The route choice outlives a wipe, so it is read with or without a token.
     try {
@@ -1001,6 +1030,7 @@ class CompanionController extends ChangeNotifier {
     if (_phase == CompanionPhase.on) {
       await syncWeather();
       await syncPlaceNames();
+      await syncHeartRate();
       await syncRouteShape();
       await syncConsent();
     }
@@ -1217,9 +1247,15 @@ class CompanionController extends ChangeNotifier {
   /// server first, off stops the phone at once and then tells the server to
   /// forget the names it holds (retried until it has).
   Future<bool> setPlaceNames(bool on) async {
+    if (!on) {
+      // Off stops the phone first, with or without a token.
+      await _savePlaceNames(false, forgetPending: true);
+      await syncPlaceNames();
+      return true;
+    }
     final t = await token();
     if (t == null) return false;
-    if (on) {
+    {
       try {
         final r = await client.putPlaceNames(t, true);
         if (r.status == 401 || r.status == 403) {
@@ -1241,9 +1277,6 @@ class CompanionController extends ChangeNotifier {
       await _savePlaceNames(true, forgetPending: false);
       return true;
     }
-    await _savePlaceNames(false, forgetPending: true);
-    await syncPlaceNames();
-    return true;
   }
 
   /// Tells the server to forget the trail names if a switch-off has not
@@ -1294,6 +1327,94 @@ class CompanionController extends ChangeNotifier {
       }
     } catch (e) {
       companionLog('could not save the trail names switch (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// "Heart rate on cards". Same shape as [setPlaceNames]: on tells the
+  /// server first, off stops the phone at once and then tells the server to
+  /// forget the series it holds (retried until it has).
+  Future<bool> setHeartRate(bool on) async {
+    if (!on) {
+      // Off stops the phone first, with or without a token.
+      await _saveHeartRate(false, forgetPending: true);
+      await syncHeartRate();
+      return true;
+    }
+    final t = await token();
+    if (t == null) return false;
+    {
+      try {
+        final r = await client.putHeartRate(t, true);
+        if (r.status == 401 || r.status == 403) {
+          await _wipe();
+          return false;
+        }
+        if (!r.ok) {
+          problem =
+              'The companion is busy. Heart rate is still off. Try again.';
+          notifyListeners();
+          return false;
+        }
+      } on CompanionNetworkError {
+        problem = 'No network. Heart rate is still off. Try again.';
+        notifyListeners();
+        return false;
+      }
+      problem = null;
+      await _saveHeartRate(true, forgetPending: false);
+      return true;
+    }
+  }
+
+  /// Tells the server to forget the heart-rate series if a switch-off has not
+  /// landed yet.
+  Future<void> syncHeartRate() async {
+    String? pending;
+    try {
+      pending = await store.read(heartRateForgetName);
+    } catch (_) {
+      return;
+    }
+    if (pending != '1') return;
+    final t = await token();
+    if (t == null) return;
+    try {
+      final r = await client.putHeartRate(t, false);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.ok) {
+        await store.delete(heartRateForgetName);
+        problem = null;
+      } else {
+        problem = _heartRatePending;
+      }
+    } on CompanionNetworkError {
+      problem = _heartRatePending;
+    } catch (e) {
+      companionLog('heart rate sync failed (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  static const String _heartRatePending =
+      'Heart rate is off on your phone. The server will be told when you '
+      'are back online.';
+
+  Future<void> _saveHeartRate(bool on, {required bool forgetPending}) async {
+    _heartRate = on;
+    try {
+      if (on) {
+        await store.write(heartRateName, '1');
+        await store.delete(heartRateForgetName);
+      } else {
+        await store.delete(heartRateName);
+        if (forgetPending) await store.write(heartRateForgetName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the heart rate switch (${e.runtimeType})');
     }
     notifyListeners();
   }
@@ -1560,6 +1681,8 @@ class CompanionController extends ChangeNotifier {
       await store.delete(weatherForgetName);
       await store.delete(placeNamesName);
       await store.delete(placeNamesForgetName);
+      await store.delete(heartRateName);
+      await store.delete(heartRateForgetName);
       await store.delete(nextName);
       // The route choice is the runner's and survives a wipe (a 401, a
       // re-enrol): an OFF stays off, and the new server record is told so as
@@ -1571,6 +1694,7 @@ class CompanionController extends ChangeNotifier {
     _phase = CompanionPhase.off;
     _weather = false;
     _placeNames = false;
+    _heartRate = false;
     _consent = 0;
     _consentSent = 0;
     _coachNext = null;
@@ -1892,6 +2016,7 @@ class CompanionTarget extends ExportTarget {
     try {
       await controller.syncWeather();
       await controller.syncPlaceNames();
+      await controller.syncHeartRate();
       await controller.syncRouteShape();
       await controller.syncConsent();
       final hide = controller.routeShapeOn

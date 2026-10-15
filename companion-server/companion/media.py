@@ -188,10 +188,10 @@ def month_facts(month_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, 
 
 # Cards the worker can draw from stored rows (run, week, month) or from facts persisted in the plan (suggestion).
 CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
-              "trail_board", "trail_record")
+              "trail_board", "trail_record", "trail_heart")
 # Coach check-in cards (stream S2): drawn from facts the caller builds, never from stored rows.
 CHECKIN_KINDS = ("today", "today_verdict", "moved", "pinned_week")
-ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly", "trail_board", "trail_record")
+ROW_KINDS = ("light", "flood", "pb", "weekly_recap", "monthly", "trail_board", "trail_record", "trail_heart")
 
 
 def _default_card_fns(client: RenderClient) -> dict[str, Callable[..., bytes]]:
@@ -309,12 +309,17 @@ class MediaRenderer:
                 week_ref = str(card["run_id"]).split("recap:", 1)[1]
                 facts = week_facts(week_ref, runs)
                 vkind, vfacts = "weekly", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
-            elif kind in ("trail_board", "trail_record"):
+            elif kind in ("trail_board", "trail_record", "trail_heart"):
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 trail = (run.get("_shape") or {}).get("trail")
                 if not trail:
                     raise MediaError("trail block gone")
                 facts = trail_card_facts(run, trail)
+                if kind == "trail_heart" and "hr_series" not in facts:
+                    kind = "trail_board"   # the runner turned the switch off while this was queued: the board, not text
+                if kind != "trail_heart":   # heart rate goes to the worker only for the card that draws it
+                    facts.pop("hr_series", None)
+                    facts.pop("hr_zones", None)
                 if kind == "trail_record" and clip and self.ghost_clip_ok(facts):
                     ghost = self._ghost_media((str(run.get("user_id") or ""), str(card["run_id"])), facts, memory)
                     if ghost is not None:

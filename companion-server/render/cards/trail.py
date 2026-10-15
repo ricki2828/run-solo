@@ -371,3 +371,98 @@ def render_trail_board(facts: Mapping[str, Any], memory: Mapping[str, Any] | Non
 
 def render_trail_record(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> bytes:
     return render_html(build_trail_record_html(facts, memory), P.W, P.H)
+
+
+# --- heart vs hill ------------------------------------------------------------------------------------------------------
+# The runner's heart rate laid over the hill they ran. Only drawn from a trail block that carries `hr_series` (a strap run with
+# the "Heart rate on cards" switch on). Zone colours are the runner's own zones as the app sent them (`hr_zones`), never
+# worked out here. Cyan stays reserved for bests, so nothing on this card is cyan.
+
+HEART_INK = "#FFFFFF"
+
+
+def _heart_hook(profile: Sequence[int], hr: Sequence[int], climb_m: float | None = None) -> tuple[str, int, int]:
+    """(headline, top_idx, peak_idx). The hill line is only claimed when the heart really outlasted the hill: the run's
+    peak bpm came at or after the top. Otherwise the card just states the climb and that the heart peaked first. The metres
+    are the CLIMB stat's own number (the run's climb) when the app sent one, so the headline and the stat block agree; the
+    big number carries the peak bpm, so the headline never repeats it."""
+    top = max(range(len(profile)), key=lambda i: profile[i])
+    peak = max(range(len(hr)), key=lambda i: hr[i])
+    climb = round(climb_m) if climb_m else max(0, profile[top] - profile[0])
+    if climb < 10:
+        return "HOW YOUR HEART RAN IT.", top, peak
+    if peak >= top:
+        return f"THE HILL STOPPED AT {P.thousands(climb)}\u00a0M. MY HEART DIDN'T.", top, peak
+    return f"{P.thousands(climb)}\u00a0M UP. THE HEART PEAKED FIRST.", top, peak
+
+
+def heart_svg(profile: Sequence[int], hr: Sequence[int], zones: Sequence[int], w: int, h: int, top_i: int, peak_i: int) -> str:
+    """The hill as a calm filled area, the heart as a thick line coloured by the runner's zone, a dot on the hilltop and a
+    dot on the peak. Both share one x axis (progress along the trail), each its own y scale."""
+    n = len(profile)
+    sx = lambda i: i / (n - 1) * w  # noqa: E731
+    lo, hi = min(profile), max(profile)
+    span = max(hi - lo, 20)
+    ph = lambda e: h - 20 - (e - lo) / span * (h * 0.36)  # noqa: E731  (the hill takes the lower band)
+    hlo, hhi = min(hr), max(hr)
+    hspan = max(hhi - hlo, 20)
+    py = lambda b: 76 + (1 - (b - hlo) / hspan) * (h * 0.34)  # noqa: E731  (the heart runs above it, with room over its peak for the label)
+    font = f'font-family="{brand.SAIRA}" font-weight="800"'
+    parts = []
+    area = " ".join(f"{sx(i):.1f},{ph(e):.1f}" for i, e in enumerate(profile))
+    parts.append(f'<polygon points="0,{h} {area} {w},{h}" fill="{CALM}"/>')
+    parts.append(f'<polyline points="{area}" fill="none" stroke="{brand.INK}" stroke-width="4" stroke-linejoin="round"/>')
+    for i in range(n - 1):
+        col = brand.ZONE_RAMP[max(1, min(5, zones[i + 1])) - 1]
+        parts.append(f'<line x1="{sx(i):.1f}" y1="{py(hr[i]):.1f}" x2="{sx(i + 1):.1f}" y2="{py(hr[i + 1]):.1f}" stroke="{col}" '
+                     f'stroke-width="10" stroke-linecap="round"/>')
+    xt, yt = sx(top_i), ph(profile[top_i])
+    parts.append(f'<line x1="{xt:.1f}" y1="{yt:.1f}" x2="{xt:.1f}" y2="{h}" stroke="{brand.INK}" stroke-width="2" stroke-dasharray="4 7" opacity=".5"/>')
+    parts.append(f'<circle cx="{xt:.1f}" cy="{yt:.1f}" r="11" fill="#fff" stroke="{brand.INK}" stroke-width="5"/>')
+    anchor = "start" if xt < 150 else ("end" if xt > w - 150 else "middle")
+    parts.append(f'<text x="{xt:.1f}" y="{yt - 20:.1f}" text-anchor="{anchor}" {font} font-size="26" fill="{brand.INK}">TOP · {max(0, profile[top_i] - profile[0])} M</text>')
+    xp, yp = sx(peak_i), py(hr[peak_i])
+    pcol = brand.ZONE_RAMP[max(1, min(5, zones[peak_i])) - 1]
+    parts.append(f'<circle cx="{xp:.1f}" cy="{yp:.1f}" r="14" fill="#fff" stroke="{pcol}" stroke-width="8"/>')
+    anchor = "start" if xp < 150 else ("end" if xp > w - 150 else "middle")
+    parts.append(f'<text x="{xp:.1f}" y="{max(yp - 24, 38):.1f}" text-anchor="{anchor}" {font} font-size="32" fill="{brand.INK}">{hr[peak_i]} BPM</text>')
+    return f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">{"".join(parts)}</svg>'
+
+
+def _zone_legend() -> str:
+    chips = "".join(f'<span style="display:inline-flex;align-items:center;gap:8px;margin-right:22px"><span style="width:18px;height:18px;border-radius:4px;'
+                    f'background:{brand.ZONE_RAMP[i]};display:inline-block"></span>Z{i + 1}</span>' for i in range(5))
+    return f'<div class="abs cap" style="right:30px;top:26px;font-size:22px;color:{brand.QUIET};white-space:nowrap">{chips}</div>'
+
+
+def build_trail_heart_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> str:
+    profile, hr, zones = facts["elev_profile"], facts["hr_series"], facts["hr_zones"]
+    rows = _board(facts)
+    n = int(facts.get("trail_runs") or len(rows))
+    today = next(r for r in rows if r.get("today"))
+    headline, top_i, peak_i = _heart_hook(profile, hr, facts.get("climb_m"))
+    avg = round(sum(hr) / len(hr))
+    tag_raw = str(facts.get("trail_name") or "YOUR TRAIL")[:30]
+    tag = P.esc(tag_raw, 30) + f" &nbsp;/&nbsp; RUN {today['attempt']}"
+    hero = (f'<div class="abs" style="left:{P.BX}px;top:160px;width:{P.BW}px;height:440px;border-radius:{P.RADIUS}px;background:{LANE};overflow:hidden">'
+            f'<div class="abs cap" style="left:40px;top:34px;font-size:28px;letter-spacing:.14em;color:{brand.INK};white-space:nowrap">{tag}</div>'
+            f'<div class="abs saira" style="left:40px;top:92px;width:{P.BW - 80}px;font-size:{_fit(headline, ((22, 104), (36, 88), (99, 76)))}px;'
+            f'line-height:.92;color:{brand.INK};text-wrap:balance">{P.esc(headline, 60)}</div>'
+            f'<div class="abs" style="left:36px;bottom:30px;right:30px;display:flex;align-items:baseline;gap:18px;white-space:nowrap">'
+            f'<span class="saira" style="font-size:150px;line-height:.78;color:{brand.INK}">{hr[peak_i]}</span>'
+            f'<span class="saira" style="font-size:56px;color:{brand.INK}">BPM PEAK</span></div></div>')
+    panel = (f'<div class="abs" style="left:{P.BX}px;top:620px;width:{P.BW}px;height:480px;border-radius:{P.RADIUS}px;background:#fff;'
+             f'border:2px solid {brand.HAIRLINE};overflow:hidden">'
+             f'<div class="abs cap" style="left:34px;top:26px;font-size:22px;color:{brand.QUIET}">HEART OVER THE HILL</div>{_zone_legend()}'
+             f'<div class="abs" style="left:24px;top:70px">{heart_svg(profile, hr, zones, 936, 392, top_i, peak_i)}</div></div>')
+    stats = [(str(avg), "AVG BPM")]
+    if (c := _climb_stat(facts)):
+        stats.append(c)
+    if facts.get("pace_s_per_km"):
+        stats.append((P.fmt_pace(float(facts["pace_s_per_km"])), "/KM"))
+    body = P.header(False, "HEART VS HILL", brand.QUIET) + hero + panel + P.stat_blocks(stats, 1120, 170, LANE)
+    return P.doc(P.base_css(brand.GROUND, brand.INK), body)
+
+
+def render_trail_heart(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = None) -> bytes:
+    return render_html(build_trail_heart_html(facts, memory), P.W, P.H)

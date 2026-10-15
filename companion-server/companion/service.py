@@ -773,7 +773,7 @@ class Service(CheckinMixin):
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
-                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
+                "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins,
@@ -798,7 +798,7 @@ class Service(CheckinMixin):
 
     def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
                      weather: bool | None = None, route_shape: bool | None = None,
-                     place_names: bool | None = None) -> None:
+                     place_names: bool | None = None, heart_rate: bool | None = None) -> None:
         wipe_wal = False
         with db.tx(self.s.db_path) as c:
             if route_shape is not None:  # "Show route shape on cards"; off forgets every stored shape, now
@@ -815,6 +815,17 @@ class Service(CheckinMixin):
                                        (uid,)).fetchall():
                         t = json.loads(r["trail_json"])
                         t.pop("name", None)
+                        c.execute("UPDATE run_shape SET trail_json=? WHERE user_id=? AND run_id=?",
+                                  (json.dumps(t, separators=(",", ":")), uid, r["run_id"]))
+                    wipe_wal = True
+            if heart_rate is not None:  # "Heart rate on cards"; off forgets every stored heart-rate series, now
+                c.execute("UPDATE users SET hr_optin=? WHERE id=?", (int(heart_rate), uid))
+                if not heart_rate:
+                    for r in c.execute("SELECT run_id, trail_json FROM run_shape WHERE user_id=? AND trail_json LIKE '%\"hr\"%'",
+                                       (uid,)).fetchall():
+                        t = json.loads(r["trail_json"])
+                        t.pop("hr", None)
+                        t.pop("hr_z", None)
                         c.execute("UPDATE run_shape SET trail_json=? WHERE user_id=? AND run_id=?",
                                   (json.dumps(t, separators=(",", ":")), uid, r["run_id"]))
                     wipe_wal = True
@@ -966,7 +977,8 @@ class Service(CheckinMixin):
         splits = [x.model_dump(exclude_none=True) for x in run.splits] if run.splits else None
         reps = [x.model_dump(exclude_none=True) for x in run.reps] if run.reps else None
         place_ok = c.execute("SELECT place_optin FROM users WHERE id=?", (uid,)).fetchone()["place_optin"]
-        trail = cv_trail.dump(run.trail, keep_name=bool(place_ok))   # the elevation profile stays whatever the route switch says: own chat only
+        hr_ok = c.execute("SELECT hr_optin FROM users WHERE id=?", (uid,)).fetchone()["hr_optin"]
+        trail = cv_trail.dump(run.trail, keep_name=bool(place_ok), keep_hr=bool(hr_ok))   # the elevation profile stays whatever the route switch says: own chat only
         if route is None and splits is None and reps is None and trail is None:
             return
         dump = lambda v: None if v is None else json.dumps(v, separators=(",", ":"))  # noqa: E731

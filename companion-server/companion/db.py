@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_run_utc TEXT, last_inbound_at TEXT,
   cap_zone TEXT, cap_week TEXT,
   weather_optin INTEGER NOT NULL DEFAULT 0,  -- the app's "Weather in suggestions" switch; area is stored only while 1
+  hr_optin INTEGER NOT NULL DEFAULT 0,       -- the app's "Heart rate on cards" switch; a trail block's hr series is kept only while 1
   place_optin INTEGER NOT NULL DEFAULT 0,    -- the app's place opt-in (share place names); a trail name is kept only while 1
   route_optin INTEGER NOT NULL DEFAULT 1,    -- the app's "Show route shape on cards" switch (default on); a shape is stored only while 1
   checkin_consent INTEGER,                   -- the companion consent version the app says the runner agreed to; NULL = never said (no check-ins)
@@ -314,6 +315,12 @@ def init(path: str) -> None:
         if "place_optin" not in cols:  # databases created before the place switch (default off)
             try:
                 c.execute("ALTER TABLE users ADD COLUMN place_optin INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "hr_optin" not in cols:  # databases created before the heart-rate switch (default off)
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN hr_optin INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
