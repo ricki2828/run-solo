@@ -191,6 +191,10 @@ class AppServices {
       run: d.run,
       priorBest: priorRun,
       names: names,
+      // Health data: only with the "Heart rate on cards" switch on.
+      heartZones: (companion?.heartRateOn ?? false)
+          ? HrZoneChoice.resolve(settings.settings, now())
+          : null,
     );
   }
 

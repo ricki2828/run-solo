@@ -176,3 +176,20 @@ def test_the_card_draws_the_zone_colours_the_app_sent():
     from render import brand
     html_ = build_trail_heart_html(F.trail_heart_outlasts())
     assert "HEART VS HILL" in html_ and brand.ZONE_RAMP[4] in html_ and "STOPPED AT 98" in html_
+
+
+# ---------------------------------------------------------------- the app's wire example
+
+def test_the_apps_json_fixtures_pass_the_server_validator():
+    """test/fixtures/*.json are the blocks the app's tests check against the same rules; the server must keep them whole."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "test" / "fixtures"
+    plain = T.parse(json.loads((root / "trail_block_sample.json").read_text()))
+    assert plain is not None and plain.hr is None
+    heart = T.parse(json.loads((root / "trail_block_hr_sample.json").read_text()))
+    assert heart is not None and len(heart.hr) == len(heart.hr_z) == len(heart.profile) == 64
+    stored = json.loads(T.dump(heart, keep_hr=True))
+    assert stored["hr"] == heart.hr and stored["hr_z"] == heart.hr_z
+    assert "hr" not in json.loads(T.dump(heart))                           # the second lock: no switch, no series
+    facts = T.card_facts({"duration_s": 2310, "distance_m": 6000, "pace_s_per_km": 385}, json.loads(T.dump(heart, keep_hr=True)))
+    P.check_request({"v": 1, "op": "card", "kind": "trail_heart", "facts": facts})
