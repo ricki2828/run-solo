@@ -24,8 +24,9 @@
 /// - `GET /v1/me`, `DELETE /v1/me` (Bearer)
 /// - `GET /v1/me/next-session` (Bearer): the coach's next session and latest
 ///   line, for Home. 404 from a server without check-ins means "nothing".
-/// - `PUT /v1/me/settings` `{weather: bool}` or `{route_shape: bool}`
-///   (Bearer): the weather switch and the "Show route shape on cards" switch
+/// - `PUT /v1/me/settings` `{weather: bool}`, `{route_shape: bool}` or
+///   `{place_names: bool}` (Bearer): the weather switch, the "Show route shape
+///   on cards" switch and the "Show trail names on cards" switch
 ///
 /// A run summary carries, besides its totals, `splits` (per km), `reps` (a
 /// structured run) and, while "Show route shape on cards" is on, `route`: a
@@ -383,6 +384,17 @@ class CompanionClient {
       uri: _uri(['v1', 'me', 'settings']),
       headers: _headers(token, json: true),
       body: utf8.encode(jsonEncode({'route_shape': on})),
+    ),
+  );
+
+  /// `PUT /v1/me/settings {place_names}`: the "Show trail names on cards"
+  /// switch. Off also makes the server delete every trail name it holds.
+  Future<CompanionReply> putPlaceNames(String token, bool on) => http.send(
+    CompanionRequest(
+      method: 'PUT',
+      uri: _uri(['v1', 'me', 'settings']),
+      headers: _headers(token, json: true),
+      body: utf8.encode(jsonEncode({'place_names': on})),
     ),
   );
 
@@ -815,6 +827,12 @@ class CompanionController extends ChangeNotifier {
   /// on open and before the next send, so a switch-off made offline lands.
   static const String weatherForgetName = 'companion_weather_forget';
 
+  /// "Show trail names on cards" is OFF unless this holds '1'.
+  static const String placeNamesName = 'companion_place_names';
+
+  /// Set while the server has not yet confirmed "forget my trail names".
+  static const String placeNamesForgetName = 'companion_place_names_forget';
+
   /// "Show route shape on cards" is ON unless this holds '1'.
   static const String routeOffName = 'companion_route_off';
 
@@ -845,6 +863,7 @@ class CompanionController extends ChangeNotifier {
   bool _asked = false;
   int _consent = 0;
   bool _weather = false;
+  bool _placeNames = false;
   CoachNext? _coachNext;
   bool _nextBusy = false;
   DateTime? _nextAt;
@@ -853,6 +872,10 @@ class CompanionController extends ChangeNotifier {
   /// "Weather in suggestions" (off until the runner turns it on). The run
   /// summary carries a rounded area only while this is true.
   bool get weatherOn => _weather && enrolled;
+
+  /// "Show trail names on cards" (off until the runner turns it on). The
+  /// trail block carries a name only while this is true.
+  bool get placeNamesOn => _placeNames && enrolled;
 
   /// "Show route shape on cards" (on until the runner turns it off). The run
   /// summary carries the route SHAPE only while this is true: an outline with
@@ -960,6 +983,13 @@ class CompanionController extends ChangeNotifier {
       } catch (e) {
         companionLog('could not read the weather switch (${e.runtimeType})');
       }
+      try {
+        _placeNames = await store.read(placeNamesName) == '1';
+      } catch (e) {
+        companionLog(
+          'could not read the trail names switch (${e.runtimeType})',
+        );
+      }
     }
     // The route choice outlives a wipe, so it is read with or without a token.
     try {
@@ -970,6 +1000,7 @@ class CompanionController extends ChangeNotifier {
     notifyListeners();
     if (_phase == CompanionPhase.on) {
       await syncWeather();
+      await syncPlaceNames();
       await syncRouteShape();
       await syncConsent();
     }
@@ -1178,6 +1209,91 @@ class CompanionController extends ChangeNotifier {
       }
     } catch (e) {
       companionLog('could not save the weather switch (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// "Show trail names on cards". Same shape as [setWeather]: on tells the
+  /// server first, off stops the phone at once and then tells the server to
+  /// forget the names it holds (retried until it has).
+  Future<bool> setPlaceNames(bool on) async {
+    final t = await token();
+    if (t == null) return false;
+    if (on) {
+      try {
+        final r = await client.putPlaceNames(t, true);
+        if (r.status == 401 || r.status == 403) {
+          await _wipe();
+          return false;
+        }
+        if (!r.ok) {
+          problem =
+              'The companion is busy. Trail names are still off. Try again.';
+          notifyListeners();
+          return false;
+        }
+      } on CompanionNetworkError {
+        problem = 'No network. Trail names are still off. Try again.';
+        notifyListeners();
+        return false;
+      }
+      problem = null;
+      await _savePlaceNames(true, forgetPending: false);
+      return true;
+    }
+    await _savePlaceNames(false, forgetPending: true);
+    await syncPlaceNames();
+    return true;
+  }
+
+  /// Tells the server to forget the trail names if a switch-off has not
+  /// landed yet.
+  Future<void> syncPlaceNames() async {
+    String? pending;
+    try {
+      pending = await store.read(placeNamesForgetName);
+    } catch (_) {
+      return;
+    }
+    if (pending != '1') return;
+    final t = await token();
+    if (t == null) return;
+    try {
+      final r = await client.putPlaceNames(t, false);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.ok) {
+        await store.delete(placeNamesForgetName);
+        problem = null;
+      } else {
+        problem = _placeNamesPending;
+      }
+    } on CompanionNetworkError {
+      problem = _placeNamesPending;
+    } catch (e) {
+      companionLog('trail names sync failed (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  static const String _placeNamesPending =
+      'Trail names are off on your phone. The server will be told when you '
+      'are back online.';
+
+  Future<void> _savePlaceNames(bool on, {required bool forgetPending}) async {
+    _placeNames = on;
+    try {
+      if (on) {
+        await store.write(placeNamesName, '1');
+        await store.delete(placeNamesForgetName);
+      } else {
+        await store.delete(placeNamesName);
+        if (forgetPending) await store.write(placeNamesForgetName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the trail names switch (${e.runtimeType})');
     }
     notifyListeners();
   }
@@ -1442,6 +1558,8 @@ class CompanionController extends ChangeNotifier {
       await store.delete(consentName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
+      await store.delete(placeNamesName);
+      await store.delete(placeNamesForgetName);
       await store.delete(nextName);
       // The route choice is the runner's and survives a wipe (a 401, a
       // re-enrol): an OFF stays off, and the new server record is told so as
@@ -1452,6 +1570,7 @@ class CompanionController extends ChangeNotifier {
     }
     _phase = CompanionPhase.off;
     _weather = false;
+    _placeNames = false;
     _consent = 0;
     _consentSent = 0;
     _coachNext = null;
@@ -1606,6 +1725,7 @@ Map<String, Object?>? companionSummary(
   bool withRoute = false,
   List<engine.PrivacyZone> privacyZones = const [],
   Map<String, Object?> plan = const {},
+  Map<String, Object?>? trail,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -1645,6 +1765,7 @@ Map<String, Object?>? companionSummary(
     ...companionIntervalFacts(s),
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
+    'trail': ?trail,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
     // degree (about 11 km) here on the phone, so the server never gets more.
     if (withArea && s.startPoint != null) ...{
@@ -1707,6 +1828,11 @@ class CompanionTarget extends ExportTarget {
   /// wired by AppServices; null sends no plan fields.
   Future<Map<String, Object?>> Function(RunDetail run)? planFacts;
 
+  /// The trail block for a run (`trailBlockFor`), wired by AppServices; null
+  /// sends none. Gets whether trail names may go out.
+  Future<Map<String, Object?>?> Function(RunDetail run, {required bool names})?
+  trailFacts;
+
   /// When the server last answered 422 (older than this app). For
   /// [outdatedWait] no run is sent and no automatic try is spent; a new app
   /// start clears it, so it is also retried on the next open.
@@ -1737,6 +1863,19 @@ class CompanionTarget extends ExportTarget {
     }
   }
 
+  /// A trail read that fails or takes over 3 s sends the run without a trail block.
+  Future<Map<String, Object?>?> _trail(RunDetail run) async {
+    try {
+      // Never holds the upload: a slow file read just means no trail block.
+      return await trailFacts
+          ?.call(run, names: controller.placeNamesOn)
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      companionLog('trail read failed (${e.runtimeType})');
+      return null;
+    }
+  }
+
   @override
   Future<SendResult> send(SendRequest req) async {
     final d = req.detail;
@@ -1752,6 +1891,7 @@ class CompanionTarget extends ExportTarget {
     }
     try {
       await controller.syncWeather();
+      await controller.syncPlaceNames();
       await controller.syncRouteShape();
       await controller.syncConsent();
       final hide = controller.routeShapeOn
@@ -1765,6 +1905,7 @@ class CompanionTarget extends ExportTarget {
         withRoute: routeOk,
         privacyZones: hide ?? const [],
         plan: await _plan(d),
+        trail: await _trail(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

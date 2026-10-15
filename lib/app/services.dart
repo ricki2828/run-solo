@@ -24,7 +24,9 @@ import '../state/companion.dart';
 import '../state/courses.dart';
 import '../state/progress/seen_moments_store.dart';
 import '../state/history_store.dart';
+import '../state/trail_facts.dart';
 import '../state/trail_ghost.dart';
+import '../state/trails.dart';
 import '../state/live_context.dart';
 import '../state/hr_zone_choice.dart';
 import '../state/max_hr.dart';
@@ -126,7 +128,10 @@ class AppServices {
     // The companion reads the stored plan through this object, which the
     // initializer list cannot reach.
     for (final t in sender.targets) {
-      if (t is CompanionTarget) t.planFacts ??= planFactsFor;
+      if (t is CompanionTarget) {
+        t.planFacts ??= planFactsFor;
+        t.trailFacts ??= trailBlockFor;
+      }
     }
   }
 
@@ -153,6 +158,35 @@ class AppServices {
       ),
       d.run.id,
       runStart: PlanInputs.wallClock(d.summary),
+    );
+  }
+
+  /// The trail block for a run's companion summary: the run's rank among the
+  /// runs of its trail (index rows, as the boards read them) and its gap to
+  /// the old best (one run file). Null off a trail or before the 3rd run.
+  Future<Map<String, Object?>?> trailBlockFor(
+    RunDetail d, {
+    required bool names,
+  }) async {
+    if (d.summary.mode != RecordMode.trail) return null;
+    // The run itself comes from its file when the index has no row for it yet.
+    final facts = [
+      for (final f in trailFactsOfAll(await history.list()))
+        if (f.id != d.run.id) f,
+      trailFactsOfDetail(d),
+    ];
+    final g = trailGroupOf(d.run.id, facts);
+    if (g == null) return null;
+    final asOf = trailAsOf(g, d.run.id);
+    if (asOf == null || asOf.runs.length < kTrailMinRuns) return null;
+    final prior = priorBestOf(asOf, d.run.id);
+    final priorRun = prior == null ? null : (await history.load(prior.id))?.run;
+    return trailBlock(
+      runId: d.run.id,
+      group: asOf,
+      run: d.run,
+      priorBest: priorRun,
+      names: names,
     );
   }
 
