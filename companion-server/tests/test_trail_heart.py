@@ -41,11 +41,14 @@ def test_the_app_block_parses_with_one_bpm_and_zone_per_profile_point():
     lambda b: b.update(hr_z=[0] + b["hr_z"][1:]),
     lambda b: b.update(hr=[True] * 64),
     lambda b: b.pop("profile"),                                            # nothing to lay the heart over
+    lambda b: b.update(hr_z=[1] * 63 + [5]),                               # the last, lowest bpm in the top zone, the rest low
+    lambda b: b.update(hr=[100] + [170] * 63, hr_z=[5] + [1] * 63),        # a zone that falls as the bpm rises
 ])
-def test_a_bad_hr_series_drops_the_whole_block_never_the_run(mutate):
+def test_a_bad_hr_series_costs_only_the_heart_rate_never_the_block(mutate):
     b = hr_block()
     mutate(b)
-    assert T.parse(b) is None
+    t = T.parse(b)
+    assert t is not None and t.hr is None and t.hr_z is None and len(t.board) == 3   # the board still gets its card
 
 
 def test_hr_is_kept_only_while_the_switch_is_on(env):
@@ -163,12 +166,12 @@ def test_the_hook_line_is_only_claimed_when_the_heart_outlasted_the_hill():
     assert line.startswith("THE HILL STOPPED AT 98 M.") and "DIDN'T" in line and peak >= top
     early = F.trail_heart_peaked_early()
     line, top, peak = _heart_hook(early["elev_profile"], early["hr_series"])
-    assert "DIDN'T" not in line and "HEART PEAKED AT 176" in line and peak < top
+    assert "DIDN'T" not in line and "THE HEART PEAKED FIRST" in line and "176" not in line and peak < top
 
 
 def test_a_flat_trail_gets_no_hill_line():
     from render.cards.trail import _heart_hook
-    assert _heart_hook([0, 2, 3, 2, 1, 0, 1, 0], [140, 150, 160, 158, 155, 150, 149, 148])[0] == "PEAKED AT 160."
+    assert _heart_hook([0, 2, 3, 2, 1, 0, 1, 0], [140, 150, 160, 158, 155, 150, 149, 148])[0] == "HOW YOUR HEART RAN IT."
 
 
 def test_the_card_draws_the_zone_colours_the_app_sent():
@@ -193,3 +196,57 @@ def test_the_apps_json_fixtures_pass_the_server_validator():
     assert "hr" not in json.loads(T.dump(heart))                           # the second lock: no switch, no series
     facts = T.card_facts({"duration_s": 2310, "distance_m": 6000, "pace_s_per_km": 385}, json.loads(T.dump(heart, keep_hr=True)))
     P.check_request({"v": 1, "op": "card", "kind": "trail_heart", "facts": facts})
+
+
+# ---------------------------------------------------------------- review fixes
+
+def test_the_hook_metres_are_the_climb_stat_when_the_app_sent_one():
+    from render.cards.trail import _heart_hook
+    f = F.trail_heart_outlasts()
+    assert _heart_hook(f["elev_profile"], f["hr_series"], 143)[0].startswith("THE HILL STOPPED AT 143\u00a0M")
+
+
+def test_the_peak_label_stays_on_the_card():
+    import re
+    from render.cards.trail import heart_svg
+    f = F.trail_heart_outlasts()
+    top = max(range(64), key=lambda i: f["hr_series"][i])
+    svg = heart_svg(f["elev_profile"], f["hr_series"], f["hr_zones"], 936, 392, 31, top)
+    ys = [float(y) for y in re.findall(r'<text [^>]*y="(-?[\d.]+)"', svg)]
+    assert ys and min(ys) >= 30
+
+
+def test_hr_is_stored_only_for_a_board_run(env):
+    env.svc.set_settings(UID, None, None, None, heart_rate=True)
+    trail_run(env, 1, hr_block(ROWS))                                       # a record: its card never draws the heart
+    assert "hr" not in stored(env) and "hr_z" not in stored(env)
+    trail_run(env, 2, hr_block())
+    assert "hr" in stored(env, "r02")
+
+
+def test_the_nightly_backup_leaves_the_heart_rate_out(env, tmp_path):
+    from companion.backup import backup, restore
+    env.svc.set_settings(UID, None, None, None, heart_rate=True)
+    trail_run(env, 1, hr_block())
+    assert "hr" in stored(env)
+    key = tmp_path / "k"
+    key.write_text("0123456789abcdef0123456789abcdef")
+    enc = backup(env.s.db_path, str(tmp_path / "bk"), str(key))
+    out = tmp_path / "restored.db"
+    restore(enc, str(out), str(key))
+    import sqlite3
+    t = json.loads(sqlite3.connect(out).execute("SELECT trail_json FROM run_shape WHERE run_id='r01'").fetchone()[0])
+    assert "hr" not in t and "hr_z" not in t and t["board"] and t["profile"]
+    assert "hr" in stored(env)                                              # the live copy is untouched
+
+
+def test_a_switch_off_while_the_card_is_queued_sends_the_board_not_text(env):
+    from test_more_cards import NOW
+    env.svc.set_settings(UID, None, None, None, heart_rate=True)
+    trail_run(env, 1, hr_block())
+    env.quiet_outbox()
+    cid = env.svc._build_run_card(UID, "r01", NOW)
+    env.svc.set_settings(UID, None, None, None, heart_rate=False)           # the card is already planned as trail_heart
+    assert env.svc._send_card(env.user(), cid, NOW)
+    kind, facts = env.rec.sent[-1]
+    assert kind == "trail_board" and "hr_series" not in facts

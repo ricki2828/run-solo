@@ -43,7 +43,7 @@ const String kCompanionSent =
     'done, work pace, how far apart the reps were and recovery pace. Plus how '
     'a run felt when '
     'you tap Easy, Right or Hard. Never your GPS points, never the street, '
-    'never your heart rate trace.';
+    'never your heart rate trace, unless you turn on Heart rate on cards.';
 
 const String kCompanionWhere =
     'To our server, which keeps it to write your notes. A writing service '

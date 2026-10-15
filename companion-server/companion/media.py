@@ -315,13 +315,15 @@ class MediaRenderer:
                 if not trail:
                     raise MediaError("trail block gone")
                 facts = trail_card_facts(run, trail)
+                if kind == "trail_heart" and "hr_series" not in facts:
+                    kind = "trail_board"   # the runner turned the switch off while this was queued: the board, not text
+                if kind != "trail_heart":   # heart rate goes to the worker only for the card that draws it
+                    facts.pop("hr_series", None)
+                    facts.pop("hr_zones", None)
                 if kind == "trail_record" and clip and self.ghost_clip_ok(facts):
                     ghost = self._ghost_media((str(run.get("user_id") or ""), str(card["run_id"])), facts, memory)
                     if ghost is not None:
                         return ghost
-                if kind != "trail_heart":   # heart rate goes to the worker only for the card that draws it
-                    facts.pop("hr_series", None)
-                    facts.pop("hr_zones", None)
                 vkind, vfacts = "run", None   # no video: the picture is the moment
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])

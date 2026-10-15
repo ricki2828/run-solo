@@ -1247,9 +1247,15 @@ class CompanionController extends ChangeNotifier {
   /// server first, off stops the phone at once and then tells the server to
   /// forget the names it holds (retried until it has).
   Future<bool> setPlaceNames(bool on) async {
+    if (!on) {
+      // Off stops the phone first, with or without a token.
+      await _savePlaceNames(false, forgetPending: true);
+      await syncPlaceNames();
+      return true;
+    }
     final t = await token();
     if (t == null) return false;
-    if (on) {
+    {
       try {
         final r = await client.putPlaceNames(t, true);
         if (r.status == 401 || r.status == 403) {
@@ -1271,9 +1277,6 @@ class CompanionController extends ChangeNotifier {
       await _savePlaceNames(true, forgetPending: false);
       return true;
     }
-    await _savePlaceNames(false, forgetPending: true);
-    await syncPlaceNames();
-    return true;
   }
 
   /// Tells the server to forget the trail names if a switch-off has not
@@ -1332,9 +1335,15 @@ class CompanionController extends ChangeNotifier {
   /// server first, off stops the phone at once and then tells the server to
   /// forget the series it holds (retried until it has).
   Future<bool> setHeartRate(bool on) async {
+    if (!on) {
+      // Off stops the phone first, with or without a token.
+      await _saveHeartRate(false, forgetPending: true);
+      await syncHeartRate();
+      return true;
+    }
     final t = await token();
     if (t == null) return false;
-    if (on) {
+    {
       try {
         final r = await client.putHeartRate(t, true);
         if (r.status == 401 || r.status == 403) {
@@ -1356,9 +1365,6 @@ class CompanionController extends ChangeNotifier {
       await _saveHeartRate(true, forgetPending: false);
       return true;
     }
-    await _saveHeartRate(false, forgetPending: true);
-    await syncHeartRate();
-    return true;
   }
 
   /// Tells the server to forget the heart-rate series if a switch-off has not

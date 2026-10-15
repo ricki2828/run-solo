@@ -340,7 +340,14 @@ def _trail_values_ok(facts: dict) -> bool:
 def _heart_ok(facts: dict) -> bool:
     """A heart card needs the hill to lay the heart over: a profile, and one bpm and one zone per profile point."""
     prof, hr, z = facts.get("elev_profile"), facts.get("hr_series"), facts.get("hr_zones")
-    return isinstance(prof, list) and isinstance(hr, list) and isinstance(z, list) and len(prof) == len(hr) == len(z)
+    if not (isinstance(prof, list) and isinstance(hr, list) and isinstance(z, list) and len(prof) == len(hr) == len(z)):
+        return False
+    best = 0
+    for _, zone in sorted(zip(hr, z)):   # a zone is a function of bpm: a higher bpm never sits in a lower zone
+        if zone < best:
+            return False
+        best = zone
+    return True
 
 
 def encode_request(op: str, kind: str, facts: dict) -> bytes:

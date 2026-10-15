@@ -734,6 +734,15 @@ void main() {
       });
     });
 
+    test('off works with no token: the phone stops at once', () async {
+      await enrolNow(ctl);
+      await ctl.setHeartRate(true);
+      await secrets.delete(CompanionController.tokenName);
+      expect(await ctl.setHeartRate(false), isTrue);
+      expect(ctl.heartRateOn, isFalse);
+      expect(await secrets.read(CompanionController.heartRateName), isNull);
+    });
+
     test('Delete everything leaves it off and the choice forgotten', () async {
       await enrolNow(ctl);
       await ctl.setHeartRate(true);
