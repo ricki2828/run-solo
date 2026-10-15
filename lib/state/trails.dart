@@ -34,6 +34,7 @@ engine.TrailRunFacts? trailFactsOf(RunSummary r) {
     place: r.place,
     street: r.street,
     trailMode: r.mode == RecordMode.trail,
+    override: r.trailOverride,
   );
 }
 
@@ -82,5 +83,7 @@ engine.TrailRunFacts _fromFile(RunDetail d) {
     route: engine.RouteSignature.of(d.run),
     place: d.summary.place,
     street: d.summary.street,
+    trailMode: d.summary.mode == RecordMode.trail,
+    override: d.summary.trailOverride,
   );
 }

@@ -361,6 +361,7 @@ class IndexRow {
     this.place,
     this.street,
     this.title,
+    this.trailOverride,
     this.utcOffsetMin,
     this.zoneId,
     this.movingMs,
@@ -401,7 +402,8 @@ class IndexRow {
   /// 14: [avgHr], [hrCoverage] (the load check's heart-rate intensity).
   /// 15: [hrHist] (moving seconds per bpm: zone charts and strips).
   /// 16: [route] is also kept for Free runs (they join a trail they match).
-  static const int currentVersion = 16;
+  /// 17: [trailOverride] (the runner's split / merge of a trail).
+  static const int currentVersion = 17;
 
   final int version;
   final int lapCount;
@@ -453,6 +455,10 @@ class IndexRow {
 
   /// The runner's own name for the run (sidecar `title`); null = automatic.
   final String? title;
+
+  /// The runner's own call on this run's trail (sidecar `trail_override`):
+  /// split out of its trail, or joined to another run's. Null = automatic.
+  final engine.TrailOverride? trailOverride;
 
   /// UTC offset in minutes where the run started, at its start instant
   /// (zone from the start fix, else the file's zone, else the sidecar's
@@ -582,6 +588,7 @@ class IndexRow {
       place: sidecar?.place,
       street: sidecar?.street,
       title: sidecar?.title,
+      trailOverride: sidecar?.trailOverride,
       utcOffsetMin: zone?.offsetMin,
       zoneId: zone?.zoneId,
       movingMs: engine.RunTimes.movingMs(run),
@@ -644,6 +651,7 @@ class IndexRow {
     'place': ?place,
     'street': ?street,
     'title': ?title,
+    'trail_ov': ?trailOverride?.toJson(),
     'utc_offset_min': ?utcOffsetMin,
     'zone_id': ?zoneId,
     'moving_ms': ?movingMs,
@@ -706,6 +714,7 @@ class IndexRow {
         place: j['place'] as String?,
         street: j['street'] as String?,
         title: j['title'] as String?,
+        trailOverride: engine.TrailOverride.fromJson(j['trail_ov']),
         utcOffsetMin: j['utc_offset_min'] as int?,
         zoneId: j['zone_id'] as String?,
         movingMs: j['moving_ms'] as int?,

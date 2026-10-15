@@ -9,6 +9,7 @@ import '../state/trails.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/run_card.dart';
+import '../widgets/trail_override_controls.dart';
 import '../widgets/trail_runs_chart.dart';
 import 'run_detail_screen.dart';
 
@@ -27,10 +28,42 @@ class TrailBoardScreen extends StatefulWidget {
 class _TrailBoardScreenState extends State<TrailBoardScreen> {
   Future<List<RunSummary>>? _runs;
 
+  /// A run of this trail the board follows, so it stays on the same trail
+  /// when the runner moves a run out (the key follows the anchor, and the
+  /// anchor can be the run that left). Starts as the key's anchor.
+  late String _memberId = widget.trailKey.replaceFirst('trail:', '');
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _runs ??= AppServices.of(context).history.list();
+  }
+
+  engine.TrailGroup? _groupIn(List<RunSummary> runs) {
+    final groups = engine.Trails.group(trailFactsOfAll(runs));
+    final g = engine.Trails.groupOf(_memberId, groups);
+    return g == null || g.runs.length < 2 ? null : g;
+  }
+
+  Future<void> _notThisTrail(
+    engine.TrailGroup group,
+    engine.TrailRunFacts run,
+  ) async {
+    final nav = Navigator.of(context);
+    final left = group.runs.where((r) => r.id != run.id).toList();
+    if (_memberId == run.id) _memberId = left.first.id;
+    await applyTrailOverride(
+      context,
+      runId: run.id,
+      override: const engine.TrailOverride.split(),
+      message: 'Moved out of ${group.name}.',
+      after: () {
+        if (!mounted) return;
+        setState(() => _runs = AppServices.of(context).history.list());
+      },
+    );
+    // A trail left with one run has no board: back to where it opened from.
+    if (left.length < 2 && nav.mounted) nav.pop();
   }
 
   @override
@@ -41,11 +74,7 @@ class _TrailBoardScreenState extends State<TrailBoardScreen> {
       future: _runs,
       builder: (context, snap) {
         final runs = snap.data;
-        final group = runs == null
-            ? null
-            : trailBoards(runs)
-                  .where((g) => g.key == widget.trailKey)
-                  .firstOrNull;
+        final group = runs == null ? null : _groupIn(runs);
         return Scaffold(
           appBar: RunAppBar(title: group?.name ?? 'TRAIL'),
           body: group == null
@@ -58,7 +87,11 @@ class _TrailBoardScreenState extends State<TrailBoardScreen> {
                     style: RunSoloType.body15.copyWith(color: t.inkSecondary),
                   ),
                 )
-              : _Body(group: group, units: units),
+              : _Body(
+                  group: group,
+                  units: units,
+                  onNotThisTrail: (r) => _notThisTrail(group, r),
+                ),
         );
       },
     );
@@ -66,9 +99,14 @@ class _TrailBoardScreenState extends State<TrailBoardScreen> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.group, required this.units});
+  const _Body({
+    required this.group,
+    required this.units,
+    required this.onNotThisTrail,
+  });
   final engine.TrailGroup group;
   final Units units;
+  final void Function(engine.TrailRunFacts run) onNotThisTrail;
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +169,7 @@ class _Body extends StatelessWidget {
             group: group,
             units: units,
             uniqueBest: uniqueBest,
+            onNotThisTrail: () => onNotThisTrail(ranked[i]),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => RunDetailScreen(runId: ranked[i].id),
@@ -150,6 +189,7 @@ class _RunRow extends StatelessWidget {
     required this.group,
     required this.units,
     required this.uniqueBest,
+    required this.onNotThisTrail,
     required this.onTap,
   });
   final int rank;
@@ -160,6 +200,7 @@ class _RunRow extends StatelessWidget {
 
   /// Only a best nobody ties gets the cyan accent and the word Best.
   final bool uniqueBest;
+  final VoidCallback onNotThisTrail;
   final VoidCallback onTap;
 
   @override
@@ -175,60 +216,88 @@ class _RunRow extends StatelessWidget {
         ? ' · ${Fmt.distance1(gapM.abs(), units)} '
               '${gapM < 0 ? 'shorter' : 'longer'}'
         : '';
+    final margin = engine.Trails.marginOf(group, run);
     final climb = run.climbM == null
         ? ''
         : ' · ${Fmt.elevation(run.climbM, units)} climb';
-    return Semantics(
+    final main = Semantics(
       button: true,
       label: '#$rank, ${Fmt.clock(norm)}, ${Fmt.dayDate(run.start)}',
       excludeSemantics: true,
-      child: RunCard(
-        accent: off <= 0 && uniqueBest ? t.accentArc : t.typeTrail,
-        onTap: onTap,
-        margin: const EdgeInsets.only(bottom: Space.x8),
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.x12,
-          vertical: Space.x8,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 40),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: Text(
+                '#$rank',
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    Fmt.clock(norm),
+                    style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                  ),
+                  Text(
+                    '${Fmt.dayDate(run.start)}$far$climb',
+                    style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              off <= 0 ? (uniqueBest ? 'Best' : 'Level') : '+${Fmt.clock(off)}',
+              style: RunSoloType.body15.copyWith(
+                color: off <= 0 && uniqueBest ? t.accentArc : t.inkSecondary,
+              ),
+            ),
+            Icon(Icons.chevron_right, color: t.inkSecondary),
+          ],
         ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 40),
-          child: Row(
+      ),
+    );
+    return RunCard(
+      accent: off <= 0 && uniqueBest ? t.accentArc : t.typeTrail,
+      onTap: onTap,
+      margin: const EdgeInsets.only(bottom: Space.x8),
+      padding: const EdgeInsets.fromLTRB(
+        Space.x12,
+        Space.x8,
+        Space.x4,
+        Space.x4,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          main,
+          Row(
             children: [
-              SizedBox(
-                width: 36,
-                child: Text(
-                  '#$rank',
-                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-                ),
-              ),
+              const SizedBox(width: 36),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      Fmt.clock(norm),
-                      style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                    ),
-                    Text(
-                      '${Fmt.dayDate(run.start)}$far$climb',
-                      style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-                    ),
-                  ],
-                ),
+                child: margin == null
+                    ? const SizedBox.shrink()
+                    : Text(
+                        'Looks off: ${trailMarginLabel(margin)}',
+                        key: ValueKey('looks-off-${run.id}'),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
               ),
-              Text(
-                off <= 0
-                    ? (uniqueBest ? 'Best' : 'Level')
-                    : '+${Fmt.clock(off)}',
-                style: RunSoloType.body15.copyWith(
-                  color: off <= 0 && uniqueBest ? t.accentArc : t.inkSecondary,
-                ),
+              NotThisTrailButton(
+                key: ValueKey('not-this-trail-${run.id}'),
+                onPressed: onNotThisTrail,
               ),
-              Icon(Icons.chevron_right, color: t.inkSecondary),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

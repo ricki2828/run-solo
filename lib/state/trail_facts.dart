@@ -51,6 +51,7 @@ engine.TrailGroup? trailAsOf(engine.TrailGroup g, String runId) {
   return engine.TrailGroup(
     key: g.key,
     name: g.name,
+    anchorId: g.anchorId,
     runs: [
       for (final r in g.runs)
         if (!r.start.isAfter(start)) r,

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../run_mode.dart';
 import 'run_file.dart';
+import 'trail_override.dart';
 import 'verdict.dart';
 
 enum LapEditOp { merge, split, keep, drop }
@@ -117,6 +118,7 @@ class RunSidecar {
     this.placeTries = 0,
     this.sends = const {},
     this.feel,
+    this.trailOverride,
     this.readSchema = schema,
   });
 
@@ -161,6 +163,10 @@ class RunSidecar {
   /// street), so an older run with an area but no street is asked once, not
   /// every time its detail opens.
   final bool streetTried;
+
+  /// The runner's own call on which trail this run is on (null = automatic).
+  /// Display and grouping only: never an input to a verdict word.
+  final TrailOverride? trailOverride;
 
   /// The runner's own name for the run; replaces the automatic title.
   /// Display only, so it survives every recalculation.
@@ -274,6 +280,7 @@ class RunSidecar {
       placeTries == 0 &&
       sends.isEmpty &&
       feel == null &&
+      trailOverride == null &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -295,10 +302,14 @@ class RunSidecar {
     int? placeTries,
     Map<String, SendRecord>? sends,
     Object? feel = _unset,
+    Object? trailOverride = _unset,
   }) => RunSidecar(
     runId: runId,
     sends: sends ?? this.sends,
     feel: identical(feel, _unset) ? this.feel : feel as RunFeel?,
+    trailOverride: identical(trailOverride, _unset)
+        ? this.trailOverride
+        : trailOverride as TrailOverride?,
     place: identical(place, _unset) ? this.place : place as String?,
     street: identical(street, _unset) ? this.street : street as String?,
     streetTried: streetTried ?? this.streetTried,
@@ -398,6 +409,7 @@ class RunSidecar {
     if (sends.isNotEmpty)
       'sends': {for (final e in sends.entries) e.key: e.value.toJson()},
     'feel': ?feel?.name,
+    'trail_override': ?trailOverride?.toJson(),
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -481,6 +493,7 @@ class RunSidecar {
       placeTries: json['place_tries'] is int ? json['place_tries'] as int : 0,
       sends: _readSends(json['sends']),
       feel: RunFeel.decode(json['feel']),
+      trailOverride: TrailOverride.fromJson(json['trail_override']),
       readSchema: schemaValue,
     );
   }

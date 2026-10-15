@@ -203,7 +203,9 @@ class RunDetailBody extends StatelessWidget {
           const SizedBox(height: Space.x16),
         ],
         if (d.summary.mode == RecordMode.trail)
-          TrailRunsSection(runId: d.run.id),
+          TrailRunsSection(runId: d.run.id)
+        else if (d.summary.mode == RecordMode.free)
+          TrailRunsSection(runId: d.run.id, free: true),
         SectionCard(
           child: switch (d.summary.mode) {
             RecordMode.intervals => Column(

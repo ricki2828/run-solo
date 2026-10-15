@@ -111,7 +111,7 @@ class TrailGhostSource {
   }
 
   /// Out-and-backs turned round no further apart than this share a ghost.
-  static const double maxTurnGapM = 75;
+  static const double maxTurnGapM = engine.RouteMatch.maxTurnGapM;
 
   static bool _turnsAlike(engine.TrailRunFacts r, engine.TrailRunFacts geom) {
     if (identical(r, geom) || r.id == geom.id) return true;

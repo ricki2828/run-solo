@@ -316,6 +316,57 @@ abstract final class RouteMatch {
     return math.min(_cover(pa, pb), _cover(pb, pa));
   }
 
+  /// How far apart the two routes start, metres.
+  static double startGapM(RouteSignature a, RouteSignature b) {
+    final local = _Local(a.start);
+    return _dist(local.project(a.start), local.project(b.start));
+  }
+
+  /// A match this close to a gate reads "looks off" (see [margin]): lengths
+  /// 7 % apart (gate 10 %), a cover under 88 % (gate 80 %), turn points
+  /// 55 m apart (the ghost's limit is [maxTurnGapM]).
+  static const double hintLengthGap = 0.07;
+  static const double hintCover = 0.88;
+  static const double hintTurnGapM = 55;
+
+  /// Out-and-backs whose turn points are further apart than this do not
+  /// share a ghost (`TrailGhostSource`).
+  static const double maxTurnGapM = 75;
+
+  /// How close [r] sits to the edge of matching [anchor], or null when it
+  /// sits comfortably inside every gate. Whichever gate it is nearest to
+  /// wins. Pure; says nothing about whether the two DO match.
+  static MatchMargin? margin(RouteSignature anchor, RouteSignature r) {
+    final longer = math.max(anchor.lengthM, r.lengthM);
+    final candidates = <(double, MatchMargin)>[];
+    if (longer > 0) {
+      final gap = (r.lengthM - anchor.lengthM) / longer;
+      if (gap.abs() >= hintLengthGap) {
+        candidates.add((
+          gap.abs() / lengthTol,
+          MatchMargin(MatchMarginKind.length, gap),
+        ));
+      }
+    }
+    final cover = similarity(anchor, r);
+    if (cover <= hintCover) {
+      candidates.add((
+        minCover / math.max(cover, 0.01),
+        MatchMargin(MatchMarginKind.cover, cover),
+      ));
+    }
+    final turn = turnGapM(anchor, r);
+    if (turn != null && turn >= hintTurnGapM) {
+      candidates.add((
+        turn / maxTurnGapM,
+        MatchMargin(MatchMarginKind.turn, turn),
+      ));
+    }
+    if (candidates.isEmpty) return null;
+    candidates.sort((x, y) => y.$1.compareTo(x.$1));
+    return candidates.first.$2;
+  }
+
   /// Share of [a]'s length (sampled every [stepM]) within [coverTolM] of [b].
   static double _cover(List<_Pt> a, List<_Pt> b) {
     final samples = _resample(a, math.max(8, (_length(a) / 10).round()));
@@ -390,4 +441,16 @@ abstract final class RouteMatch {
     }
     return prev.last;
   }
+}
+
+enum MatchMarginKind { length, cover, turn }
+
+/// Which gate a run sits nearest to when matched against its trail's anchor.
+/// [value]: [MatchMarginKind.length] the signed length gap as a share of the
+/// longer route (positive = longer than the anchor); [MatchMarginKind.cover]
+/// the overlap, 0..1; [MatchMarginKind.turn] the turn-point gap, metres.
+class MatchMargin {
+  const MatchMargin(this.kind, this.value);
+  final MatchMarginKind kind;
+  final double value;
 }
