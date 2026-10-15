@@ -647,6 +647,41 @@ void main() {
     });
   });
 
+  group('trail names switch', () {
+    test('is off after enrolling and sends nothing', () async {
+      await enrolNow(ctl);
+      expect(ctl.placeNamesOn, isFalse);
+      expect(http.to('PUT', '/v1/me/settings'), isEmpty);
+    });
+
+    test('on tells the server place_names true, off tells it false', () async {
+      await enrolNow(ctl);
+      expect(await ctl.setPlaceNames(true), isTrue);
+      expect(ctl.placeNamesOn, isTrue);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').single), {
+        'place_names': true,
+      });
+      expect(await ctl.setPlaceNames(false), isTrue);
+      expect(ctl.placeNamesOn, isFalse);
+      expect(http.bodyOf(http.to('PUT', '/v1/me/settings').last), {
+        'place_names': false,
+      });
+      expect(
+        await secrets.read(CompanionController.placeNamesForgetName),
+        isNull,
+      );
+    });
+
+    test('a failed PUT leaves it off', () async {
+      await enrolNow(ctl);
+      http.handler = (r) =>
+          r.method == 'PUT' ? const CompanionReply(503) : http.defaultReply(r);
+      expect(await ctl.setPlaceNames(true), isFalse);
+      expect(ctl.placeNamesOn, isFalse);
+      expect(ctl.problem, isNotNull);
+    });
+  });
+
   group('weather switch', () {
     late SendCoordinator coordinator;
     var clock = DateTime.utc(2026, 9, 24, 6, 40);

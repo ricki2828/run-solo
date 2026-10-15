@@ -62,6 +62,12 @@ const String kCompanionRouteBlurb =
     'Draws your route on the card as an outline with the ends cut off. No '
     'coordinates are sent, but a distinctive route could be recognised.';
 
+/// "Show trail names on cards" (off until the runner turns it on). One line
+/// under the switch.
+const String kCompanionPlaceNamesBlurb =
+    'Puts the name of your trail on its cards, like "Kastro loop". It comes '
+    'from the street or place you started in. Off, no name leaves your phone.';
+
 /// "Weather in suggestions" (off until the runner turns it on). The blurb
 /// sits under the switch; the sheet is the disclosure shown before it turns
 /// on. Same words as privacy section 2b.
@@ -403,6 +409,14 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
     setState(() => _problem = ctl.problem);
   }
 
+  Future<void> _setPlaceNames(bool on) async {
+    final ctl = AppServices.of(context).companion!;
+    setState(() => _problem = null);
+    await ctl.setPlaceNames(on);
+    if (!mounted) return;
+    setState(() => _problem = ctl.problem);
+  }
+
   Future<void> _setRouteShape(bool on) async {
     final ctl = AppServices.of(context).companion!;
     setState(() => _problem = null);
@@ -557,6 +571,16 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
             switchKey: const ValueKey('companion-route-switch'),
             on: services.companion!.routeShapeOn,
             onChanged: _busy ? null : _setRouteShape,
+          ),
+        ),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => _SwitchRow(
+            title: 'Show trail names on cards',
+            blurb: kCompanionPlaceNamesBlurb,
+            switchKey: const ValueKey('companion-place-names-switch'),
+            on: services.companion!.placeNamesOn,
+            onChanged: _busy ? null : _setPlaceNames,
           ),
         ),
         const _Heading('Weather'),
