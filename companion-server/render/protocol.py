@@ -24,7 +24,7 @@ VIDEO_MAX_BYTES = 50 * 1024 * 1024     # Telegram bot upload ceiling
 OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
-                       "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record"}),
+                       "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record", "trail_heart"}),
     "video": frozenset({"run", "weekly", "ghostclip"}),
 }
 ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
@@ -55,11 +55,16 @@ ALLOWED_FACT_KEYS = frozenset({
     # are an attempt number, a pace-normalised time and a today flag. No coordinates, no dates. `trail_name` is a place,
     # so the caller sends it only with the runner's place opt-in.
     "trail_runs", "trail_board", "elev_profile", "elev_src", "ghost_gap", "turn_idx", "trail_shape", "trail_name",
+    # trail_heart only: the runner's heart rate along the profile (bpm, <= 64 points, one per profile point) and the runner's own
+    # zone (1-5) of each. Health data: the caller sends it only with the "Heart rate on cards" switch on.
+    "hr_series", "hr_zones",
 })
 
 TRAIL_KINDS = frozenset({"trail_board", "trail_record", "ghostclip"})
 TRAIL_KEYS = frozenset({"type", "distance_km", "duration_s", "pace_s_per_km", "climb_m", "trail_runs", "trail_board", "elev_profile", "elev_src",
                         "ghost_gap", "turn_idx", "trail_shape", "trail_name"})
+HEART_KIND = "trail_heart"
+HEART_KEYS = TRAIL_KEYS | {"hr_series", "hr_zones"}
 TRAIL_SHAPES = frozenset({"out_and_back", "loop", "one_way"})
 ELEV_SRCS = frozenset({"baro", "gps"})
 
@@ -126,6 +131,7 @@ KIND_FACT_KEYS = {
     "pinned_week": frozenset({"week_label", "days", "duration_s", "units", "today_idx"}),
     "trail_board": TRAIL_KEYS, "trail_record": TRAIL_KEYS,
     "ghostclip": TRAIL_KEYS,   # the ghost race clip: the trail record card's facts, played as a race
+    "trail_heart": HEART_KEYS,   # the heart against the hill: the board's facts plus the hr series
 }
 MONTHLY_RUN_KEYS = frozenset({"date", "type", "distance_km", "duration_s"})   # no route, no zones, no place, no run id
 MONTHLY_MAX_RUNS = 62
@@ -154,7 +160,9 @@ def check_request(req: Any) -> tuple[str, str, dict]:
             raise ProtocolError("bad_request")
         if kind in COACH_KINDS and not (COACH_REQUIRED[kind] <= set(facts) and _coach_values_ok(facts)):
             raise ProtocolError("bad_request")
-        if kind in TRAIL_KINDS and not _trail_values_ok(facts):
+        if (kind in TRAIL_KINDS or kind == HEART_KIND) and not _trail_values_ok(facts):
+            raise ProtocolError("bad_request")
+        if kind == HEART_KIND and not _heart_ok(facts):
             raise ProtocolError("bad_request")
         if kind == "ghostclip" and not (isinstance(facts.get("elev_profile"), list) and len(facts["elev_profile"]) >= 8
                                         and "ghost_gap" in facts and len(facts["trail_board"]) >= 2):
@@ -314,6 +322,10 @@ def _trail_values_ok(facts: dict) -> bool:
             ok = _in(v, ELEV_SRCS)
         elif k == "trail_name":
             ok = trail_name_ok(v)
+        elif k == "hr_series":
+            ok = ints(v, TRAIL_PROFILE_MAX, 30, 250)
+        elif k == "hr_zones":
+            ok = ints(v, TRAIL_PROFILE_MAX, 1, 5)
         else:
             ok = False
         if not ok:
@@ -323,6 +335,12 @@ def _trail_values_ok(facts: dict) -> bool:
     if "turn_idx" in facts and (not isinstance(facts.get("elev_profile"), list) or facts["turn_idx"] >= len(facts["elev_profile"])):
         return False
     return True
+
+
+def _heart_ok(facts: dict) -> bool:
+    """A heart card needs the hill to lay the heart over: a profile, and one bpm and one zone per profile point."""
+    prof, hr, z = facts.get("elev_profile"), facts.get("hr_series"), facts.get("hr_zones")
+    return isinstance(prof, list) and isinstance(hr, list) and isinstance(z, list) and len(prof) == len(hr) == len(z)
 
 
 def encode_request(op: str, kind: str, facts: dict) -> bytes:

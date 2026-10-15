@@ -490,6 +490,44 @@ def ghost_clip_clear_win() -> dict[str, Any]:
 
 GHOST_CLIPS = {"comeback": ghost_clip_comeback, "clear_win": ghost_clip_clear_win,
                "gps_profile": trail_record_gps}
+def _heart_series(profile: list[int], peak_after_top: bool, max_hr: int = 190) -> tuple[list[int], list[int]]:
+    """bpm and the runner's zone (percent-of-max zones) per profile point: warm-up, a climb that keeps pushing it up, then either
+    a heart that keeps rising after the top (drift, the hook) or one that already peaked on the way up."""
+    n = len(profile)
+    top = max(range(n), key=lambda i: profile[i])
+    hr = []
+    for i in range(n):
+        up = profile[i] / max(profile[top], 1)
+        if i <= top:
+            v = 118 + 52 * up
+        elif peak_after_top:
+            v = 170 + 4 * (i - top) / max(n - 1 - top, 1) * (1 if i < n - 6 else 0.5)
+        else:
+            v = 172 - 30 * (i - top) / max(n - 1 - top, 1)
+        hr.append(round(v))
+    if not peak_after_top:
+        hr[max(top - 2, 0)] = 176
+    cut = [max_hr * 0.6, max_hr * 0.7, max_hr * 0.8, max_hr * 0.9]
+    return hr, [1 + sum(1 for c in cut if b >= c) for b in hr]
+
+
+def trail_heart_outlasts() -> dict[str, Any]:
+    """The hook: the hill tops out at 98 m and the heart keeps climbing after it."""
+    prof = _trail_profile(top=98)
+    hr, z = _heart_series(prof, True)
+    return {"type": "trail", "distance_km": 9.6, "duration_s": 3734, "pace_s_per_km": 389, "climb_m": 98, "trail_runs": 5,
+            "trail_board": _board([(4, 3683), (5, 3734), (2, 3790), (3, 3852), (1, 3978)], 5),
+            "elev_profile": prof, "elev_src": "baro", "turn_idx": 31, "trail_shape": "out_and_back", "trail_name": "The Saddle Trail",
+            "hr_series": hr, "hr_zones": z}
+
+
+def trail_heart_peaked_early() -> dict[str, Any]:
+    """The heart peaked on the climb and settled on the way down: the card states the climb and the peak, no 'my heart didn't'."""
+    prof = _trail_profile(top=387)
+    hr, z = _heart_series(prof, False)
+    return {"type": "trail", "distance_km": 6.2, "duration_s": 2410, "pace_s_per_km": 389, "climb_m": 387, "trail_runs": 3,
+            "trail_board": _board([(1, 2455), (2, 2402), (3, 2410)], 3), "elev_profile": prof, "elev_src": "baro", "trail_shape": "loop",
+            "hr_series": hr, "hr_zones": z}
 
 
 TRAIL_CARDS = {
@@ -498,4 +536,5 @@ TRAIL_CARDS = {
     "trail_record_six": ("trail_record", trail_record_six), "trail_record_hours": ("trail_record", trail_record_hours),
     "trail_record_no_gap": ("trail_record", trail_record_no_gap), "trail_board_gps": ("trail_board", trail_board_gps),
     "trail_record_gps": ("trail_record", trail_record_gps),
+    "trail_heart_outlasts": ("trail_heart", trail_heart_outlasts), "trail_heart_peaked_early": ("trail_heart", trail_heart_peaked_early),
 }

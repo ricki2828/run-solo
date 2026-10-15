@@ -37,13 +37,14 @@ def _render_one(op: str, kind: str, facts: dict, out: Path) -> None:
     if op == "card":
         from .cards import (render_milestone, render_monthly_poster, render_moved, render_pb, render_pinned_week,
                             render_post_run, render_race_countdown, render_suggestion, render_today,
-                            render_today_verdict, render_trail_board, render_trail_record, render_weekly_recap)
+                            render_today_verdict, render_trail_board, render_trail_heart, render_trail_record,
+                            render_weekly_recap)
         fn = {"light": render_post_run, "flood": render_post_run, "pb": render_pb,
               "weekly_recap": render_weekly_recap, "suggestion": render_suggestion, "milestone": render_milestone,
               "race_countdown": render_race_countdown, "monthly": render_monthly_poster,
               "today": render_today, "today_verdict": render_today_verdict, "moved": render_moved,
               "pinned_week": render_pinned_week, "trail_board": render_trail_board,
-              "trail_record": render_trail_record}[kind]
+              "trail_record": render_trail_record, "trail_heart": render_trail_heart}[kind]
         out.write_bytes(fn(facts, {}))  # no memory: nothing here draws a name
     elif kind == "ghostclip":
         from .motion.ghost_clip import render_ghost_clip, spec_from_facts
