@@ -227,6 +227,20 @@ abstract final class RouteMatch {
     }
     if (math.min(_cover(pa, pb), _cover(pb, pa)) < minCover) return false;
 
+    // An out-and-back is the same trail when it leaves from the same end and
+    // the two share the ground (the cover above): where each run turned round
+    // is the runner's choice on the day, not another trail. Walked in step,
+    // two turn points more than about 75 m apart fail the Frechet check below.
+    if (loops && _dist(pa.first, pb.first) <= endTolM) {
+      final oa = _outAndBack(pa), ob = _outAndBack(pb);
+      if (oa != null && ob != null) {
+        // The shorter run's turn must lie on the longer one's way out: the
+        // same road turned round early, not another branch at a fork.
+        final (shortOut, longOut) = oa.out <= ob.out ? (oa, ob) : (ob, oa);
+        return _distToPolyline(shortOut.apex, longOut.outPts) <= frechetTolM;
+      }
+    }
+
     final step = math.max(stepM, longer / maxSamples);
     final n = math.max(8, (longer / step).round());
     final ra = _resample(pa, n);
@@ -242,6 +256,54 @@ abstract final class RouteMatch {
       if (_frechet(ra, rot) <= tol) return true;
     }
     return false;
+  }
+
+  /// How far apart the two runs' turn points are along the shared ground, in
+  /// metres (the difference of their out-and-back legs); null unless both
+  /// are out-and-backs from the same end. For "0.2 km shorter" style copy.
+  static double? turnGapM(RouteSignature a, RouteSignature b) {
+    final local = _Local(a.start);
+    final pa = [for (final p in a.points) local.project(p)];
+    final pb = [for (final p in b.points) local.project(p)];
+    if (_dist(pa.first, pb.first) > endTolM) return null;
+    final ta = _turnAlong(pa), tb = _turnAlong(pb);
+    if (ta == null || tb == null) return null;
+    return (ta - tb).abs();
+  }
+
+  /// Distance along [p] to its turn point (the vertex furthest from the
+  /// start as the crow flies), or null when [p] is not an out-and-back: it
+  /// ends where it started, the turn is in the middle half of the route, and
+  /// its way home lies on its way out ([minCover] within [coverTolM]).
+  static double? _turnAlong(List<_Pt> p) => _outAndBack(p)?.out;
+
+  static ({double out, _Pt apex, List<_Pt> outPts})? _outAndBack(List<_Pt> p) {
+    if (p.length < 3 || _dist(p.first, p.last) > endTolM) return null;
+    var apex = 0;
+    var far = -1.0;
+    for (var i = 0; i < p.length; i++) {
+      final d = _d2(p.first, p[i]);
+      if (d > far) {
+        far = d;
+        apex = i;
+      }
+    }
+    if (apex == 0 || apex == p.length - 1) return null;
+    final out = p.sublist(0, apex + 1);
+    final back = p.sublist(apex);
+    final total = _length(p);
+    final along = _length(out);
+    if (along < total * 0.25 || along > total * 0.75) return null;
+    if (_cover(back, out) < minCover) return null;
+    return (out: along, apex: p[apex], outPts: out);
+  }
+
+  static double _distToPolyline(_Pt q, List<_Pt> line) {
+    var best = double.infinity;
+    for (var i = 0; i + 1 < line.length; i++) {
+      best = math.min(best, _segDist(q, line[i], line[i + 1]));
+    }
+    return best;
   }
 
   /// The overlap figure, 0..1: the smaller of the two shares of a route that

@@ -152,8 +152,8 @@ void main() {
       aLoop,
       _run('l4', _rot(loop, 2), seed: 4),
       boards: true,
-      ghostSays: 'matched then off',
-      note: 'joined mid-loop, the ghost reaches the end of the trail line before the run ends and drops its figures',
+      ghostSays: 'no match',
+      note: 'joined mid-loop, the ghost reaches the end of the trail line before the run ends, goes off, and lets go after 500 m',
     );
     check(
       'Loop run the other way',
@@ -228,9 +228,9 @@ void main() {
       'Turned 100 m early (-7%)',
       aOab,
       _run('o3', [(0, 0), (1400, 0), (0, 0)], seed: 13),
-      boards: false,
+      boards: true,
       ghostSays: 'matched',
-      note: 'a turn point 100 m off splits the trail on the boards (Frechet 50 m + step), though the length is within 10%',
+      note: 'out and backs group on the shared ground, so a turn point 100 m off is still one trail (was split by the Frechet check)',
     );
     check(
       'Turned 200 m early (-13%)',
@@ -260,8 +260,8 @@ void main() {
       aOab,
       _run('o7', [(0, 0), (1000, 0), (1500, 500), (1000, 0), (0, 0)], seed: 17),
       boards: false,
-      ghostSays: 'matched then off',
-      note: 'the ghost follows the shared first km then loses the line',
+      ghostSays: 'no match',
+      note: 'the ghost follows the shared first km, then lets go 500 m after it loses the line',
     );
   });
 
@@ -289,10 +289,10 @@ void main() {
         108,
         groups.length == 1,
         'n/a',
-        'groups: ${desc.join(' | ')}; C is within 60 m of B but 120 m from the anchor',
+        'groups: ${desc.join(' | ')}; out and backs no longer chain-split on turn points',
       ),
     );
-    expect(desc, ['oab+b', 'c']);
+    expect(desc, ['oab+b+c']);
   });
 
   tearDownAll(() {

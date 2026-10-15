@@ -9,10 +9,17 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../platform/gateway.dart';
 import 'history_store.dart';
 
-/// [r] as a Trail run's facts, or null when it is not a Trail run.
+/// [r] as a Trail run's facts, or null when it is neither a Trail run nor a
+/// Free run with a route (a Free run joins a trail it matches; see
+/// `Trails.group`).
 engine.TrailRunFacts? trailFactsOf(RunSummary r) {
-  if (r.mode != RecordMode.trail || r.missing) return null;
+  if (r.missing) return null;
   final row = r.row;
+  if (r.mode == RecordMode.free) {
+    if (row?.route == null) return null;
+  } else if (r.mode != RecordMode.trail) {
+    return null;
+  }
   return engine.TrailRunFacts(
     id: r.id,
     start: r.localStart,
@@ -26,6 +33,7 @@ engine.TrailRunFacts? trailFactsOf(RunSummary r) {
     route: row?.route,
     place: r.place,
     street: r.street,
+    trailMode: r.mode == RecordMode.trail,
   );
 }
 

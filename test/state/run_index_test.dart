@@ -430,23 +430,27 @@ void main() {
       dLat: 0.05,
     );
 
-    test('a Trail run keeps a compact route; other runs keep none', () async {
-      final free = withElevation(freeRunFile(n: 55, start: d1, seconds: 1800));
-      final store = await storeWith([a, free]);
-      await store.list();
-      final entries = (await store.readIndex()).entries;
-      final row = entries[a.id]!.row!;
-      expect(row.version, IndexRow.currentVersion);
-      expect(row.route, isNotNull);
-      expect(row.route!.points.length, lessThanOrEqualTo(60));
-      expect(
-        jsonEncode(row.route!.toJson()).length,
-        lessThan(1000),
-        reason: 'a route is a few hundred bytes of the index, not a track',
-      );
-      expect(entries[free.id]!.row!.route, isNull);
-      expect(rawEntry(store, free.id)['row'], isNot(contains('route')));
-    });
+    test(
+      'a Trail run keeps a compact route; Laps and the like keep none',
+      () async {
+        final free = withElevation(freeRunFile(n: 55, start: d1, seconds: 1800))
+            .copyWith(mode: engine.RunMode.laps);
+        final store = await storeWith([a, free]);
+        await store.list();
+        final entries = (await store.readIndex()).entries;
+        final row = entries[a.id]!.row!;
+        expect(row.version, IndexRow.currentVersion);
+        expect(row.route, isNotNull);
+        expect(row.route!.points.length, lessThanOrEqualTo(60));
+        expect(
+          jsonEncode(row.route!.toJson()).length,
+          lessThan(1000),
+          reason: 'a route is a few hundred bytes of the index, not a track',
+        );
+        expect(entries[free.id]!.row!.route, isNull);
+        expect(rawEntry(store, free.id)['row'], isNot(contains('route')));
+      },
+    );
 
     test('the route survives a fresh store reading the index', () async {
       final store = await storeWith([a, b]);
@@ -495,18 +499,22 @@ void main() {
       expect(back.route, isNotNull);
     });
 
-    test('re-tagging a Free run as Trail gives it a route', () async {
-      final free = trailLoopRun(
-        n: 56,
-        start: d1,
-      ).copyWith(mode: engine.RunMode.free);
-      final store = await storeWith([free]);
-      expect((await store.list()).single.row!.route, isNull);
-      await store.setOverride(free.id, RecordMode.trail);
-      expect((await store.list()).single.row!.route, isNotNull);
-      await store.setOverride(free.id, null);
-      expect((await store.list()).single.row!.route, isNull);
-    });
+    test(
+      'a Free run keeps a route too (it joins a trail it matches)',
+      () async {
+        final free = trailLoopRun(
+          n: 56,
+          start: d1,
+        ).copyWith(mode: engine.RunMode.free);
+        final store = await storeWith([free]);
+        expect((await store.list()).single.row!.route, isNotNull);
+        await store.setOverride(free.id, RecordMode.trail);
+        expect((await store.list()).single.row!.route, isNotNull);
+        // Re-tagged as Laps (no trail there): the route goes.
+        await store.setOverride(free.id, RecordMode.laps);
+        expect((await store.list()).single.row!.route, isNull);
+      },
+    );
 
     test(
       'a qualifying Trail run feeds the identity lanes at true pace',

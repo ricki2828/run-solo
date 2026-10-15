@@ -70,14 +70,31 @@ class TrailGhostSource {
       for (final e in index.entries.values)
         if (e.row != null) ?trailFactsOf(RunSummary.fromEntry(e)),
     ];
-    final groups = engine.Trails.group(facts)
-      ..sort((a, b) => b.runs.last.start.compareTo(a.runs.last.start));
+    // Only trails the runner has really run feed the ghost: two or more runs,
+    // or a single Trail-mode run. A one-off Free run is not a known trail and
+    // must not crowd a real one out of the six slots. Most recently run first.
+    final groups = [
+      for (final g in engine.Trails.group(facts))
+        if (g.runs.length >= 2 || g.runs.single.trailMode) g,
+    ]..sort((a, b) => b.runs.last.start.compareTo(a.runs.last.start));
     final out = <engine.GhostTrail>[];
     for (final g in groups) {
       if (out.length >= engine.GhostTrail.maxTrails) break;
       try {
-        final best = _load(g.best.id, runDirPaths);
-        final last = _load(g.runs.last.id, runDirPaths);
+        // The geometry is the latest run's. The best is the fastest run
+        // whose turn point is within [maxTurnGapM] of its: a run that turned
+        // much earlier has no time for the stretch it never ran, and would
+        // read as minutes ahead on the way back.
+        final geom = g.runs.last;
+        final fits = [
+          for (final r in g.runs)
+            if (_turnsAlike(r, geom)) r,
+        ];
+        final bestFacts = fits.reduce(
+          (a, b) => g.normMs(b) < g.normMs(a) ? b : a,
+        );
+        final best = _load(bestFacts.id, runDirPaths);
+        final last = _load(geom.id, runDirPaths);
         if (best == null || last == null) continue;
         final t = engine.TrailGhostBuilder.build(
           id: g.key,
@@ -91,6 +108,15 @@ class TrailGhostSource {
       }
     }
     return out;
+  }
+
+  /// Out-and-backs turned round no further apart than this share a ghost.
+  static const double maxTurnGapM = 75;
+
+  static bool _turnsAlike(engine.TrailRunFacts r, engine.TrailRunFacts geom) {
+    if (identical(r, geom) || r.id == geom.id) return true;
+    final gap = engine.RouteMatch.turnGapM(r.route!, geom.route!);
+    return gap == null || gap <= maxTurnGapM;
   }
 
   static engine.RunFile? _load(String id, List<String> dirs) {

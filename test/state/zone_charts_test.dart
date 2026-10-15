@@ -47,7 +47,7 @@ void main() {
     expect(dominantZoneOf(runWith((s) => null), zones, (s) => true), isNull);
   });
 
-  test('IndexRow carries hrHist at version 15', () {
-    expect(IndexRow.currentVersion, 15);
+  test('IndexRow carries hrHist from version 15', () {
+    expect(IndexRow.currentVersion, greaterThanOrEqualTo(15));
   });
 }
