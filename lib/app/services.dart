@@ -358,10 +358,12 @@ class AppServices {
   /// runner's accepted paces. Null before a prepare or with no fitness figure.
   engine.TargetPaces? currentTargetPaces() {
     try {
-      return live?.targetPaces(
+      final paces = live?.targetPaces(
         adopted: targetPaces.adopted,
         adoptedFrom: targetPaces.adoptedFrom,
       );
+      if (paces != null) targetPaces.prune(paces);
+      return paces;
     } catch (_) {
       return null;
     }

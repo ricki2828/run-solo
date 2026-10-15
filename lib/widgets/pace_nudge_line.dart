@@ -59,7 +59,13 @@ class _PaceNudgeLineState extends State<PaceNudgeLine> {
 
   engine.PaceNudge? _find(AppServices services, TargetPaceController c) {
     try {
-      final key = (c.state, widget.now.year, widget.now.month, widget.now.day);
+      final key = (
+        c.state,
+        services.live?.indexVersion,
+        widget.now.year,
+        widget.now.month,
+        widget.now.day,
+      );
       if (widget.pacesOverride != null) {
         _paces = widget.pacesOverride;
       } else if (_pacesKey != key) {

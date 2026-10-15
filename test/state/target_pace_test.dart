@@ -165,6 +165,51 @@ void main() {
       );
     });
 
+    test(
+      'a lapsed pace is cleared and stays gone when the tables dip',
+      () async {
+        final store = MemoryTargetPaceStore();
+        final c = TargetPaceController(store);
+        final n = c.nudge(paces, {
+          engine.PaceIntensity.easy: quicker(easyTarget - 15),
+        }, now: now)!;
+        // Accepted when the tables said a slower pace than they say today.
+        await c.accept(n, now: now, modelSecPerKm: easyTarget + 30);
+        engine.TargetPaces at(double vdot) => engine.TargetPaces.fromVdot(
+          vdot,
+          adopted: c.adopted,
+          adoptedFrom: c.adoptedFrom,
+        )!;
+        final accepted = c.adopted[engine.PaceIntensity.easy]!;
+        // Fitter now: the tables are quicker than the accepted pace.
+        final fit = at(60);
+        expect(fit[engine.PaceIntensity.easy]!.adopted, isFalse);
+        c.prune(fit);
+        await Future<void>.delayed(Duration.zero);
+        expect(c.adopted, isEmpty);
+        expect(store.state.adopted, isEmpty);
+        // The tables dip back: the old accepted pace does not return.
+        expect(at(40)[engine.PaceIntensity.easy]!.adopted, isFalse);
+        expect(
+          accepted,
+          isNot(at(40)[engine.PaceIntensity.easy]!.trueSecPerKm),
+        );
+      },
+    );
+
+    test('an earlier failed save cannot roll back a later undo', () async {
+      final store = _SlowFailingFirstStore();
+      final c = TargetPaceController(store);
+      final n = c.nudge(paces, {
+        engine.PaceIntensity.easy: quicker(easyTarget - 15),
+      }, now: now)!;
+      final first = c.accept(n, now: now);
+      final undo = c.reset(engine.PaceIntensity.easy);
+      await expectLater(first, throwsStateError);
+      await undo;
+      expect(c.adopted, isEmpty);
+    });
+
     test('a failed save puts the old pace back and says so', () async {
       final c = TargetPaceController(_FailingStore());
       final n = c.nudge(paces, {
@@ -213,4 +258,16 @@ class _FailingStore implements TargetPaceStore {
   @override
   Future<void> save(TargetPaceState state) async =>
       throw StateError('disk full');
+}
+
+class _SlowFailingFirstStore implements TargetPaceStore {
+  int calls = 0;
+
+  @override
+  Future<TargetPaceState> load() async => TargetPaceState.empty;
+
+  @override
+  Future<void> save(TargetPaceState state) async {
+    if (calls++ == 0) throw StateError('disk full');
+  }
 }

@@ -209,16 +209,42 @@ class TargetPaceController extends ChangeNotifier {
     await _persist(before);
   }
 
-  /// Saves [_state]; a failed save puts [before] back and rethrows, so the
-  /// screen never shows a pace that did not stick.
-  Future<void> _persist(TargetPaceState before) async {
-    try {
-      await store.save(_state);
-    } catch (_) {
-      _state = before;
-      notifyListeners();
-      rethrow;
-    }
+  Future<void> _saving = Future<void>.value();
+
+  /// Saves [_state], one save at a time and in order. A failed save puts
+  /// [before] back and rethrows, but only if nothing newer has happened since
+  /// (a later Undo is never rolled back by an earlier failure).
+  Future<void> _persist(TargetPaceState before) {
+    final mine = _state;
+    final run = _saving.then((_) => store.save(mine));
+    _saving = run.then((_) {}, onError: (Object _) {});
+    return run.catchError((Object e) {
+      if (identical(_state, mine)) {
+        _state = before;
+        notifyListeners();
+      }
+      throw e;
+    });
+  }
+
+  /// Forgets accepted paces the tables have since caught up with (they no
+  /// longer apply: [paces] shows them as not adopted), so a later dip in the
+  /// tables cannot bring them back. Changes nothing the runner sees, so it
+  /// does not notify; safe to call while building.
+  void prune(engine.TargetPaces paces) {
+    final lapsed = [
+      for (final i in _state.adopted.keys)
+        if (paces[i] != null && !paces[i]!.adopted) i,
+    ];
+    if (lapsed.isEmpty) return;
+    final before = _state;
+    _state = TargetPaceState(
+      adopted: {..._state.adopted}..removeWhere((k, _) => lapsed.contains(k)),
+      adoptedFrom: {..._state.adoptedFrom}
+        ..removeWhere((k, _) => lapsed.contains(k)),
+      answers: _state.answers,
+    );
+    _persist(before).catchError((Object _) {});
   }
 
   /// Back to the tables for one intensity (a nudge's undo).

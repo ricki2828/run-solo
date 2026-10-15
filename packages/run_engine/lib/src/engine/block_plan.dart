@@ -740,7 +740,7 @@ abstract final class BlockPaces {
         return _race(vdot, 5000);
       case BlockKind.interval:
         return switch (s.presetId) {
-          'tempo' => th,
+          'tempo' => _race(vdot, 21097.5),
           '1km-repeats' => _race(vdot, 5000),
           '400s' => _race(vdot, 1500),
           _ => _race(vdot, 3000),

@@ -14,10 +14,11 @@ abstract final class VoiceCoachPlan {
   /// [planned] is the plan session being run (null for any other run) and
   /// [vdot] the plan's fitness estimate. [goalPaceSecPerKm] is a goal run's
   /// own pace (target time over distance); it wins over the plan's estimate.
-  /// [sessionPaceSecPerKm] is the heat-adjusted target pace of a hand-picked
-  /// preset (see `TargetPaces`), True Pace and heat-free: the live pace the
-  /// coach compares it with is True Pace too. A goal or plan session wins
-  /// over it. [paces] is the one source for plan sessions.
+  /// [sessionPaceSecPerKm] is the target pace of a hand-picked preset (see
+  /// `TargetPaces`) as True Pace, with no heat added: the live pace the coach
+  /// compares it with is True Pace too. A goal or plan session wins over it.
+  /// [paces] is the one source for plan sessions; [vdot] is only the fallback
+  /// before there are any runs.
   /// [zones] gives the zone bottoms drift is measured against.
   ///
   /// Target status: a goal's pace, or a plan session's True Pace estimate

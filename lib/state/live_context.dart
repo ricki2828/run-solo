@@ -73,6 +73,9 @@ class LiveContextSource {
   final DateTime Function() now;
 
   String? _cachedVersion;
+
+  /// Which index the last prepare read; changes when a run lands.
+  String? get indexVersion => _cachedVersion;
   List<engine.LiveCandidate> _cached = const [];
   Future<void>? _preparing;
 
