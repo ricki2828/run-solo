@@ -91,8 +91,9 @@ FEEDBACK_CANCELLED = "Cancelled."
 FEEDBACK_DELETE_FIRST = "Not sent as feedback. Send DELETE again to erase everything."
 CODE_MSG = ("Your code is {code}. Type it into Run Supreme to finish connecting. Only ever enter it in the app, "
             "and never share it. If you didn't start this, ignore this message.")
-WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause them or DELETE to "
-           "erase everything we hold about you.")
+WELCOME = ("You're connected. After each run you get a short card, at most one question a day, and a recap on Sunday. "
+           "This is running guidance, not medical advice. Send /feedback to tell Ricki what's working or not (he reads it, "
+           "no AI does). Send STOP to pause or DELETE to erase everything we hold about you.")
 
 
 # Dart VerdictHeadline.name -> the words the facts engine may say. noVerdict says nothing.
