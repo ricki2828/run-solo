@@ -101,7 +101,11 @@ def feedback(s: Settings, days: int = 7, limit: int = 200) -> list[str]:
         rows = c.execute(
             "SELECT u.tester_no, f.ts, f.text FROM feedback f JOIN users u ON u.id = f.user_id "
             "WHERE f.ts >= ? ORDER BY f.ts DESC, f.id DESC LIMIT ?", (since, limit)).fetchall()
-    return [f"{tag(r['tester_no'])} {r['ts']} {r['text']}" for r in rows]
+        total = c.execute("SELECT COUNT(*) FROM feedback WHERE ts >= ?", (since,)).fetchone()[0]
+    out = [f"{tag(r['tester_no'])} {r['ts']} {r['text']}" for r in rows]
+    if total > len(rows):
+        out.insert(0, f"showing latest {len(rows)} of {total}")
+    return out
 
 
 def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> int:

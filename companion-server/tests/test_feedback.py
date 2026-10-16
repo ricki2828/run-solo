@@ -351,3 +351,15 @@ def test_ops_feedback_lists_recent_feedback_by_tester_number_newest_first(client
     c.commit()
     out.clear()
     assert ops.main(s, ["feedback"], out.append) == 0 and out == ["no feedback in the last 7 days"]
+
+
+def test_ops_feedback_says_when_the_list_is_capped(client, fakes, tok):
+    s = client.svc.s
+    uid = q(client, "SELECT id FROM users")[0]["id"]
+    c = sqlite3.connect(s.db_path)
+    for i in range(5):
+        c.execute("INSERT INTO feedback (user_id, ts, text) VALUES (?,?,?)", (uid, iso(now_utc() - timedelta(minutes=i)), f"m{i}"))
+    c.commit()
+    lines = ops.feedback(s, 7, limit=3)
+    assert lines[0] == "showing latest 3 of 5" and len(lines) == 4
+    assert not ops.feedback(s, 7, limit=5)[0].startswith("showing")
