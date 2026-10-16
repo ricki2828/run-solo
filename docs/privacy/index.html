@@ -170,8 +170,8 @@
     it, a rough elevation profile of the trail (with the position of its turning point, and whether your phone measured it with its barometer or with GPS), how far ahead of or behind your best you were along the way, and whether it is an out and back, a
     loop or one way, and the trail's name only if you turned on the place option. See "Trail pictures" below. Only your own runs: no other runner is ever compared with you.</li>
     <li><strong>only if the app has offered you a quest</strong>: the quest's kind (for example runs of a trail, or distance in 30 days), its target and your own best
-    to compare it with, as whole numbers, and, once you take one, how far along you are and the date it ends. The trail's name goes only if you turned on the place option.
-    No dates other than that end date and no coordinates, and no run ids in the quest itself. See "Quests" below;</li>
+    to compare it with, as whole numbers, and, once you take one, how far along you are and the date it ends, and how it ended (finished, dropped or lapsed) or that you chose Not this month. The trail's name goes only if you turned on the place option.
+    The app sends no run ids with a quest, no coordinates and no dates other than the end date, the month it was offered and when you took it. See "Quests" below;</li>
     <li><strong>only if you turn on "Heart rate on cards"</strong> (Settings, Companion, off until you turn it on), and only for a trail run recorded with
     a heart rate strap: your heart rate along the run as at most 64 whole bpm values, each with your own zone (1 to 5). See "Heart rate on trail pictures" below;</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
@@ -226,14 +226,14 @@
   <p>The app can offer you one quest a month: a target made from your own history, such as running a trail more times in 30 days than you ever
   have, or climbing more in 30 days than you ever have. Your phone works out the quest and your progress. It never compares you with anyone else.
   When the app offers one, it sends the companion up to three offers (each a kind, a target and your own best, as whole numbers), and, once you take one,
-  the quest you took with how far along you are and the date it ends. The trail's name goes only if you turned on the place option, otherwise the
+  the quest you took with how far along you are and the date it ends, and, when it ends, how (finished, dropped or lapsed), or that you chose Not this month. The trail's name goes only if you turned on the place option, otherwise the
   message says "your trail".</p>
   <p>With that, the companion sends your own Telegram chat one message a month offering the quest, with Take it, Another and Not this month buttons.
   It counts inside the same weekly limit as suggestions. If you take a quest, the run that finishes it gets one extra line on its card, and
   when 7 days are left and you are well short, the next evening suggestion may carry one line about it, once. The companion sends no nudge while it is
   keeping things light after a check-in answer. If you take or skip a quest in Telegram, the app can ask the server for it when it asks for your next
   session, so both agree.</p>
-  <p>The server keeps these as a small table (the kind, target, your best, progress, state and end date, and the trail name only with the place option).
+  <p>The server keeps these as a small table (the kind, target, your best, progress, state, end date, the month it was offered and when you took it, and the trail name only with the place option).
   It deletes a quest 90 days after it ends, or 90 days after the month it was offered in if you never took it, and turning the place option off
   deletes the names at once. The server also remembers which of your already uploaded runs finished a quest, so that run's card can carry the line. The quests are in the data the server returns about you, and Delete everything removes them. Backups can keep them for up to 14 days. They never go to OpenRouter,
   the model provider or the card renderer: every quest line is a fixed template filled in on our server.</p>

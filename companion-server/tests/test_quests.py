@@ -430,7 +430,7 @@ def test_month_skipped_cancels_the_queued_offer_and_keeps_the_month_closed(clien
     t = enrol(client)
     post(client, t, quest={"offers": three_offers()})
     assert quest_due(client) is not None
-    post(client, t, "r2", minutes_ago=5, quest={"month_skipped": True})
+    post(client, t, "r2", minutes_ago=5, quest={"month_skipped": month_of(run_payload("x", minutes_ago=5))})
     assert quest_due(client) is None
     assert {r["state"] for r in rows(client)} == {"skipped"}
     post(client, t, "r3", minutes_ago=2, quest={"offers": three_offers()})   # offered again: nothing is stored or queued
@@ -473,3 +473,14 @@ def test_an_older_upload_cannot_undo_the_current_quest(client):
     got = {r["quest_id"]: r for r in rows(client)}
     assert got["q_2026-10_trail_visits_a1"]["state"] == "accepted" and got["q_2026-10_trail_visits_a1"]["value"] == 3
     assert "q_2026-09_distance_month_z9" not in got and "q_2026-09_trail_visits_o7" not in got
+
+
+def test_month_skipped_names_its_month_and_an_older_upload_cannot_use_it(client):
+    t = enrol(client)
+    post(client, t, "r_new", minutes_ago=5, quest={"offers": three_offers()})
+    post(client, t, "r_old", minutes_ago=300, quest={"month_skipped": month_of(run_payload("x", minutes_ago=5))})   # queued offline
+    assert {r["state"] for r in rows(client)} == {"offered"} and quest_due(client) is not None
+    post(client, t, "r_mid", minutes_ago=3, quest={"month_skipped": "2020-01"})   # another month: this one is untouched
+    assert {r["state"] for r in rows(client)} == {"offered"} and quest_due(client) is not None
+    post(client, t, "r_bad", minutes_ago=2, quest={"month_skipped": True})   # not a "YYYY-MM": the block is dropped
+    assert {r["state"] for r in rows(client)} == {"offered"}

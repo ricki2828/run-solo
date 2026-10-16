@@ -101,7 +101,7 @@ class QuestIn(BaseModel):
     active: ActiveIn | None = None
     done_now: str | None = Field(default=None, pattern=ID_PATTERN)
     closed: ClosedIn | None = None
-    month_skipped: bool = False   # the runner said "Not this month" in the app
+    month_skipped: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")   # "YYYY-MM": the runner said "Not this month"
 
     @model_validator(mode="after")
     def _something_to_say(self):
@@ -236,9 +236,10 @@ def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: da
     name = (lambda n: n) if keep_name else (lambda n: None)
     c.execute("UPDATE quests SET state='expired', card_id=NULL, updated_at=? WHERE user_id=? AND state='accepted' AND ends_on < ?",
               (ts, uid, today.isoformat()))
-    if q.month_skipped:   # nothing more this month: any offer still waiting goes, and so does its queued card
-        c.execute("UPDATE quests SET state='skipped', card_id=NULL, updated_at=? WHERE user_id=? AND state='offered'", (ts, uid))
-        c.execute("DELETE FROM outbox WHERE user_id=? AND kind='quest_offer'", (uid,))
+    if q.month_skipped and not older:   # that month only: any offer still waiting goes, and so does its queued card
+        c.execute("UPDATE quests SET state='skipped', card_id=NULL, updated_at=? WHERE user_id=? AND month=? AND state='offered'",
+                  (ts, uid, q.month_skipped))
+        c.execute("DELETE FROM outbox WHERE user_id=? AND kind='quest_offer' AND ref=? AND state='pending'", (uid, q.month_skipped))
     if q.closed:
         end = {"done": "done", "dropped": "skipped", "expired": "expired"}[q.closed.result]
         c.execute("UPDATE quests SET state=?, card_id=NULL, updated_at=? WHERE user_id=? AND quest_id=? AND state IN ('offered','accepted')",
@@ -267,7 +268,7 @@ def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: da
         c.execute("UPDATE quests SET state='done', done_run_id=?, value=target, card_id=NULL, updated_at=? "
                   "WHERE user_id=? AND quest_id=? AND state IN ('offered','accepted')", (run_id, ts, uid, q.done_now))
     omonth = id_month(q.offers[0].id, month) if q.offers else month
-    if q.offers and not older and not q.month_skipped and not month_is_decided(c, uid, omonth):
+    if q.offers and not older and q.month_skipped != omonth and not month_is_decided(c, uid, omonth):
         c.execute("DELETE FROM quests WHERE user_id=? AND month=? AND state='offered'", (uid, omonth))
         for pos, o in enumerate(q.offers):
             c.execute("INSERT OR IGNORE INTO quests (user_id, quest_id, month, kind, target, baseline, unit, trail_name, state, "

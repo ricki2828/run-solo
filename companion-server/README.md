@@ -89,7 +89,7 @@ Unknown keys, a bad value or a mismatch drop the whole block, never the run (`ex
   "active": {"id": "q_2026-11_trail_visits_ab12", "kind": "trail_visits", "target": 5, "value": 3, "ends_on": "2026-12-02", "trail_name": "The Saddle Trail"},
   "done_now": "q_2026-11_trail_visits_ab12",
   "closed": {"id": "q_2026-11_trail_visits_ab12", "result": "dropped"},
-  "month_skipped": false
+  "month_skipped": "2026-11"
 }
 ```
 - `offers`: up to 3, distinct ids, `^q_[a-z0-9_-]{1,48}$`. `kind` is `trail_visits` (unit `runs`), `trail_best` or `climb_best` (`s`), `climb_month` (`m`) or `distance_month` (`km`);
@@ -99,7 +99,7 @@ Unknown keys, a bad value or a mismatch drop the whole block, never the run (`ex
 - `trail_name` is kept only while the place opt-in is on (cleared when it turns off) and goes through the trail-name filter; otherwise the copy says "your trail".
 - `closed`: `{id, result}` with `result` one of `done | dropped | expired`. The app sends it when it ends a quest the server may still show (dropped = the runner gave it up).
   `dropped` is stored as `skipped`. The row stops being returned by next-session and no nudge goes.
-- `month_skipped: true`: the runner said "Not this month" in the app. Every waiting offer is marked `skipped` and any queued (unsent) offer card is cancelled.
+- `month_skipped: "YYYY-MM"`: the runner said "Not this month" in the app for that offer month. That month's waiting offers are marked `skipped` and its queued (pending) offer card is cancelled. Ignored on a stale or older upload.
 - A month is offered once. After a quest is taken, skipped, done or lapsed, new `offers` for that month are ignored. The month an offer belongs to is read from its id
   (`q_YYYY-MM_...`), falling back to the local month of the run that carried it.
 - A stale upload, or one older than a run already stored, has its `active` and `offers` ignored (so an offline queue cannot undo today's quest); `done_now` and `closed` still apply.
