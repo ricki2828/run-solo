@@ -217,12 +217,13 @@ class Canvas:
         self.glows.append((rgb(colour) if isinstance(colour, str) else colour, strength, radius))
 
     # text
-    def text(self, xy, s, font, fill, anchor="ls", tracking=0.0):
-        """Draw s at 1x xy. `font` is a 1x-size font factory result built via fonts()."""
+    def text(self, xy, s, font, fill, anchor="ls", tracking=0.0, stroke=0, stroke_fill=None):
+        """Draw s at 1x xy. `font` is a 1x-size font factory result built via fonts(). `stroke` (1x px) draws a halo in stroke_fill."""
         x, y = xy
         f = font
         if not tracking:
-            self.d.text((x * SS, y * SS), s, font=f, fill=fill, anchor=anchor)
+            self.d.text((x * SS, y * SS), s, font=f, fill=fill, anchor=anchor,
+                        stroke_width=int(round(stroke * SS)), stroke_fill=stroke_fill)
             return
         w = self.text_width(s, f, tracking)
         if anchor[0] == "m":

@@ -250,3 +250,11 @@ def test_a_switch_off_while_the_card_is_queued_sends_the_board_not_text(env):
     assert env.svc._send_card(env.user(), cid, NOW)
     kind, facts = env.rec.sent[-1]
     assert kind == "trail_board" and "hr_series" not in facts
+
+
+def test_the_heart_card_states_the_peak_bpm_once():
+    from render.cards import trail as TR
+    f = F.trail_heart_outlasts()
+    peak = max(f["hr_series"])
+    html = TR.build_trail_heart_html(f)
+    assert html.count(f">{peak}<") == 1 and f"{peak} BPM" not in html and ">PEAK</text>" in html

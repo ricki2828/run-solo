@@ -44,6 +44,35 @@ BAKED = 600                       # dense samples for the race maths
 WHITE = "#FFFFFF"
 
 
+LABEL_ABOVE = 32                  # a marker label's baseline sits this far over its dot's centre
+LABEL_FLOOR = 754 + 36            # ... and never higher than this, so its caps clear the panel top at the hilltop
+CLOSE_X = 74                      # dots nearer than this share a line of labels
+SAME_X = 4                        # ... and nearer than this have no side of their own
+
+
+def _label_xy(gx: float, gy: float, yx: float, yy: float, you_w: float, best_w: float):
+    """Where the YOU and BEST labels go: (you_xy, you_anchor, best_xy, best_anchor). Each sits on its own dot. When the
+    dots are close, YOU stays centred and BEST sits beside it on the side of BEST's own dot (inboard when the dots
+    coincide, and flipped when that side would run off the panel)."""
+    lx = min(max(yx, PX0 + 40), PX1 - 40)
+    you = (lx, max(yy - LABEL_ABOVE, LABEL_FLOOR))
+    if abs(gx - lx) >= CLOSE_X:
+        return you, "ms", (gx, max(gy - LABEL_ABOVE, LABEL_FLOOR)), "ms"
+    if gx - yx > SAME_X:
+        side = 1
+    elif yx - gx > SAME_X:
+        side = -1
+    else:
+        side = 1 if lx < (PX0 + PX1) / 2 else -1
+    gap = you_w / 2 + 10
+    if side > 0 and lx + gap + best_w > PX1:
+        side = -1
+    elif side < 0 and lx - gap - best_w < PX0:
+        side = 1
+    by = max(gy - LABEL_ABOVE, LABEL_FLOOR)
+    return you, "ms", (lx + side * gap, by), "ls" if side > 0 else "rs"
+
+
 def saira(px: int):
     """The canvas draws at SS x, so a font is built at SS x its 1x size (the other videos' px are half what they read as)."""
     return _saira(px * SS)
@@ -221,12 +250,12 @@ class GhostClip:
         yx, yy = self._x(you), self._y(you)
         cv.circle(gx, gy, 19, fill=WHITE, outline=brand.QUIET, width=7)
         cv.circle(yx, yy, 21, fill=brand.ARC if done and self.final > 0 else brand.INK, outline=WHITE, width=5)
-        if abs(gx - yx) < 74:   # still close (the start, the line): stack YOU above BEST, both kept inside the panel and off the stroke
-            cv.text((min(max(gx, PX0 + 40), PX1 - 40), gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
-            cv.text((min(max(yx, PX0 + 40), PX1 - 40), min(yy, gy) - 84), "YOU", saira(34), brand.INK, anchor="ms")
-        else:
-            cv.text((gx, gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
-            cv.text((yx, yy - 38), "YOU", saira(34), brand.INK, anchor="ms")
+        font = saira(34)
+        you_xy, you_anchor, best_xy, best_anchor = _label_xy(
+            gx, gy, yx, yy, Canvas.text_width("YOU", font), Canvas.text_width("BEST", font))
+        halo = dict(stroke=7, stroke_fill=WHITE)
+        cv.text(best_xy, "BEST", font, brand.QUIET, anchor=best_anchor, **halo)
+        cv.text(you_xy, "YOU", font, brand.INK, anchor=you_anchor, **halo)
 
     def frame(self, t: float):
         cv = Canvas(brand.GROUND)
