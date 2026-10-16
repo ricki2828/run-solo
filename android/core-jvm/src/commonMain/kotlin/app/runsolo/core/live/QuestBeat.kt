@@ -41,7 +41,7 @@ class QuestBeat(private val quest: LiveQuest, spent: Boolean = false) {
 
     fun tick(i: QuestInput): TalkLine? {
         if (spent || !crossed(i)) return null
-        return TalkLine(CueSlot.questDone, "questDone:${quest.id}", quest.line)
+        return TalkLine(CueSlot.questDone, "questDone:${quest.id}", quest.line, holdMs = HOLD_MS)
     }
 
     /** The beat fired and was handled; it never fires again. */
@@ -80,6 +80,12 @@ class QuestBeat(private val quest: LiveQuest, spent: Boolean = false) {
     }
 
     companion object {
+        /**
+         * How long the line waits for a gap: past the budget's 25 s minimum gap, so a quest that completes on the km
+         * cue's tick is still said after it, never dropped silently. It completes once, so a late line beats none.
+         */
+        const val HOLD_MS = 30_000L
+
         /** The last trail visit counts once the runner is this close to the trail's end. */
         const val NEAR_END_M = 150.0
 

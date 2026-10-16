@@ -27,12 +27,22 @@ class QuestBeatTest {
     }
 
     @Test
-    fun `a line that is not spent is offered again so a held one is tried again`() {
+    fun `the session spends the beat before offering the line so a held line is released by the budget not by the beat`() {
         val b = QuestBeat(counter(LiveQuest.DISTANCE_MONTH, 5_000.0))
-        assertNotNull(b.tick(QuestInput(1_000, 5_000.0)))
-        assertNotNull(b.tick(QuestInput(2_000, 5_010.0)))
+        val line = b.tick(QuestInput(1_000, 5_000.0))
+        assertNotNull(line)
+        // The session's order: spend and journal first, then offer to the budget.
         b.spend()
-        assertNull(b.tick(QuestInput(3_000, 5_020.0)))
+        assertNull(b.tick(QuestInput(2_000, 5_010.0)))
+        val budget = TalkBudget(VoiceLevel.coach)
+        // Speech is in the way (a km cue just ended): the budget holds the P1 line.
+        assertNotNull(budget.offer(TalkLine(CueSlot.turnaround, "t", "Turn here."), 1_000L, 0L))
+        assertNull(budget.offer(line, 1_100L, 0L))
+        // Still waiting at 18 s; the poll releases it once the gap opens, inside its own 30 s hold, and only once.
+        assertNull(budget.poll(18_000L, 0L))
+        val due = budget.poll(27_000L, 0L)
+        assertEquals(line.text, due?.text)
+        assertNull(budget.poll(27_100L, 0L))
     }
 
     @Test
@@ -104,6 +114,17 @@ class QuestBeatTest {
         val line = TalkLine(CueSlot.questDone, "questDone:q_x", "Quest line. Done now.")
         assertNotNull(b.offer(line, 5_000L, 0L))
         assertNull(b.offer(line, 60_000L, 0L))
+    }
+
+    @Test
+    fun `a quest line takes the held slot from another game beat and outlasts the usual hold`() {
+        val b = TalkBudget(VoiceLevel.coach)
+        assertNotNull(b.offer(TalkLine(CueSlot.turnaround, "t", "Turn here."), 1_000L, 0L))
+        assertNull(b.offer(TalkLine(CueSlot.climbAhead, "c", "Climb ahead. 70 metres up."), 2_000L, 0L))
+        val quest = QuestBeat(counter(LiveQuest.DISTANCE_MONTH, 100.0)).tick(QuestInput(3_000, 200.0))!!
+        assertNull(b.offer(quest, 3_000L, 0L))
+        // Past the usual 10 s hold, the quest line is still waiting and is said when the gap opens.
+        assertEquals(quest.text, b.poll(27_500L, 0L)?.text)
     }
 
     @Test

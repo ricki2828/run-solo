@@ -1173,10 +1173,23 @@ class RecordingSession(
      * "Quest done", once, in any mode: the beat fires, the `qd` journal line and the status id are set (the toast
      * does not wait on the voice), and the line is offered to the budget when voice is on above Minimal, where a
      * held game beat is said when a gap opens. A failure here turns the beat off for the run, never the recording.
+     * Like the trail beats it needs a check-in plan and follows "Mute tips" the same way (the line is a game beat,
+     * not compare speech): on Minimal, or with no plan, it is not spoken, and the toast still shows.
      */
     private fun questTick(t: Long) {
         val beat = questBeat ?: return
-        if (replay != null || questOff || beat.isSpent) return
+        if (replay != null || questOff) return
+        // The budget holds the P1 quest line for up to HOLD_MS when speech (the km cue, say) is in the way, and
+        // `dueMoment` is only polled by trailMomentsTick on a Trail run: poll it here so a held line is released
+        // on every mode. The beat is already spent and journaled by then.
+        try {
+            cues.dueMoment()?.let { logSaid(it.text) }
+        } catch (e: Exception) {
+            questOff = true
+            Log.w(TAG, "quest beat off: $e")
+            return
+        }
+        if (beat.isSpent) return
         if (core.state != RecorderState.recording || core.autoPaused) return
         try {
             val ghost = trailFeed.state

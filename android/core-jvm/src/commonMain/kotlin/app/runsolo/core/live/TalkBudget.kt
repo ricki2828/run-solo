@@ -73,6 +73,8 @@ data class TalkLine(
     val minChange: Double? = null,
     /** A km line carrying a board compare: never merged with an event (a merge would cut the comparison). */
     val whole: Boolean = false,
+    /** How long a blocked P1 line waits for a gap before it is dropped; null = the budget's [TalkBudget.HOLD_MS]. */
+    val holdMs: Long? = null,
 ) {
     val words: Int get() = CueComposer.words(text)
 }
@@ -117,7 +119,7 @@ class TalkBudget(
         }
         if (repeats(line)) return null
         if (hardEffort && line.slot.priority >= 3) return null
-        if (held != null && now - heldAtMs > holdMs) held = null
+        held?.let { if (now - heldAtMs > (it.holdMs ?: holdMs)) held = null }
         // A km line that finds an event waiting takes it along: one utterance.
         val waiting = held
         if (waiting != null && line.slot == CueSlot.km && !line.whole && gapOpen(now, busyUntil)) {
@@ -127,7 +129,8 @@ class TalkBudget(
         if (line.slot.priority >= 2 && overWindow(line, now)) return null
         // A km line carrying a board compare is the one chance to say it (the compare is claimed once): it skips the gap.
         if (!line.whole && !gapOpen(now, busyUntil)) {
-            if (line.slot.priority == 1 && held == null) {
+            // A completed quest takes the held slot from another game beat: it happens once, the others come round again.
+            if (line.slot.priority == 1 && (held == null || line.slot == CueSlot.questDone)) {
                 held = line
                 heldAtMs = now
             }
@@ -144,7 +147,7 @@ class TalkBudget(
     /** Once a tick: the held P1 line, if the gap has opened; dropped after [holdMs]. */
     fun poll(now: Long, busyUntil: Long): TalkLine? {
         val h = held ?: return null
-        if (now - heldAtMs > holdMs) {
+        if (now - heldAtMs > (h.holdMs ?: holdMs)) {
             held = null
             return null
         }
