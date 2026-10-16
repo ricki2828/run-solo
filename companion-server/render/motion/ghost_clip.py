@@ -221,12 +221,17 @@ class GhostClip:
         yx, yy = self._x(you), self._y(you)
         cv.circle(gx, gy, 19, fill=WHITE, outline=brand.QUIET, width=7)
         cv.circle(yx, yy, 21, fill=brand.ARC if done and self.final > 0 else brand.INK, outline=WHITE, width=5)
-        if abs(gx - yx) < 74:   # still close (the start, the line): stack YOU above BEST, both kept inside the panel and off the stroke
-            cv.text((min(max(gx, PX0 + 40), PX1 - 40), gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
-            cv.text((min(max(yx, PX0 + 40), PX1 - 40), min(yy, gy) - 84), "YOU", saira(34), brand.INK, anchor="ms")
+        above = 32   # baseline this far over the dot centre: the label sits on its dot, not floating over it
+        if abs(gx - yx) < 74:   # still close (the start, the line): YOU stays on its dot, BEST sits beside it on the same line, inboard
+            lx = min(max(yx, PX0 + 40), PX1 - 40)
+            cv.text((lx, yy - above), "YOU", saira(34), brand.INK, anchor="ms")
+            if lx < (PX0 + PX1) / 2:
+                cv.text((lx + 40, gy - above), "BEST", saira(34), brand.QUIET, anchor="ls")
+            else:
+                cv.text((lx - 40, gy - above), "BEST", saira(34), brand.QUIET, anchor="rs")
         else:
-            cv.text((gx, gy - 38), "BEST", saira(34), brand.QUIET, anchor="ms")
-            cv.text((yx, yy - 38), "YOU", saira(34), brand.INK, anchor="ms")
+            cv.text((gx, gy - above), "BEST", saira(34), brand.QUIET, anchor="ms")
+            cv.text((yx, yy - above), "YOU", saira(34), brand.INK, anchor="ms")
 
     def frame(self, t: float):
         cv = Canvas(brand.GROUND)
