@@ -363,10 +363,14 @@ class _RefTable extends StatelessWidget {
 /// Per-week label under a consistency bar, two short lines: how long ago
 /// ("7 wks", "1 wk", "This wk") over what the bar means ("ran", "ice" for a
 /// freeze, "off"). The last bar is this week.
-String _weekLabel(int i, List<bool?> recent) {
+String _weekLabel(int i, List<engine.StreakWeek> recent) {
   final back = recent.length - 1 - i;
-  final w = recent[i];
-  final state = w == true ? 'ran' : (w == null ? 'ice' : 'off');
+  final state = switch (recent[i]) {
+    engine.StreakWeek.ran => 'ran',
+    engine.StreakWeek.frozen => 'ice',
+    engine.StreakWeek.paused => 'paused',
+    engine.StreakWeek.missed => 'off',
+  };
   final when = back == 0 ? 'This wk' : '$back ${back == 1 ? 'wk' : 'wks'}';
   return '$when\n$state';
 }
@@ -405,11 +409,24 @@ class _Consistency extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: Container(
-                      height: w == true ? 72 : (w == null ? 40 : 10),
+                      height: switch (w) {
+                        engine.StreakWeek.ran => 72,
+                        engine.StreakWeek.frozen => 40,
+                        engine.StreakWeek.paused => 24,
+                        engine.StreakWeek.missed => 10,
+                      },
                       decoration: BoxDecoration(
-                        color: w == true
-                            ? lime
-                            : (w == null ? ice : t.bgRaised),
+                        color: switch (w) {
+                          engine.StreakWeek.ran => lime,
+                          engine.StreakWeek.frozen => ice,
+                          _ =>
+                            w == engine.StreakWeek.paused
+                                ? Colors.transparent
+                                : t.bgRaised,
+                        },
+                        border: w == engine.StreakWeek.paused
+                            ? Border.all(color: t.inkSecondary, width: 2)
+                            : null,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -442,8 +459,9 @@ class _Consistency extends StatelessWidget {
         ),
         const SizedBox(height: Space.x8),
         Text(
-          'Lime is a week you ran. Ice is a week a freeze covered. '
-          '$freezes freeze${freezes == 1 ? '' : 's'} ready.',
+          'Lime is a week you ran. Ice is a week a freeze covered.'
+          '${streak.recent.contains(engine.StreakWeek.paused) ? ' Hollow is a paused week.' : ''}'
+          ' $freezes freeze${freezes == 1 ? '' : 's'} ready.',
           style: RunSoloType.label13.copyWith(color: t.inkSecondary),
         ),
       ],

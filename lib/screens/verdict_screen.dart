@@ -6,6 +6,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/routes.dart';
+import '../app/quest_sync.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/history_store.dart';
@@ -33,15 +34,17 @@ import 'run_detail_screen.dart';
 import 'trail_suggest_card.dart';
 import 'trail_verdict_screen.dart';
 
-/// The moment to show for a run that made several pending: PB, then
-/// level-up, then first, then the weekly story; engine order breaks ties.
+/// The moment to show for a run that made several pending: a finished
+/// quest, then PB, level-up, first and the weekly story; engine order breaks
+/// ties.
 @visibleForTesting
 Moment pickMoment(List<Moment> pending) {
   int rank(Moment m) => switch (m.kind) {
-    MomentKind.pb => 0,
-    MomentKind.levelUp => 1,
-    MomentKind.first => 2,
-    MomentKind.story => 3,
+    MomentKind.quest => 0,
+    MomentKind.pb => 1,
+    MomentKind.levelUp => 2,
+    MomentKind.first => 3,
+    MomentKind.story => 4,
   };
   return pending.reduce((a, b) => rank(b) < rank(a) ? b : a);
 }
@@ -99,12 +102,16 @@ class _VerdictScreenState extends State<VerdictScreen> {
     }
     final seen = services.seenMoments;
     final p = services.settings.settings;
+    // A run that finishes a quest closes it here, so QUEST DONE can show.
+    final q = await syncQuests(services, all);
     final snapshot = buildProgressSnapshot(
       all,
       now: now,
       sex: p.profileSex,
       birthYear: p.birthYear,
       seenMoments: await seen.load(),
+      pausedWeeks: q.pausedWeeks,
+      questHistory: q.history,
     );
     if (snapshot.pending.isEmpty || !mounted) return;
     // One moment per run: the highest priority (PB, level-up, first, then

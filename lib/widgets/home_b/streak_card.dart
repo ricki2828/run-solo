@@ -8,7 +8,9 @@ import 'lane_block.dart';
 
 /// The weekly streak with its freeze, and the firsts so far. One run in a
 /// Monday-to-Sunday week keeps the streak alive; a freeze covers a missed
-/// week. Eight dots: ran (filled), missed (hollow), frozen (ice).
+/// week. Eight dots: ran (filled), missed (hollow), frozen (ice), paused
+/// (hollow with a pause bar). A paused week (ill or sore) neither counts nor
+/// breaks; the runner can pause one herself or himself, no cap.
 class StreakCard extends StatelessWidget {
   const StreakCard({
     super.key,
@@ -16,6 +18,10 @@ class StreakCard extends StatelessWidget {
     required this.firstsDone,
     required this.firstsTotal,
     this.lane = engine.IdentityLane.aerobic,
+    this.now,
+    this.onPause,
+    this.onUndoPause,
+    this.undoable = const {},
   });
 
   final WeeklyStreak streak;
@@ -24,6 +30,52 @@ class StreakCard extends StatelessWidget {
 
   /// The lane the card is tinted with; aerobic (green) on Home.
   final engine.IdentityLane lane;
+
+  /// Today, to know when "Pause this week" may show (Thursday on).
+  final DateTime? now;
+
+  /// Pauses the week [weeksBack] weeks ago (0 = this week). Null hides the
+  /// button.
+  final ValueChanged<int>? onPause;
+
+  /// Lifts a pause the runner made.
+  final ValueChanged<int>? onUndoPause;
+
+  /// Which of [weeksBack] 0 and 1 are the runner's own pauses (the coach's
+  /// care weeks cannot be undone here).
+  final Set<int> undoable;
+
+  /// The week the pause button would pause, or null. This week once it is
+  /// Thursday with no run yet; else last week if it was missed (and no freeze
+  /// covered it). Never for a runner with no streak history.
+  int? get _pausable {
+    final n = now;
+    if (onPause == null || n == null || streak.recent.length < 2) return null;
+    if (!streak.recent.contains(engine.StreakWeek.ran)) return null;
+    if (!streak.thisWeekDone &&
+        streak.recent.last == engine.StreakWeek.missed &&
+        n.weekday >= DateTime.thursday) {
+      return 0;
+    }
+    if (streak.recent[streak.recent.length - 2] == engine.StreakWeek.missed) {
+      return 1;
+    }
+    return null;
+  }
+
+  /// A paused week of the runner's own that Undo can lift, this week first.
+  int? get _undoable {
+    if (onUndoPause == null || streak.recent.length < 2) return null;
+    if (streak.recent.last == engine.StreakWeek.paused &&
+        undoable.contains(0)) {
+      return 0;
+    }
+    if (streak.recent[streak.recent.length - 2] == engine.StreakWeek.paused &&
+        undoable.contains(1)) {
+      return 1;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +86,19 @@ class StreakCard extends StatelessWidget {
         : weeks == 1
         ? '1 WEEK STREAK'
         : '$weeks WEEK STREAK';
-    final line = weeks == 0
+    final pausedNow =
+        streak.recent.isNotEmpty &&
+        streak.recent.last == engine.StreakWeek.paused &&
+        !streak.thisWeekDone;
+    final line = pausedNow
+        ? 'Paused. Get well, it\'ll be here.'
+        : weeks == 0
         ? 'Run once this week and it starts. Miss a week and a freeze covers it.'
         : streak.thisWeekDone
         ? 'This week is done. Rest up.'
         : 'Run once before Sunday to keep it going.';
+    final pause = _pausable;
+    final undo = pause == null ? _undoable : null;
     final freeze = streak.freezesReady == 0
         ? 'No freeze ready'
         : streak.freezesReady == 1
@@ -66,7 +126,36 @@ class StreakCard extends StatelessWidget {
           ),
           const SizedBox(height: Space.x4),
           Text(line, style: RunSoloType.body15.copyWith(color: t.inkSecondary)),
-          const SizedBox(height: Space.x12),
+          if (pause != null || undo != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: ValueKey(pause != null ? 'streak-pause' : 'streak-undo'),
+                style: TextButton.styleFrom(
+                  foregroundColor: t.inkSecondary,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(48, 48),
+                  alignment: Alignment.centerLeft,
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
+                onPressed: () =>
+                    pause != null ? onPause!(pause) : onUndoPause!(undo!),
+                child: Text(
+                  pause == null
+                      ? 'Undo pause'
+                      : pause == 0
+                      ? 'Sore or ill? Pause this week'
+                      : 'Sore or ill? Pause last week',
+                  style: RunSoloType.label13.copyWith(
+                    color: t.inkSecondary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(height: Space.x12),
+          if (pause != null || undo != null) const SizedBox(height: Space.x4),
           Row(
             children: [
               for (var i = 0; i < streak.recent.length; i++) ...[
@@ -93,14 +182,14 @@ class StreakCard extends StatelessWidget {
 class _WeekDot extends StatelessWidget {
   const _WeekDot({required this.state});
 
-  /// true = ran, false = missed, null = frozen.
-  final bool? state;
+  final engine.StreakWeek state;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final ran = state == true;
-    final frozen = state == null;
+    final ran = state == engine.StreakWeek.ran;
+    final frozen = state == engine.StreakWeek.frozen;
+    final paused = state == engine.StreakWeek.paused;
     final colour = frozen ? t.laneFill(engine.IdentityLane.long) : t.inkPrimary;
     return Container(
       width: 16,
@@ -109,12 +198,18 @@ class _WeekDot extends StatelessWidget {
         shape: BoxShape.circle,
         color: ran || frozen ? colour : Colors.transparent,
         border: Border.all(
-          color: ran || frozen ? colour : t.inkMuted,
+          color: ran || frozen
+              ? colour
+              : paused
+              ? t.inkSecondary
+              : t.inkMuted,
           width: 2,
         ),
       ),
       child: frozen
           ? Icon(Icons.ac_unit, size: 10, color: readableOn(colour))
+          : paused
+          ? Icon(Icons.pause, size: 10, color: t.inkSecondary)
           : null,
     );
   }

@@ -164,16 +164,22 @@ class LaneTintCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.sheet),
       ),
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 6, color: fill),
-            Expanded(
-              child: Padding(padding: padding, child: child),
-            ),
-          ],
-        ),
+      // A Stack, not IntrinsicHeight: a card can hold a LayoutBuilder (the
+      // recent-bars chart), which cannot report intrinsic dimensions.
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 6,
+            child: ColoredBox(color: fill),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Padding(padding: padding, child: child),
+          ),
+        ],
       ),
     );
   }

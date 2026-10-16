@@ -24,8 +24,8 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 RETENTION_DAYS = 14
 MAGIC = b"RSB1"
 # The runner's check-in answers are kept 14 days on the live database, so they must not outlive that in a backup that is
-# itself kept 14 days (eng-review P1). They are emptied from the snapshot: a restore comes back without them.
-PRIVATE_TABLES = ("checkin_answers", "checkin_slots", "question_cap")
+# itself kept 14 days (eng-review P1). Tell Ricki feedback (30 days live) is emptied the same way. They are emptied from the snapshot: a restore comes back without them.
+PRIVATE_TABLES = ("checkin_answers", "checkin_slots", "question_cap", "feedback", "feedback_mode")
 
 
 def _key(key_file: str) -> bytes:

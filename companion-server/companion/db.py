@@ -177,6 +177,21 @@ CREATE TABLE IF NOT EXISTS note_mode (
   run_id TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
+-- "Tell Ricki" was tapped (or /feedback sent): the next free-text message is feedback, until expires_at. One row per user.
+CREATE TABLE IF NOT EXISTS feedback_mode (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL
+);
+-- Tell Ricki (companion.feedback): what a runner typed to the operator. Kept 30 days, then purged; exported to the runner
+-- under `feedback`; excluded from the nightly backup (backup.PRIVATE_TABLES). Never read by the writer or any model prompt.
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ts TEXT NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS feedback_age ON feedback (ts);
+CREATE INDEX IF NOT EXISTS feedback_user ON feedback (user_id, ts);
 CREATE TABLE IF NOT EXISTS convo_area (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   run_id TEXT NOT NULL,

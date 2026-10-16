@@ -18,6 +18,7 @@ Color momentColour(RunSoloTokens t, Moment m) {
     MomentKind.pb => t.typeLaps,
     MomentKind.levelUp => t.typeTests,
     MomentKind.story => t.typeIntervals,
+    MomentKind.quest => t.typeTrail,
   };
 }
 
