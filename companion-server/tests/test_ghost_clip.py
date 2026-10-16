@@ -458,3 +458,16 @@ def test_the_ghost_is_drawn_apart_from_you_on_the_hill():
     clip = G.GhostClip(spec)
     you, ghost, _ = clip.state(1.6)
     assert abs(clip._x(min(1, max(0, you + (ghost - you) * G.GHOST_SPREAD))) - clip._x(you)) > 40
+
+
+@pytest.mark.parametrize("gx,yx,side", [(300, 280, 1), (280, 300, -1), (92, 92, 1), (988, 988, -1), (400, 340, 1), (340, 400, -1)])
+def test_best_label_stays_on_its_dots_side(gx, yx, side):
+    from render.motion import ghost_clip as G
+    you, ya, best, ba = G._label_xy(gx, 900, yx, 900, 60, 90)
+    assert (best[0] - you[0]) * side > 0 and ba == ("ls" if side > 0 else "rs")
+
+
+def test_marker_labels_stay_below_the_panel_top():
+    from render.motion import ghost_clip as G
+    you, _, best, _ = G._label_xy(500, 770, 500, 770, 60, 90)
+    assert you[1] >= 790 and best[1] >= 790
