@@ -228,7 +228,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         return None
     last = history[0]
     since_last = now - _when(last)
-    # `history` is the newest 60 runs, so a full window is a long record whatever its oldest date says
+    # `history` is capped at the newest 60 runs: under 60 runs ever means the oldest entry really is the first run
     new_runner = len(history) < 60 and now - _when(history[-1]) < timedelta(days=NEW_RUNNER_DAYS)
     if since_last > timedelta(days=ACTIVE_WITHIN_DAYS):
         return None  # someone who has stopped running gets the recap, not a nudge
