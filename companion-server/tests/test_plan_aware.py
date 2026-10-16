@@ -321,6 +321,7 @@ def test_end_to_end_a_recent_note_softens_the_planned_push(client, fakes):
 
 def test_end_to_end_without_a_plan_the_old_logic_is_untouched(client, fakes):
     t = enrol(client)
+    client.post("/v1/runs", json=run_payload("old", minutes_ago=20 * 1440), headers=auth(t))   # not a new runner (M6)
     for i, days in enumerate((9, 7, 5, 3)):
         client.post("/v1/runs", json=run_payload(f"h{i}", minutes_ago=days * 1440, type="tempo" if i == 0 else "easy"),
                     headers=auth(t))

@@ -27,6 +27,7 @@ PLAN_WEEKS_MAX = 16
 LONG_GAP_DAYS = 9
 GAP_DAYS = 5
 MIN_RUNS_14D = 3
+NEW_RUNNER_DAYS = 14   # a runner's first fortnight gets plan and easy reasons only: no 'add a tempo' push yet
 ACTIVE_WITHIN_DAYS = 5
 EVENING_MIN_GAP_H = 44  # a suggestion never lands two evenings running
 FEEL_WINDOW_H = 40
@@ -45,10 +46,15 @@ def _when(r: Mapping[str, Any]) -> datetime:
     return v if isinstance(v, datetime) else parse_iso(v)
 
 
+def whole_km(metres: float) -> int:
+    """Whole km, halves up. Python's round() goes to the even number, which turns a 4.5 km plan into '4 km'."""
+    return max(1, int(metres / 1000 + 0.5))
+
+
 def typical_km(history: Sequence[Mapping[str, Any]], typ: str) -> str | None:
     """Median distance of the last five runs of this type in whole km, e.g. '7'."""
     ds = [h["distance_m"] for h in history[:80] if h["type"] == typ and h.get("distance_m")][:5]
-    return str(max(1, round(median(ds) / 1000))) if ds else None  # whole km
+    return str(whole_km(median(ds))) if ds else None  # whole km
 
 
 def typical_easy_km(history):  # kept for callers that predate typed sessions
@@ -99,7 +105,7 @@ def plan_session(h: Mapping[str, Any], history: Sequence[Mapping[str, Any]], now
     word = PLAN_KIND_WORD[typ]
     text: str | None
     if h.get("plan_next_m"):
-        text = f"{word} {max(1, round(h['plan_next_m'] / 1000))} km"
+        text = f"{word} {whole_km(h['plan_next_m'])} km"
     elif h.get("plan_next_min"):
         text = f"{word} {h['plan_next_min']} min"
     elif typ == "easy":
@@ -222,6 +228,8 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
         return None
     last = history[0]
     since_last = now - _when(last)
+    # `history` is the newest 60 runs, so a full window is a long record whatever its oldest date says
+    new_runner = len(history) < 60 and now - _when(history[-1]) < timedelta(days=NEW_RUNNER_DAYS)
     if since_last > timedelta(days=ACTIVE_WITHIN_DAYS):
         return None  # someone who has stopped running gets the recap, not a nudge
     start = start_hint(history, zone_id)
@@ -270,7 +278,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
     elif weeks is not None and TAPER_WEEKS < weeks <= PLAN_WEEKS_MAX and long_gap is not None and long_gap >= LONG_GAP_DAYS:
         kind = "plan_long"
         slots.update(weeks_txt=plural(weeks, "week"), gap_txt=plural(long_gap, "day"))
-    elif gap is not None and gap >= GAP_DAYS:
+    elif gap is not None and gap >= GAP_DAYS and not new_runner:
         slots["gap_txt"] = plural(gap, "day")
         if forecast and forecast.rain_pct <= GOOD_RAIN_PCT and GOOD_TEMP[0] <= forecast.morning_temp_c <= GOOD_TEMP[1]:
             kind = "good"

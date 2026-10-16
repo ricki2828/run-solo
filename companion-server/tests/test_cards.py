@@ -285,7 +285,8 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     now = now_utc()
     if now.weekday() == 6:  # Sunday evening belongs to the weekly recap, so the suggestion is skipped by design
         now -= timedelta(days=1)
-    for i, (d, typ) in enumerate([(1, "easy"), (3, "easy"), (5, "easy"), (9, "tempo")]):
+    # a runner under two weeks in gets no quality push (M6), so the history starts a month back
+    for i, (d, typ) in enumerate([(1, "easy"), (3, "easy"), (5, "easy"), (9, "tempo"), (30, "easy")]):
         start = now - timedelta(days=d, hours=1)
         svc.ingest_run(uid, RunIn.model_validate(run_payload(f"e{i}", type=typ, start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0)), start + timedelta(hours=2))
     con = sqlite3.connect(svc.s.db_path)
