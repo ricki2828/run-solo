@@ -34,6 +34,7 @@ MAX_MOVES = 6
 SLOTS = ("ready", "today", "postrun", "shape")
 SEND_WINDOW_MIN = {"ready": 75, "today": 90, "postrun": 120, "shape": 120}   # after its due time; a later send is dropped
 TAP_DAYS_AFTER = {"ready": 0, "today": 0, "postrun": 1, "shape": 2}          # local days after its date a tap still counts
+MIN_RUNS_FOR_START_TIME = 3   # fewer runs than this and the card never states a start time
 TODAY_LEAD_MIN = 15       # the morning card goes this long before the usual start
 TODAY_MIN_LEAD_MIN = 5    # ... and never closer to the start than this (after quiet hours it would arrive too late)
 READY_START_MIN = 20 * 60  # the evening-before question, planned in the same window as the evening suggestion

@@ -37,7 +37,10 @@ def test_a_new_runners_first_three_morning_cards_are_plain_and_honest(fresh):
         assert len(sent) == seen + 1, "exactly one morning card per planned day"
         text = sent[-1]["text"]
         seen += 1
-        assert text.startswith(title + "\nPlanned for around 7:00. Run it, move it or skip it?"), text
+        if i < 2:    # one or two runs are not a habit: no start time is stated
+            assert text.startswith(title + "\nIt's on the plan for today. Run it, move it or skip it?"), text
+        else:
+            assert text.startswith(title + "\nPlanned for around 7:00. Run it, move it or skip it?"), text
         low = text.lower()
         assert not any(w in low for w in HISTORY_WORDS), text      # nothing that needs history the runner lacks
         assert "—" not in text and "{" not in text

@@ -82,6 +82,8 @@ class CheckinMixin:
     def _ci_when(c, uid: str, user: dict, for_date: date, now: datetime) -> str | None:
         hist = [dict(r) for r in c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? ORDER BY start_utc DESC "
                                            "LIMIT 80", (uid,))]
+        if len(hist) < ci.MIN_RUNS_FOR_START_TIME:
+            return None   # one or two runs are not a habit: the card says it is on the plan, not when
         m = ci.usual_start_min(hist, for_date.weekday(), user["zone_id"], now)
         return None if m is None else f"around {m // 60}:{m % 60:02d}"
 
