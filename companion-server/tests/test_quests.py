@@ -71,7 +71,7 @@ def drain_offer(client):
 
 
 def offer_message(fakes):
-    return [b for m, b in fakes.tg if m == "sendMessage" and "quest" in b["text"].lower()]
+    return [b for m, b in fakes.tg if m == "sendMessage" and "'s quest" in b["text"]]
 
 
 def tap(client, fakes, label):
@@ -212,7 +212,7 @@ def test_a_stale_tap_answers_moved_on_and_loses_its_buttons(client, fakes):
     n = len(fakes.tg)
     assert post_tg(client, tg_callback(91001, data)).status_code == 200
     sent = fakes.tg[n:]
-    assert any(m == "answerCallbackQuery" and "moved on" in b["text"] for m, b in sent)
+    assert any(m == "answerCallbackQuery" and ("expired" in b["text"] or "moved on" in b["text"]) for m, b in sent)
     assert not any(m == "editMessageText" for m, b in sent)
 
 

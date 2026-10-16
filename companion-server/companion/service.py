@@ -1069,7 +1069,6 @@ class Service(CheckinMixin):
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)
-            self._keep_quest(c, uid, run, now, stale)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
                 self._keep_latest_area(c, uid, run.run_id, run.start_utc, cell(run.area_lat, run.area_lon))
@@ -1084,6 +1083,7 @@ class Service(CheckinMixin):
                 if not held:
                     c.execute("UPDATE users SET zone_id=?, utc_offset_min=? WHERE id=?",
                               (run.zone_id, run.utc_offset_min, uid))
+            self._keep_quest(c, uid, run, now, stale)   # after the zone update: the offer card's evening is the runner's own
             if not stale:
                 c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
                           (uid, "run_card", iso(now), f"card:{uid}:{run.run_id}", run.run_id))
