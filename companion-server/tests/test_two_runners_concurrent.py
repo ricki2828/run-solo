@@ -102,7 +102,8 @@ def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
         chat = str(b["chat_id"])
         mine = next(u for u, d in USERS.items() if d["chat"] == chat)
         other = "B" if mine == "A" else "A"
-        leaked = [tok for tok in tokens(other) if tok in raw]
+        shown = " ".join(str(b.get(k) or "") for k in ("text", "caption"))    # callback ids are random hex: "7002" can occur in one by chance
+        leaked = [tok for tok in tokens(other) if tok in (shown if tok == USERS[other]["chat"] else raw)]
         assert not leaked, (chat, leaked, raw)
         per_chat.setdefault(chat, []).append(raw)
     for u, d in USERS.items():
