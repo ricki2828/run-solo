@@ -104,12 +104,8 @@ void main() {
         await pumpTimes(tester, 8);
         expect(tester.takeException(), isNull);
         expect(
-          find.byKey(
-            variant == 'none'
-                ? const ValueKey('quests-none')
-                : const ValueKey('quests-section'),
-          ),
-          findsOneWidget,
+          find.byKey(const ValueKey('quests-section')),
+          variant == 'none' ? findsNothing : findsOneWidget,
         );
         final name = 'quests_${stage}_${variant}_360x800';
         expect(
