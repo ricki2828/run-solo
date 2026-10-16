@@ -31,6 +31,16 @@ engine.IdentityLane questLane(engine.QuestKind k) => switch (k) {
   engine.QuestKind.distanceMonth => engine.IdentityLane.aerobic,
 };
 
+/// The runner's wall clock for [now], the clock the quest engine runs on
+/// (run starts are `RunIdentity.localStart`, a shifted UTC-flagged value, so
+/// `now` must be shifted the same way). Call once, at the boundary: it is not
+/// idempotent. [offsetMin] is a test seam for the phone's UTC offset.
+DateTime questWall(DateTime now, {int? offsetMin}) =>
+    engine.RunIdentity.localStart(
+      now.toUtc(),
+      offsetMin ?? now.timeZoneOffset.inMinutes,
+    );
+
 /// The runs as the engine reads them, plus the trail names and each run's
 /// mode (for the segment colours).
 class QuestInputs {
@@ -82,12 +92,13 @@ QuestInputs questInputsOf(Iterable<RunSummary> all) {
 }
 
 /// Quests show once the runner is in their 2nd week, and the flag is on.
-bool questsExposed(List<engine.QuestRun> runs, DateTime now) {
+bool questsExposed(List<engine.QuestRun> runs, DateTime now, {int? offsetMin}) {
   if (!kQuestsEnabled || runs.isEmpty) return false;
+  final wall = questWall(now, offsetMin: offsetMin);
   final first = runs
       .map((r) => r.start)
       .reduce((a, b) => a.isBefore(b) ? a : b);
-  return now.difference(first) >= const Duration(days: kQuestsFromDays);
+  return wall.difference(first) >= const Duration(days: kQuestsFromDays);
 }
 
 /// Closes a finished active quest (done, or expired) and rolls the monthly
@@ -98,12 +109,24 @@ QuestState reconcileQuests(
   DateTime now, {
   bool exposed = true,
   List<engine.QuestClimb> climbs = const [],
+  int? offsetMin,
 }) {
+  final wall = questWall(now, offsetMin: offsetMin);
   var out = s;
-  final active = out.active;
+  var active = out.active;
   if (active != null) {
+    // The trail may have re-keyed (anchor deleted or split off).
+    final found = engine.Quests.remapTrail(
+      active,
+      inputs.runs,
+      inputs.trailNames,
+    );
+    if (!identical(found, active)) {
+      active = found;
+      out = out.copyWith(active: found);
+    }
     final p = engine.Quests.progress(active, inputs.runs);
-    final today = engine.Quests.isoDay(now);
+    final today = engine.Quests.isoDay(wall);
     if (p.complete) {
       out = out.copyWith(
         active: null,
@@ -117,7 +140,7 @@ QuestState reconcileQuests(
           ),
         ],
       );
-    } else if (engine.Quests.expired(active, now)) {
+    } else if (engine.Quests.expired(active, wall)) {
       out = out.copyWith(
         active: null,
         history: [
@@ -128,11 +151,11 @@ QuestState reconcileQuests(
     }
   }
   if (out.active == null && exposed) {
-    final month = engine.Quests.monthOf(now);
+    final month = engine.Quests.monthOf(wall);
     if (out.offer?.month != month) {
       final candidates = engine.Quests.candidates(
         inputs.runs,
-        now,
+        wall,
         closed: [for (final h in out.history) h.def],
         climbs: climbs,
         trailNames: inputs.trailNames,
@@ -204,8 +227,10 @@ QuestBoard buildQuestBoard(
   QuestInputs inputs,
   DateTime now, {
   bool exposed = true,
+  int? offsetMin,
 }) {
   if (!exposed) return QuestBoard.empty;
+  final wall = questWall(now, offsetMin: offsetMin);
   final history = s.history.reversed.take(6).toList();
   final active = s.active;
   if (active == null) {
@@ -259,7 +284,7 @@ QuestBoard buildQuestBoard(
   return QuestBoard(
     active: active,
     progress: p,
-    daysLeft: engine.Quests.daysLeft(active, now),
+    daysLeft: engine.Quests.daysLeft(active, wall),
     segments: segments,
     recentMs: recentMs,
     recentDates: recentDates,

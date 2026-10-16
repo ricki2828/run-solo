@@ -99,7 +99,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
     try {
       final List<RunSummary> runs = await services.history.list();
       await syncQuests(services, runs);
-      final inputs = questInputsOf(runs);
+      final inputs = services.quests.inputsFor(runs);
       final now = services.now();
       return buildQuestBoard(
         services.quests.state,

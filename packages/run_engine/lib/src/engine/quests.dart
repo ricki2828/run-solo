@@ -25,8 +25,18 @@ enum QuestKind {
   }
 }
 
-/// Days a quest runs for, from the day it is accepted.
+/// Days a quest runs for, the day it is accepted included (so it ends on
+/// the 30th calendar day: accept + 29).
 const int kQuestDays = 30;
+
+/// Run ids a trail quest remembers for re-finding its trail.
+const int kTrailRunIdsKept = 40;
+
+/// Clocks: every [DateTime] the engine reads or writes (run starts, `now`,
+/// `acceptedAt`) is the runner's WALL CLOCK as a UTC-flagged value (see
+/// `RunIdentity.localStart`), never a real instant. The app converts its real
+/// `now` once at its boundary; mixing the two shifts windows by the zone
+/// offset.
 
 /// One run as the quest engine reads it: index-row fields only.
 class QuestRun {
@@ -97,6 +107,7 @@ class QuestDef {
     required this.baseline,
     this.trailKey,
     this.trailName,
+    this.trailRunIds = const [],
     this.climbIdx,
     this.climbLengthM,
     this.climbGainM,
@@ -120,6 +131,12 @@ class QuestDef {
   final int baseline;
   final String? trailKey;
   final String? trailName;
+
+  /// The runs on the trail when the offer was made (newest last, at most
+  /// [kTrailRunIdsKept]). The trail key is `trail:<anchor run id>` and moves
+  /// when the anchor is deleted or split off; these let the quest find its
+  /// trail again ([Quests.remapTrail]).
+  final List<String> trailRunIds;
   final int? climbIdx;
   final int? climbLengthM;
   final int? climbGainM;
@@ -134,7 +151,7 @@ class QuestDef {
   bool get accepted => acceptedAt != null;
 
   QuestDef accept(DateTime at, {String source = 'app'}) {
-    final end = DateTime(at.year, at.month, at.day + kQuestDays);
+    final end = DateTime(at.year, at.month, at.day + kQuestDays - 1);
     return QuestDef(
       id: id,
       kind: kind,
@@ -143,6 +160,7 @@ class QuestDef {
       baseline: baseline,
       trailKey: trailKey,
       trailName: trailName,
+      trailRunIds: trailRunIds,
       climbIdx: climbIdx,
       climbLengthM: climbLengthM,
       climbGainM: climbGainM,
@@ -152,6 +170,26 @@ class QuestDef {
     );
   }
 
+  /// This quest on another trail key (the trail was re-anchored), with a
+  /// new [target] and [baseline] when given.
+  QuestDef rekeyed(String key, {String? name, int? target, int? baseline}) =>
+      QuestDef(
+        id: id,
+        kind: kind,
+        month: month,
+        target: target ?? this.target,
+        baseline: baseline ?? this.baseline,
+        trailKey: key,
+        trailName: name ?? trailName,
+        trailRunIds: trailRunIds,
+        climbIdx: climbIdx,
+        climbLengthM: climbLengthM,
+        climbGainM: climbGainM,
+        acceptedAt: acceptedAt,
+        endsOn: endsOn,
+        source: source,
+      );
+
   Map<String, Object?> toJson() => {
     'id': id,
     'kind': kind.wire,
@@ -160,6 +198,7 @@ class QuestDef {
     'baseline': baseline,
     'trailKey': ?trailKey,
     'trailName': ?trailName,
+    if (trailRunIds.isNotEmpty) 'trailRunIds': trailRunIds,
     'climbIdx': ?climbIdx,
     'climbLengthM': ?climbLengthM,
     'climbGainM': ?climbGainM,
@@ -191,6 +230,11 @@ class QuestDef {
       baseline: baseline,
       trailKey: trailKey is String ? trailKey : null,
       trailName: trailName is String ? trailName : null,
+      trailRunIds: [
+        if (j['trailRunIds'] is List)
+          for (final r in j['trailRunIds'] as List)
+            if (r is String) r,
+      ],
       climbIdx: j['climbIdx'] is int ? j['climbIdx']! as int : null,
       climbLengthM: j['climbLengthM'] is int ? j['climbLengthM']! as int : null,
       climbGainM: j['climbGainM'] is int ? j['climbGainM']! as int : null,
@@ -430,13 +474,20 @@ abstract final class Quests {
           id: idOf(month, QuestKind.trailVisits, top),
           kind: QuestKind.trailVisits,
           month: month,
-          target: (most + 1).clamp(3, 8),
+          target: math.max(3, most + 1),
           baseline: most,
           trailKey: top,
           trailName: name,
+          trailRunIds: [
+            for (final r
+                in onTrail.reversed.take(kTrailRunIdsKept).toList().reversed)
+              r.id,
+          ],
         ),
       );
 
+      // climb_best needs the per-run climb times, which the app only builds
+      // from run files; PR2 passes no [climbs], so it is not offered yet.
       final topClimbs = [
         for (final c in climbs)
           if (c.trailKey == top &&
@@ -448,7 +499,7 @@ abstract final class Quests {
       ]..sort((a, b) => b.gainM.compareTo(a.gainM));
       if (topClimbs.isNotEmpty) {
         final c = topClimbs.first;
-        final secs = (c.bestMs / 1000).round();
+        final secs = c.bestMs ~/ 1000;
         out.add(
           QuestDef(
             id: idOf(month, QuestKind.climbBest, '$top|${c.idx}'),
@@ -470,7 +521,8 @@ abstract final class Quests {
           if (r.normMs != null) r.normMs!,
       ];
       if (times.length >= 3) {
-        final secs = (times.reduce(math.min) / 1000).round();
+        // Floor: a run only a hair slower than the best must not complete it.
+        final secs = times.reduce(math.min) ~/ 1000;
         out.add(
           QuestDef(
             id: idOf(month, QuestKind.trailBest, top),
@@ -524,13 +576,63 @@ abstract final class Quests {
       ),
     );
 
-    // Never the same kind and trail as the quest that just ended.
+    // Never the same kind and trail as the quest that just ended, unless
+    // that leaves nothing to offer (a runner with only distance_month).
     final last = closed.isEmpty ? null : closed.last;
-    return [
+    final fresh = [
       for (final d in out)
         if (last == null || d.kind != last.kind || d.trailKey != last.trailKey)
           d,
-    ].take(3).toList();
+    ];
+    return (fresh.isEmpty ? out : fresh).take(3).toList();
+  }
+
+  /// A trail quest whose trail key no longer exists in [runs] (the anchor
+  /// was deleted or split off, so the group re-keyed) found again: the key
+  /// that now holds most of the runs the quest remembers. `trail_best` is
+  /// re-based on the best like-for-like time before it was accepted on the
+  /// new key, since times are normalised to the new anchor's length. Returns
+  /// [def] itself when nothing needs doing or no trail can be found.
+  static QuestDef remapTrail(
+    QuestDef def,
+    List<QuestRun> runs,
+    Map<String, String> trailNames,
+  ) {
+    final key = def.trailKey;
+    if (key == null || runs.any((r) => r.trailKey == key)) return def;
+    final remembered = def.trailRunIds.toSet();
+    final votes = <String, int>{};
+    for (final r in runs) {
+      final k = r.trailKey;
+      if (k != null && remembered.contains(r.id)) {
+        votes[k] = (votes[k] ?? 0) + 1;
+      }
+    }
+    if (votes.isEmpty) return def;
+    final entries = votes.entries.toList()
+      ..sort((a, b) {
+        final c = b.value.compareTo(a.value);
+        return c != 0 ? c : a.key.compareTo(b.key);
+      });
+    final next = entries.first.key;
+    int? target;
+    if (def.kind == QuestKind.trailBest) {
+      final at = def.acceptedAt;
+      final before = [
+        for (final r in runs)
+          if (r.trailKey == next &&
+              r.normMs != null &&
+              (at == null || r.start.isBefore(at)))
+            r.normMs!,
+      ];
+      if (before.isNotEmpty) target = before.reduce(math.min) ~/ 1000;
+    }
+    return def.rekeyed(
+      next,
+      name: trailNames[next],
+      target: target,
+      baseline: target,
+    );
   }
 
   /// Progress of an accepted [def] over [runs]. [climbTimes] is the time (ms)

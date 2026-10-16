@@ -81,7 +81,7 @@ void main() {
       expect(c[1].title, 'BEAT 41:37 ON SADDLE');
     });
 
-    test('visits target is clamped to 3..8', () {
+    test('visits target is at least 3 and always above the baseline', () {
       final few = [
         for (var i = 0; i < 3; i++)
           run('r$i', DateTime(2026, 8, 20 + i * 35), trail: 'trail:x'),
@@ -92,7 +92,9 @@ void main() {
         for (var i = 0; i < 12; i++)
           run('r$i', DateTime(2026, 10, 1 + i), trail: 'trail:x'),
       ];
-      expect(Quests.candidates(many, now).first.target, 8);
+      // Twelve runs in 12 days: baseline 12, so 13 (never below baseline+1).
+      expect(Quests.candidates(many, now).first.baseline, 12);
+      expect(Quests.candidates(many, now).first.target, 13);
     });
 
     test('a trail with fewer than 3 runs in 120 days gets no trail quest', () {
@@ -187,7 +189,7 @@ void main() {
     final at = DateTime(2026, 11, 2, 18);
     QuestDef accepted(QuestDef d) => d.accept(at);
 
-    test('accept sets a 30 day window', () {
+    test('accept sets a 30 day window, the first day included', () {
       final d = accepted(
         const QuestDef(
           id: 'q_2026-11_trail_visits_ab12',
@@ -198,10 +200,12 @@ void main() {
           trailKey: 'trail:x',
         ),
       );
-      expect(d.endsOn, '2026-12-02');
-      expect(Quests.daysLeft(d, DateTime(2026, 11, 20)), 13);
-      expect(Quests.expired(d, DateTime(2026, 12, 2, 23)), isFalse);
-      expect(Quests.expired(d, DateTime(2026, 12, 3)), isTrue);
+      // 2 Nov plus 29 days: 30 calendar days with the 2nd as day one.
+      expect(d.endsOn, '2026-12-01');
+      expect(Quests.daysLeft(d, DateTime(2026, 11, 2)), 30);
+      expect(Quests.daysLeft(d, DateTime(2026, 11, 20)), 12);
+      expect(Quests.expired(d, DateTime(2026, 12, 1, 23)), isFalse);
+      expect(Quests.expired(d, DateTime(2026, 12, 2)), isTrue);
     });
 
     test('trail visits count only runs after acceptance, on that trail', () {
@@ -220,8 +224,8 @@ void main() {
         run('a', DateTime(2026, 11, 4), trail: 'trail:x'),
         run('other', DateTime(2026, 11, 5), trail: 'trail:y'),
         run('b', DateTime(2026, 11, 8), trail: 'trail:x'),
-        run('c', DateTime(2026, 12, 2, 6), trail: 'trail:x'),
-        run('late', DateTime(2026, 12, 3, 6), trail: 'trail:x'),
+        run('c', DateTime(2026, 12, 1, 6), trail: 'trail:x'),
+        run('late', DateTime(2026, 12, 2, 6), trail: 'trail:x'),
       ];
       final p = Quests.progress(d, runs);
       expect(p.value, 3);
@@ -404,5 +408,151 @@ void main() {
       );
       expect('${d.title}${d.line}${d.doneLine(23)}'.contains('—'), isFalse);
     }
+  });
+
+  group('review fixes', () {
+    test('only distance_month: the last quest kind is still offered again', () {
+      final runs = [
+        run('a', DateTime(2026, 10, 20)),
+        run('b', DateTime(2026, 10, 25)),
+        run('c', DateTime(2026, 10, 30)),
+      ];
+      final first = Quests.candidates(runs, now).single;
+      final closed = [first.accept(DateTime(2026, 10, 1))];
+      final again = Quests.candidates(runs, now, closed: closed);
+      expect(again.single.kind, QuestKind.distanceMonth);
+    });
+
+    test('the last kind is skipped while there is something else', () {
+      final runs = [
+        for (var i = 0; i < 4; i++)
+          run('r$i', DateTime(2026, 10, 1 + i * 5), trail: 'trail:x'),
+      ];
+      final first = Quests.candidates(runs, now).first;
+      expect(first.kind, QuestKind.trailVisits);
+      final again = Quests.candidates(runs, now, closed: [first]);
+      expect(again.any((d) => d.kind == QuestKind.trailVisits), isFalse);
+      expect(again, isNotEmpty);
+    });
+
+    test('trail_best target floors, so a hair slower than the best fails', () {
+      final runs = [
+        for (var i = 0; i < 3; i++)
+          run(
+            'r$i',
+            DateTime(2026, 10, 10 + i * 5),
+            trail: 'trail:x',
+            normMs: 2472600 + i * 1000,
+          ),
+      ];
+      final best = Quests.candidates(
+        runs,
+        now,
+      ).firstWhere((d) => d.kind == QuestKind.trailBest);
+      expect(best.target, 2472);
+      final at = DateTime(2026, 11, 3);
+      final d = best.accept(at);
+      // 2472.8 s is slower than the 2472.6 s best: not done.
+      final slower = run(
+        's',
+        DateTime(2026, 11, 4),
+        trail: 'trail:x',
+        normMs: 2472800,
+      );
+      expect(Quests.progress(d, [slower]).complete, isFalse);
+      final faster = run(
+        'f',
+        DateTime(2026, 11, 5),
+        trail: 'trail:x',
+        normMs: 2471900,
+      );
+      expect(Quests.progress(d, [faster]).complete, isTrue);
+    });
+
+    test('trail runs are remembered and survive a json round trip', () {
+      final runs = [
+        for (var i = 0; i < 4; i++)
+          run('r$i', DateTime(2026, 10, 1 + i * 5), trail: 'trail:r0'),
+      ];
+      final d = Quests.candidates(runs, now).first;
+      expect(d.trailRunIds, ['r0', 'r1', 'r2', 'r3']);
+      expect(QuestDef.fromJson(d.toJson())!.trailRunIds, d.trailRunIds);
+    });
+
+    group('remapTrail', () {
+      QuestDef visits() => const QuestDef(
+        id: 'q_2026-11_trail_visits_ab12',
+        kind: QuestKind.trailVisits,
+        month: '2026-11',
+        target: 4,
+        baseline: 3,
+        trailKey: 'trail:r0',
+        trailName: 'Saddle',
+        trailRunIds: ['r0', 'r1', 'r2'],
+      ).accept(DateTime(2026, 11, 2));
+
+      test('the anchor was deleted: the group re-keys, the quest follows', () {
+        // r0 is gone; r1 is now the anchor of the same group.
+        final runs = [
+          run('r1', DateTime(2026, 10, 6), trail: 'trail:r1'),
+          run('r2', DateTime(2026, 10, 11), trail: 'trail:r1'),
+          run('n1', DateTime(2026, 11, 4), trail: 'trail:r1'),
+        ];
+        final d = Quests.remapTrail(visits(), runs, {'trail:r1': 'Saddle'});
+        expect(d.trailKey, 'trail:r1');
+        expect(Quests.progress(d, runs).value, 1);
+        // Left alone it would have counted nothing.
+        expect(Quests.progress(visits(), runs).value, 0);
+      });
+
+      test('the anchor was split off: the quest follows the bigger part', () {
+        // r0 is on its own now; r1 and r2 (and the new run) kept together.
+        final runs = [
+          run('r0', DateTime(2026, 10, 1), trail: 'trail:r0'),
+          run('r1', DateTime(2026, 10, 6), trail: 'trail:r1'),
+          run('r2', DateTime(2026, 10, 11), trail: 'trail:r1'),
+          run('n1', DateTime(2026, 11, 4), trail: 'trail:r1'),
+        ];
+        // r0 still exists under its own key, so the key is still there: no
+        // remap, the quest stays with the runs that match its key.
+        expect(
+          Quests.remapTrail(visits(), runs, const {}).trailKey,
+          'trail:r0',
+        );
+        // Once r0 is deleted as well, only the bigger part is left.
+        final without = runs.sublist(1);
+        final d = Quests.remapTrail(visits(), without, {'trail:r1': 'Saddle'});
+        expect(d.trailKey, 'trail:r1');
+      });
+
+      test('trail_best is re-based on the new anchor\'s times', () {
+        const old = QuestDef(
+          id: 'q_2026-11_trail_best_ab12',
+          kind: QuestKind.trailBest,
+          month: '2026-11',
+          target: 2500,
+          baseline: 2500,
+          trailKey: 'trail:r0',
+          trailRunIds: ['r1', 'r2'],
+        );
+        final d0 = old.accept(DateTime(2026, 11, 2));
+        final runs = [
+          run('r1', DateTime(2026, 10, 6), trail: 'trail:r1', normMs: 2600500),
+          run('r2', DateTime(2026, 10, 11), trail: 'trail:r1', normMs: 2580900),
+          run('n1', DateTime(2026, 11, 4), trail: 'trail:r1', normMs: 2400000),
+        ];
+        final d = Quests.remapTrail(d0, runs, const {});
+        expect(d.trailKey, 'trail:r1');
+        // Best before accepting, floored; the new run (2400 s) is not in it.
+        expect(d.target, 2580);
+        expect(Quests.progress(d, runs).complete, isTrue);
+      });
+
+      test('nothing remembered is found: the quest is left as it was', () {
+        final runs = [run('z', DateTime(2026, 10, 6), trail: 'trail:z')];
+        final d = visits();
+        expect(identical(Quests.remapTrail(d, runs, const {}), d), isTrue);
+      });
+    });
   });
 }

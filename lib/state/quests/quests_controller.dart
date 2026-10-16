@@ -16,19 +16,45 @@ class QuestsController extends ChangeNotifier {
   final QuestStore _store;
 
   QuestState _state = QuestState.empty;
-  bool _loaded = false;
+  Future<QuestState>? _loading;
+
+  // The trail grouping is the costly part of reading the history, and a
+  // Progress open reads it several times: keep the last one per history.
+  int? _inputsSig;
+  QuestInputs? _inputs;
 
   QuestState get state => _state;
 
   /// Monday-start week indices the runner paused.
   Set<int> get pausedWeeks => _state.pausedWeeks;
 
-  Future<QuestState> load() async {
-    if (!_loaded) {
-      _state = await _store.load();
-      _loaded = true;
+  /// Loads once, however many callers ask at the same time.
+  Future<QuestState> load() => _loading ??= _store.load().then((s) {
+    _state = s;
+    return s;
+  });
+
+  /// [questInputsOf] for [runs], grouped once per history revision.
+  QuestInputs inputsFor(Iterable<RunSummary> runs) {
+    final list = runs is List<RunSummary> ? runs : runs.toList();
+    final sig = Object.hashAll([
+      list.length,
+      for (final r in list)
+        Object.hash(
+          r.id,
+          r.missing,
+          r.durationMs,
+          r.distanceM,
+          r.mode,
+          r.trailOverride,
+          r.row,
+        ),
+    ]);
+    if (sig != _inputsSig || _inputs == null) {
+      _inputs = questInputsOf(list);
+      _inputsSig = sig;
     }
-    return _state;
+    return _inputs!;
   }
 
   /// Closes a quest that ended, rolls this month's offer, adopts a quest the
@@ -38,14 +64,16 @@ class QuestsController extends ChangeNotifier {
     Iterable<RunSummary> runs,
     DateTime now, {
     ({String id, DateTime? acceptedAt})? coachQuest,
+    int? offsetMin,
   }) async {
     await load();
-    final inputs = questInputsOf(runs);
+    final inputs = inputsFor(runs);
     var next = reconcileQuests(
       _state,
       inputs,
       now,
-      exposed: questsExposed(inputs.runs, now),
+      exposed: questsExposed(inputs.runs, now, offsetMin: offsetMin),
+      offsetMin: offsetMin,
     );
     final c = coachQuest;
     final offer = next.offer;
@@ -53,7 +81,15 @@ class QuestsController extends ChangeNotifier {
       for (final d in offer.candidates) {
         if (d.id == c.id) {
           next = next.copyWith(
-            active: d.accept(c.acceptedAt ?? now, source: 'coach'),
+            // The coach's accept time is a real instant; the quest runs on
+            // the wall clock.
+            active: d.accept(
+              questWall(
+                c.acceptedAt ?? now,
+                offsetMin: offsetMin ?? now.timeZoneOffset.inMinutes,
+              ),
+              source: 'coach',
+            ),
             offer: offer.copyWith(state: 'taken'),
           );
           break;
@@ -76,13 +112,13 @@ class QuestsController extends ChangeNotifier {
   }
 
   /// TAKE IT: the shown candidate becomes the active quest from [now].
-  Future<void> accept(DateTime now) async {
+  Future<void> accept(DateTime now, {int? offsetMin}) async {
     await load();
     final offer = _state.offer, d = offer?.current;
     if (d == null || _state.active != null) return;
     await _commit(
       _state.copyWith(
-        active: d.accept(now),
+        active: d.accept(questWall(now, offsetMin: offsetMin)),
         offer: offer!.copyWith(state: 'taken'),
       ),
     );
@@ -111,7 +147,7 @@ class QuestsController extends ChangeNotifier {
   }
 
   /// The runner gives the active quest up.
-  Future<void> drop(DateTime now) async {
+  Future<void> drop(DateTime now, {int? offsetMin}) async {
     await load();
     final a = _state.active;
     if (a == null) return;
@@ -123,7 +159,9 @@ class QuestsController extends ChangeNotifier {
           QuestHistoryEntry(
             def: a,
             result: 'dropped',
-            closedOn: engine.Quests.isoDay(now),
+            closedOn: engine.Quests.isoDay(
+              questWall(now, offsetMin: offsetMin),
+            ),
           ),
         ],
       ),
