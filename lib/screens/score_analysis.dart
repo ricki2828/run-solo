@@ -172,7 +172,9 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
                 initialData: widget.questBoard,
                 builder: (context, snap) {
                   final board = snap.data ?? QuestBoard.empty;
-                  if (board.isEmpty) return const SizedBox.shrink();
+                  if (board.isEmpty) {
+                    return const SizedBox.shrink(key: ValueKey('quests-none'));
+                  }
                   final quests = services.quests;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: Space.x32),
