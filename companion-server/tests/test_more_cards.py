@@ -109,6 +109,7 @@ def seed_for_suggestion(e: Env):
     e.run(2, datetime(2026, 10, 6, 7, 0, tzinfo=UTC))
     e.run(3, datetime(2026, 10, 8, 7, 0, tzinfo=UTC))
     e.run(4, datetime(2026, 10, 11, 7, 0, tzinfo=UTC))
+    e.run(5, datetime(2026, 9, 20, 7, 0, tzinfo=UTC))   # a runner under two weeks in gets no quality push (M6)
     e.quiet_outbox()
 
 
