@@ -59,18 +59,19 @@ def _runs_on(*offsets_days):
 
 
 def test_second_recap_after_a_thursday_start_is_not_up_on_last_week():
-    # SUN is Sunday 18 Oct (Singapore). First run Thursday 8 Oct... one week earlier is Thu 11 Oct -> use Fri 9 Oct
-    this_week = [0.5, 2]                              # Sun, Fri(16th): two runs this week
-    first_week = [9.0, 8.0]                           # Fri 9 Oct and Sat 10 Oct: a part week
+    # SUN is Sunday 18 Oct 19:05 (Singapore); offsets are days before it
+    this_week = [0.5, 2]                              # Sun 18 and Fri 16: two runs this week
+    first_week = [9.0, 8.0]                           # Fri 9 and Sat 10 Oct: the first run was on a Friday, a part week
     rc = recap.build(_runs_on(*this_week, *first_week), SUN, SG, {}, "w")
     assert rc.rendered.situation == "recap_first_full"
-    assert "more than" not in rc.rendered.body and "less than" not in rc.rendered.body
-    assert "last week" not in rc.rendered.body.lower() or "part" in rc.rendered.body.lower() or "few days" in rc.rendered.body
+    body = rc.rendered.body
+    assert any(p in body for p in ("part week", "only a few days", "first full week"))   # every recap_first_full variant says so
+    assert not any(w in body for w in ("under last week", "more than", "less than", "up on", "down on"))
 
 
-def test_second_recap_after_a_monday_start_still_compares():
+def test_second_recap_after_a_tuesday_start_still_compares():
     this_week = [0.5, 2]
-    first_week = [12.0, 10.0]                         # Tue 6 Oct and Thu 8 Oct: the first run was on Tuesday
+    first_week = [12.0, 10.0]                         # Tue 6 and Thu 8 Oct: the first run was on a Tuesday, so a near-full week
     rc = recap.build(_runs_on(*this_week, *first_week), SUN, SG, {}, "w")
     assert rc.rendered.situation in ("recap_up", "recap_down", "recap_flat")
 
