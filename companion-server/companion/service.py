@@ -375,6 +375,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "question_cap": "one row per local day a question was sent (the daily cap)",
     "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
     "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
+    "ops_sends": "which fixed ops template went to which tester, and when (a hash, never the text)",
     "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
 }
 
@@ -1652,6 +1653,35 @@ class Service(CheckinMixin):
         place = f" on {trail['name']}" if trail.get("name") else ""
         return f"Trail run {trail['n']}{place}. Tap to see how it went."
 
+    def _ops_mark(self, item: dict, result: str) -> None:
+        if item["kind"] == "ops":
+            with db.tx(self.s.db_path) as c:
+                c.execute("UPDATE ops_sends SET result=? WHERE card_id=?", (result, item["ref"]))
+
+    def _send_ops(self, user: dict, card_id: str, now: datetime) -> bool:
+        """An approved ops template, queued by `ops send`. Checked again here: consent v2, still approved, one a week."""
+        from . import ops_send
+        with db.ro(self.s.db_path) as c:
+            row = c.execute("SELECT o.template, o.text_hash FROM ops_sends o WHERE o.card_id=? AND o.user_id=?",
+                            (card_id, user["id"])).fetchone()
+        if row is None:
+            return False
+        if user["checkin_consent"] is None or user["checkin_consent"] < self.s.checkin_consent_required:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: no consent")
+            return False
+        if (row["template"], row["text_hash"]) not in ops_send.approved():
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: approval withdrawn")
+            return False
+        with db.ro(self.s.db_path) as c:   # the weekly cap: one ops message that actually went out in the last 7 days
+            capped = c.execute("SELECT 1 FROM ops_sends WHERE user_id=? AND result='sent' AND card_id<>? AND ts>?",
+                               (user["id"], card_id, iso(now - timedelta(days=7)))).fetchone()
+        if capped:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: weekly cap")
+            return False
+        sent = self._send_card(user, card_id, now)
+        self._ops_mark({"kind": "ops", "ref": card_id}, "sent" if sent else "skipped")
+        return sent
+
     def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
         """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
@@ -1785,6 +1815,7 @@ class Service(CheckinMixin):
             return "skipped", None
         user = dict(r)
         if user["paused"] or user["ops_paused"]:
+            self._ops_mark(item, "skipped: paused or stopped")
             return "skipped", None
         if self._kill_switch():
             return "defer", now + timedelta(minutes=15)
@@ -1800,6 +1831,8 @@ class Service(CheckinMixin):
             return "defer", until
         if item["kind"] == "ci":
             return self._ci_process(user, item["ref"], now)
+        if item["kind"] == "ops":
+            return ("done" if self._send_ops(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "followup":
             return ("done" if self._send_followup(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "run_card":

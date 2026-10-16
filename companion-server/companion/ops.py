@@ -17,7 +17,7 @@ from .timeutil import iso, now_utc
 
 log = logging.getLogger("companion")
 TESTER = re.compile(r"^[Tt](\d{1,6})$")
-USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days]"
+USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days] | send ... | sends | templates"
 
 
 def _month_start() -> str:
@@ -118,6 +118,9 @@ def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> in
         code, msg = set_ops_pause(s, argv[1] if len(argv) > 1 else "", cmd == "pause")
         out(msg)
         return code
+    elif cmd in ("send", "sends", "templates"):
+        from . import ops_send   # the approved-template sender lives in its own module
+        return ops_send.main(s, argv, out)
     elif cmd == "alerts":
         lines = alerts(s)
     elif cmd == "feedback":
