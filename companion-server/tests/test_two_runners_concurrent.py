@@ -62,12 +62,11 @@ def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
                 start = T0 + timedelta(days=2 * i, hours=0 if u == "A" else 1)
                 now = start + timedelta(minutes=40)
                 svc.ingest_run(f"u_{u}", RunIn.model_validate(body(u, i, start)), now)
-                svc.run_outbox(now)          # both runners drain the one outbox at the same moment
         except BaseException as e:           # noqa: BLE001 - surfaced by the assertion below
             errors.append(e)
 
     def worker():
-        """The server's tick loop, running while the uploads land: evening nudges, the recap and the outbox."""
+        """The server's one tick loop (the only outbox consumer, as in production), running while the uploads land."""
         try:
             gate.wait()
             t = T0
@@ -84,6 +83,7 @@ def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
         t.start()
     for t in threads:
         t.join(120)
+        assert not t.is_alive(), "a worker thread hung (deadlock?)"
     assert not errors, errors
     # the tick loop ran before some uploads: run the whole window once more, single-threaded, so late runs get their turn
     t = T0
@@ -107,8 +107,12 @@ def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
         per_chat.setdefault(chat, []).append(raw)
     for u, d in USERS.items():
         assert len(per_chat[d["chat"]]) >= 5      # at least a card per run
-        recaps = [r for r in per_chat[d["chat"]] if "Starting" in r]     # the two Sunday recaps, 11 and 18 Oct
+        with db.ro(s.db_path) as c:      # the two Sunday recaps (11 and 18 Oct), by card kind, not by wording
+            recaps = c.execute("SELECT 1 FROM cards WHERE user_id=? AND kind='recap' AND sent_at IS NOT NULL",
+                               (f"u_{u}",)).fetchall()
         assert len(recaps) == 2, (u, len(recaps))
+        texts = [json.loads(r).get("text") for r in per_chat[d["chat"]]]
+        assert len(texts) == len(set(texts)), [t for t in texts if texts.count(t) > 1]     # nothing was delivered twice
         mine = " ".join(per_chat[d["chat"]])
         assert d["place"] in mine and any(tok in mine for tok in tokens(u) if ":" in tok), u   # the check can see a runner's own data
     # nothing the model was asked about mixes two runners
