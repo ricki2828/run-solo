@@ -228,4 +228,31 @@ void main() {
       expect(me('x').checkinLines, isEmpty);
     });
   });
+
+  group('quest and care_weeks keys', () {
+    test('parsed when present, ignored when absent or malformed', () {
+      final n = CoachNext.parse({
+        'v': 1,
+        'care_weeks': ['2026-10-12', 'nope'],
+        'quest': {
+          'id': 'q_2026-10_trail_visits_abc',
+          'state': 'accepted',
+          'accepted_at': '2026-10-02T01:00:00Z',
+        },
+      })!;
+      expect(n.careWeeks, hasLength(1));
+      expect(n.quest!.id, 'q_2026-10_trail_visits_abc');
+      final bare = CoachNext.parse({'v': 1})!;
+      expect(bare.careWeeks, isEmpty);
+      expect(bare.quest, isNull);
+      expect(
+        CoachNext.parse({
+          'v': 1,
+          'quest': {'id': 'q_x', 'state': 'skipped'},
+        })!.quest,
+        isNull,
+      );
+      expect(CoachNext.parse({'v': 2}), isNull);
+    });
+  });
 }

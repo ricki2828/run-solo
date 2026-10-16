@@ -534,13 +534,46 @@ class CoachLine {
   }
 }
 
+/// The quest the runner accepted in Telegram, from `quest` in
+/// `GET /v1/me/next-session`: just its offer id and when. The app matches the
+/// id against its own offer; the server never sends the quest itself.
+@immutable
+class CoachQuest {
+  const CoachQuest({required this.id, required this.acceptedAt});
+  final String id;
+  final DateTime? acceptedAt;
+
+  static CoachQuest? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final id = j['id'], state = j['state'], at = j['accepted_at'];
+    if (id is! String || state != 'accepted') return null;
+    return CoachQuest(
+      id: id,
+      acceptedAt: at is String ? DateTime.tryParse(at) : null,
+    );
+  }
+}
+
 /// What Home shows from the coach. Either part can be absent.
 @immutable
 class CoachNext {
-  const CoachNext({this.session, this.line, this.generatedAt});
+  const CoachNext({
+    this.session,
+    this.line,
+    this.generatedAt,
+    this.careWeeks = const [],
+    this.quest,
+  });
   final CoachSession? session;
   final CoachLine? line;
   final DateTime? generatedAt;
+
+  /// Mondays (local dates) of recent weeks the coach treated as care weeks
+  /// (ill or sore). Never the reason. The streak pauses on them.
+  final List<DateTime> careWeeks;
+
+  /// The quest accepted in Telegram, if any.
+  final CoachQuest? quest;
 
   bool get isEmpty => session == null && line == null;
 
@@ -552,6 +585,12 @@ class CoachNext {
       session: CoachSession.fromJson(j['next_session']),
       line: CoachLine.fromJson(j['coach_line']),
       generatedAt: at is String ? DateTime.tryParse(at) : null,
+      careWeeks: [
+        if (j['care_weeks'] is List)
+          for (final d in j['care_weeks']! as List<Object?>)
+            ?CoachSession._day(d),
+      ],
+      quest: CoachQuest.fromJson(j['quest']),
     );
   }
 }
@@ -960,6 +999,16 @@ class CompanionController extends ChangeNotifier {
       enrolled && consentCurrent && !(_coachNext?.isEmpty ?? true)
       ? _coachNext
       : null;
+
+  /// Mondays the coach treated as care weeks (ill or sore), read from the
+  /// last next-session reply. Empty when the companion is off or not agreed.
+  /// Only the dates: the server never says why.
+  List<DateTime> get careWeeks =>
+      enrolled && consentCurrent ? _coachNext?.careWeeks ?? const [] : const [];
+
+  /// The quest accepted in Telegram, if the last reply said so.
+  CoachQuest? get coachQuest =>
+      enrolled && consentCurrent ? _coachNext?.quest : null;
 
   /// The runner has answered the setup step ("Turn on" or "Not now"), so
   /// onboarding does not ask again.

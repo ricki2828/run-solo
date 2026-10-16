@@ -211,7 +211,7 @@ void main() {
       final s = build([run(DateTime(2026, 10, 12, 7))]);
       expect(s.streak.thisWeekDone, isTrue);
       expect(s.streak.recent.length, 8);
-      expect(s.streak.recent.last, isTrue);
+      expect(s.streak.recent.last, engine.StreakWeek.ran);
     });
 
     test('a freeze covers one missed week', () {
@@ -222,7 +222,7 @@ void main() {
       ]);
       expect(s.streak.weeks, 5);
       expect(s.streak.freezesReady, 0);
-      expect(s.streak.recent[6], isNull);
+      expect(s.streak.recent[6], engine.StreakWeek.frozen);
     });
   });
 

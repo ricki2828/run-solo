@@ -31,6 +31,8 @@ import 'package:run_engine/run_engine.dart' as engine;
 import '../../platform/gateway.dart';
 import '../history_store.dart';
 import '../progress_snapshot.dart';
+import '../quests/quest_build.dart' show questLane;
+import '../quests/quest_store.dart';
 import '../settings.dart';
 
 const Duration _kMonth = Duration(days: 28);
@@ -193,10 +195,16 @@ PackStanding? buildPack(
   );
 }
 
-WeeklyStreak buildStreak(List<ProgressRun> runs, DateTime now) {
-  final s = engine.ProgressMath.streak({
-    for (final r in runs) r.week,
-  }, engine.ProgressMath.weekIndex(now));
+WeeklyStreak buildStreak(
+  List<ProgressRun> runs,
+  DateTime now, {
+  Set<int> paused = const {},
+}) {
+  final s = engine.ProgressMath.streak(
+    {for (final r in runs) r.week},
+    engine.ProgressMath.weekIndex(now),
+    paused: paused,
+  );
   return WeeklyStreak(
     weeks: s.weeks,
     thisWeekDone: s.thisWeekDone,
@@ -504,10 +512,29 @@ List<Moment> buildMoments({
   required WeeklyStory? story,
   required Map<String, engine.Leaderboard> leaderboards,
   required Set<String> seen,
+  List<QuestHistoryEntry> quests = const [],
 }) {
   final out = <Moment>[];
   final recent = now.subtract(_kRecent);
   bool fresh(DateTime d) => d.isAfter(recent) && !d.isAfter(now);
+
+  // A quest finished in the last 14 days. The wording is in the engine.
+  for (final h in quests) {
+    final closed = engine.Quests.parseDay(h.closedOn);
+    final at = h.def.acceptedAt;
+    if (!h.done || closed == null || at == null || !fresh(closed)) continue;
+    final days = engine.Quests.daysBetween(at, closed).clamp(1, 9999);
+    out.add(
+      Moment(
+        id: 'quest:${h.def.id}',
+        kind: MomentKind.quest,
+        eyebrow: 'QUEST DONE',
+        big: h.def.title,
+        detail: h.def.doneLine(days),
+        lane: questLane(h.def.kind),
+      ),
+    );
+  }
 
   final doneOrder = [
     for (final f in firsts)
@@ -590,6 +617,8 @@ ProgressSnapshot buildSnapshot(
   required int? birthYear,
   required Set<String> seen,
   required Map<String, engine.Leaderboard> leaderboards,
+  Set<int> pausedWeeks = const {},
+  List<QuestHistoryEntry> questHistory = const [],
 }) {
   final clock = now.isUtc ? now.toLocal() : now;
   final runs = [
@@ -610,7 +639,7 @@ ProgressSnapshot buildSnapshot(
     runCount: runs.length,
     level: level,
     pack: buildPack(runs, clock, female: female, birthYear: birthYear),
-    streak: buildStreak(runs, clock),
+    streak: buildStreak(runs, clock, paused: pausedWeeks),
     firsts: firsts,
     ghost: buildGhost(runs, now),
     story: story,
@@ -622,6 +651,7 @@ ProgressSnapshot buildSnapshot(
       story: story,
       leaderboards: leaderboards,
       seen: seen,
+      quests: questHistory,
     ),
   );
 }

@@ -3,6 +3,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/routes.dart';
+import '../app/quest_sync.dart';
 import '../app/services.dart';
 import '../platform/gateway.dart';
 import '../state/block_plan.dart';
@@ -108,6 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
       now: _now,
       sex: settings.profileSex,
       birthYear: settings.birthYear,
+      quests: runs.then((r) => syncQuests(services, r)),
     );
     services.permissions.status().then((p) {
       if (mounted) setState(() => _perms = p);
@@ -127,20 +129,23 @@ class _HomeScreenState extends State<HomeScreen> {
     required DateTime now,
     required ProfileSex sex,
     required int? birthYear,
+    required Future<QuestSync> quests,
   }) async {
     final r = await runs;
     final sc = scores == null
         ? const <engine.IdentityLane, engine.IdentityScore>{}
         : await scores;
+    final q = await quests;
     final snap = buildProgressSnapshot(
       r,
       now: now,
       sex: sex,
       birthYear: birthYear,
+      pausedWeeks: q.pausedWeeks,
     );
     return sc == null
-        ? _HomeData(r, const {}, snap, failed: true)
-        : _HomeData(r, sc, snap);
+        ? _HomeData(r, const {}, snap, failed: true, localPaused: q.localPaused)
+        : _HomeData(r, sc, snap, localPaused: q.localPaused);
   }
 
   void _loadEstimates() {
@@ -176,6 +181,19 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 29-Sep field test: reload EVERYTHING, RECENT ACTIVITY included - the
   /// finish flow pops back here without re-running [_refresh], so the new
   /// run only showed after an app restart.
+  /// "Pause this week" / "Undo pause": stored on the device, then Home and its
+  /// streak are rebuilt from the same runs.
+  Future<void> _setPause(int weeksBack, {required bool paused}) async {
+    final services = AppServices.of(context);
+    final week = engine.ProgressMath.weekIndex(_now) - weeksBack;
+    if (paused) {
+      await services.quests.pauseWeek(week);
+    } else {
+      await services.quests.unpauseWeek(week);
+    }
+    if (mounted) setState(_refresh);
+  }
+
   void _onDerivedChanged() {
     if (!mounted) return;
     setState(_refresh);
@@ -464,6 +482,18 @@ class _HomeScreenState extends State<HomeScreen> {
                             streak: snap0.streak,
                             firstsDone: snap0.firstsDone,
                             firstsTotal: kFirstsTotal,
+                            now: _now,
+                            undoable: {
+                              for (final b in const [0, 1])
+                                if (data?.localPaused.contains(
+                                      engine.ProgressMath.weekIndex(_now) - b,
+                                    ) ??
+                                    false)
+                                  b,
+                            },
+                            onPause: (back) => _setPause(back, paused: true),
+                            onUndoPause: (back) =>
+                                _setPause(back, paused: false),
                           ),
                           const SizedBox(height: Space.x16),
                           if (data == null || data.failed) ...[
@@ -585,8 +615,17 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeData {
-  const _HomeData(this.runs, this.scores, this.snapshot, {this.failed = false});
+  const _HomeData(
+    this.runs,
+    this.scores,
+    this.snapshot, {
+    this.failed = false,
+    this.localPaused = const {},
+  });
   final bool failed;
+
+  /// The weeks the runner paused herself or himself (Undo can lift these).
+  final Set<int> localPaused;
 
   /// Built once per load, not per rebuild.
   final ProgressSnapshot snapshot;

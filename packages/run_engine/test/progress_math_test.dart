@@ -26,14 +26,14 @@ void main() {
       expect(s.weeks, 0);
       expect(s.thisWeekDone, isFalse);
       expect(s.freezesReady, 0);
-      expect(s.recent, List.filled(8, false));
+      expect(s.recent, List.filled(8, StreakWeek.missed));
     });
 
     test('current week in progress does not break the streak', () {
       final s = ProgressMath.streak({97, 98, 99}, 100);
       expect(s.weeks, 3);
       expect(s.thisWeekDone, isFalse);
-      expect(s.recent.last, isFalse);
+      expect(s.recent.last, StreakWeek.missed);
     });
 
     test('a freeze is earned every 4 weeks, max 2', () {
@@ -50,14 +50,14 @@ void main() {
       final s = ProgressMath.streak({1, 2, 3, 4, 6}, 6);
       expect(s.weeks, 5);
       expect(s.freezesReady, 0);
-      expect(s.recent[7], isTrue);
-      expect(s.recent[6], isNull);
+      expect(s.recent[7], StreakWeek.ran);
+      expect(s.recent[6], StreakWeek.frozen);
     });
 
     test('a miss with no freeze breaks it', () {
       final s = ProgressMath.streak({1, 2, 4}, 4);
       expect(s.weeks, 1);
-      expect(s.recent[6], isFalse);
+      expect(s.recent[6], StreakWeek.missed);
     });
 
     test('two missed weeks in a row break it even with a freeze', () {
@@ -69,6 +69,64 @@ void main() {
       final s = ProgressMath.streak({1, 2, 3, 4}, 5);
       expect(s.weeks, 4);
       expect(s.thisWeekDone, isFalse);
+    });
+
+    test('empty paused set changes nothing', () {
+      for (final ran in [
+        <int>{},
+        {97, 98, 99},
+        {1, 2, 3, 4, 6},
+        {1, 2, 4},
+        {1, 2, 3, 4, 7},
+      ]) {
+        final cur = ran.isEmpty ? 100 : ran.reduce((a, b) => a > b ? a : b) + 1;
+        final a = ProgressMath.streak(ran, cur);
+        final b = ProgressMath.streak(ran, cur, paused: const {});
+        expect(b.weeks, a.weeks);
+        expect(b.freezesReady, a.freezesReady);
+        expect(b.recent, a.recent);
+      }
+    });
+
+    test('a paused week neither counts nor breaks and uses no freeze', () {
+      // Weeks 1-4 earn a freeze, 5 is paused, 6 ran.
+      final s = ProgressMath.streak({1, 2, 3, 4, 6}, 6, paused: {5});
+      expect(s.weeks, 5);
+      expect(s.freezesReady, 1);
+      expect(s.recent[6], StreakWeek.paused);
+      expect(s.recent[7], StreakWeek.ran);
+    });
+
+    test('a long pause keeps the number; paused weeks earn no freeze', () {
+      final s = ProgressMath.streak({1, 2, 3, 6}, 6, paused: {4, 5});
+      expect(s.weeks, 4);
+      // Only the 4th run week earns the freeze, not the paused weeks.
+      expect(s.freezesReady, 1);
+      expect(ProgressMath.streak({1, 2}, 8, paused: {3, 4, 5, 6, 7}).weeks, 2);
+      expect(
+        ProgressMath.streak({1, 2}, 8, paused: {3, 4, 5, 6, 7}).freezesReady,
+        0,
+      );
+    });
+
+    test('a freeze held across a paused week still covers the miss', () {
+      // 1-4 earn a freeze, 5 missed, 6 paused, 7 ran: the freeze covers 5.
+      final s = ProgressMath.streak({1, 2, 3, 4, 7}, 7, paused: {6});
+      expect(s.weeks, 5);
+      expect(s.recent[6], StreakWeek.paused);
+      expect(s.recent[5], StreakWeek.frozen);
+    });
+
+    test('the current week paused is not missed', () {
+      final s = ProgressMath.streak({97, 98, 99}, 100, paused: {100});
+      expect(s.weeks, 3);
+      expect(s.recent.last, StreakWeek.paused);
+    });
+
+    test('a paused week that was run anyway counts as ran', () {
+      final s = ProgressMath.streak({1, 2}, 2, paused: {2});
+      expect(s.weeks, 2);
+      expect(s.recent.last, StreakWeek.ran);
     });
   });
 

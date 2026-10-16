@@ -23,6 +23,8 @@ import '../state/block_plan.dart';
 import '../state/companion.dart';
 import '../state/courses.dart';
 import '../state/progress/seen_moments_store.dart';
+import '../state/quests/quest_store.dart';
+import '../state/quests/quests_controller.dart';
 import '../state/history_store.dart';
 import '../state/trail_facts.dart';
 import '../state/trail_ghost.dart';
@@ -69,6 +71,7 @@ class AppServices {
     SessionsController? sessions,
     CourseNamesController? courseNames,
     SeenMomentsStore? seenMoments,
+    QuestStore? questStore,
     BlockPlanController? plans,
     TargetPaceController? targetPaces,
     RouteLibrary? routes,
@@ -114,6 +117,7 @@ class AppServices {
        courseNames =
            courseNames ?? CourseNamesController(MemoryCourseNamesStore()),
        seenMoments = seenMoments ?? MemorySeenMomentsStore(),
+       quests = QuestsController(questStore ?? MemoryQuestStore()),
        plans = plans ?? BlockPlanController(MemoryBlockPlanStore()),
        targetPaces =
            targetPaces ?? TargetPaceController(MemoryTargetPaceStore()),
@@ -353,6 +357,9 @@ class AppServices {
   /// Which full-screen moments were shown (`state/seen_moments.json`).
   final SeenMomentsStore seenMoments;
 
+  /// Quests and the runner's paused weeks (`state/quests.json`).
+  final QuestsController quests;
+
   /// The 4-week progress block (`state/plan.json`), if one is running.
   final BlockPlanController plans;
 
@@ -406,6 +413,7 @@ class AppServices {
     List<CustomSession> customSessions = const [],
     Map<String, String> courseNames = const {},
     SeenMomentsStore? seenMoments,
+    QuestStore? questStore,
     engine.BlockPlan? plan,
     List<engine.SavedRoute> routes = const [],
     LiveContextSource? live,
@@ -450,6 +458,7 @@ class AppServices {
         now: now,
       )..preload(customSessions),
       seenMoments: seenMoments,
+      questStore: questStore,
       courseNames: CourseNamesController(MemoryCourseNamesStore(courseNames))
         ..preload(courseNames),
       plans: BlockPlanController(MemoryBlockPlanStore(plan))..preload(plan),
@@ -566,6 +575,7 @@ class AppServices {
       sessions: sessions,
       courseNames: courseNames,
       seenMoments: FileSeenMomentsStore(Directory('${support.path}/state')),
+      questStore: FileQuestStore(Directory('${support.path}/state')),
       plans: plans,
       targetPaces: targetPaces,
       routes: routes,
