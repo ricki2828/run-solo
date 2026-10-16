@@ -30,6 +30,8 @@ data class LiveContext(
     val engineVersion: Int,
     /** Trails the runner has run before, for the in-run ahead/behind and the turnaround; at most [TrailRef.MAX_TRAILS]. */
     val trails: List<TrailRef> = emptyList(),
+    /** The runner's active quest, for the in-run "quest done" beat; null = none. */
+    val quest: LiveQuest? = null,
 ) {
     init {
         require(boards.size <= MAX_BOARDS) { "at most $MAX_BOARDS live boards, got ${boards.size}" }
@@ -55,7 +57,10 @@ data class LiveContext(
         "coachingMuted" to coachingMuted,
         "builtAtMs" to builtAtMs,
         "engineVersion" to engineVersion,
-    ).also { if (trails.isNotEmpty()) it["trails"] = trails.map { t -> t.toJson() } }
+    ).also {
+        if (trails.isNotEmpty()) it["trails"] = trails.map { t -> t.toJson() }
+        if (quest != null) it["quest"] = quest.toJson()
+    }
 
     companion object {
         const val MAX_BOARDS = 3
@@ -72,6 +77,72 @@ data class LiveContext(
             builtAtMs = m.long("builtAtMs"),
             engineVersion = m.int("engineVersion"),
             trails = m.list("trails").map { TrailRef.fromJson(it.asObj("trails[]")) },
+            quest = m.obj("quest")?.let { LiveQuest.fromJson(it) },
+        )
+    }
+}
+
+/**
+ * The active quest as the recorder needs it to say "quest done" (quests spec §5.3). The app works
+ * out everything from history, so Kotlin never reads any: [remaining] is the threshold for the
+ * counter kinds (metres of ascent or distance left; 1 for the last trail visit), [title] is the
+ * toast and [line] the spoken completion line. `trail_best` has no live beat (its heat factor is
+ * only final at finalise), so it is never packed. Journaled with the context; omitted when null.
+ */
+data class LiveQuest(
+    val id: String,
+    /** `climb_month`, `distance_month`, `trail_visits` or `climb_best`. */
+    val kind: String,
+    /** "SADDLE ×5", for the toast. */
+    val title: String,
+    /** The spoken line. */
+    val line: String,
+    val remaining: Double? = null,
+    val trailId: String? = null,
+    val climbStartM: Double? = null,
+    val climbEndM: Double? = null,
+    val targetMs: Long? = null,
+) {
+    init {
+        require(id.isNotBlank() && title.isNotBlank() && line.isNotBlank()) { "a quest needs an id, title and line" }
+        require(kind in KINDS) { "unknown quest kind $kind" }
+        when (kind) {
+            CLIMB_MONTH, DISTANCE_MONTH -> require(remaining != null && remaining.isFinite() && remaining > 0) { "$kind needs a positive remaining" }
+            TRAIL_VISITS -> require(remaining != null && remaining.isFinite() && remaining > 0 && trailId != null) { "$kind needs remaining and a trail" }
+            CLIMB_BEST -> require(
+                trailId != null && climbStartM != null && climbEndM != null && targetMs != null &&
+                    climbStartM.isFinite() && climbEndM.isFinite() && climbEndM > climbStartM && targetMs > 0,
+            ) { "$kind needs its trail, climb span and target time" }
+        }
+    }
+
+    fun toJson(): Map<String, Any?> = linkedMapOf<String, Any?>(
+        "id" to id, "kind" to kind, "title" to title, "line" to line,
+    ).also {
+        if (remaining != null) it["remaining"] = remaining
+        if (trailId != null) it["trailId"] = trailId
+        if (climbStartM != null) it["climbStartM"] = climbStartM
+        if (climbEndM != null) it["climbEndM"] = climbEndM
+        if (targetMs != null) it["targetMs"] = targetMs
+    }
+
+    companion object {
+        const val CLIMB_MONTH = "climb_month"
+        const val DISTANCE_MONTH = "distance_month"
+        const val TRAIL_VISITS = "trail_visits"
+        const val CLIMB_BEST = "climb_best"
+        val KINDS = setOf(CLIMB_MONTH, DISTANCE_MONTH, TRAIL_VISITS, CLIMB_BEST)
+
+        fun fromJson(m: Map<String, Any?>) = LiveQuest(
+            id = m.string("id"),
+            kind = m.string("kind"),
+            title = m.string("title"),
+            line = m.string("line"),
+            remaining = (m["remaining"] as? Number)?.toDouble(),
+            trailId = m["trailId"] as? String,
+            climbStartM = (m["climbStartM"] as? Number)?.toDouble(),
+            climbEndM = (m["climbEndM"] as? Number)?.toDouble(),
+            targetMs = (m["targetMs"] as? Number)?.toLong(),
         )
     }
 }

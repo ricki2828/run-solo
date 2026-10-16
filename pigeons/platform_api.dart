@@ -350,6 +350,7 @@ class LiveContext {
     required this.builtAtMs,
     required this.engineVersion,
     this.trails,
+    this.quest,
   });
 
   /// At most 3.
@@ -372,6 +373,40 @@ class LiveContext {
   /// Trails the runner has run before (at most 6), for the in-run ahead/behind
   /// and the turnaround cue on a trail they know. Null or empty = none.
   List<TrailRef>? trails;
+
+  /// The runner's active quest, for the in-run "quest done" beat. Null = none.
+  LiveQuest? quest;
+}
+
+/// The active quest as the recorder needs it to say "quest done" (quests spec
+/// 5.3): the app works out everything from history, Kotlin reads none.
+/// `kind` is `climb_month`, `distance_month`, `trail_visits` or `climb_best`
+/// (`trail_best` has no live beat and is never sent). `title` is the toast
+/// ("SADDLE ×5"), `line` the spoken line. `remaining` is metres of ascent or
+/// distance left, or 1 for the last trail visit. `trailId` is the known trail
+/// (`TrailRef.id`) for the trail kinds; `climbStartM`/`climbEndM` (metres along
+/// the trail) and `targetMs` are for `climb_best`.
+class LiveQuest {
+  LiveQuest({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.line,
+    this.remaining,
+    this.trailId,
+    this.climbStartM,
+    this.climbEndM,
+    this.targetMs,
+  });
+  String id;
+  String kind;
+  String title;
+  String line;
+  double? remaining;
+  String? trailId;
+  double? climbStartM;
+  double? climbEndM;
+  int? targetMs;
 }
 
 /// One earlier run of a known trail as a progress profile: `ms[i]` is the
@@ -556,6 +591,7 @@ class RecorderStatus {
     this.heightVsStartM,
     this.route,
     this.trail,
+    this.questDoneId,
   });
   RecorderState state;
   String? runId;
@@ -628,6 +664,10 @@ class RecorderStatus {
 
   /// The known trail this run is on, with ahead/behind; null until matched.
   TrailProgress? trail;
+
+  /// The id of the quest the run completed live (the beat fired, journaled so a
+  /// restore keeps it). The screen shows its 4 s toast once per id.
+  String? questDoneId;
 }
 
 /// A route to follow (Follow a route): chosen on Start from the route library,
@@ -1091,6 +1131,7 @@ class TickEvent extends RecorderEvent {
     this.heightVsStartM,
     this.route,
     this.trail,
+    this.questDoneId,
   });
 
   /// Wall time since Start, pauses included.
@@ -1147,6 +1188,9 @@ class TickEvent extends RecorderEvent {
 
   /// As `RecorderStatus.trail`.
   TrailProgress? trail;
+
+  /// As `RecorderStatus.questDoneId`.
+  String? questDoneId;
 }
 
 class LapEvent extends RecorderEvent {

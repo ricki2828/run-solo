@@ -23,7 +23,9 @@ import '../state/block_plan.dart';
 import '../state/companion.dart';
 import '../state/courses.dart';
 import '../state/progress/seen_moments_store.dart';
+import '../state/quests/quest_build.dart' show kQuestsEnabled;
 import '../state/quests/quest_store.dart';
+import '../state/quests/quest_wire.dart';
 import '../state/quests/quests_controller.dart';
 import '../state/history_store.dart';
 import '../state/trail_facts.dart';
@@ -43,6 +45,7 @@ import '../state/sessions.dart';
 import '../state/settings.dart';
 import '../state/target_pace.dart';
 import '../state/weather.dart';
+import 'quest_sync.dart';
 import '../state/zone_memento.dart';
 import '../topo/pack_manager.dart';
 import '../topo/topo_files.dart';
@@ -139,6 +142,7 @@ class AppServices {
       if (t is CompanionTarget) {
         t.planFacts ??= planFactsFor;
         t.trailFacts ??= trailBlockFor;
+        t.questFacts ??= questBlockFor;
       }
     }
   }
@@ -167,6 +171,26 @@ class AppServices {
       d.run.id,
       runStart: PlanInputs.wallClock(d.summary),
       paces: currentTargetPaces(),
+    );
+  }
+
+  /// The quest block for a run's companion summary (`questWire`): the open
+  /// offer, the active quest with its progress, the run that finished one and
+  /// the one that just ended. Quests are brought up to date first, so a quest
+  /// this run finished is seen as done. Null when there is nothing to say.
+  Future<Map<String, Object?>?> questBlockFor(
+    RunDetail d, {
+    required bool names,
+  }) async {
+    if (!kQuestsEnabled) return null;
+    final runs = await history.list();
+    await syncQuests(this, runs);
+    return questWire(
+      quests.state,
+      quests.inputsFor(runs),
+      now(),
+      runId: d.run.id,
+      names: names,
     );
   }
 

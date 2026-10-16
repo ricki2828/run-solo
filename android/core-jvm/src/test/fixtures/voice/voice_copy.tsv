@@ -85,3 +85,8 @@ summary.end.verdict-4x4-best	17	Run saved. 5 kilometres 20, 41 minutes, 7 minute
 nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.
+quest.climb-month	7	1100 metres climbed this month. Quest done.
+quest.distance-month	7	120 kilometres run this month. Quest done.
+quest.trail-visits	5	Saddle number five. Quest done.
+quest.trail-visits-long-name	8	Mount Wellington Summit number eight. Quest done.
+quest.climb-best	7	Best ever up the climb. Quest done.

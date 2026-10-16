@@ -621,4 +621,63 @@ void main() {
       });
     });
   });
+
+  group('liveLine', () {
+    QuestDef d(QuestKind k, {int target = 5, String? name = 'Saddle'}) =>
+        QuestDef(
+          id: 'q_x',
+          kind: k,
+          month: '2026-11',
+          target: target,
+          baseline: 1,
+          trailName: name,
+        );
+
+    test('plain lines that end in Quest done and fit the budget', () {
+      expect(
+        d(QuestKind.trailVisits).liveLine,
+        'Saddle number five. Quest done.',
+      );
+      expect(
+        d(QuestKind.trailVisits, target: 12).liveLine,
+        'Saddle number 12. Quest done.',
+      );
+      expect(
+        d(QuestKind.climbMonth, target: 1100).liveLine,
+        '1100 metres climbed this month. Quest done.',
+      );
+      expect(
+        d(QuestKind.distanceMonth, target: 120).liveLine,
+        '120 kilometres run this month. Quest done.',
+      );
+      expect(
+        d(QuestKind.climbBest).liveLine,
+        'Best ever up the climb. Quest done.',
+      );
+      for (final k in QuestKind.values) {
+        final line = d(k).liveLine;
+        expect(line.contains('—'), isFalse);
+        expect(line.split(RegExp(r'\s+')).length, lessThanOrEqualTo(16));
+      }
+    });
+
+    test('a trail name is cleaned and cut to three words', () {
+      expect(
+        d(
+          QuestKind.trailVisits,
+          target: 8,
+          name: 'Mount Wellington Summit via the old pipe track',
+        ).liveLine,
+        'Mount Wellington Summit number eight. Quest done.',
+      );
+      expect(
+        d(QuestKind.trailVisits, name: 'Kastro https://x.co loop').liveLine,
+        'Kastro https x number five. Quest done.',
+      );
+      expect(
+        d(QuestKind.trailVisits, name: null).liveLine,
+        'Your trail number five. Quest done.',
+      );
+    });
+  });
 }

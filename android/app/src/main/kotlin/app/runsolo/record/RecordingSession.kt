@@ -39,6 +39,8 @@ import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.live.LiveTruePace
 import app.runsolo.core.live.MomentInput
+import app.runsolo.core.live.QuestBeat
+import app.runsolo.core.live.QuestInput
 import app.runsolo.core.live.TrailMoments
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.live.VoiceLevel
@@ -353,6 +355,12 @@ class RecordingSession(
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
         trailMoments.resumeAt(ticker.distanceM)
+        // A quest finished before the kill is never fired or toasted again; a climb under way is not guessed at.
+        questBeat?.resumeAt()
+        replayed.questDoneId?.let { done ->
+            questDoneId = done
+            if (done == liveContext?.quest?.id) questBeat?.spend()
+        }
         // A goal already reached before the kill is never said again; a kill before it marks the
         // result interrupted (WARN-G2).
         goal = GoalCoach(spec, liveContext).also { it.restored(reachedBeforeKill = core.finalStepEnd != null) }
@@ -539,6 +547,7 @@ class RecordingSession(
         coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
             ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key) }
         trailMomentsTick(t)
+        questTick(t)
         coachPrevT = t
         coachPrevD = ticker.distanceM
         // A nudge follows its cue as its own line: done (journaled, never offered again) only once said.
@@ -630,6 +639,7 @@ class RecordingSession(
                     heightVsStartM = retrace.state.heightVsStartM,
                     route = routeProgress(),
                     trail = trailProgress(),
+                    questDoneId = questDoneId,
                 ),
             )
         }
@@ -1151,6 +1161,50 @@ class RecordingSession(
     private val trailMoments = TrailMoments()
     private var trailMomentsOff = false
 
+    /** The packed quest's "quest done" beat; null when the run carries no quest. One per run. */
+    private val questBeat: QuestBeat? = liveContext?.quest?.let { QuestBeat(it) }
+    private var questOff = false
+
+    /** The quest this run completed live (journaled as `qd`); the screen toasts it once. */
+    @Volatile
+    private var questDoneId: String? = null
+
+    /**
+     * "Quest done", once, in any mode: the beat fires, the `qd` journal line and the status id are set (the toast
+     * does not wait on the voice), and the line is offered to the budget when voice is on above Minimal, where a
+     * held game beat is said when a gap opens. A failure here turns the beat off for the run, never the recording.
+     */
+    private fun questTick(t: Long) {
+        val beat = questBeat ?: return
+        if (replay != null || questOff || beat.isSpent) return
+        if (core.state != RecorderState.recording || core.autoPaused) return
+        try {
+            val ghost = trailFeed.state
+            val line = beat.tick(
+                QuestInput(
+                    nowMs = t,
+                    distM = ticker.distanceM,
+                    ascentM = liveElev.ascentM.takeIf { liveElev.source == ElevSource.baro },
+                    ghostTrailId = ghost?.trailId,
+                    alongM = ghost?.alongM,
+                    toGoM = ghost?.toGoM,
+                    off = ghost?.off ?: false,
+                ),
+            ) ?: return
+            beat.spend()
+            val id = liveContext?.quest?.id ?: return
+            questDoneId = id
+            writer.append(JournalLine.QuestDone(t, System.currentTimeMillis(), id))
+            Log.i(TAG, "quest done: $id")
+            val plan = checkIn
+            if (plan != null && plan.level != VoiceLevel.minimal) cues.moment(line)?.let { logSaid(it.text) }
+            onNotificationChanged?.invoke()
+        } catch (e: Exception) {
+            questOff = true
+            Log.w(TAG, "quest beat off: $e")
+        }
+    }
+
     /**
      * Trail beats and the budget's held game beat, once a tick, on the recorder thread. A live Trail run on the Coach
      * level only; a failure here turns the feature off for the run, never the recording. The ghost fields are null until
@@ -1287,6 +1341,7 @@ class RecordingSession(
             heightVsStartM = retrace.state.heightVsStartM,
             route = routeProgress(),
             trail = trailProgress(),
+            questDoneId = questDoneId,
         )
     }
 

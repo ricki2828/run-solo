@@ -48,6 +48,9 @@ enum class CueSlot(val priority: Int) {
     structure(0),
     climbAhead(1),
     climbDone(1),
+
+    /** A quest completed mid-run: a game beat, said once when a gap opens. */
+    questDone(1),
     ghostFlip(1),
     finalPush(1),
     summit(2),

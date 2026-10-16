@@ -15,6 +15,7 @@ import '../state/courses.dart';
 import '../app/format.dart';
 import '../state/history_store.dart';
 import '../state/live_context.dart';
+import '../state/quests/quest_live.dart';
 import '../state/max_hr.dart';
 import '../state/load_guard.dart';
 import '../state/recording_controller.dart';
@@ -638,7 +639,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       // over to the other choice goes in too. K1: the event races its
       // course's board and PB when Start knows the course (#76).
       final courseKey = _courseKeyFor(s);
-      final live = debugLiveCompareAtStart
+      final compare = debugLiveCompareAtStart
           ? await services.live?.build(
               mode: mode,
               spec: spec,
@@ -652,6 +653,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           // The compare is off, but a trail the runner knows still goes in (the
           // in-run ghost): trails alone, no boards, nothing said by the compare.
           : services.live?.trailsOnly(mode);
+      // The active quest rides in too, for its in-run "quest done" (index rows only, 120 ms at most).
+      final live = await withLiveQuest(
+        compare,
+        mode: mode,
+        quests: services.quests,
+        history: services.history,
+        now: services.now(),
+      );
       if (!debugLiveCompareAtStart && kPerfDiagnostics) {
         // Timed for Settings → Diagnostics, result unused, Start not held.
         unawaited(
