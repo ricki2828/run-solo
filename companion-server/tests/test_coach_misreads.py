@@ -176,7 +176,7 @@ def test_the_verdict_word_is_added_by_the_app_not_the_model(tmp_path, fakes):
 
 def evening_hist(feel, typ="easy", app="trail"):
     last = run(0, typ=typ, app=app, feel=feel, zone_min={"z1": 3.0, "z2": 11.0, "z3": 4.0, "z4": 5.0})  # 22% Z4: past felt_hard's 15% gate
-    older = [run(3, typ="easy", app="free"), run(5, typ="easy", app="free"), run(7, typ="interval", app="intervals")]
+    older = [run(3, typ="easy", app="free"), run(5, typ="easy", app="free"), run(7, typ="interval", app="intervals"), run(20, typ="easy", app="free")]  # 20 days in: not a new runner (M6)
     return [last] + older
 
 

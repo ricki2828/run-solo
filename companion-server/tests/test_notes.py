@@ -279,7 +279,7 @@ def test_a_flagged_note_softens_for_a_week_only():
 
 
 def _push_history():
-    return [run(i, 1 + 2 * i) for i in range(4)] + [run(9, 8, typ="tempo")]
+    return [run(i, 1 + 2 * i) for i in range(4)] + [run(9, 8, typ="tempo"), run(10, 20)]
 
 
 def test_a_flagged_note_turns_a_quality_nudge_into_an_easy_one():
@@ -311,6 +311,7 @@ def test_softening_drops_the_pushy_touches():
 def test_a_note_changes_the_next_evening_card_end_to_end(client, fakes):
     t = enrol(client)
     uid = q(client, "SELECT id FROM users")[0]["id"]
+    send_run(client, t, "old", minutes_ago=20 * 1440)         # not a new runner: those get no quality push (M6)
     for i, days in enumerate((9, 7, 5, 3)):                  # active, last hard session nine days back: a quality nudge
         send_run(client, t, f"h{i}", minutes_ago=days * 1440, type="tempo" if i == 0 else "easy")
     send_run(client, t, "fresh", minutes_ago=10)             # old runs are stored without a card; this one has the button

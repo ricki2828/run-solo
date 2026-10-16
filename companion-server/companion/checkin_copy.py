@@ -33,7 +33,7 @@ def session_label(typ: str, minutes: int | None, distance_m: int | None, name: s
     """"Quality session, 6 km", or with the session's own name when the coach knows it: "Norwegian 4x4, 6 km"."""
     word = name or WORD.get(typ, "Run")
     if distance_m:
-        return f"{word}, {max(1, round(distance_m / 1000))} km"
+        return f"{word}, {max(1, int(distance_m / 1000 + 0.5))} km"   # half up: a 4.5 km plan is "5 km", never banker's "4"
     if minutes:
         return f"{word}, {minutes} min"
     return word

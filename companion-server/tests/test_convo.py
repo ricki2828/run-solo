@@ -209,7 +209,7 @@ def test_suggestion_reasons():
     assert ev.suggestion.reason == "load" and ev.suggestion.kind == "easy_next"
     ev = suggest.evening(week("tempo"), NOW.replace(hour=20), None, {}, "s")
     assert ev.suggestion.reason == "hard_recent" or ev is not None
-    easy = [run(i, 1 + 2 * i) for i in range(4)] + [run(9, 8, typ="tempo")]
+    easy = [run(i, 1 + 2 * i) for i in range(4)] + [run(9, 8, typ="tempo"), run(10, 30)]   # a month on the record
     assert suggest.evening(easy, NOW, Forecast(33, 5), {}, "s").suggestion.kind == "heat"
     assert suggest.evening(easy, NOW, Forecast(26, 80), {}, "s").suggestion.kind == "wet"
     assert suggest.evening(easy, NOW, Forecast(24, 5), {}, "s").suggestion.kind == "quality"
@@ -241,8 +241,8 @@ SUN = datetime(2026, 10, 18, 11, 5, tzinfo=U)  # Sunday 19:05 in Singapore
 
 
 def test_recap_week_logic():
-    runs = [run(1, 0.5, km=10.0, pb="10k"), run(2, 2, km=5.0), run(3, 8, km=6.0), run(4, 9, km=5.0)]
-    for r, d in zip(runs, (0.5, 2, 8, 9)):
+    runs = [run(1, 0.5, km=10.0, pb="10k"), run(2, 2, km=5.0), run(3, 8, km=6.0), run(4, 9, km=5.0), run(5, 20, km=5.0)]
+    for r, d in zip(runs, (0.5, 2, 8, 9, 20)):
         r["start_utc"] = SUN - timedelta(days=d)
     rc = recap.build(runs, SUN, SG, {}, "w")
     assert rc.rendered.situation == "recap_up" and rc.media.video and rc.media.card == "weekly_recap"

@@ -425,7 +425,7 @@ def heart_svg(profile: Sequence[int], hr: Sequence[int], zones: Sequence[int], w
     pcol = brand.ZONE_RAMP[max(1, min(5, zones[peak_i])) - 1]
     parts.append(f'<circle cx="{xp:.1f}" cy="{yp:.1f}" r="14" fill="#fff" stroke="{pcol}" stroke-width="8"/>')
     anchor = "start" if xp < 150 else ("end" if xp > w - 150 else "middle")
-    parts.append(f'<text x="{xp:.1f}" y="{max(yp - 24, 38):.1f}" text-anchor="{anchor}" {font} font-size="32" fill="{brand.INK}">{hr[peak_i]} BPM</text>')
+    parts.append(f'<text x="{xp:.1f}" y="{max(yp - 24, 38):.1f}" text-anchor="{anchor}" {font} font-size="32" fill="{brand.INK}">PEAK</text>')
     return f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">{"".join(parts)}</svg>'
 
 
