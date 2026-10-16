@@ -232,6 +232,7 @@ $OPS ops roster          # one line per tester: T-number, state, last run, runs,
 $OPS ops pause T3        # per-tester pause: no messages, chat ignored (DELETE still works). Their own RESUME does not undo it.
 $OPS ops resume T3
 $OPS ops alerts          # alerts not yet sent
+$OPS ops feedback [days]  # "Tell Ricki" feedback from the last N days (default 7, max 30), newest first, T-numbers only. Kept 30 days, then purged.
 ```
 
 **Kill switches, from the broadest to the narrowest**
