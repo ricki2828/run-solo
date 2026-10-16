@@ -3,6 +3,21 @@ import 'dart:math' as math;
 import 'friend_fitness_norms.dart';
 import 'race_percentile_norms.dart';
 
+/// One week in the 8-week strip.
+enum StreakWeek {
+  /// Ran at least once.
+  ran,
+
+  /// Missed, nothing covered it.
+  missed,
+
+  /// A freeze covered it.
+  frozen,
+
+  /// Paused (ill or sore): neither counts nor breaks, uses no freeze.
+  paused,
+}
+
 /// A weekly streak worked out from the weeks a runner ran in.
 class StreakResult {
   const StreakResult({
@@ -16,9 +31,8 @@ class StreakResult {
   final bool thisWeekDone;
   final int freezesReady;
 
-  /// The last 8 weeks, oldest first: true = ran, false = missed, null = a
-  /// freeze covered it.
-  final List<bool?> recent;
+  /// The last 8 weeks, oldest first.
+  final List<StreakWeek> recent;
 }
 
 /// The shape of the age-band pack: 20 bins, slowest first, and the bin the
@@ -186,31 +200,41 @@ abstract final class ProgressMath {
   /// when the next week was run (or is the current one); two misses in a row
   /// end the streak. The current week is never counted as missed while it is
   /// still in progress.
-  static StreakResult streak(Set<int> ran, int current) {
+  ///
+  /// A [paused] week (ill or sore) neither counts nor breaks: it uses no
+  /// freeze, earns toward none, and the streak number and the run of weeks in
+  /// a row carry across it. A paused week that was run anyway counts as ran.
+  static StreakResult streak(
+    Set<int> ran,
+    int current, {
+    Set<int> paused = const {},
+  }) {
     final past = {
       for (final w in ran)
         if (w <= current) w,
     };
-    final status = <int, bool?>{};
+    final status = <int, StreakWeek>{};
     var weeks = 0, consecutive = 0, freezes = 0;
     if (past.isNotEmpty) {
       for (var w = past.reduce(math.min); w <= current; w++) {
         if (past.contains(w)) {
           weeks++;
           consecutive++;
-          status[w] = true;
+          status[w] = StreakWeek.ran;
           if (consecutive % weeksPerFreeze == 0) {
             freezes = math.min(maxFreezes, freezes + 1);
           }
+        } else if (paused.contains(w)) {
+          status[w] = StreakWeek.paused;
         } else if (w == current) {
-          status[w] = false;
-        } else if (freezes > 0 && (past.contains(w + 1) || w + 1 == current)) {
+          status[w] = StreakWeek.missed;
+        } else if (freezes > 0 && _nextCovers(past, paused, w, current)) {
           freezes--;
-          status[w] = null;
+          status[w] = StreakWeek.frozen;
         } else {
           weeks = 0;
           consecutive = 0;
-          status[w] = false;
+          status[w] = StreakWeek.missed;
         }
       }
     }
@@ -220,8 +244,19 @@ abstract final class ProgressMath {
       freezesReady: freezes,
       recent: [
         for (var w = current - 7; w <= current; w++)
-          status.containsKey(w) ? status[w] : false,
+          status[w] ??
+              (paused.contains(w) ? StreakWeek.paused : StreakWeek.missed),
       ],
     );
+  }
+
+  /// A freeze on week [w] holds when the next week that is not paused was
+  /// run, or is the current one.
+  static bool _nextCovers(Set<int> past, Set<int> paused, int w, int current) {
+    var n = w + 1;
+    while (n < current && paused.contains(n) && !past.contains(n)) {
+      n++;
+    }
+    return past.contains(n) || n == current;
   }
 }
