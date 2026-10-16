@@ -27,6 +27,7 @@ from .checkin_service import CheckinMixin
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import GHOST_CLIP_S, Media, MediaError, from_settings
+from . import feedback as cv_feedback
 from . import notes as cv_notes
 from . import trail as cv_trail
 from .convo import engine as cv_engine
@@ -78,6 +79,16 @@ NOTE_SAVED = "Noted. I'll keep it in mind."
 NOTE_TOO_LONG = "That's over 500 characters. Trim it and send it again."
 NOTE_EXPIRED = "That note window closed after 10 minutes. Tap Add a note on the run card to start again."
 NOTE_PAUSED = "You're paused. Send RESUME first, then tap Add a note again."
+# Tell Ricki: the reply is always one of these fixed lines, whatever was typed. No model writes it.
+FEEDBACK_PROMPT = "Go on, tell Ricki. Type it in one message, up to 1000 characters. Only Ricki reads it, no AI does."
+FEEDBACK_SAVED = "Got it. Ricki will read this."
+FEEDBACK_TOO_LONG = "That's over 1000 characters. Trim it and send it again."
+FEEDBACK_EXPIRED = "That window closed after 30 minutes. Tap Tell Ricki or send /feedback to start again."
+FEEDBACK_PAUSED = "You're paused. Send RESUME first, then tap Tell Ricki again."
+FEEDBACK_NO_CONSENT = ("I can't take feedback yet. Open Run Supreme, go to Settings > Companion and accept the latest "
+                       "privacy terms, then try again.")
+FEEDBACK_CANCELLED = "Cancelled."
+FEEDBACK_DELETE_FIRST = "Not sent as feedback. Send DELETE again to erase everything."
 CODE_MSG = ("Your code is {code}. Type it into Run Supreme to finish connecting. Only ever enter it in the app, "
             "and never share it. If you didn't start this, ignore this message.")
 WELCOME = ("You're connected. Your run recaps will land here. Send STOP to pause them or DELETE to "
@@ -340,6 +351,7 @@ EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
+    "feedback": "feedback",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -347,6 +359,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "replay_state": "coach replay progress", "replay_runs": "run ids the replay inserted",
     "replay_items": "replay send times and card ids", "replay_rows": "which rows the replay wrote",
     "note_mode": "10-minute 'Add a note' waiting state: a run id and an expiry, no text",
+    "feedback_mode": "30-minute 'Tell Ricki' waiting state: an expiry, no text",
     "checkin_slots": "which check-in messages were sent (ids and dates, no answer)",
     "question_cap": "one row per local day a question was sent (the daily cap)",
     "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
@@ -547,17 +560,20 @@ class Service(CheckinMixin):
         word = text.lstrip("/").upper()
         m = START_RE.match(text)
         reply: str
-        if user and word in NOTE_BARE_WORDS and self._note_mode_open(user["id"], now):
-            # Right after "type your note" a bare keyword is far more likely an answer than a command: DELETE must not
-            # erase the account on one word, and CANCEL/END/QUIT just leave note mode. STOP still pauses (opt-out always
-            # works) and closes note mode.
+        note_open = bool(user) and word in NOTE_BARE_WORDS and self._note_mode_open(user["id"], now)
+        fb_open = bool(user) and word in NOTE_BARE_WORDS and not note_open and self._feedback_mode_open(user["id"], now)
+        if note_open or fb_open:
+            # Right after "type your note" (or "tell Ricki") a bare keyword is far more likely an answer than a command:
+            # DELETE must not erase the account on one word, and CANCEL/END/QUIT just leave the mode. STOP still pauses
+            # (opt-out always works) and closes it.
             with db.tx(self.s.db_path) as c:
                 c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+                c.execute("DELETE FROM feedback_mode WHERE user_id=?", (user["id"],))
             if word == "DELETE":
-                self._reply(ch, inb.ref, NOTE_DELETE_FIRST)
+                self._reply(ch, inb.ref, NOTE_DELETE_FIRST if note_open else FEEDBACK_DELETE_FIRST)
                 return
             if word in NOTE_CANCEL_WORDS:
-                self._reply(ch, inb.ref, NOTE_CANCELLED)
+                self._reply(ch, inb.ref, NOTE_CANCELLED if note_open else FEEDBACK_CANCELLED)
                 return
         if m:
             reply = self._bind(inb, m.group(1), now)
@@ -572,6 +588,7 @@ class Service(CheckinMixin):
                 with db.tx(self.s.db_path) as c:
                     c.execute("UPDATE users SET paused=0 WHERE id=?", (user["id"],))
                     c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+                    c.execute("DELETE FROM feedback_mode WHERE user_id=?", (user["id"],))
             reply = "Back on. Your next run recap will land here." if user else UNKNOWN
         elif word == "DELETE":
             if user:
@@ -580,10 +597,12 @@ class Service(CheckinMixin):
                 reply = "Done. Everything we held about you is deleted. Meta may keep delivery records for up to 30 days."
             else:
                 reply = "We hold nothing for this chat."
+        elif word == cv_feedback.FEEDBACK_WORD:
+            reply = self._feedback_open(user, now) if user else UNKNOWN
         else:
-            # Free text is only ever a note, after "Add a note". Everything else gets the fixed canned reply, and no
-            # free text ever reaches a model.
-            reply = self._note_reply(user, inb.text, now) or UNKNOWN
+            # Free text is only ever a note (after "Add a note") or feedback (after "Tell Ricki"). Everything else gets
+            # the fixed canned reply, and no free text ever reaches a model.
+            reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now) or UNKNOWN
         self._reply(ch, inb.ref, reply)
 
     def _redelivered(self, inb: Inbound) -> bool:
@@ -619,6 +638,61 @@ class Service(CheckinMixin):
         with db.ro(self.s.db_path) as c:
             r = c.execute("SELECT expires_at FROM note_mode WHERE user_id=?", (uid,)).fetchone()
         return r is not None and parse_iso(r["expires_at"]) > now
+
+    def _feedback_mode_open(self, uid: str, now: datetime) -> bool:
+        with db.ro(self.s.db_path) as c:
+            r = c.execute("SELECT expires_at FROM feedback_mode WHERE user_id=?", (uid,)).fetchone()
+        return r is not None and parse_iso(r["expires_at"]) > now
+
+    def _fb_start(self, c, user: dict, now: datetime) -> str | None:
+        """Open feedback mode inside the caller's transaction. None when it opened, else the refusal to send. Consent is
+        read here, in the same transaction, so a withdrawal cannot slip in between. Only one of note/feedback mode is
+        ever open: the last tap wins."""
+        if user["paused"]:
+            return FEEDBACK_PAUSED
+        if not self._ci_consented(c, user["id"]):
+            return FEEDBACK_NO_CONSENT
+        c.execute("DELETE FROM note_mode WHERE user_id=?", (user["id"],))
+        c.execute("INSERT INTO feedback_mode (user_id, expires_at) VALUES (?,?) "
+                  "ON CONFLICT(user_id) DO UPDATE SET expires_at=excluded.expires_at",
+                  (user["id"], iso(now + timedelta(minutes=cv_feedback.FEEDBACK_MODE_MIN))))
+        return None
+
+    def _feedback_open(self, user: dict, now: datetime) -> str:
+        """/feedback typed in the chat."""
+        with db.tx(self.s.db_path) as c:
+            return self._fb_start(c, user, now) or FEEDBACK_PROMPT
+
+    def _feedback_reply(self, user: dict | None, raw: str, now: datetime) -> str | None:
+        """The reply when this free text is (or was meant to be) feedback; None when the user is not in feedback mode.
+        The text goes into the feedback table and nowhere else: no model, no log line, no card."""
+        if not user:
+            return None
+        with db.ro(self.s.db_path) as c:
+            mode = c.execute("SELECT expires_at FROM feedback_mode WHERE user_id=?", (user["id"],)).fetchone()
+        if mode is None:
+            return None
+        if parse_iso(mode["expires_at"]) <= now:
+            with db.tx(self.s.db_path) as c:
+                c.execute("DELETE FROM feedback_mode WHERE user_id=?", (user["id"],))
+            return FEEDBACK_EXPIRED
+        if user["paused"]:
+            return FEEDBACK_PAUSED  # nothing is stored for a paused chat
+        text = cv_feedback.clean(raw)
+        if not text:
+            return None
+        if len(text) > cv_feedback.FEEDBACK_MAX_CHARS:
+            return FEEDBACK_TOO_LONG  # still in feedback mode: the runner can send a shorter one
+        with db.tx(self.s.db_path) as c:
+            # re-read under the write lock; one message ends the mode whatever happens next
+            mode = c.execute("SELECT expires_at FROM feedback_mode WHERE user_id=?", (user["id"],)).fetchone()
+            c.execute("DELETE FROM feedback_mode WHERE user_id=?", (user["id"],))
+            if mode is None or parse_iso(mode["expires_at"]) <= now:
+                return FEEDBACK_EXPIRED
+            if not self._ci_consented(c, user["id"]):
+                return FEEDBACK_NO_CONSENT
+            c.execute("INSERT INTO feedback (user_id, ts, text) VALUES (?,?,?)", (user["id"], iso(now), text))
+        return FEEDBACK_SAVED
 
     def _note_reply(self, user: dict | None, raw: str, now: datetime) -> str | None:
         """The reply when this free text is (or was meant to be) a note; None when the user is not in note mode."""
@@ -678,6 +752,7 @@ class Service(CheckinMixin):
         msg = "Thanks."
         keep: list[tuple[str, int]] = []
         note_tapped = False
+        fb_prompt: str | None = None   # "Tell Ricki" tapped: the chat message that follows (the prompt or a refusal)
         after: str | None = None  # a chat message to send once the transaction is closed
         with (db.origin() if replay_card else contextlib.nullcontext()), db.tx(self.s.db_path) as c:  # a replayed card's answers are the replay's rows
             if kind == "feel" and card["run_id"] and rest in ("easy", "right", "hard"):
@@ -693,11 +768,15 @@ class Service(CheckinMixin):
                 elif user["paused"]:
                     msg, after = "You're paused.", NOTE_PAUSED
                 else:
+                    c.execute("DELETE FROM feedback_mode WHERE user_id=?", (user["id"],))
                     c.execute("INSERT INTO note_mode (user_id, run_id, expires_at) VALUES (?,?,?) "
                               "ON CONFLICT(user_id) DO UPDATE SET run_id=excluded.run_id, expires_at=excluded.expires_at",
                               (user["id"], card["run_id"],
                                iso(real_now + timedelta(minutes=cv_notes.NOTE_MODE_MIN))))
                     msg, note_tapped = "Type your note.", True
+            elif kind == "fb" and rest == "tell":
+                refusal = self._fb_start(c, user, real_now)   # feedback runs on the real clock, even for a replayed card
+                msg, fb_prompt = ("Type your feedback.", FEEDBACK_PROMPT) if refusal is None else ("Not now.", refusal)
             elif kind == "ans":
                 key, _, val = rest.partition(":")
                 if valid_answer(key, val):
@@ -717,6 +796,9 @@ class Service(CheckinMixin):
         if note_tapped:
             ch.ack_callback(inb, msg, clear=False)  # the card keeps its buttons
             self._reply(ch, inb.ref, NOTE_PROMPT)
+        elif fb_prompt:
+            ch.ack_callback(inb, msg, clear=False)  # the card keeps its buttons
+            self._reply(ch, inb.ref, fb_prompt)
         elif kind == "note":
             ch.ack_callback(inb, msg, clear=False)
             if after:
@@ -785,6 +867,7 @@ class Service(CheckinMixin):
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
                 "SELECT run_id, note, created_at FROM run_notes WHERE user_id=? ORDER BY created_at", (uid,))]
+            feedback = [dict(r) for r in c.execute("SELECT ts, text FROM feedback WHERE user_id=? ORDER BY id", (uid,))]
             shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
                        "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
                        "reps": json.loads(r["reps_json"]) if r["reps_json"] else None,
@@ -798,7 +881,7 @@ class Service(CheckinMixin):
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
-            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
+            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
@@ -1339,7 +1422,8 @@ class Service(CheckinMixin):
         with db.tx(self.s.db_path) as c:
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, "
                       "quote_run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body, "[]",
+                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body,
+                       json.dumps([{"label": "Tell Ricki", "action": cv_feedback.FEEDBACK_ACTION, "row": 0}]),
                        "template", iso(now), quote_rid))
             self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
                               [rc.rendered.variant_id], None)
@@ -1839,10 +1923,13 @@ class Service(CheckinMixin):
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
             gone = self.purge_checkins(c, now, held)
+            gone += c.execute("DELETE FROM feedback WHERE ts < ?" + held,
+                              (iso(now - timedelta(days=cv_feedback.FEEDBACK_RETENTION_DAYS)),)).rowcount
+            c.execute("DELETE FROM feedback_mode WHERE expires_at < ?", (iso(now - timedelta(hours=1)),))
             idle = [r["id"] for r in c.execute(
                 f"SELECT id FROM users WHERE COALESCE(last_run_utc, created_at) < ? AND id NOT IN {replay_hold(now)}",
                 (iso(now - timedelta(days=RETENTION_INACTIVE_DAYS)),))]
-        if gone:   # old page images of purged answers must not wait in the WAL (P1)
+        if gone:   # old page images of purged answers and feedback must not wait in the WAL (P1)
             db.checkpoint_truncate(self.s.db_path)
         for uid in idle:  # six months without a run: hard delete
             db.hard_delete_user(self.s.db_path, uid)

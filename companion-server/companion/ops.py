@@ -17,7 +17,7 @@ from .timeutil import iso, now_utc
 
 log = logging.getLogger("companion")
 TESTER = re.compile(r"^[Tt](\d{1,6})$")
-USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts"
+USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days]"
 
 
 def _month_start() -> str:
@@ -93,6 +93,17 @@ def alerts(s: Settings) -> list[str]:
     return [f"#{a['id']} {a['ts']} {a['title']} | {a['body']}" for a in pending_alerts(s.db_path)] or ["no unsent alerts"]
 
 
+def feedback(s: Settings, days: int = 7, limit: int = 200) -> list[str]:
+    """Recent Tell Ricki feedback, newest first, one line each: `T3 2026-10-16T08:01:02Z text`. Runners are named by
+    tester number only. The text is the runner's own words and is printed to the operator and nowhere else."""
+    since = iso(now_utc() - timedelta(days=days))
+    with db.ro(s.db_path) as c:
+        rows = c.execute(
+            "SELECT u.tester_no, f.ts, f.text FROM feedback f JOIN users u ON u.id = f.user_id "
+            "WHERE f.ts >= ? ORDER BY f.ts DESC, f.id DESC LIMIT ?", (since, limit)).fetchall()
+    return [f"{tag(r['tester_no'])} {r['ts']} {r['text']}" for r in rows]
+
+
 def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> int:
     cmd = argv[0] if argv else "status"
     if cmd == "status":
@@ -105,6 +116,12 @@ def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> in
         return code
     elif cmd == "alerts":
         lines = alerts(s)
+    elif cmd == "feedback":
+        arg = argv[1] if len(argv) > 1 else "7"
+        if not arg.isdigit() or not 1 <= int(arg) <= 30:
+            out(USAGE)
+            return 2
+        lines = feedback(s, int(arg)) or [f"no feedback in the last {arg} days"]
     else:
         out(USAGE)
         return 2
