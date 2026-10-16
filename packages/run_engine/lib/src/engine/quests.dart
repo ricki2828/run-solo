@@ -221,7 +221,8 @@ class QuestDef {
   String get line => switch (kind) {
     QuestKind.trailVisits =>
       '${Quests.word(target)} runs of $_trail in $kQuestDays days. '
-          'Your busiest $kQuestDays days was $baseline.',
+          'Your best $kQuestDays days so far: $baseline '
+          '${baseline == 1 ? 'run' : 'runs'}.',
     QuestKind.trailBest =>
       'Your best on $_trail, heat taken out. A hot day still counts.',
     QuestKind.climbBest =>
@@ -229,10 +230,10 @@ class QuestDef {
           '${climbGainM ?? 0} m up, ${_grade()}%.',
     QuestKind.climbMonth =>
       'Climb ${Quests.fmtInt(target)} m in $kQuestDays days. '
-          'Your biggest $kQuestDays days was ${Quests.fmtInt(baseline)}.',
+          'Your best $kQuestDays days so far: ${Quests.fmtInt(baseline)} m.',
     QuestKind.distanceMonth =>
       'Run ${Quests.fmtInt(target)} km in $kQuestDays days. '
-          'Your biggest $kQuestDays days was ${Quests.fmtInt(baseline)}.',
+          'Your best $kQuestDays days so far: ${Quests.fmtInt(baseline)} km.',
   };
 
   /// What the Moment says once it is done, [days] after it was accepted.

@@ -74,7 +74,7 @@ void main() {
       expect(c.first.title, 'SADDLE ×5');
       expect(
         c.first.line,
-        'Five runs of Saddle in 30 days. Your busiest 30 days was 4.',
+        'Five runs of Saddle in 30 days. Your best 30 days so far: 4 runs.',
       );
       expect(c[1].kind, QuestKind.trailBest);
       expect(c[1].target, 2497);

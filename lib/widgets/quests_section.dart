@@ -241,7 +241,6 @@ class _BestChart extends StatelessWidget {
       emptyTitle: 'Run it again',
       emptyBody: 'Two runs on the trail and the bars show up here.',
       best: best,
-      maxBars: 10,
       roundTo: 10,
       minSpan: 30,
     );
