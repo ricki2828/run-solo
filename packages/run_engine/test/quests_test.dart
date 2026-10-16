@@ -19,6 +19,15 @@ QuestRun run(
   normMs: normMs,
 );
 
+Map<String, Object?> distanceJson() => {
+  'id': 'q_2026-11_distance_month_aaaa',
+  'kind': 'distance_month',
+  'month': '2026-11',
+  'target': 20,
+  'baseline': 15,
+  'endsOn': '2026-12-02',
+};
+
 void main() {
   final now = DateTime(2026, 11, 2, 18);
 
@@ -387,7 +396,7 @@ void main() {
       climbIdx: 1,
       climbLengthM: 1200,
       climbGainM: 70,
-    ).accept(DateTime(2026, 11, 2, 18), source: 'coach');
+    ).accept(DateTime.utc(2026, 11, 2, 18), source: 'coach');
     final back = QuestDef.fromJson(d.toJson())!;
     expect(back.toJson(), d.toJson());
     expect(back.source, 'coach');
@@ -469,6 +478,46 @@ void main() {
       expect(Quests.progress(d, [faster]).complete, isTrue);
     });
 
+    test('trail_best remembers its runs too, and remaps end to end', () {
+      final runs = [
+        for (var i = 0; i < 4; i++)
+          run(
+            'r$i',
+            DateTime(2026, 10, 1 + i * 5),
+            trail: 'trail:r0',
+            normMs: 2600000 - i * 10000,
+          ),
+      ];
+      final best = Quests.candidates(
+        runs,
+        now,
+      ).firstWhere((d) => d.kind == QuestKind.trailBest);
+      expect(best.trailRunIds, ['r0', 'r1', 'r2', 'r3']);
+      final active = best.accept(DateTime(2026, 11, 3));
+      // r0 deleted: r1..r3 re-key to trail:r1, times re-normalised longer.
+      final after = [
+        run('r1', DateTime(2026, 10, 6), trail: 'trail:r1', normMs: 2650000),
+        run('r2', DateTime(2026, 10, 11), trail: 'trail:r1', normMs: 2640000),
+        run('r3', DateTime(2026, 10, 16), trail: 'trail:r1', normMs: 2630000),
+        run('n1', DateTime(2026, 11, 5), trail: 'trail:r1', normMs: 2600000),
+      ];
+      final d = Quests.remapTrail(active, after, const {});
+      expect(d.trailKey, 'trail:r1');
+      expect(d.target, 2630);
+      expect(d.baseline, 2630);
+      final p = Quests.progress(d, after);
+      expect(p.complete, isTrue);
+      expect(p.completedByRunId, 'n1');
+    });
+
+    test('an acceptedAt saved by an older build keeps its wall clock', () {
+      final json = distanceJson()..['acceptedAt'] = '2026-11-02T10:00:00.000';
+      final d = QuestDef.fromJson(json)!;
+      expect(d.acceptedAt, DateTime.utc(2026, 11, 2, 10));
+      final z = distanceJson()..['acceptedAt'] = '2026-11-02T10:00:00.000Z';
+      expect(QuestDef.fromJson(z)!.acceptedAt, DateTime.utc(2026, 11, 2, 10));
+    });
+
     test('trail runs are remembered and survive a json round trip', () {
       final runs = [
         for (var i = 0; i < 4; i++)
@@ -505,24 +554,41 @@ void main() {
         expect(Quests.progress(visits(), runs).value, 0);
       });
 
-      test('the anchor was split off: the quest follows the bigger part', () {
-        // r0 is on its own now; r1 and r2 (and the new run) kept together.
+      test('the anchor was split off: the quest stays on the main trail', () {
+        // r0 is a one-run group still keyed trail:r0; r1 and r2 (and the new
+        // run) kept together under trail:r1.
         final runs = [
           run('r0', DateTime(2026, 10, 1), trail: 'trail:r0'),
           run('r1', DateTime(2026, 10, 6), trail: 'trail:r1'),
           run('r2', DateTime(2026, 10, 11), trail: 'trail:r1'),
           run('n1', DateTime(2026, 11, 4), trail: 'trail:r1'),
         ];
-        // r0 still exists under its own key, so the key is still there: no
-        // remap, the quest stays with the runs that match its key.
-        expect(
-          Quests.remapTrail(visits(), runs, const {}).trailKey,
-          'trail:r0',
-        );
-        // Once r0 is deleted as well, only the bigger part is left.
-        final without = runs.sublist(1);
-        final d = Quests.remapTrail(visits(), without, {'trail:r1': 'Saddle'});
+        final d = Quests.remapTrail(visits(), runs, {'trail:r1': 'Saddle'});
         expect(d.trailKey, 'trail:r1');
+        expect(Quests.progress(d, runs).value, 1);
+        // And once r0 is deleted as well, the same.
+        final without = runs.sublist(1);
+        expect(
+          Quests.remapTrail(visits(), without, const {}).trailKey,
+          'trail:r1',
+        );
+      });
+
+      test('the quest stays when its own key still holds the most', () {
+        final runs = [
+          run('r0', DateTime(2026, 10, 1), trail: 'trail:r0'),
+          run('r1', DateTime(2026, 10, 6), trail: 'trail:r0'),
+          run('r2', DateTime(2026, 10, 11), trail: 'trail:r9'),
+        ];
+        final d = visits();
+        expect(identical(Quests.remapTrail(d, runs, const {}), d), isTrue);
+      });
+
+      test('one stray run does not move it', () {
+        // Three runs remembered; only r2 is left, on another key.
+        final runs = [run('r2', DateTime(2026, 10, 11), trail: 'trail:r9')];
+        final d = visits();
+        expect(identical(Quests.remapTrail(d, runs, const {}), d), isTrue);
       });
 
       test('trail_best is re-based on the new anchor\'s times', () {

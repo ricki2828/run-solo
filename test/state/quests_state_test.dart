@@ -198,6 +198,12 @@ void main() {
             trailKey: 'trail:r1',
           ),
           engine.QuestRun(
+            id: 'r2',
+            start: DateTime.utc(2026, 10, 11),
+            distanceM: 5000,
+            trailKey: 'trail:r1',
+          ),
+          engine.QuestRun(
             id: 'n1',
             start: DateTime.utc(2026, 11, 4),
             distanceM: 5000,

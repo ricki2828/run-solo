@@ -238,11 +238,26 @@ class QuestDef {
       climbIdx: j['climbIdx'] is int ? j['climbIdx']! as int : null,
       climbLengthM: j['climbLengthM'] is int ? j['climbLengthM']! as int : null,
       climbGainM: j['climbGainM'] is int ? j['climbGainM']! as int : null,
-      acceptedAt: at is String ? DateTime.tryParse(at) : null,
+      acceptedAt: at is String ? _asWall(DateTime.tryParse(at)) : null,
       endsOn: ends is String ? ends : null,
       source: j['source'] == 'coach' ? 'coach' : 'app',
     );
   }
+
+  /// An older build saved `acceptedAt` from the phone's clock (no `Z`): the
+  /// fields were already the runner's wall clock, so keep them and flag the
+  /// value UTC, the clock the engine now runs on.
+  static DateTime? _asWall(DateTime? d) => d == null || d.isUtc
+      ? d
+      : DateTime.utc(
+          d.year,
+          d.month,
+          d.day,
+          d.hour,
+          d.minute,
+          d.second,
+          d.millisecond,
+        );
 
   // ---- Copy (plain, casual, no em dashes) --------------------------------
 
@@ -468,6 +483,11 @@ abstract final class Quests {
           if (r.trailKey == top) r,
       ];
       final name = trailNames[top];
+      final remember = [
+        for (final r
+            in onTrail.reversed.take(kTrailRunIdsKept).toList().reversed)
+          r.id,
+      ];
       final most = best30(onTrail, (_) => 1).round();
       out.add(
         QuestDef(
@@ -478,11 +498,7 @@ abstract final class Quests {
           baseline: most,
           trailKey: top,
           trailName: name,
-          trailRunIds: [
-            for (final r
-                in onTrail.reversed.take(kTrailRunIdsKept).toList().reversed)
-              r.id,
-          ],
+          trailRunIds: remember,
         ),
       );
 
@@ -509,6 +525,7 @@ abstract final class Quests {
             baseline: secs,
             trailKey: top,
             trailName: name,
+            trailRunIds: remember,
             climbIdx: c.idx,
             climbLengthM: c.lengthM.round(),
             climbGainM: c.gainM.round(),
@@ -532,6 +549,7 @@ abstract final class Quests {
             baseline: secs,
             trailKey: top,
             trailName: name,
+            trailRunIds: remember,
           ),
         );
       }
@@ -587,19 +605,23 @@ abstract final class Quests {
     return (fresh.isEmpty ? out : fresh).take(3).toList();
   }
 
-  /// A trail quest whose trail key no longer exists in [runs] (the anchor
-  /// was deleted or split off, so the group re-keyed) found again: the key
-  /// that now holds most of the runs the quest remembers. `trail_best` is
-  /// re-based on the best like-for-like time before it was accepted on the
-  /// new key, since times are normalised to the new anchor's length. Returns
-  /// [def] itself when nothing needs doing or no trail can be found.
+  /// A trail quest whose trail has re-keyed or been split found again. The
+  /// trail key is `trail:<anchor run id>`, so deleting the anchor changes
+  /// it, and splitting the anchor off leaves it as a one-run group still
+  /// holding the old key. Every run the quest remembers votes for the key it
+  /// is on now; the quest moves when another key holds more of them than its
+  /// own key does, and at least two of them (or most of those remembered),
+  /// so one stray run never moves it. `trail_best` is re-based on the best
+  /// like-for-like time before it was accepted on the new key, since times
+  /// are normalised to the new anchor's length. Returns [def] itself when it
+  /// stays.
   static QuestDef remapTrail(
     QuestDef def,
     List<QuestRun> runs,
     Map<String, String> trailNames,
   ) {
     final key = def.trailKey;
-    if (key == null || runs.any((r) => r.trailKey == key)) return def;
+    if (key == null) return def;
     final remembered = def.trailRunIds.toSet();
     final votes = <String, int>{};
     for (final r in runs) {
@@ -614,6 +636,13 @@ abstract final class Quests {
         final c = b.value.compareTo(a.value);
         return c != 0 ? c : a.key.compareTo(b.key);
       });
+    final top = entries.first;
+    final own = votes[key] ?? 0;
+    if (top.key == key ||
+        top.value <= own ||
+        !(top.value >= 2 || top.value * 2 > remembered.length)) {
+      return def;
+    }
     final next = entries.first.key;
     int? target;
     if (def.kind == QuestKind.trailBest) {

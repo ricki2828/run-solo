@@ -48,6 +48,9 @@ class QuestsController extends ChangeNotifier {
           r.mode,
           r.trailOverride,
           r.row,
+          r.start,
+          r.place,
+          r.street,
         ),
     ]);
     if (sig != _inputsSig || _inputs == null) {
