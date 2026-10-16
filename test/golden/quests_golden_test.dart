@@ -73,12 +73,15 @@ QuestBoard _board(String variant) {
           bestMs: 2472000,
         ),
         daysLeft: 12,
-        recentMs: const [2600, 2580, 2540, 2560, 2500, 2472]
-            .map((s) => s * 1000)
-            .toList(),
-        recentDates: [
-          for (var i = 0; i < 6; i++) DateTime(2026, 8, 1 + i * 7),
-        ],
+        recentMs: const [
+          2600,
+          2580,
+          2540,
+          2560,
+          2500,
+          2472,
+        ].map((s) => s * 1000).toList(),
+        recentDates: [for (var i = 0; i < 6; i++) DateTime(2026, 8, 1 + i * 7)],
         history: history,
       );
   }

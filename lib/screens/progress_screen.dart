@@ -19,6 +19,8 @@ class ProgressScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: const RunAppBar(title: 'PROGRESS'),
-    body: SafeArea(child: ScoreAnalysis(snapshot: snapshot, questBoard: questBoard)),
+    body: SafeArea(
+      child: ScoreAnalysis(snapshot: snapshot, questBoard: questBoard),
+    ),
   );
 }
