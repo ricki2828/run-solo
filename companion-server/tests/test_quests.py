@@ -484,3 +484,38 @@ def test_month_skipped_names_its_month_and_an_older_upload_cannot_use_it(client)
     assert {r["state"] for r in rows(client)} == {"offered"} and quest_due(client) is not None
     post(client, t, "r_bad", minutes_ago=2, quest={"month_skipped": True})   # not a "YYYY-MM": the block is dropped
     assert {r["state"] for r in rows(client)} == {"offered"}
+
+
+# ---------------------------------------------------------------- the app's exact payloads (lib/state/quests/quest_wire.dart, #316)
+APP_VISITS = {"id": "q_2026-11_trail_visits_cccc", "kind": "trail_visits", "target": 5, "baseline": 4, "unit": "runs", "trail_name": "Saddle"}
+APP_BEST = {"id": "q_2026-11_trail_best_dddd", "kind": "trail_best", "target": 2472, "baseline": 2472, "unit": "s", "trail_name": "Saddle"}
+APP_DIST = {"id": "q_2026-11_distance_month_aaaa", "kind": "distance_month", "target": 20, "baseline": 15, "unit": "km"}
+
+
+def test_the_apps_exact_quest_payloads_are_accepted_inside_a_full_run_upload(client):
+    t = enrol(client)
+    place_on(client, t)
+    ends = "2026-12-01"
+    # 1. an open offer: three candidates, offer 0 first, a name only on the trail ones
+    post(client, t, "a1", minutes_ago=290, quest={"offers": [APP_VISITS, APP_BEST, APP_DIST]})
+    got = rows(client)
+    assert [(r["quest_id"], r["state"], r["month"], r["unit"]) for r in got] == [
+        (APP_VISITS["id"], "offered", "2026-11", "runs"), (APP_BEST["id"], "offered", "2026-11", "s"),
+        (APP_DIST["id"], "offered", "2026-11", "km")]
+    assert got[0]["trail_name"] == "Saddle" and got[0]["baseline"] == 4 and got[2]["trail_name"] is None
+    # 2. taken: active has exactly id, kind, target, value, ends_on (no unit, no baseline)
+    active = {"id": APP_DIST["id"], "kind": "distance_month", "target": 20, "value": 7, "ends_on": ends}
+    post(client, t, "a2", minutes_ago=240, quest={"active": active})
+    states = {r["quest_id"]: (r["state"], r["value"]) for r in rows(client)}
+    assert states[APP_DIST["id"]] == ("accepted", 7) and states[APP_VISITS["id"]][0] == "skipped"
+    # 3. the run that finishes it: active.value == target plus done_now
+    post(client, t, "a3", minutes_ago=180, quest={"active": {**active, "value": 20}, "done_now": APP_DIST["id"]})
+    assert {r["quest_id"]: r["state"] for r in rows(client)}[APP_DIST["id"]] == "done"
+    assert cq.done_for_run(db_(client), uid_of(client), "a3")["quest_id"] == APP_DIST["id"]
+    # 4. a later run: the finished one is named once more (offline retry), and another quest it closed
+    post(client, t, "a4", minutes_ago=120, quest={"active": {**active, "value": 20}, "done_now": APP_DIST["id"],
+                                                  "closed": {"id": APP_VISITS["id"], "result": "dropped"}})
+    assert {r["quest_id"]: r["state"] for r in rows(client)}[APP_VISITS["id"]] == "skipped"
+    # 5. "Not this month" on its own: just the offer month
+    post(client, t, "a5", minutes_ago=60, quest={"month_skipped": "2026-12"})
+    assert client.get("/v1/me/next-session", headers=auth(t)).json()["quest"] is None
