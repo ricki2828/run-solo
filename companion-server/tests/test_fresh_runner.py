@@ -137,3 +137,11 @@ def test_two_new_runners_never_see_each_others_cards(tmp_path):
         for u in TWO:
             rows = c.execute("SELECT run_id FROM cards WHERE user_id=? AND kind='run'", (f"u_{u}",)).fetchall()
             assert sorted(r[0] for r in rows) == [f"{u}0", f"{u}1", f"{u}2"]
+
+
+# --- a faster headline never reads as a pace number going up -------------------------------------------
+
+def test_no_faster_headline_says_up():
+    from companion.convo import voice
+    for head, _body in voice.SITUATIONS["faster"]:
+        assert "up" not in head.lower().split(), head      # "Pace is up, faster": a pace number going up is slower
