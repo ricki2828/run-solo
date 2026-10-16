@@ -47,9 +47,18 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
     "original_date": "2026-10-15",  // null unless moved
     "label": "Quality session, 6 km"
   },
-  "coach_line": { "kind": "run", "headline": "...", "body": "...", "sent_at": "2026-10-15T05:46:00Z" }
+  "coach_line": { "kind": "run", "headline": "...", "body": "...", "sent_at": "2026-10-15T05:46:00Z" },
+  "quest": { "id": "q_2026-11_trail_visits_ab12", "state": "accepted", "accepted_at": "2026-11-02T10:04:00Z" },
+  "care_weeks": ["2026-10-05", "2026-10-12"]
 }
 ```
+
+`quest` and `care_weeks` are additive keys on the same `v: 1` (the app ignores unknown keys and blanks Home's coach card on any other `v`, so a bump is not allowed):
+- `quest` is the quest the runner has accepted that has not ended (taken in Telegram or sent by the app), or `null`. The app adopts it only
+  when the id matches one of its own offer candidates, and only if it has no active quest of its own.
+- `care_weeks` is the Mondays, within the last 8 weeks, that overlap an `ill` or `sore` check-in window (a skip because ill or sore, or a
+  sore answer the evening before), oldest first. Dates only: never which of the two, and never a skip's reason. It is `[]` without check-in consent, and
+  check-in answers last 14 days, so in practice it covers the last two weeks. The app pauses its streak on those weeks.
 
 The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes three OPTIONAL keys:
 - `session_name`: accepted only if it is exactly one of the app's built-in session names (`facts.known_session`: Norwegian 4x4,
@@ -67,6 +76,39 @@ session). Without a name, `name` is the kind name ("Quality session", "Easy run"
 `next_session` is `null` when the app's newest run carries no planned session or its date has passed; `coach_line` is `null`
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the
 fact that a session moved: no reason, no readiness, no skip. The same resolver feeds the evening rules and the morning card.
+
+### Quest block (`POST /v1/runs`, optional `quest`)
+
+The app owns quests (history, trail grouping, True Pace); the server keeps what it last said so it can issue the month's Telegram card, add the
+done line and nudge once. It never computes progress. Every number is a whole number; no coordinates, run ids or dates other than `ends_on`.
+Unknown keys, a bad value or a mismatch drop the whole block, never the run (`extra="forbid"`, so **the app must not send it until this server is live**).
+
+```json
+"quest": {
+  "offers": [{"id": "q_2026-11_trail_visits_ab12", "kind": "trail_visits", "target": 5, "baseline": 4, "unit": "runs", "trail_name": "The Saddle Trail"}],
+  "active": {"id": "q_2026-11_trail_visits_ab12", "kind": "trail_visits", "target": 5, "value": 3, "ends_on": "2026-12-02", "trail_name": "The Saddle Trail"},
+  "done_now": "q_2026-11_trail_visits_ab12"
+}
+```
+- `offers`: up to 3, distinct ids, `^q_[a-z0-9_-]{1,48}$`. `kind` is `trail_visits` (unit `runs`), `trail_best` or `climb_best` (`s`), `climb_month` (`m`) or `distance_month` (`km`);
+  the unit must fit the kind. `baseline` (optional) is the runner's own best, for the card text. Offer 0 is the default.
+- `active`: the quest the runner has taken, with progress `value`. It is the source of truth: it displaces a quest accepted in Telegram under another id.
+- `done_now`: the id the run just finished. Send `active` (with `value` = `target`) in the same block, so the server has the row. The first run to finish it keeps the credit.
+- `trail_name` is kept only while the place opt-in is on (cleared when it turns off) and goes through the trail-name filter; otherwise the copy says "your trail".
+- A month is offered once. After a quest is taken, skipped, done or lapsed, new `offers` for that month are ignored. The month is the runner's local month of the run that carried them.
+
+Table `quests` (PK `user_id, quest_id`): kind, target, baseline, unit, trail_name, state (`offered | accepted | skipped | done | expired`), value, `ends_on`,
+plus `pos` (offer order), `card_id` (the offer card showing it), `accepted_at`, `done_run_id`. Rows go 90 days after `ends_on`, or 90 days after the end of the offer
+month if never taken; deleted with the user; in the export as `quests` (without `card_id` and `done_run_id`).
+
+Telegram, all fixed templates (no model writes them, nothing here reaches OpenRouter):
+- **Offer.** The first run of a month that carries `offers` queues a `quest_offer` for the next 20:00 to 21:00 local window (retried by later runs until one goes).
+  Not sent when the month is decided, a quest is running, the runner is on WhatsApp, or the weekly suggestion cap (2) or the day's one question is taken; it claims both.
+  Buttons `q:take`, `q:next`, `q:skip` edit the message in place: Another cycles offers 1 to 3, Take it starts a 30 day quest (and the app adopts it from next-session),
+  Not this month skips the month's offers. A card that has moved on answers "That one has moved on." and loses its buttons.
+- **Done.** The run named by `done_now` gets `Quest done: ...` as the last line of its post-run card. No extra message.
+- **Nudge.** When 1 to 7 days are left and the runner is one run (or a quarter of the target) short, the next evening suggestion ends with one line, once per quest
+  (quota key `qnudge:<id>`). Never when the evening is in a lighter (care) window.
 
 ### Check-ins
 

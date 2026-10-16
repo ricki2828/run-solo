@@ -26,6 +26,7 @@ from . import checkin_copy as cc
 from . import checkins as ci
 from . import db
 from . import heat
+from . import quest as cv_quest
 from .channels import ChannelError
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
@@ -779,8 +780,10 @@ class CheckinMixin:
             if not u:
                 raise NotFound()
             user = dict(u)
-            _ans, planned, _usual, _today, res = self._ci_state(c, user, now)
+            ans, planned, _usual, today, res = self._ci_state(c, user, now)
             name_ = self._ci_session_name(planned, res.type) if res else None
+            quest = cv_quest.view_for_app(c, uid, today)
+            care_weeks = ci.care_weeks(ans, today) if self._ci_consented(c, uid) else []
             line = c.execute(
                 "SELECT kind, headline, body, sent_at FROM cards WHERE user_id=? AND sent_at IS NOT NULL AND sent_at<=? "
                 f"AND kind IN ({','.join('?' * len(COACH_LINE_KINDS))}) ORDER BY sent_at DESC LIMIT 1",
@@ -798,7 +801,8 @@ class CheckinMixin:
                                                  planned.distance_m if not res.easier else None, name_)}
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
-                                "sent_at": line["sent_at"]} if line else None)}
+                                "sent_at": line["sent_at"]} if line else None),
+                "quest": quest, "care_weeks": [d.isoformat() for d in care_weeks]}
 
     # ------------------------------------------------------------------ export and retention (P1)
     def _ci_export(self, c, uid: str, now: datetime) -> list[dict]:

@@ -256,6 +256,25 @@ CREATE TABLE IF NOT EXISTS question_cap (
   local_date TEXT NOT NULL, slot TEXT NOT NULL, claimed_at TEXT NOT NULL,
   PRIMARY KEY (user_id, local_date)
 );
+-- Quests (the app computes them; this is what it last said, to issue the month's card and add one line). Whole numbers only.
+-- trail_name is a place: kept only while place_optin = 1, cleared when it turns off. Rows go 90 days after the quest ends.
+CREATE TABLE IF NOT EXISTS quests (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  quest_id TEXT NOT NULL,
+  month TEXT NOT NULL,              -- 'YYYY-MM' the offer belongs to (the runner's local month of the run that carried it)
+  kind TEXT NOT NULL, target INTEGER NOT NULL, baseline INTEGER, unit TEXT NOT NULL,
+  trail_name TEXT,
+  state TEXT NOT NULL,              -- offered | accepted | skipped | done | expired
+  value INTEGER, ends_on TEXT,
+  pos INTEGER NOT NULL DEFAULT 0,   -- order of the offers (0 is the default one)
+  card_id TEXT,                     -- the offer card currently showing this quest
+  accepted_at TEXT,
+  done_run_id TEXT,                 -- the run that finished it: its post-run card carries the done line
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, quest_id)
+);
+CREATE INDEX IF NOT EXISTS quests_month ON quests (user_id, month);
+CREATE INDEX IF NOT EXISTS quests_card ON quests (card_id);
 -- Inbound rate-limit slow-downs (one row each, kept 2 days): three inside 24 hours pause the runner.
 CREATE TABLE IF NOT EXISTS inbound_strikes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

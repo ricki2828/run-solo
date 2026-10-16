@@ -29,6 +29,7 @@ from .deeplink import run_link, web_twin, week_link
 from .media import GHOST_CLIP_S, Media, MediaError, from_settings
 from . import feedback as cv_feedback
 from . import notes as cv_notes
+from . import quest as cv_quest
 from . import trail as cv_trail
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
@@ -259,6 +260,15 @@ class RunIn(BaseModel):
     splits: list[SplitIn] | None = Field(default=None, min_length=1, max_length=MAX_SPLITS)
     reps: list[RepIn] | None = Field(default=None, min_length=1, max_length=MAX_REPS)
     trail: cv_trail.TrailIn | None = None  # the run's trail board, profile and ghost gap; a bad block drops the trail, never the run
+    quest: cv_quest.QuestIn | None = None  # the app's quest offers, active quest and a finished one; a bad block drops the quest, never the run
+
+    @field_validator("quest", mode="wrap")
+    @classmethod
+    def _quest_is_optional_extra(cls, v, handler):
+        try:
+            return handler(v)
+        except ValidationError:
+            return None
 
     @field_validator("trail", mode="wrap")
     @classmethod
@@ -352,7 +362,7 @@ EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
-    "feedback": "feedback",
+    "feedback": "feedback", "quests": "quests",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -750,6 +760,9 @@ class Service(CheckinMixin):
         now, replay_card = self._tap_time(card["card_id"], now)
         action = buttons[inb.button_idx]["action"]
         kind, _, rest = action.partition(":")
+        if kind == "q":   # the month's quest offer: edits its own message in place
+            self._quest_tap(ch, inb, user, dict(card), rest, real_now)
+            return
         msg = "Thanks."
         keep: list[tuple[str, int]] = []
         note_tapped = False
@@ -864,6 +877,7 @@ class Service(CheckinMixin):
             convo = [dict(r) for r in c.execute("SELECT kind, key, ts FROM convo_log WHERE user_id=? ORDER BY id", (uid,))]
             memory = self._memory_get(c, uid, now)
             checkins = self._ci_export(c, uid, now)
+            quests = cv_quest.export_rows(c, uid)
             optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
@@ -882,8 +896,13 @@ class Service(CheckinMixin):
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
+<<<<<<< HEAD
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins,
+=======
+            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "memory": memory, "suggestion_outcomes": outcomes,
+            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests,
+>>>>>>> fb035068 (WIP: save uncommitted builder work after session restart)
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
@@ -924,6 +943,7 @@ class Service(CheckinMixin):
                         t.pop("name", None)
                         c.execute("UPDATE run_shape SET trail_json=? WHERE user_id=? AND run_id=?",
                                   (json.dumps(t, separators=(",", ":")), uid, r["run_id"]))
+                    c.execute("UPDATE quests SET trail_name=NULL WHERE user_id=?", (uid,))
                     wipe_wal = True
             if heart_rate is not None:  # "Heart rate on cards"; off forgets every stored heart-rate series, now
                 c.execute("UPDATE users SET hr_optin=? WHERE id=?", (int(heart_rate), uid))
@@ -1028,6 +1048,7 @@ class Service(CheckinMixin):
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
                     self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
+                    self._keep_quest(c, uid, run, now, stale)
                     return {"status": "updated"}
                 return {"status": "duplicate"}
             n = c.execute("SELECT COUNT(*) FROM runs WHERE user_id=? AND received_at >= ?",
@@ -1048,6 +1069,7 @@ class Service(CheckinMixin):
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)
+            self._keep_quest(c, uid, run, now, stale)
             if self.s.weather_enabled and run.area_lat is not None and run.area_lon is not None \
                     and c.execute("SELECT weather_optin FROM users WHERE id=?", (uid,)).fetchone()["weather_optin"]:
                 self._keep_latest_area(c, uid, run.run_id, run.start_utc, cell(run.area_lat, run.area_lon))
@@ -1096,6 +1118,22 @@ class Service(CheckinMixin):
         c.execute("INSERT OR REPLACE INTO run_shape (user_id, run_id, route_json, splits_json, reps_json, trail_json) "
                   "VALUES (?,?,?,?,?,?)",
                   (uid, run.run_id, dump([list(p) for p in route]) if route else None, dump(splits), dump(reps), trail))
+
+    def _keep_quest(self, c, uid: str, run: RunIn, now: datetime, stale: bool) -> None:
+        """Keep the run's quest block (already validated) and, once a month, queue the Telegram offer card for the runner's
+        next evening window. The offer waits for a run that carries offers; the server never invents one."""
+        if run.quest is None:
+            return
+        u = c.execute("SELECT channel, zone_id, place_optin FROM users WHERE id=?", (uid,)).fetchone()
+        month = to_local(run.start_utc, run.zone_id).strftime("%Y-%m")
+        today = cv_quest.local_today(u["zone_id"], now)
+        offers_left = cv_quest.store(c, uid, run.quest, month, run.run_id, today, now, bool(u["place_optin"]))
+        if (not offers_left or stale or u["channel"] != "telegram"
+                or c.execute("SELECT 1 FROM cards WHERE user_id=? AND run_id=? AND kind='quest'", (uid, f"quest:{month}")).fetchone()):
+            return
+        due = cv_quest.next_evening(now, u["zone_id"], cv_suggest.EVENING_START_MIN, cv_suggest.EVENING_END_MIN)
+        c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                  (uid, "quest_offer", iso(due), f"quest:{uid}:{today.isoformat()}", month))
 
     @staticmethod
     def _keep_latest_area(c, uid: str, run_id: str, start: datetime, at: tuple[float, float]) -> None:
@@ -1294,6 +1332,10 @@ class Service(CheckinMixin):
         body = w.body
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
+        with db.ro(self.s.db_path) as c:
+            done = cv_quest.done_for_run(c, uid, run_id)
+        if done:   # the run that finished a quest: one fixed line on its card, no message of its own
+            body += f"\n\n{cv_quest.done_line(done)}"
         buttons = self._buttons(run["feel"], None, None, note=True)
         card_id = secrets.token_hex(16)
         allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
@@ -1347,6 +1389,80 @@ class Service(CheckinMixin):
             c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)", (uid, "asked", q["key"], iso(now)))
         return card_id
 
+    QUEST_BUTTONS = [{"label": "Take it", "action": "q:take", "row": 0}, {"label": "Another", "action": "q:next", "row": 0},
+                     {"label": "Not this month", "action": "q:skip", "row": 0}]
+
+    def _build_quest_card(self, uid: str, month: str, now: datetime) -> str | None:
+        """The month's quest offer, once, from the offers the app last sent. Counts inside the weekly suggestion cap and
+        takes the day's one question. None (nothing sent) when the month is already decided or a quest is running; a later
+        run that carries offers queues it again until one goes."""
+        with db.ro(self.s.db_path) as c:
+            ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='quest'", (uid, f"quest:{month}")).fetchone()
+        if ex:
+            return ex["card_id"]
+        with db.tx(self.s.db_path) as c:
+            zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
+            today = cv_quest.local_today(zone_id, now)
+            offers = cv_quest.offered_rows(c, uid, month)
+            if not offers or cv_quest.month_is_decided(c, uid, month) or cv_quest.active_row(c, uid, today):
+                return None
+            if self._ci_cap_taken(c, uid, now, today.isoformat()) or not self._claim_suggestion(c, uid, now):
+                return None
+            self._ci_claim_question(c, uid, "quest", now, today.isoformat())
+            head, body = cv_quest.offer_text(month, offers[0])
+            card_id = secrets.token_hex(16)
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, f"quest:{month}", "quest", head, body, json.dumps(self.QUEST_BUTTONS), "template", iso(now)))
+            c.execute("UPDATE quests SET card_id=? WHERE user_id=? AND quest_id=?", (card_id, uid, offers[0]["quest_id"]))
+            self._convo_write(c, uid, now, card_id, "quest", cv_engine.MediaPlan("none", False, "quest"), "", [], None)
+        return card_id
+
+    def _quest_tap(self, ch: Any, inb: Inbound, user: dict, card: dict, choice: str, now: datetime) -> None:
+        """Take it / Another / Not this month on the offer card. The row showing on the card (quests.card_id) is the one the
+        tap means; a card that has moved on, or a month that is already decided, answers "moved on" and loses its buttons."""
+        uid = user["id"]
+        ts = iso(now)
+        edit: tuple[str, list[dict]] | None = None   # (text, buttons) the message becomes
+        toast = "That one has moved on."
+        with db.tx(self.s.db_path) as c:
+            today = cv_quest.local_today(user["zone_id"], now)
+            row = c.execute("SELECT * FROM quests WHERE user_id=? AND card_id=? AND state='offered'", (uid, card["card_id"])).fetchone()
+            if row is not None and choice in ("take", "next", "skip"):
+                row = dict(row)
+                month = row["month"]
+                everything = cv_quest.offered_rows(c, uid, month)
+                if choice == "next":
+                    nxt = everything[(next(i for i, r in enumerate(everything) if r["quest_id"] == row["quest_id"]) + 1) % len(everything)]
+                    if nxt["quest_id"] == row["quest_id"]:
+                        toast = "That's the only one this month."
+                    else:
+                        c.execute("UPDATE quests SET card_id=NULL WHERE user_id=? AND quest_id=?", (uid, row["quest_id"]))
+                        c.execute("UPDATE quests SET card_id=? WHERE user_id=? AND quest_id=?", (card["card_id"], uid, nxt["quest_id"]))
+                        head, body = cv_quest.offer_text(month, nxt)
+                        c.execute("UPDATE cards SET headline=?, body=? WHERE card_id=?", (head, body, card["card_id"]))
+                        edit, toast = (f"{head}\n{body}", self.QUEST_BUTTONS), "Here's another."
+                else:
+                    c.execute("UPDATE quests SET state='skipped', card_id=NULL, updated_at=? WHERE user_id=? AND month=? AND state='offered'",
+                              (ts, uid, month))
+                    if choice == "take" and cv_quest.active_row(c, uid, today) is None:
+                        c.execute("UPDATE quests SET state='accepted', accepted_at=?, ends_on=?, updated_at=? WHERE user_id=? AND quest_id=?",
+                                  (ts, (today + timedelta(days=cv_quest.WINDOW_DAYS)).isoformat(), ts, uid, row["quest_id"]))
+                        text, toast = cv_quest.taken_text(row), "Quest taken."
+                    elif choice == "take":
+                        text, toast = "You already have a quest running.", "You already have one running."
+                    else:
+                        text, toast = "Okay. No quest this month.", "Okay."
+                    c.execute("UPDATE cards SET body=?, buttons_json='[]', answered_at=COALESCE(answered_at, ?) WHERE card_id=?",
+                              (text, ts, card["card_id"]))
+                    edit = (f"{card['headline']}\n{text}", [])
+        ch.ack_callback(inb, toast, clear=edit is None and toast != "That's the only one this month.")
+        if edit is not None and inb.callback_message_id:
+            try:
+                ch.edit_card_text(inb.ref, inb.callback_message_id, card["card_id"], edit[0], edit[1])
+            except ChannelError as e:
+                log.warning("quest card edit failed: %s", "429" if e.rate_limited else "error")
+
     def _build_evening_card(self, uid: str, local_date: str, now: datetime) -> str | None:
         with db.ro(self.s.db_path) as c:
             ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='evening'",
@@ -1392,10 +1508,11 @@ class Service(CheckinMixin):
         media = cv_engine.MediaPlan("suggestion", False, ev.suggestion.reason, facts=ev.card_facts)
         used = [ev.rendered.variant_id] if w.source == "template" else []
         with db.tx(self.s.db_path) as c:
+            nudge = None if lighter else cv_quest.nudge_for(c, uid, tomorrow_d - timedelta(days=1), now)   # never in a care window
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, f"evening:{local_date}", "evening", w.headline, w.body, json.dumps(buttons),
-                       w.source, iso(now)))
+                      (card_id, uid, f"evening:{local_date}", "evening", w.headline,
+                       f"{w.body}\n\n{nudge}" if nudge else w.body, json.dumps(buttons), w.source, iso(now)))
             self._convo_write(c, uid, now, card_id, ev.rendered.situation, media, ev.rendered.allowed, used, None)
             if ev.suggestion.reason == "feel":  # the next post-run card must not repeat it
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)",
@@ -1694,6 +1811,10 @@ class Service(CheckinMixin):
             card_id = self._build_evening_card(user["id"], item["ref"], now)
         elif item["kind"] == "question":
             card_id = self._build_question_card(user["id"], item["ref"], now)
+        elif item["kind"] == "quest_offer":
+            if user["channel"] != "telegram":
+                return "skipped", None
+            card_id = self._build_quest_card(user["id"], item["ref"], now)
         elif item["kind"] == "recap":
             if user["channel"] != "telegram":  # Telegram first; WhatsApp would bill it as marketing
                 return "skipped", None
@@ -1889,6 +2010,7 @@ class Service(CheckinMixin):
             c.execute("DELETE FROM run_notes WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.user_id=run_notes.user_id "
                       "AND r.run_id=run_notes.run_id)")  # belt and braces: a note never outlives its run
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
+            cv_quest.purge(c, now, held)
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))

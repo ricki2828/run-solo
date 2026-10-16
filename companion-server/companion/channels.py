@@ -372,6 +372,17 @@ class TelegramChannel:
             if not e.not_modified:
                 raise
 
+    def edit_card_text(self, ref: str, message_id: str, card_id: str, text: str, buttons: list[dict]) -> None:
+        """Edit a plain card's text and its buttons in place (the quest offer: Another swaps the text, a choice removes the
+        buttons). Callback data is `card_id:index`, the same as when the card was sent. "Not modified" is success."""
+        row = [{"text": b["label"][:40], "callback_data": f"{card_id}:{i}"} for i, b in enumerate(buttons)]
+        try:
+            self._call("editMessageText", {"chat_id": int(ref), "message_id": int(message_id), "text": text,
+                                           "reply_markup": {"inline_keyboard": [row] if row else []}})
+        except ChannelError as e:
+            if not e.not_modified:
+                raise
+
     def send_photo(self, ref: str, photo: bytes, caption: str = "", silent: bool = True) -> str:
         """A picture with no buttons (the week card). Silent by default: no notification."""
         fields: dict[str, Any] = {"chat_id": int(ref), "disable_notification": "true" if silent else "false"}

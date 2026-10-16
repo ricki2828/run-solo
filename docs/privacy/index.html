@@ -169,6 +169,9 @@
     (a list of up to 10 whole-second times with the attempt number of each, so "Run 4, 1:01:23"; no dates), how many times you have run
     it, a rough elevation profile of the trail (with the position of its turning point, and whether your phone measured it with its barometer or with GPS), how far ahead of or behind your best you were along the way, and whether it is an out and back, a
     loop or one way, and the trail's name only if you turned on the place option. See "Trail pictures" below. Only your own runs: no other runner is ever compared with you.</li>
+    <li><strong>only if the app has offered you a quest</strong>: the quest's kind (for example runs of a trail, or distance in 30 days), its target and your own best
+    to compare it with, as whole numbers, and, once you take one, how far along you are and the date it ends. The trail's name goes only if you turned on the place option.
+    No dates other than that end date, no run ids and no coordinates. See "Quests" below;</li>
     <li><strong>only if you turn on "Heart rate on cards"</strong> (Settings, Companion, off until you turn it on), and only for a trail run recorded with
     a heart rate strap: your heart rate along the run as at most 64 whole bpm values, each with your own zone (1 to 5). See "Heart rate on trail pictures" below;</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
@@ -218,6 +221,25 @@
   data the server returns about you. It is left out of the server's nightly backup, so turning the switch off really removes everything. Turning "Heart rate on cards" off deletes every series we hold at once, as soon as your phone can reach our server, or the next
   time the app connects if you were offline, and the phone stops sending it straight away. The same picture is only drawn for you:
   if you forward it from Telegram, anyone you send it to can see what it shows.</p>
+
+  <h3>Quests</h3>
+  <p>The app can offer you one quest a month: a target made from your own history, such as running a trail more times in 30 days than you ever
+  have, or climbing more in 30 days than you ever have. Your phone works out the quest and your progress. It never compares you with anyone else.
+  When the app offers one, it sends the companion up to three offers (each a kind, a target and your own best, as whole numbers), and, once you take one,
+  the quest you took with how far along you are and the date it ends. The trail's name goes only if you turned on the place option, otherwise the
+  message says "your trail".</p>
+  <p>With that, the companion sends your own Telegram chat one message a month offering the quest, with Take it, Another and Not this month buttons.
+  It counts inside the same weekly limit as suggestions. If you take a quest, the run that finishes it gets one extra line on its card, and
+  when 7 days are left and you are well short, the next evening suggestion may carry one line about it, once. The companion sends no nudge while it is
+  keeping things light after a check-in answer. If you take or skip a quest in Telegram, the app can ask the server for it when it asks for your next
+  session, so both agree.</p>
+  <p>The server keeps these as a small table (the kind, target, your best, progress, state and end date, and the trail name only with the place option).
+  It deletes a quest 90 days after it ends, or 90 days after the month it was offered in if you never took it, and turning the place option off
+  deletes the names at once. The quests are in the data the server returns about you, and Delete everything removes them. They never go to OpenRouter,
+  the model provider or the card renderer: every quest line is a fixed template filled in on our server.</p>
+  <p><strong>Paused weeks.</strong> The app's weekly streak can pause a week when you are sore or ill. If you answered a check-in with sore or ill, the
+  server tells the app which weeks (as Monday dates, for the last 8 weeks that its 14-day check-in answers still cover) it counted as such, so the
+  streak can pause. It does not say which of the two it was, or why. You can also pause a week yourself in the app, and that stays on your phone.</p>
 
   <h3>The route outline</h3>
   <p>With "Show route shape on cards" on, the app sends an outline of each run's route so the companion can draw it on the
@@ -269,7 +291,7 @@
   app lists them under What the companion knows. Delete everything removes them at once.</p>
   <p>The server also keeps a small record of which check-in messages it sent, by day, so it never sends one twice and keeps to
   one question a day. That record holds no answer and goes after 14 days too, as do the stored texts of the check-in messages themselves. The app can ask the server for your next planned
-  session and the latest note the companion sent; the reply says whether the session was moved, and nothing else about your answers.</p>
+  session and the latest note the companion sent; the reply says whether the session was moved, a quest you took in Telegram, and the Monday dates of recent weeks you said you were sore or ill (see "Quests"), and nothing else about your answers.</p>
   <p><strong>Your agreement.</strong> When you tap Agree on the companion card in the app, the app tells our server which version of
   the agreement you accepted (a single number, sent with your device token). The companion sends no check-in until that number
   is the current one, so if you have not agreed to the latest version, or the app has not said so, you get no check-ins; run cards and
@@ -347,6 +369,8 @@
     "Weather in suggestions" off (as soon as your phone can reach our server, or the next time the app connects if you were
     offline), when you re-connect the companion, and when you delete your data. Backups can keep it for up to 14 days.</li>
     <li>A niggle answer expires after 8 weeks.</li>
+    <li>Quests (the kind, target, your best, progress, state, end date and, with the place option, the trail name) are kept until 90 days after the quest ends, or 90 days after the month
+    it was offered in if you never took it. They are in the data the server returns about you. The names go at once when you turn the place option off.</li>
     <li>Check-in answers (how the body feels, why you skipped, what was behind a slow easy run, how many runs next week) are kept
     for 14 days, then deleted. The record of which check-ins were sent goes after 14 days too. Neither is in the nightly backup.</li>
     <li>An unfinished connection (you never entered the code) is deleted after an hour.</li>
@@ -393,6 +417,8 @@
     steepness, and where you gained or lost time against your best (section 2b, "Trail pictures"). Your own runs only, no dates, no map.</li>
     <li><strong>Heart vs hill.</strong> Only if you turned on "Heart rate on cards": your heart rate along a trail run, as at most 64 bpm values
     coloured by your own zones, drawn over the trail's elevation profile (section 2b, "Heart rate on trail pictures"). Your own runs only, no dates, no map.</li>
+    <li><strong>The monthly quest.</strong> One message offering a quest made from your own history (section 2b, "Quests"), and, if you finish it,
+    a line on that run's card. A fixed template: no model writes it.</li>
     <li><strong>Milestones and race countdowns.</strong> The milestone number (for example your 100th run, or 1,000 km) and the
     weeks to your race, with the distance you told the coach you are training for.</li>
   </ul>
