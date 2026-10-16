@@ -188,8 +188,9 @@ def clean(out: CardText, facts: Sequence[Fact] = ()) -> str | None:
 def with_verdict(headline: str, facts: Sequence[Fact]) -> str:
     """The app's verdict owns the headline word: a directional verdict is appended, never left to the model."""
     v = verdict_word(facts)
-    if v in ("faster", "slower", "holding", "no real change") and v not in headline.lower():
-        tail = f", {v}"
+    said = {"faster": FASTER_RE, "slower": SLOWER_RE, "holding": LEVEL_RE, "no real change": LEVEL_RE}.get(v or "")
+    if said is not None and v not in headline.lower() and not (v in ("faster", "slower") and said.search(headline)):
+        tail = f", {v}"   # a headline that already says the direction ("That's quicker") is not told it twice
         if len(headline) + len(tail) <= 60:
             return headline + tail
     return headline

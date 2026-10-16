@@ -14,6 +14,7 @@ from .engine import MediaPlan
 RECAP_WEEKDAY = 6            # Sunday
 RECAP_START_MIN = 19 * 60    # plan from 19:00 local ...
 RECAP_END_MIN = 20 * 60      # ... until 20:00
+PART_WEEK_FROM_WEEKDAY = 3   # a first run on Thursday (0 = Monday) or later makes that week a part week
 FLAT_KM = 1.0                # a swing under this many km is "level"
 QUIET_AFTER_DAYS = 60        # nothing to say to someone who has not run for two months
 WEEKDAY = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -47,6 +48,14 @@ def _week_runs(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime
 
 def _to_utc(naive_local: datetime, zone_id: str) -> datetime:
     return naive_local.replace(tzinfo=zone(zone_id)).astimezone(UTC)
+
+
+def _part_week_start(runs: Sequence[Mapping[str, Any]], zone_id: str, prev_monday: datetime) -> bool:
+    """True when the runner's very first run fell in the week starting `prev_monday` on a Thursday or later, so that
+    week is a few days long and "up on last week" would be a comparison against a part week."""
+    first = min(runs, key=_when)
+    loc = to_local(_when(first), first.get("zone_id") or zone_id).replace(tzinfo=None)
+    return prev_monday <= loc < prev_monday + timedelta(days=7) and loc.weekday() >= PART_WEEK_FROM_WEEKDAY
 
 
 def best_moment(week: Sequence[Mapping[str, Any]], zone_id: str) -> str:
@@ -131,6 +140,8 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
     slots = {"runs_txt": T.plural(len(week), "run"), "km": f"{km:.1f}", "min": str(minutes), "moment": moment}
     if not prev:
         situation = "recap_return" if any(_when(r) < _to_utc(monday, zone_id) for r in runs) else "recap_first"
+    elif _part_week_start(runs, zone_id, monday - timedelta(days=7)):
+        situation = "recap_first_full"   # last week was the runner's first and only a few days long: not a baseline
     else:
         diff = km - prev_km
         slots["delta_km"] = f"{abs(diff):.1f}"

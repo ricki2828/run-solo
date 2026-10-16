@@ -388,6 +388,12 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
         ("Restart week", "{runs_txt}, {km} km. The quiet week is behind you. {moment}"),
         ("Back on track", "{min} minutes and {km} km over {runs_txt}. Keep it steady. {moment}"),
     ],
+    "recap_first_full": [
+        ("First full week", "{runs_txt}, {km} km, {min} min. Last week was only a few days, so there is nothing fair to compare yet. {moment}"),
+        ("Full week logged", "{km} km over {runs_txt}. Your first week was a part week, so this is the real starting line. {moment}"),
+        ("Starting line", "{runs_txt} for {km} km. No comparison with a part week. Next week we can. {moment}"),
+        ("A whole week", "{min} minutes and {km} km. The first full week, so next week has something to be measured against. {moment}"),
+    ],
     "recap_first": [
         ("First week", "{runs_txt}, {km} km, {min} min. That's the starting line for the weekly picture. {moment}"),
         ("First week logged", "{km} km over {runs_txt}. Next week we can compare. {moment}"),

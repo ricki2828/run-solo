@@ -171,6 +171,9 @@ PB_LABEL = {
     "5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
     "longest": "longest run", "fastest_km": "fastest km",
 }
+# Verdicts that say "this run has nothing to be compared with". The server's own match (same type, similar distance) is
+# looser than the app's, so without this a runner's second run on a new route got "Faster today" off a gap the app refused.
+NO_COMPARISON_VERDICTS = {"noVerdict", "baselineSet", "indoorRun"}
 LOAD_ALERT = {"high", "very_high"}
 SLOW_DAY_S_PER_KM = 10  # a day at least this much slower is called slow, plainly
 DELTA_MIN_S_PER_KM = 3
@@ -273,6 +276,8 @@ def verdict_delta(run: Mapping[str, Any], delta: int) -> int | None:
     keeps only a gap that points the same way; holding / no real change keeps only a gap too small to be a direction.
     Anything else would put "no real change" over "9 s/km faster"."""
     v = run.get("verdict")
+    if v in NO_COMPARISON_VERDICTS:
+        return None   # the app said it could not compare this run (baseline, other route, noisy GPS, indoor): no gap either
     if v in ("faster", "slower"):
         want = -1 if v == "faster" else 1
         return delta if delta * want >= DELTA_MIN_S_PER_KM else None
