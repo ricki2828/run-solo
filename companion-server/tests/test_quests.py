@@ -144,7 +144,7 @@ def test_the_offer_card_goes_once_in_the_evening_window_inside_the_weekly_cap(cl
     place_on(client, t)
     post(client, t, quest={"offers": three_offers()})
     due = drain_offer(client)
-    z = "Pacific/Auckland"
+    z = db_(client).execute("SELECT zone_id FROM users").fetchone()["zone_id"]
     from companion.timeutil import to_local
     assert 20 <= to_local(due, z).hour < 21 or due <= now_utc() + timedelta(seconds=5)
     msgs = offer_message(fakes)
