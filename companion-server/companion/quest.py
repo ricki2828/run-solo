@@ -8,6 +8,7 @@ than the end date. `trail_name` is a place, so it is kept only while the runner'
 from __future__ import annotations
 
 import calendar
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Mapping
 
@@ -79,18 +80,34 @@ class ActiveIn(_Quest):
         return date.fromisoformat(v).isoformat()
 
 
+class ClosedIn(BaseModel):
+    """The app closed a quest the server may still be showing: it finished, the runner dropped it, or its 30 days ran out."""
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=ID_PATTERN)
+    result: str
+
+    @field_validator("result")
+    @classmethod
+    def _known_result(cls, v):
+        if v not in ("done", "dropped", "expired"):
+            raise ValueError("unknown result")
+        return v
+
+
 class QuestIn(BaseModel):
     """The optional `quest` block of POST /v1/runs. A bad block drops the quest, never the run."""
     model_config = ConfigDict(extra="forbid")
     offers: list[OfferIn] = Field(default_factory=list, max_length=MAX_OFFERS)
     active: ActiveIn | None = None
     done_now: str | None = Field(default=None, pattern=ID_PATTERN)
+    closed: ClosedIn | None = None
+    month_skipped: bool = False   # the runner said "Not this month" in the app
 
     @model_validator(mode="after")
     def _something_to_say(self):
         if len({o.id for o in self.offers}) != len(self.offers):
             raise ValueError("offer ids must differ")
-        if not (self.offers or self.active or self.done_now):
+        if not (self.offers or self.active or self.done_now or self.closed or self.month_skipped):
             raise ValueError("empty quest block")
         return self
 
@@ -202,16 +219,31 @@ def month_is_decided(c, uid: str, month: str) -> bool:
     return c.execute("SELECT 1 FROM quests WHERE user_id=? AND month=? AND state<>'offered'", (uid, month)).fetchone() is not None
 
 
-def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: datetime, keep_name: bool) -> bool:
+def id_month(quest_id: str, fallback: str) -> str:
+    """The month an offer belongs to is in its id (q_2026-11_...), not the month of the run that carried it."""
+    m = re.match(r"^q_(\d{4}-(?:0[1-9]|1[0-2]))_", quest_id)
+    return m.group(1) if m else fallback
+
+
+def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: datetime, keep_name: bool,
+          older: bool = False) -> bool:
     """Keep what the run's quest block says. -> True when the month still has offers to issue.
 
     The app is the source of truth for progress and for what is active: an `active` it sends displaces a quest the runner
-    accepted in Telegram under another id (the device that holds the history wins)."""
+    accepted in Telegram under another id (the device that holds the history wins). `older` is a stale or out-of-order upload:
+    its `active` and offers describe the past, so they are ignored; what it closed still counts."""
     ts = iso(now)
     name = (lambda n: n) if keep_name else (lambda n: None)
     c.execute("UPDATE quests SET state='expired', card_id=NULL, updated_at=? WHERE user_id=? AND state='accepted' AND ends_on < ?",
               (ts, uid, today.isoformat()))
-    if q.active:
+    if q.month_skipped:   # nothing more this month: any offer still waiting goes, and so does its queued card
+        c.execute("UPDATE quests SET state='skipped', card_id=NULL, updated_at=? WHERE user_id=? AND state='offered'", (ts, uid))
+        c.execute("DELETE FROM outbox WHERE user_id=? AND kind='quest_offer'", (uid,))
+    if q.closed:
+        end = {"done": "done", "dropped": "skipped", "expired": "expired"}[q.closed.result]
+        c.execute("UPDATE quests SET state=?, card_id=NULL, updated_at=? WHERE user_id=? AND quest_id=? AND state IN ('offered','accepted')",
+                  (end, ts, uid, q.closed.id))
+    if q.active and not older:
         a = q.active
         c.execute("UPDATE quests SET state='skipped', card_id=NULL, updated_at=? WHERE user_id=? AND state='accepted' AND quest_id<>?",
                   (ts, uid, a.id))
@@ -220,9 +252,9 @@ def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: da
         if have is None:
             c.execute("INSERT INTO quests (user_id, quest_id, month, kind, target, unit, trail_name, state, value, ends_on, "
                       "accepted_at, pos, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (uid, a.id, month, a.kind, a.target, KIND_UNIT[a.kind], name(a.trail_name), "accepted", a.value, a.ends_on,
+                      (uid, a.id, id_month(a.id, month), a.kind, a.target, KIND_UNIT[a.kind], name(a.trail_name), "accepted", a.value, a.ends_on,
                        ts, 0, ts, ts))
-            decided_month = month
+            decided_month = id_month(a.id, month)
         elif have["state"] in ("offered", "accepted"):
             c.execute("UPDATE quests SET state='accepted', value=?, ends_on=?, trail_name=COALESCE(?, trail_name), "
                       "accepted_at=COALESCE(accepted_at, ?), card_id=NULL, updated_at=? WHERE user_id=? AND quest_id=?",
@@ -234,13 +266,14 @@ def store(c, uid: str, q: QuestIn, month: str, run_id: str, today: date, now: da
     if q.done_now:
         c.execute("UPDATE quests SET state='done', done_run_id=?, value=target, card_id=NULL, updated_at=? "
                   "WHERE user_id=? AND quest_id=? AND state IN ('offered','accepted')", (run_id, ts, uid, q.done_now))
-    if q.offers and not month_is_decided(c, uid, month):
-        c.execute("DELETE FROM quests WHERE user_id=? AND month=? AND state='offered'", (uid, month))
+    omonth = id_month(q.offers[0].id, month) if q.offers else month
+    if q.offers and not older and not q.month_skipped and not month_is_decided(c, uid, omonth):
+        c.execute("DELETE FROM quests WHERE user_id=? AND month=? AND state='offered'", (uid, omonth))
         for pos, o in enumerate(q.offers):
             c.execute("INSERT OR IGNORE INTO quests (user_id, quest_id, month, kind, target, baseline, unit, trail_name, state, "
                       "pos, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (uid, o.id, month, o.kind, o.target, o.baseline, o.unit, name(o.trail_name), "offered", pos, ts, ts))
-    return bool(offered_rows(c, uid, month))
+                      (uid, o.id, omonth, o.kind, o.target, o.baseline, o.unit, name(o.trail_name), "offered", pos, ts, ts))
+    return bool(offered_rows(c, uid, omonth))
 
 
 def done_for_run(c, uid: str, run_id: str) -> dict | None:

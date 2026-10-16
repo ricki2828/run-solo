@@ -423,3 +423,53 @@ def test_the_export_lists_the_quests_without_internal_ids(client):
     me = client.get("/v1/me", headers=auth(t)).json()
     assert [q["quest_id"] for q in me["quests"]] == [o["id"] for o in three_offers()]
     assert all("card_id" not in q and "done_run_id" not in q for q in me["quests"])
+
+
+# ---------------------------------------------------------------- the app closes what the server shows
+def test_month_skipped_cancels_the_queued_offer_and_keeps_the_month_closed(client, fakes):
+    t = enrol(client)
+    post(client, t, quest={"offers": three_offers()})
+    assert quest_due(client) is not None
+    post(client, t, "r2", minutes_ago=5, quest={"month_skipped": True})
+    assert quest_due(client) is None
+    assert {r["state"] for r in rows(client)} == {"skipped"}
+    post(client, t, "r3", minutes_ago=2, quest={"offers": three_offers()})   # offered again: nothing is stored or queued
+    assert {r["state"] for r in rows(client)} == {"skipped"} and quest_due(client) is None
+
+
+@pytest.mark.parametrize("result,state", [("dropped", "skipped"), ("expired", "expired"), ("done", "done")])
+def test_closed_stops_the_quest_everywhere(client, result, state):
+    t = enrol(client)
+    ends = (date.today() + timedelta(days=5)).isoformat()
+    qid = "q_2026-10_trail_visits_a1"
+    post(client, t, quest={"active": {"id": qid, "kind": "trail_visits", "target": 5, "value": 1, "ends_on": ends, "trail_name": TRAIL}})
+    assert client.get("/v1/me/next-session", headers=auth(t)).json()["quest"]["id"] == qid
+    post(client, t, "r2", minutes_ago=5, quest={"closed": {"id": qid, "result": result}})
+    assert rows(client)[0]["state"] == state
+    assert client.get("/v1/me/next-session", headers=auth(t)).json()["quest"] is None
+    c = db_(client)
+    assert cq.nudge_for(c, uid_of(client), date.today() + timedelta(days=0), now_utc()) is None
+
+
+def test_a_bad_closed_block_drops_only_the_quest(client):
+    t = enrol(client)
+    post(client, t, quest={"closed": {"id": "q_x", "result": "gone"}})
+    assert rows(client) == []
+
+
+def test_offers_are_filed_under_the_month_in_their_id(client):
+    t = enrol(client)
+    post(client, t, quest={"offers": [offer(id="q_2026-11_trail_visits_n1")]})
+    assert rows(client)[0]["month"] == "2026-11"
+
+
+def test_an_older_upload_cannot_undo_the_current_quest(client):
+    t = enrol(client)
+    ends = (date.today() + timedelta(days=20)).isoformat()
+    cur = {"id": "q_2026-10_trail_visits_a1", "kind": "trail_visits", "target": 5, "value": 3, "ends_on": ends, "trail_name": TRAIL}
+    old = {"id": "q_2026-09_distance_month_z9", "kind": "distance_month", "target": 90, "value": 10, "ends_on": ends}
+    post(client, t, "r_new", minutes_ago=5, quest={"active": cur})
+    post(client, t, "r_old", minutes_ago=300, quest={"active": old, "offers": [offer(7, id="q_2026-09_trail_visits_o7")]})   # queued offline
+    got = {r["quest_id"]: r for r in rows(client)}
+    assert got["q_2026-10_trail_visits_a1"]["state"] == "accepted" and got["q_2026-10_trail_visits_a1"]["value"] == 3
+    assert "q_2026-09_distance_month_z9" not in got and "q_2026-09_trail_visits_o7" not in got

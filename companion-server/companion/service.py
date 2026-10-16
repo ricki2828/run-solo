@@ -1127,13 +1127,17 @@ class Service(CheckinMixin):
         u = c.execute("SELECT channel, zone_id, place_optin FROM users WHERE id=?", (uid,)).fetchone()
         month = to_local(run.start_utc, run.zone_id).strftime("%Y-%m")
         today = cv_quest.local_today(u["zone_id"], now)
-        offers_left = cv_quest.store(c, uid, run.quest, month, run.run_id, today, now, bool(u["place_optin"]))
-        if (not offers_left or stale or u["channel"] != "telegram"
-                or c.execute("SELECT 1 FROM cards WHERE user_id=? AND run_id=? AND kind='quest'", (uid, f"quest:{month}")).fetchone()):
+        # an upload older than one already stored (an offline queue) describes the past: its active quest must not undo today's
+        older = stale or c.execute("SELECT 1 FROM runs WHERE user_id=? AND run_id<>? AND start_utc>?",
+                                   (uid, run.run_id, iso(run.start_utc))).fetchone() is not None
+        offers_left = cv_quest.store(c, uid, run.quest, month, run.run_id, today, now, bool(u["place_optin"]), older)
+        omonth = cv_quest.id_month(run.quest.offers[0].id, month) if run.quest.offers else month   # the offer's month, from its id
+        if (not offers_left or older or u["channel"] != "telegram"
+                or c.execute("SELECT 1 FROM cards WHERE user_id=? AND run_id=? AND kind='quest'", (uid, f"quest:{omonth}")).fetchone()):
             return
         due = cv_quest.next_evening(now, u["zone_id"], cv_suggest.EVENING_START_MIN, cv_suggest.EVENING_END_MIN)
         c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
-                  (uid, "quest_offer", iso(due), f"quest:{uid}:{today.isoformat()}", month))
+                  (uid, "quest_offer", iso(due), f"quest:{uid}:{today.isoformat()}", omonth))
 
     @staticmethod
     def _keep_latest_area(c, uid: str, run_id: str, start: datetime, at: tuple[float, float]) -> None:

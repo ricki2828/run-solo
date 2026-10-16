@@ -171,7 +171,7 @@
     loop or one way, and the trail's name only if you turned on the place option. See "Trail pictures" below. Only your own runs: no other runner is ever compared with you.</li>
     <li><strong>only if the app has offered you a quest</strong>: the quest's kind (for example runs of a trail, or distance in 30 days), its target and your own best
     to compare it with, as whole numbers, and, once you take one, how far along you are and the date it ends. The trail's name goes only if you turned on the place option.
-    No dates other than that end date, no run ids and no coordinates. See "Quests" below;</li>
+    No dates other than that end date and no coordinates, and no run ids in the quest itself. See "Quests" below;</li>
     <li><strong>only if you turn on "Heart rate on cards"</strong> (Settings, Companion, off until you turn it on), and only for a trail run recorded with
     a heart rate strap: your heart rate along the run as at most 64 whole bpm values, each with your own zone (1 to 5). See "Heart rate on trail pictures" below;</li>
     <li><strong>only if you follow a 4-week plan in the app</strong>: which planned session the run was (easy, long or
@@ -235,7 +235,7 @@
   session, so both agree.</p>
   <p>The server keeps these as a small table (the kind, target, your best, progress, state and end date, and the trail name only with the place option).
   It deletes a quest 90 days after it ends, or 90 days after the month it was offered in if you never took it, and turning the place option off
-  deletes the names at once. The quests are in the data the server returns about you, and Delete everything removes them. They never go to OpenRouter,
+  deletes the names at once. The server also remembers which of your already uploaded runs finished a quest, so that run's card can carry the line. The quests are in the data the server returns about you, and Delete everything removes them. Backups can keep them for up to 14 days. They never go to OpenRouter,
   the model provider or the card renderer: every quest line is a fixed template filled in on our server.</p>
   <p><strong>Paused weeks.</strong> The app's weekly streak can pause a week when you are sore or ill. If you answered a check-in with sore or ill, the
   server tells the app which weeks (as Monday dates, for the last 8 weeks that its 14-day check-in answers still cover) it counted as such, so the

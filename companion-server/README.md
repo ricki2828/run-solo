@@ -87,7 +87,9 @@ Unknown keys, a bad value or a mismatch drop the whole block, never the run (`ex
 "quest": {
   "offers": [{"id": "q_2026-11_trail_visits_ab12", "kind": "trail_visits", "target": 5, "baseline": 4, "unit": "runs", "trail_name": "The Saddle Trail"}],
   "active": {"id": "q_2026-11_trail_visits_ab12", "kind": "trail_visits", "target": 5, "value": 3, "ends_on": "2026-12-02", "trail_name": "The Saddle Trail"},
-  "done_now": "q_2026-11_trail_visits_ab12"
+  "done_now": "q_2026-11_trail_visits_ab12",
+  "closed": {"id": "q_2026-11_trail_visits_ab12", "result": "dropped"},
+  "month_skipped": false
 }
 ```
 - `offers`: up to 3, distinct ids, `^q_[a-z0-9_-]{1,48}$`. `kind` is `trail_visits` (unit `runs`), `trail_best` or `climb_best` (`s`), `climb_month` (`m`) or `distance_month` (`km`);
@@ -95,7 +97,18 @@ Unknown keys, a bad value or a mismatch drop the whole block, never the run (`ex
 - `active`: the quest the runner has taken, with progress `value`. It is the source of truth: it displaces a quest accepted in Telegram under another id.
 - `done_now`: the id the run just finished. Send `active` (with `value` = `target`) in the same block, so the server has the row. The first run to finish it keeps the credit.
 - `trail_name` is kept only while the place opt-in is on (cleared when it turns off) and goes through the trail-name filter; otherwise the copy says "your trail".
-- A month is offered once. After a quest is taken, skipped, done or lapsed, new `offers` for that month are ignored. The month is the runner's local month of the run that carried them.
+- `closed`: `{id, result}` with `result` one of `done | dropped | expired`. The app sends it when it ends a quest the server may still show (dropped = the runner gave it up).
+  `dropped` is stored as `skipped`. The row stops being returned by next-session and no nudge goes.
+- `month_skipped: true`: the runner said "Not this month" in the app. Every waiting offer is marked `skipped` and any queued (unsent) offer card is cancelled.
+- A month is offered once. After a quest is taken, skipped, done or lapsed, new `offers` for that month are ignored. The month an offer belongs to is read from its id
+  (`q_YYYY-MM_...`), falling back to the local month of the run that carried it.
+- A stale upload, or one older than a run already stored, has its `active` and `offers` ignored (so an offline queue cannot undo today's quest); `done_now` and `closed` still apply.
+
+Wire contract for the app (PR3), all keys snake_case:
+- Keys are exactly `id, kind, target, baseline, unit, trail_name` on an offer and `id, kind, target, value, ends_on, trail_name` on `active`. `active` must not carry `baseline` or `unit`
+  (the server derives the unit from the kind), and an offer must not carry `value`.
+- `target`, `baseline` and `value` are JSON integers (strict: `3.0` or `"3"` drops the block); `target` 1 to 1,000,000, `value` 0 to 1,000,000. The app rounds down before sending: metres, whole km, seconds. `ends_on` is `YYYY-MM-DD`. `trail_name` is at most 30 characters or omitted.
+- next-session returns `quest.accepted_at` as UTC with a trailing `Z`.
 
 Table `quests` (PK `user_id, quest_id`): kind, target, baseline, unit, trail_name, state (`offered | accepted | skipped | done | expired`), value, `ends_on`,
 plus `pos` (offer order), `card_id` (the offer card showing it), `accepted_at`, `done_run_id`. Rows go 90 days after `ends_on`, or 90 days after the end of the offer
