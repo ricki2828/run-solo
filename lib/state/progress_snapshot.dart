@@ -11,6 +11,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import 'history_store.dart';
 import 'progress/progress_build.dart';
+import 'quests/quest_store.dart';
 import 'settings.dart';
 
 /// Total first-time milestones (about 15, most land in runs 1 to 5).
@@ -63,7 +64,8 @@ class PackStanding {
 }
 
 /// One or more runs in a Monday-to-Sunday week keeps it alive; a freeze
-/// covers a missed week.
+/// covers a missed week; a paused week (ill or sore) neither counts nor
+/// breaks.
 class WeeklyStreak {
   const WeeklyStreak({
     required this.weeks,
@@ -76,8 +78,8 @@ class WeeklyStreak {
   final bool thisWeekDone;
   final int freezesReady;
 
-  /// The last 8 weeks, oldest first: true = ran, false = missed, null = frozen.
-  final List<bool?> recent;
+  /// The last 8 weeks, oldest first.
+  final List<engine.StreakWeek> recent;
 }
 
 class FirstMilestone {
@@ -149,10 +151,10 @@ class WeeklyStory {
   final engine.IdentityLane? laneOfWeek;
 }
 
-enum MomentKind { first, pb, levelUp, story }
+enum MomentKind { first, pb, levelUp, story, quest }
 
-/// A full-screen reveal. Rare by design: firsts, PBs, level-ups and the
-/// weekly story only, each shown once.
+/// A full-screen reveal. Rare by design: firsts, PBs, level-ups, a finished
+/// quest and the weekly story only, each shown once.
 class Moment {
   const Moment({
     required this.id,
@@ -216,7 +218,16 @@ class ProgressSnapshot {
       weeks: 0,
       thisWeekDone: false,
       freezesReady: 1,
-      recent: [false, false, false, false, false, false, false, false],
+      recent: [
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+        engine.StreakWeek.missed,
+      ],
     ),
     firsts: [],
   );
@@ -234,6 +245,10 @@ class ProgressSnapshot {
 ///
 /// [leaderboards] (optional, `Boards.byKey`) feeds the PB moments; without it
 /// no PB moment appears. Seen ids live in `SeenMomentsStore`.
+///
+/// [pausedWeeks] are Monday-start week indices that neither count nor break
+/// the streak (the runner's own pauses plus the coach's care weeks).
+/// [questHistory] feeds the QUEST DONE moments.
 ProgressSnapshot buildProgressSnapshot(
   List<RunSummary> runs, {
   required DateTime now,
@@ -241,6 +256,8 @@ ProgressSnapshot buildProgressSnapshot(
   required int? birthYear,
   Set<String> seenMoments = const {},
   Map<String, engine.Leaderboard> leaderboards = const {},
+  Set<int> pausedWeeks = const {},
+  List<QuestHistoryEntry> questHistory = const [],
 }) => buildSnapshot(
   runs,
   now: now,
@@ -248,6 +265,8 @@ ProgressSnapshot buildProgressSnapshot(
   birthYear: birthYear,
   seen: seenMoments,
   leaderboards: leaderboards,
+  pausedWeeks: pausedWeeks,
+  questHistory: questHistory,
 );
 
 List<double> get _histo => [
@@ -278,7 +297,16 @@ final _week2 = ProgressSnapshot(
     weeks: 1,
     thisWeekDone: true,
     freezesReady: 1,
-    recent: [false, false, false, false, false, false, false, true],
+    recent: [
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.missed,
+      engine.StreakWeek.ran,
+    ],
   ),
   firsts: [
     _first('first-run', 'Your first run', DateTime(2026, 10, 5)),
@@ -310,7 +338,16 @@ final _month3 = ProgressSnapshot(
     weeks: 11,
     thisWeekDone: true,
     freezesReady: 1,
-    recent: [true, true, true, null, true, true, true, true],
+    recent: [
+      engine.StreakWeek.ran,
+      engine.StreakWeek.ran,
+      engine.StreakWeek.ran,
+      engine.StreakWeek.frozen,
+      engine.StreakWeek.ran,
+      engine.StreakWeek.ran,
+      engine.StreakWeek.ran,
+      engine.StreakWeek.ran,
+    ],
   ),
   firsts: [
     for (var i = 0; i < kFirstsTotal; i++)

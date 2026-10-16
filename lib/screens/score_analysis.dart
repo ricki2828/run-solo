@@ -4,27 +4,34 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../app/identity_display.dart';
+import '../app/quest_sync.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
+import '../state/history_store.dart';
 import '../state/live_context.dart';
 import '../state/progress_snapshot.dart';
+import '../state/quests/quest_build.dart';
 import '../state/settings.dart';
 import '../share/share_card.dart';
 import '../share/share_card_sheet.dart';
 import '../theme/theme.dart';
 import '../widgets/pack_panel.dart';
+import '../widgets/quests_section.dart';
 import '../widgets/race_estimates_card.dart';
 import 'boards_overview.dart';
 
-/// The Progress tab body: YOUR PACK (age band from published norms), BOARDS
-/// & RECORDS, then the four earned identities with the evidence and the
-/// qualified age-group context separate from the app's own display score.
+/// The Progress tab body: QUESTS, YOUR PACK (age band from published norms),
+/// BOARDS & RECORDS, then the four earned identities with the evidence and
+/// the qualified age-group context separate from the app's own display score.
 class ScoreAnalysis extends StatefulWidget {
-  const ScoreAnalysis({super.key, this.snapshot});
+  const ScoreAnalysis({super.key, this.snapshot, this.questBoard});
 
   /// Goldens and widget tests pass a fixture; production builds one from the
   /// run history with [buildProgressSnapshot].
   final ProgressSnapshot? snapshot;
+
+  /// Goldens pass a fixture board; production builds one from the runs.
+  final QuestBoard? questBoard;
 
   @override
   State<ScoreAnalysis> createState() => _ScoreAnalysisState();
@@ -34,6 +41,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
   Future<Map<engine.IdentityLane, engine.IdentityScore>>? _scores;
   Future<engine.RaceEstimates?>? _race;
   Future<ProgressSnapshot>? _snap;
+  Future<QuestBoard>? _board;
   AppServices? _services;
 
   @override
@@ -42,13 +50,17 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
     final services = AppServices.of(context);
     if (_services != services) {
       _services?.history.derivedChanged.removeListener(_reloadScores);
+      _services?.quests.removeListener(_reloadQuests);
       _services = services;
       services.history.derivedChanged.addListener(_reloadScores);
+      services.quests.addListener(_reloadQuests);
       _scores = null;
       _race = null;
       _snap = null;
+      _board = null;
     }
     _snap ??= _loadSnapshot(services);
+    _board ??= _loadBoard(services);
     final live = services.live;
     _scores ??= live == null
         ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
@@ -68,13 +80,44 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
     final fixed = widget.snapshot;
     if (fixed != null) return fixed;
     final runs = await services.history.list();
+    final q = await syncQuests(services, runs);
     final s = services.settings.settings;
     return buildProgressSnapshot(
       runs,
       now: services.now(),
       sex: s.profileSex,
       birthYear: s.birthYear,
+      pausedWeeks: q.pausedWeeks,
     );
+  }
+
+  /// Never throws: a failure leaves the QUESTS section out.
+  Future<QuestBoard> _loadBoard(AppServices services) async {
+    final fixed = widget.questBoard;
+    if (fixed != null) return fixed;
+    if (widget.snapshot != null) return QuestBoard.empty;
+    try {
+      final List<RunSummary> runs = await services.history.list();
+      await syncQuests(services, runs);
+      final inputs = questInputsOf(runs);
+      final now = services.now();
+      return buildQuestBoard(
+        services.quests.state,
+        inputs,
+        now,
+        exposed: questsExposed(inputs.runs, now),
+      );
+    } catch (e) {
+      return QuestBoard.empty;
+    }
+  }
+
+  void _reloadQuests() {
+    if (!mounted) return;
+    setState(() {
+      _snap = _loadSnapshot(_services!);
+      _board = _loadBoard(_services!);
+    });
   }
 
   void _reloadScores() {
@@ -82,6 +125,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
     final live = _services?.live;
     setState(() {
       _snap = _loadSnapshot(_services!);
+      _board = _loadBoard(_services!);
       _scores = live == null
           ? Future.value(<engine.IdentityLane, engine.IdentityScore>{})
           : live.prepare().then((_) => live.identityScores());
@@ -92,6 +136,7 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
   @override
   void dispose() {
     _services?.history.derivedChanged.removeListener(_reloadScores);
+    _services?.quests.removeListener(_reloadQuests);
     super.dispose();
   }
 
@@ -122,6 +167,25 @@ class _ScoreAnalysisState extends State<ScoreAnalysis> {
               Space.x32,
             ),
             children: [
+              FutureBuilder<QuestBoard>(
+                future: _board,
+                initialData: widget.questBoard,
+                builder: (context, snap) {
+                  final board = snap.data ?? QuestBoard.empty;
+                  if (board.isEmpty) return const SizedBox.shrink();
+                  final quests = services.quests;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: Space.x32),
+                    child: QuestsSection(
+                      board: board,
+                      onTake: () => quests.accept(services.now()),
+                      onAnother: quests.another,
+                      onSkip: quests.skip,
+                      onDrop: () => quests.drop(services.now()),
+                    ),
+                  );
+                },
+              ),
               FutureBuilder<ProgressSnapshot>(
                 future: _snap,
                 initialData: widget.snapshot,
