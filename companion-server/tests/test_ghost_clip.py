@@ -467,6 +467,18 @@ def test_best_label_stays_on_its_dots_side(gx, yx, side):
     assert (best[0] - you[0]) * side > 0 and ba == ("ls" if side > 0 else "rs")
 
 
+@pytest.mark.parametrize("gx,yx", [(172, 92), (988, 988), (908, 988), (92, 92), (300, 280), (160, 92), (840, 988)])
+def test_label_boxes_never_overlap(gx, yx):
+    from render.motion import ghost_clip as G
+    yw, bw = 60, 90
+    you, ya, best, ba = G._label_xy(gx, 900, yx, 900, yw, bw)
+
+    def span(xy, a, w):
+        return (xy[0] - w / 2, xy[0] + w / 2) if a == "ms" else (xy[0], xy[0] + w) if a == "ls" else (xy[0] - w, xy[0])
+    (a0, a1), (b0, b1) = span(you, ya, yw), span(best, ba, bw)
+    assert a1 <= b0 or b1 <= a0
+
+
 def test_marker_labels_stay_below_the_panel_top():
     from render.motion import ghost_clip as G
     you, _, best, _ = G._label_xy(500, 770, 500, 770, 60, 90)

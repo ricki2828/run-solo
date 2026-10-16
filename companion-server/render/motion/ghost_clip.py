@@ -56,7 +56,7 @@ def _label_xy(gx: float, gy: float, yx: float, yy: float, you_w: float, best_w: 
     coincide, and flipped when that side would run off the panel)."""
     lx = min(max(yx, PX0 + 40), PX1 - 40)
     you = (lx, max(yy - LABEL_ABOVE, LABEL_FLOOR))
-    if abs(gx - yx) >= CLOSE_X:
+    if abs(gx - lx) >= CLOSE_X:
         return you, "ms", (gx, max(gy - LABEL_ABOVE, LABEL_FLOOR)), "ms"
     if gx - yx > SAME_X:
         side = 1
