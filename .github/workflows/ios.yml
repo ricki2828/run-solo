@@ -32,6 +32,7 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.47.5'
+  JAVA_VERSION: '21' # same as ci.yml (core-jvm toolchain)
   XCODE_VERSION: 'latest-stable'
 
 jobs:
@@ -52,6 +53,18 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      # restore + save, not actions/cache: its post step skips the save when the job fails.
+      - name: Kotlin/Native toolchain cache
+        id: konan
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0 # bump with Kotlin in core-jvm/build.gradle.kts
       - name: Versions
         run: |
           mkdir -p build/ios-logs
@@ -68,6 +81,29 @@ jobs:
         run: |
           set -o pipefail
           flutter pub get 2>&1 | tee build/ios-logs/1-pub-get.log
+      - name: Shared core XCFramework (Kotlin Multiplatform, iOS plan K3)
+        # ios-arm64 + ios-arm64-simulator, static. Copied to ios/RunCore/ (gitignored) and linked
+        # into Runner by add_targets.rb.
+        working-directory: android/core-jvm
+        run: |
+          set -o pipefail
+          ./gradlew assembleRunCoreReleaseXCFramework --no-daemon 2>&1 | tee ../../build/ios-logs/1b-xcframework.log
+          rm -rf ../../ios/RunCore && mkdir -p ../../ios/RunCore
+          cp -R build/XCFrameworks/release/RunCore.xcframework ../../ios/RunCore/
+          {
+            echo "### RunCore.xcframework"
+            echo '```'
+            for slice in ../../ios/RunCore/RunCore.xcframework/*/; do
+              echo "$(basename "$slice"): $(du -sk "$slice" | cut -f1) KB"
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Save Kotlin/Native toolchain
+        if: ${{ !cancelled() && steps.konan.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0
       - name: Xcode project targets (add_targets.rb)
         run: |
           set -o pipefail
@@ -82,6 +118,21 @@ jobs:
         run: |
           set -o pipefail
           flutter build ios --simulator --debug 2>&1 | tee build/ios-logs/4-build.log
+      - name: XCTest (RunnerTests drive the Kotlin core through the facade)
+        # Hosted in Runner on the newest iPhone simulator. The tests compare each replay run file
+        # with the Kotlin contract fixtures (parsed JSON equality).
+        run: |
+          set -o pipefail
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in sorted(d.items()) if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          print(c[-1]['udid'])")
+          xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug \
+            -destination "platform=iOS Simulator,id=$udid" -only-testing:RunnerTests \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ios-logs/4b-xctest.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|\*\* " || true
+          xcrun simctl shutdown all || true # the smoke step boots its own
+          grep -q "TEST SUCCEEDED" build/ios-logs/4b-xctest.log
       - name: dSYMs
         # Debug builds keep DWARF in the object files; dsymutil links them while DerivedData
         # still exists. Release dSYMs come from the T4 archive.
@@ -95,19 +146,6 @@ jobs:
             [ -f "$fw/$name" ] && dsymutil "$fw/$name" -o "build/ios-dsyms/$name.framework.dSYM" 2>&1 | tee -a build/ios-logs/5-dsym.log
           done
           ls build/ios-dsyms
-      - name: XCTests (RunnerTests on a simulator)
-        run: |
-          set -o pipefail
-          udid=$(xcrun simctl list devices available -j | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)['devices']
-          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
-          print(c[-1]['udid'])")
-          echo "simulator $udid"
-          xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner \
-            -destination "id=$udid" -only-testing:RunnerTests \
-            -resultBundlePath build/ios-logs/RunnerTests.xcresult \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ios-logs/55-xctest.log
       - name: Simulator smoke (launch, screenshot Home)
         run: |
           set -o pipefail
@@ -150,6 +188,12 @@ jobs:
             echo "SMOKE OK"
           } 2>&1 | tee build/ios-logs/6-smoke.log
       - uses: actions/upload-artifact@v4
+        if: ${{ success() && vars.USE_ARTIFACTS == '1' }}
+        with:
+          name: RunCore-xcframework
+          path: ios/RunCore/RunCore.xcframework
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
         if: ${{ always() && vars.USE_ARTIFACTS == '1' }}
         with:
           name: ios-smoke-screenshot
@@ -160,7 +204,7 @@ jobs:
         run: |
           python3 ios/tools/error_digest.py build/ios-logs/digest.txt \
             build/ios-logs/1-pub-get.log build/ios-logs/2-add-targets.log \
-            build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/5-dsym.log build/ios-logs/55-xctest.log build/ios-logs/6-smoke.log
+            build/ios-logs/1b-xcframework.log build/ios-logs/3-pod-install.log build/ios-logs/4-build.log build/ios-logs/4b-xctest.log build/ios-logs/5-dsym.log build/ios-logs/6-smoke.log
       - uses: actions/upload-artifact@v4
         if: ${{ always() && vars.USE_ARTIFACTS == '1' }}
         with:
@@ -205,6 +249,7 @@ jobs:
                   shutil.make_archive(f'ci-out/{name}', 'zip', stage)
           pack('ios-verify-logs', ['build/ios-smoke', 'build/ios-logs', 'ios/Podfile.lock'])
           pack('ios-verify-dsyms', ['build/ios-dsyms'])
+          pack('RunCore-xcframework', ['ios/RunCore/RunCore.xcframework'])
           PYCODE
           if [ "${{ job.status }}" = "success" ] && [ -d build/ios/iphonesimulator/Runner.app ]; then
             (cd build/ios/iphonesimulator && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-simulator-app.zip" Runner.app)

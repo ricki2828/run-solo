@@ -84,6 +84,43 @@ def add_target(project, runner, spec)
   target
 end
 
+# K3: the shared Kotlin recorder core. `RunCore.xcframework` is built by CI (Gradle task
+# assembleRunCoreReleaseXCFramework in android/core-jvm) and copied to ios/RunCore/; it is linked into
+# Runner only (a static framework, so no embed phase). The Swift wrapper lives in Runner/RunCore
+# and its XCTest in RunnerTests (hosted in Runner, so it reaches the core through the app).
+CORE_XCFRAMEWORK = 'RunCore/RunCore.xcframework'
+CORE_RUNNER_SOURCES = ['CoreFacade.swift'].freeze
+CORE_TEST_SOURCES = ['CoreFacadeTests.swift'].freeze
+
+def add_sources(project, target, group_name, files, subdir: nil)
+  group = project.main_group.find_subpath(group_name, false) or fail!("no #{group_name} group")
+  group = (group.children.find { |c| c.display_name == subdir } || group.new_group(subdir, subdir)) if subdir
+  added = false
+  files.each do |name|
+    next if group.files.any? { |f| f.path == name }
+    target.add_file_references([group.new_reference(name)])
+    added = true
+  end
+  added
+end
+
+# Returns true when the project changed.
+def wire_core(project, runner)
+  tests = project.targets.find { |t| t.name == 'RunnerTests' } or fail!('no RunnerTests target')
+  fw = File.join(File.dirname(PROJECT_PATH), CORE_XCFRAMEWORK)
+  fail!("#{CORE_XCFRAMEWORK} missing: build it first (cd android/core-jvm && ./gradlew assembleRunCoreReleaseXCFramework, copy build/XCFrameworks/release/RunCore.xcframework to ios/RunCore/)") unless File.directory?(fw)
+  changed = false
+  unless project.frameworks_group.files.any? { |f| f.path == CORE_XCFRAMEWORK }
+    ref = project.frameworks_group.new_reference(CORE_XCFRAMEWORK, :project)
+    ref.last_known_file_type = 'wrapper.xcframework'
+    runner.frameworks_build_phase.add_file_reference(ref, true)
+    changed = true
+  end
+  changed |= add_sources(project, runner, 'Runner', CORE_RUNNER_SOURCES, subdir: 'RunCore')
+  changed |= add_sources(project, tests, 'RunnerTests', CORE_TEST_SOURCES)
+  changed
+end
+
 check_only = ARGV.include?('--check')
 project = Xcodeproj::Project.open(PROJECT_PATH)
 runner = check_runner(project)
@@ -97,5 +134,6 @@ missing.each do |spec|
   add_target(project, runner, spec)
   puts "add_targets: added #{spec[:name]}"
 end
-project.save unless missing.empty?
-puts "add_targets: Runner ok, #{missing.size} target(s) added, #{EXTRA_TARGETS.size - missing.size} already present"
+core_changed = wire_core(project, runner)
+project.save if core_changed || !missing.empty?
+puts "add_targets: Runner ok, #{missing.size} target(s) added, #{EXTRA_TARGETS.size - missing.size} already present, core #{core_changed ? 'wired' : 'already wired'}"

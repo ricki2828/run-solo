@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
 plugins {
@@ -26,9 +27,18 @@ kotlin {
         }
     }
     if (appleHost) {
-        iosArm64()
-        iosSimulatorArm64()
-        macosArm64() // runs the common tests natively on the CI runner (no simulator boot)
+        // K3: the iPhone app links a static XCFramework (RunCore) with the ios-arm64 and
+        // ios-arm64-simulator slices (`assembleRunCoreReleaseXCFramework`). macosArm64 only runs
+        // the common tests natively on the CI runner and is not part of the framework.
+        val xcf = XCFramework("RunCore")
+        listOf(iosArm64(), iosSimulatorArm64()).forEach {
+            it.binaries.framework {
+                baseName = "RunCore"
+                isStatic = true
+                xcf.add(this)
+            }
+        }
+        macosArm64()
     }
 
     compilerOptions {
