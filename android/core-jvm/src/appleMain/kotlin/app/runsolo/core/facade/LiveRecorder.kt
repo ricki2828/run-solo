@@ -260,19 +260,17 @@ class LiveRecorder(rootDir: String) {
         return Json.write(out)
     }
 
-    companion object {
-        /** A scenario's inputs for a Swift-driven replay: `{fixes: [[t, lat, lon, alt, acc, speed]], hr: [[t, bpm]], presses: [[atMs, press]]}`. */
-        @Throws(Exception::class)
-        fun scenarioScriptJson(kind: String): String {
-            val sc = ReplayScenarios.create(kind) ?: throw IllegalArgumentException("no replay scenario $kind")
-            return Json.write(
-                mapOf(
-                    "mode" to sc.mode.name,
-                    "fixes" to sc.fixes.map { listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps) },
-                    "hr" to sc.hr.map { listOf(it.t, it.bpm) },
-                    "presses" to sc.presses.map { listOf(it.atMs, it.press.name) },
-                ),
-            )
-        }
+    /** A scenario's inputs for a Swift-driven replay: `{fixes: [[t, lat, lon, alt, acc, speed]], hr: [[t, bpm]], presses: [[atMs, press]]}`. */
+    @Throws(Exception::class)
+    fun scenarioScriptJson(kind: String): String {
+        val sc = ReplayScenarios.create(kind) ?: throw IllegalArgumentException("no replay scenario $kind")
+        return Json.write(
+            mapOf(
+                "mode" to sc.mode.name,
+                "fixes" to sc.fixes.map { listOf(it.t, it.lat, it.lon, it.altM, it.accuracyM, it.speedMps) },
+                "hr" to sc.hr.map { listOf(it.t, it.bpm) },
+                "presses" to sc.presses.map { listOf(it.atMs, it.press.name) },
+            ),
+        )
     }
 }
