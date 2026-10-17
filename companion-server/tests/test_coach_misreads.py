@@ -9,7 +9,7 @@ import pytest
 from companion import db
 from companion.channels import OutCard, caption_text
 from companion.convo import engine, suggest
-from companion.facts import Fact, FactsResult, build_facts, is_hard_run, run_label
+from companion.facts import Fact, FactsResult, build_facts, is_hard_run, is_steady_road, run_label
 from companion.writer import CardText, Writer, clean, with_verdict
 from conftest import make_settings
 
@@ -239,7 +239,7 @@ def test_trail_keeps_the_place_and_names_the_session(typ, word):
 def test_other_trail_types_and_cooper_keep_their_own_names():
     assert run_label(run(typ="race")) == "trail run"
     assert run_label(run(typ="race", app="cooper")) == "Cooper test"
-    assert run_label(run(typ="easy", app="free")) == "easy run"
+    assert run_label(run(typ="easy", app="free", zone_min={"z1": 3.0, "z2": 18.0, "z3": 5.0, "z4": 2.0})) == "easy run"   # a Z2 run; the default Z3 fixture is steady now
 
 
 def test_three_trail_runs_do_not_share_one_headline():
@@ -342,6 +342,20 @@ def test_an_easy_trail_run_that_is_mostly_z3_is_steady_not_easy():
     assert engine.situation_for(r, [], None)[0] == "trail_steady"
     assert run_label(r) == "steady trail run"   # the fact line and the words agree: never "Easy trail run ... steady"
     assert "Steady trail run" in texts(build_facts(r, [], {}))["base"]
+
+
+def test_an_easy_road_run_that_is_mostly_z3_is_steady_not_easy():
+    from companion.convo import voice
+    r = run(typ="easy", app="free", feel=None, zone_min={"z1": 3.0, "z2": 7.0, "z3": 18.0, "z4": 1.0})   # 64% Z3, 4% Z4+Z5
+    assert is_steady_road(r)
+    assert engine.situation_for(r, [], None)[0] == "road_steady"
+    assert run_label(r) == "steady run"
+    assert len(voice.SITUATIONS["road_steady"]) == 4
+    for _, body in voice.SITUATIONS["road_steady"]:
+        assert "easy effort" not in body and "Nothing to prove" not in body
+    tempo_ish = run(typ="easy", app="free", feel=None, zone_min={"z2": 5.0, "z3": 18.0, "z4": 5.0})   # 18% Z4+Z5: not steady
+    assert not is_steady_road(tempo_ish)
+    assert not is_steady_road(run(typ="easy", app="free", feel=None, zone_min={"z2": 20.0, "z3": 8.0}))
 
 
 def test_a_threshold_run_tapped_right_is_never_called_hard_but_still_spaces_the_next_hard_day():

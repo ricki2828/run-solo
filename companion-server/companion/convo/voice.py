@@ -214,6 +214,12 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("Trail, steady", "{km} km on trail, steady rather than easy. Good work for the legs."),
         ("Steady off-road", "A steady {km} km off-road. Go by feel, not pace."),
     ],
+    "road_steady": [
+        ("Steady run", "{km} km of steady running. The middle gear: not easy, not hard."),
+        ("Steady effort", "{min} minutes at a steady effort. A notch above easy, well short of hard."),
+        ("Steady, not easy", "{km} km, steady rather than easy. Good aerobic work."),
+        ("Middle gear", "A steady {km} km. Keep the proper easy days easier so this kind of run keeps its value."),
+    ],
     "trail_tempo": [
         ("Tempo on the trail", "{km} km of tempo on trail. Judge it by effort, not pace."),
         ("Trail tempo", "A tempo run off-road, {min} minutes of steady work on uneven ground."),
