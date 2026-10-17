@@ -1760,17 +1760,20 @@ class Service(CheckinMixin, MeasureMixin):
                     return
                 run = dict(run_r)
                 note = c.execute("SELECT note FROM run_notes WHERE user_id=? AND run_id=?", (user["id"], run_id)).fetchone()
-                label = cv_notes.flag_label(note["note"]) if note else None
+                flagged = bool(note) and cv_notes.flagged(note["note"])
+                label = cv_notes.flag_label(note["note"]) if flagged else None
                 full = self._full_history(c, user["id"], run["start_utc"])
                 soft = self._soften(c, user["id"], now)
             nline = next_line(self._with_default_plan(user["id"], run, now), full, soften=soft)
             old = row["next_line"]
-            if nline == old and not label:
+            if nline == old and not flagged:
                 return
-            what = label or ("that it felt hard" if run["feel"] == "hard" else None)
+            what = "Noted" if flagged else "Noted: that it felt hard" if run["feel"] == "hard" else None
             if what is None or old not in row["body"]:
                 return
-            ack = f"Noted: {what}. {nline}" if nline != old else f"Noted: {what}. {old}"
+            if label:
+                what = f"Noted: {label}"   # a flagged note no label fits is just "Noted."
+            ack = f"{what}. {nline}"
             with db.tx(self.s.db_path) as c:   # the claim: whoever sets it owns the one edit
                 if c.execute("UPDATE cards SET note_edit_at=? WHERE card_id=? AND note_edit_at IS NULL",
                              (iso(now), row["card_id"])).rowcount != 1:

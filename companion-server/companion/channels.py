@@ -81,22 +81,44 @@ class OutCard:
 
 _COMPARISON = re.compile(r"\b(faster|slower|level with|than (?:your )?last|no real change)\b", re.I)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_NOTED = re.compile(r"^Noted: ")   # a late note's acknowledgement (service._late_edit) rides the caption too
+_NOTED = re.compile(r"^Noted[.:]")   # a late note's acknowledgement (service._late_edit) rides the caption too
+
+
+_NEXT = re.compile(r"^Next: ")
 
 
 def caption_text(card: OutCard) -> str:
-    """The text a picture rides with. A short-caption card (a run card) keeps its headline and the last sentence of
-    its first paragraph, which is the judgement (the sentences before it restate the numbers the picture shows),
-    plus any later paragraph (a personal touch or a quoted note), which the picture does not carry."""
+    """The text a picture rides with. A short-caption card (a run card) keeps its headline, the judgement (the last
+    ordinary sentence of the first paragraph: the coaching), the Next line and a late note's "Noted" line, plus any
+    comparison sentence and any later paragraph (a personal touch or a quoted note). Within the caption limit the
+    comparisons go first, then the later paragraph; the headline, judgement and Next line are never dropped."""
     if not card.short_caption:
         return f"{card.headline}\n{card.body}"
     first, _, rest = card.body.partition("\n\n")
     sentences = [x for x in _SENTENCE_SPLIT.split(first.strip()) if x]
-    keep = [x for x in sentences[:-1] if _COMPARISON.search(x) or _NOTED.match(x)] + sentences[-1:]  # the comparison stays too
-    lines = [card.headline.strip(), " ".join(keep)]
-    if rest.strip():
-        lines.append(rest.strip())
-    return "\n".join(x for x in lines if x)
+    plain = [i for i, x in enumerate(sentences) if not (_NEXT.match(x) or _NOTED.match(x))]
+    judgement = plain[-1] if plain else None
+    # the sentences before the judgement mostly restate the numbers the picture shows: only a comparison stays, and goes
+    # first when the caption is too long, then the later paragraph; the judgement and the Next line never go
+    others = [i for i in plain if i != judgement and _COMPARISON.search(sentences[i])]
+    droppable = [("sent", i) for i in others][::-1] + ([("rest", None)] if rest.strip() else [])
+    keep = {i for i in range(len(sentences)) if i not in plain or i == judgement or i in others}
+    use_rest = bool(rest.strip())
+
+    def render() -> str:
+        lines = [card.headline.strip(), " ".join(sentences[i] for i in sorted(keep))]
+        if use_rest:
+            lines.append(rest.strip())
+        return "\n".join(x for x in lines if x)
+
+    for kind, i in droppable:
+        if utf16_len(render()) <= CAPTION_MAX:
+            break
+        if kind == "rest":
+            use_rest = False
+        else:
+            keep.discard(i)
+    return render()
 
 
 def photo_caption(card: OutCard) -> str:

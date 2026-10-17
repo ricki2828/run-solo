@@ -53,8 +53,8 @@ def quote(note: str) -> str:
 # What a flagged note is called on the card's "Noted: ..." line. The note's own words never go on a card.
 _LABELS = (
     (r"flight|jet\s?lag|travel", "the travel"),
+    (r"heat|humid|swelter|\bhot\b", "the heat"),   # before the haze: "smoked it, so hot" is the heat
     (r"haz[ey]|smok", "the haze"),
-    (r"heat|humid|swelter|\bhot\b", "the heat"),
     (r"hill|climb", "the hills"),
     (r"niggl|sore|injur", "the niggle"),
     (r"tired|sick", "feeling flat"),
@@ -62,10 +62,10 @@ _LABELS = (
 
 
 def flag_label(note: str) -> str | None:
-    """A short plain label for what a flagged note mentions, or None when it carries no flag."""
+    """A short plain label for what a flagged note mentions, or None when it carries no flag or no label fits."""
     if not flagged(note):
         return None
     for pat, label in _LABELS:
         if re.search(pat, note, re.I):
             return label
-    return "that"
+    return None
