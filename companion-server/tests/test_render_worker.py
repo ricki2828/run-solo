@@ -5,6 +5,7 @@ like the card and motion suites, and fail (never skip) when one is missing.
 """
 import io
 import json
+import pytest
 import os
 import socket
 import stat
@@ -227,7 +228,7 @@ def test_service_sends_a_real_photo_through_the_worker(tmp_path, fakes, sock_pat
     photos = [b for m, b in fakes.tg if m == "sendPhoto"]
     assert len(photos) == 1
     name, data, ctype = photos[0]["_files"]["photo"]
-    assert data[:8] == b"\x89PNG\r\n\x1a\n" and Image.open(io.BytesIO(data)).size == (1080, 1350)
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and Image.open(io.BytesIO(data)).size == (1080, 1920)
 
 
 class Recorder:
@@ -309,3 +310,14 @@ def test_kill_tree_reaches_a_descendant_in_its_own_process_group():
     time.sleep(0.3)
     for k in kids:
         assert not os.path.exists(f"/proc/{k}") or open(f"/proc/{k}/stat").read().rsplit(")", 1)[1].split()[0] == "Z"
+
+
+def test_share_kind_is_accepted_with_known_boolean_optins_only():
+    from render.protocol import ProtocolError, check_request
+    facts = {"type": "easy", "distance_km": 5.0, "duration_s": 1800, "share": {"route": True, "time": True}}
+    assert check_request({"v": 1, "op": "card", "kind": "share", "facts": facts})[1] == "share"
+    for bad in ({"headline": "x"}, {"route": "yes"}, {"home": True}, "route"):
+        with pytest.raises(ProtocolError):
+            check_request({"v": 1, "op": "card", "kind": "share", "facts": {**facts, "share": bad}})
+    with pytest.raises(ProtocolError):   # the opt-ins belong to the share kind only
+        check_request({"v": 1, "op": "card", "kind": "light", "facts": facts})

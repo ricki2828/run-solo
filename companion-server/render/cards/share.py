@@ -125,7 +125,7 @@ def _route_svg(facts: Mapping[str, Any], w: int, h: int, pad: float, stroke: flo
 def hero(facts: Mapping[str, Any], s: Mapping[str, Any]) -> tuple[str, str]:
     """(value, unit). A PB leads with its time when the runner shares time; otherwise distance."""
     if facts.get("pb") and s.get("time") and facts.get("duration_s"):
-        return P.fmt_dur(float(facts["duration_s"])), ""
+        return P.fmt_dur(float(facts["duration_s"])), f"{P.fmt_km(float(facts['distance_km']))} KM"
     return P.fmt_km(float(facts["distance_km"])), "KM"
 
 
@@ -152,7 +152,8 @@ def _stats(facts: Mapping[str, Any], s: Mapping[str, Any], hero_is_time: bool) -
 def _label(facts: Mapping[str, Any], s: Mapping[str, Any]) -> str:
     """The small line above the number. A run's title can be a place, so it shows only with the place opt-in."""
     if facts.get("pb"):
-        return "PERSONAL BEST"
+        detail = facts.get("pb_detail") or {}
+        return P.esc(detail.get("label") or "PERSONAL BEST", 30)
     if s.get("place"):
         label = P.esc(facts.get("title", "Run"), 30)
         if facts.get("place_note"):
