@@ -66,16 +66,19 @@ def is_hard_run(run: Mapping[str, Any]) -> bool:
 
 
 def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zone_min: Mapping[str, float] | None,
-                     pb: str | None, history: Sequence[Mapping[str, Any]], has_reps: bool = False) -> str:
+                     pb: str | None, history: Sequence[Mapping[str, Any]], has_reps: bool = False,
+                     reps_done: int | None = None, work_pace: float | None = None) -> str:
     """The coach's type for a run, from the app's type plus the facts. A type already in the coach's vocabulary
     passes through. `history` is the earlier runs, newest first, carrying the coach types already inferred.
 
-    intervals -> interval; cooper -> race (a test effort); laps -> interval when it has reps or work/recovery splits
+    intervals -> interval (free when no rep was done and no work pace: the workout was stopped early); cooper -> race (a test effort); laps -> interval when it has reps or work/recovery splits
     (`has_reps`; the app does not upload them today, so laps is easy for now), else easy. free / trail -> race when
     PB-flagged, else long (distance >= max(1.5 x the typical easy run, 12 km) or 75+ min), else tempo (most time in
     Z3-Z4 over 20-60 min), else easy."""
     if app_type not in APP_TYPES:
         return app_type
+    if app_type == "intervals" and not reps_done and not work_pace:
+        app_type = "free"  # a workout stopped before any work rep: a free run, not an interval session
     if app_type == "intervals":
         return "interval"
     if app_type == "cooper":

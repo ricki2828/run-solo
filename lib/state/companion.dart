@@ -1999,7 +1999,7 @@ Map<String, Object?>? companionSummary(
   final climb = s.row?.climbM;
   return {
     'run_id': run.id,
-    'type': s.mode.name,
+    'type': s.uploadMode.name,
     'start_utc': run.start.toUtc().toIso8601String(),
     'utc_offset_min': offset,
     'zone_id': zone,
@@ -2045,7 +2045,9 @@ Map<String, Object?>? companionSummary(
 /// (engine `coachIntervalFacts`). A goal run or parkrun sends none, and
 /// neither does a run without a work pace.
 Map<String, Object?> companionIntervalFacts(RunSummary s) {
-  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals) return const {};
+  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals || s.endedBeforeWork) {
+    return const {};
+  }
   return engine.coachIntervalFacts(
     sessionName: s.spec?.name ?? engine.SessionCatalogue.norwegian4x4.name,
     workPaceSecPerKm: s.trueWorkPaceSecPerKm ?? s.workPaceSecPerKm,

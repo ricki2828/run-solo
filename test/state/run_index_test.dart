@@ -14,6 +14,48 @@ import '../run_fixtures.dart';
 /// Phase 3 W5: `files/state/index.json`, a per-run summary cache kept in
 /// line with the run files AND their sidecars.
 void main() {
+  group('endedWithoutWork (bailed workout is a free run)', () {
+    final goal = engine.SessionSpec.goalDistance(10000, '10K');
+    engine.GoalResult result({required bool reached}) => engine.GoalResult(
+      kind: engine.GoalKind.distance,
+      target: 10000,
+      name: '10K',
+      reached: reached,
+      stoppedAtM: 3000,
+    );
+
+    test('interval session with no completed rep', () {
+      expect(endedWithoutWork(engine.RunMode.intervals, null, reps: 0), isTrue);
+    });
+    test('interval session with a rep, or unknown reps, stays', () {
+      expect(endedWithoutWork(engine.RunMode.intervals, null, reps: 1), isFalse);
+      expect(endedWithoutWork(engine.RunMode.intervals, null), isFalse);
+    });
+    test('goal not reached is free; reached or unknown stays', () {
+      expect(
+        endedWithoutWork(
+          engine.RunMode.intervals,
+          goal,
+          goal: result(reached: false),
+        ),
+        isTrue,
+      );
+      expect(
+        endedWithoutWork(
+          engine.RunMode.intervals,
+          goal,
+          goal: result(reached: true),
+        ),
+        isFalse,
+      );
+      expect(endedWithoutWork(engine.RunMode.intervals, goal), isFalse);
+    });
+    test('other modes are untouched', () {
+      expect(endedWithoutWork(engine.RunMode.free, null, reps: 0), isFalse);
+      expect(endedWithoutWork(engine.RunMode.laps, null, reps: 0), isFalse);
+    });
+  });
+
   final d1 = DateTime.utc(2026, 9, 10, 6);
   late Directory dir;
   late Directory runsDir;

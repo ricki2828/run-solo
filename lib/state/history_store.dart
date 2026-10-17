@@ -391,6 +391,21 @@ class RunSummary {
       row?.eligibleAsPrior ?? analysis?.eligibleAsPrior ?? false;
   bool get hasIntervals => detectedReps != null;
 
+  /// The goal result (row first, else the analysis); null off a goal run.
+  engine.GoalResult? get goalResult => row?.goal ?? analysis?.goal;
+
+  /// An interval or goal workout stopped before its work was done: it is a
+  /// free run. See [endedWithoutWork].
+  bool get endedBeforeWork => endedWithoutWork(
+    runModeOf(mode),
+    spec,
+    reps: detectedReps,
+    goal: goalResult,
+  );
+
+  /// The mode the companion server is told: `free` for [endedBeforeWork].
+  RecordMode get uploadMode => endedBeforeWork ? RecordMode.free : mode;
+
   /// K1: course and official time from the sidecar; null when neither.
   final engine.ParkrunInfo? parkrun;
 
@@ -716,7 +731,7 @@ RunSummary _summaryOf(
   engine.RunAnalysis? a,
 ) => RunSummary(
   id: run.id,
-  mode: recordModeOf(sidecar?.runTypeOverride ?? a?.mode ?? run.mode),
+  mode: recordModeOf(effectiveRunMode(run, sidecar, a)),
   start: run.start,
   durationMs: run.end.difference(run.start).inMilliseconds,
   distanceM: run.distanceM,
@@ -738,7 +753,7 @@ RunSummary _summaryOf(
   // Only a 4x4 carries a verdict word (plan §18.2); guard by the effective
   // mode so nothing else ever shows one.
   verdict:
-      recordModeOf(sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
+      recordModeOf(effectiveRunMode(run, sidecar, a)) ==
           RecordMode.intervals
       ? displayVerdict(sidecar, a)
       : null,

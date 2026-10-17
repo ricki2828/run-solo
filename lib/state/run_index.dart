@@ -24,6 +24,44 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'zone_histogram.dart';
 
 @immutable
+/// The run's effective mode. A goal or interval workout stopped before it
+/// finished its work (a goal not reached, an interval session with no
+/// completed rep) was a free run: without a manual type override,
+/// `intervals` becomes `free`.
+engine.RunMode effectiveRunMode(
+  engine.RunFile run,
+  engine.RunSidecar? sidecar,
+  engine.RunAnalysis? a,
+) {
+  final override = sidecar?.runTypeOverride;
+  if (override != null) return override;
+  final mode = a?.mode ?? run.mode;
+  return endedWithoutWork(
+        mode,
+        run.session,
+        reps: a?.intervals?.reps.length,
+        goal: a?.goal,
+      )
+      ? engine.RunMode.free
+      : mode;
+}
+
+/// True for an intervals-mode run that stopped before its work was done: a
+/// goal session whose goal was not reached ([goal] known and not reached), or
+/// any other non-parkrun session with an analysis that found no rep
+/// ([reps] == 0; null means unknown and changes nothing).
+bool endedWithoutWork(
+  engine.RunMode mode,
+  engine.SessionSpec? session, {
+  int? reps,
+  engine.GoalResult? goal,
+}) {
+  if (mode != engine.RunMode.intervals) return false;
+  if (session?.isGoal == true) return goal != null && !goal.reached;
+  if (session?.templateId == engine.SessionSpec.parkrunId) return false;
+  return reps == 0;
+}
+
 class RunIndexEntry {
   const RunIndexEntry({
     required this.id,
@@ -274,7 +312,7 @@ class RunIndexEntry {
     required engine.Verdict? shownVerdict,
     required FileStamp stamp,
   }) {
-    final mode = sidecar?.runTypeOverride ?? a?.mode ?? run.mode;
+    final mode = effectiveRunMode(run, sidecar, a);
     final durationMs = run.end.difference(run.start).inMilliseconds;
     final weather = engine.WeatherRecord.fromJson(sidecar?.weather);
     final whole = run.distanceM > 0
@@ -593,7 +631,7 @@ class IndexRow {
       zoneId: zone?.zoneId,
       movingMs: engine.RunTimes.movingMs(run),
       medianLapSec:
-          (sidecar?.runTypeOverride ?? a?.mode ?? run.mode) ==
+          (effectiveRunMode(run, sidecar, a)) ==
               engine.RunMode.laps
           ? engine.RunTimes.medianLapSec(run)
           : null,
@@ -619,7 +657,7 @@ class IndexRow {
           const {
             engine.RunMode.trail,
             engine.RunMode.free,
-          }.contains(sidecar?.runTypeOverride ?? a?.mode ?? run.mode)
+          }.contains(effectiveRunMode(run, sidecar, a))
           ? engine.RouteSignature.of(run)
           : null,
       routeName: run.route?.name,

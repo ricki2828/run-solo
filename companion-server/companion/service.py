@@ -1017,8 +1017,12 @@ class Service(CheckinMixin, MeasureMixin):
         """(coach type, the app's own type when it differed). See facts.infer_coach_type."""
         hist = self._history(c, uid, iso(run.start_utc), limit=80)
         coach = infer_coach_type(run.type, distance_m=run.distance_m, duration_s=run.duration_s,
-                                 zone_min=run.zone_min, pb=run.pb, history=hist)
-        return coach, (run.type if run.type in APP_TYPES else None)
+                                 zone_min=run.zone_min, pb=run.pb, history=hist,
+                                 reps_done=run.reps_done, work_pace=run.work_pace_s_per_km)
+        app = run.type if run.type in APP_TYPES else None
+        if app == "intervals" and not run.reps_done and not run.work_pace_s_per_km:
+            app = "free"  # same rule as infer_coach_type: stopped before any work rep
+        return coach, app
 
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
         out = self._ingest_run(uid, run, now, replay=replay)
