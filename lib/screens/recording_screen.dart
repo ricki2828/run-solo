@@ -621,6 +621,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                         track: ctl.liveRoute,
                         typeColor: liveRunTypeColor(runType),
                         readouts: readouts,
+                        numbers: EqualFigures(
+                          figures: runSoFarFigures(s, ctl, settings.units),
+                          valueKeys: const [
+                            ValueKey('map-page-distance'),
+                            ValueKey('map-page-time'),
+                            ValueKey('map-page-pace'),
+                          ],
+                          cap: compact ? 52 : 64,
+                          labelColor: t.inkSecondary,
+                          valueColor: t.inkPrimary,
+                        ),
                         plan: ctl.followedPlan,
                         terrain: usesTerrainMap(s.mode),
                         retrace: RetraceInput(
@@ -903,10 +914,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                             child: _RunPages(
                               key: const ValueKey('run-pages'),
                               controller: _pageCtl!,
-                              page: _page,
                               twoPages: hasPage2,
-                              mapGesture: canMap,
-                              mapBoxKey: _mapBoxKey,
                               onPage: (p) => _onPage(runType, p),
                               one: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2166,181 +2174,40 @@ class _FreePlan {
 
 /// The two run pages: 1 the numbers, 2 the map and route readouts.
 ///
-/// Gesture approach: page 1 is a plain horizontal PageView, so a swipe
-/// anywhere on the numbers goes to the map. On page 2 the PageView stops
-/// taking drags (NeverScrollable) so the map keeps every pan and zoom; the
-/// way back is a swipe from a strip on the left edge, or a tap on the page
-/// dots.
-///
-/// Why the strip failed on a device (12-Oct): it was `translucent`, which
-/// hit-tests the strip AND the map underneath it. The map is a platform
-/// view, and its recognizer claims the gesture arena on pointer down, so the
-/// strip's drag recognizer always lost. The strip is now `opaque` (the map
-/// never sees touches in it), and it goes back on drag distance or flick, so
-/// a slow swipe works too. Unproven on hardware: the fake map in tests does
-/// not claim the arena, so a widget test cannot show the original failure.
+/// Gesture approach: a plain horizontal PageView that always scrolls, in both
+/// directions, from anywhere. The live map is display-only (see
+/// [LiveMapView]): its platform view used to claim the horizontal drag on
+/// pointer down, so on page 2 the pager had to be NeverScrollable and the way
+/// back was a left-edge strip and a Listener hack that failed on a device
+/// (12, 14 and 17-Oct). With the map ignoring touches there is nothing to
+/// fight over, so those are gone. Page dots, the NUMBERS button and system
+/// back still go back too. Unproven on hardware: the fake map in tests never
+/// claimed the arena, so no widget test could show the original failure.
 class _RunPages extends StatelessWidget {
   const _RunPages({
     super.key,
     required this.controller,
-    required this.page,
     required this.twoPages,
-    required this.mapGesture,
-    required this.mapBoxKey,
     required this.onPage,
     required this.one,
     required this.two,
   });
   final PageController controller;
-  final int page;
   final bool twoPages;
-
-  /// Page 2 carries a map that needs the horizontal drags.
-  final bool mapGesture;
-
-  /// The map's box: a swipe that starts outside it goes back to page 1.
-  final GlobalKey mapBoxKey;
   final ValueChanged<int> onPage;
   final Widget one;
   final Widget two;
 
-  /// The left-edge strip that swipes back from the map.
-  static const double edge = 44;
-
-  /// A slow drag this far (dp) goes back; a flick needs less.
-  static const double _backDistance = 48;
-  static const double _backVelocity = 300;
-
-  void _back() => unawaited(
-    controller.animateToPage(
-      0,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
     if (!twoPages) return one;
-    final onMap = page == 1 && mapGesture;
     return PageView(
       controller: controller,
       onPageChanged: onPage,
-      physics: onMap
-          ? const NeverScrollableScrollPhysics()
-          : const PageScrollPhysics(),
-      children: [
-        one,
-        _OutsideMapBack(
-          enabled: mapGesture,
-          mapBoxKey: mapBoxKey,
-          onBack: _back,
-          child: Stack(
-            children: [
-              two,
-              if (mapGesture)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: edge,
-                  child: _BackEdge(onBack: _back),
-                ),
-            ],
-          ),
-        ),
-      ],
+      physics: const PageScrollPhysics(),
+      children: [one, two],
     );
   }
-}
-
-/// The strip itself. Stateful so the drag total survives parent rebuilds
-/// (the run screen rebuilds every tick).
-class _BackEdge extends StatefulWidget {
-  const _BackEdge({required this.onBack});
-  final VoidCallback onBack;
-
-  @override
-  State<_BackEdge> createState() => _BackEdgeState();
-}
-
-class _BackEdgeState extends State<_BackEdge> {
-  double _dragged = 0;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    key: const ValueKey('page-edge-swipe'),
-    // Opaque: the map under the strip must not see the touch.
-    behavior: HitTestBehavior.opaque,
-    onHorizontalDragStart: (_) => _dragged = 0,
-    onHorizontalDragUpdate: (d) => _dragged += d.delta.dx,
-    onHorizontalDragEnd: (d) {
-      final v = d.primaryVelocity ?? 0;
-      if (v > _RunPages._backVelocity || _dragged > _RunPages._backDistance) {
-        widget.onBack();
-      }
-    },
-  );
-}
-
-/// Swipe back from anywhere on page 2 that is not the map: the readouts above
-/// it and the button row below. A plain [Listener], so it never enters the
-/// gesture arena and the map keeps every pan and zoom; a touch that starts on
-/// the map's box is ignored (14-Oct: the edge strip alone was not enough).
-class _OutsideMapBack extends StatefulWidget {
-  const _OutsideMapBack({
-    required this.enabled,
-    required this.mapBoxKey,
-    required this.onBack,
-    required this.child,
-  });
-  final bool enabled;
-  final GlobalKey mapBoxKey;
-  final VoidCallback onBack;
-  final Widget child;
-
-  @override
-  State<_OutsideMapBack> createState() => _OutsideMapBackState();
-}
-
-class _OutsideMapBackState extends State<_OutsideMapBack> {
-  int? _pointer;
-  Offset _delta = Offset.zero;
-  Duration _start = Duration.zero;
-
-  bool _onMap(Offset global) {
-    final box = widget.mapBoxKey.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.attached) return false;
-    return (box.localToGlobal(Offset.zero) & box.size).contains(global);
-  }
-
-  @override
-  Widget build(BuildContext context) => Listener(
-    key: const ValueKey('page-outside-map-swipe'),
-    behavior: HitTestBehavior.translucent,
-    onPointerDown: (e) {
-      if (!widget.enabled || _pointer != null || _onMap(e.position)) return;
-      _pointer = e.pointer;
-      _delta = Offset.zero;
-      _start = e.timeStamp;
-    },
-    onPointerMove: (e) {
-      if (e.pointer == _pointer) _delta += e.delta;
-    },
-    onPointerCancel: (e) {
-      if (e.pointer == _pointer) _pointer = null;
-    },
-    onPointerUp: (e) {
-      if (e.pointer != _pointer) return;
-      _pointer = null;
-      final ms = (e.timeStamp - _start).inMilliseconds;
-      final horizontal = _delta.dx.abs() > _delta.dy.abs() * 2;
-      final far = _delta.dx > _RunPages._backDistance;
-      final flick = _delta.dx > 24 && ms < 300;
-      if (horizontal && (far || flick)) widget.onBack();
-    },
-    child: widget.child,
-  );
 }
 
 /// The big way between the two run pages: a full-width, 56 dp button, in the

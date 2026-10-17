@@ -77,37 +77,22 @@ void main() {
     expect(find.byKey(_map), findsOneWidget);
   });
 
-  testWidgets(
-    'on the map page a drag pans the map; the left edge swipes back',
-    (tester) async {
-      await open(
-        tester,
-        settings: const AppSettings(
-          onboardingDone: true,
-          liveMapTypes: {'laps'},
-        ),
-      );
-      expect(find.byKey(_map), findsOneWidget);
-      // Horizontal drags in the middle are the map's, not the pager's.
-      await tester.fling(find.byKey(_map), const Offset(300, 0), 1500);
-      await settleAnimations(tester);
-      expect(find.byKey(_map), findsOneWidget);
-      await tester.fling(find.byKey(_map), const Offset(-300, 0), 1500);
-      await settleAnimations(tester);
-      expect(find.byKey(_map), findsOneWidget);
-      // From the left-edge strip a swipe right goes back to the numbers.
-      await tester.fling(
-        find.byKey(const ValueKey('page-edge-swipe')),
-        const Offset(300, 0),
-        1500,
-      );
-      await settleAnimations(tester);
-      expect(find.byKey(_map), findsNothing);
-      expect(find.byKey(const ValueKey('timer')), findsOneWidget);
-    },
-  );
+  testWidgets('on the map page a swipe right ON the map goes back to the '
+      'numbers', (tester) async {
+    await open(
+      tester,
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
+    );
+    expect(find.byKey(_map), findsOneWidget);
+    // The map ignores touches, so the pager gets the drag.
+    expect(find.byKey(const ValueKey('map-ignore-touches')), findsOneWidget);
+    await tester.fling(find.byKey(_map), const Offset(300, 0), 1500);
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsNothing);
+    expect(find.byKey(const ValueKey('timer')), findsOneWidget);
+  });
 
-  testWidgets('a slow drag right from page 2 goes back to page 1', (
+  testWidgets('a slow drag right from anywhere on page 2 goes back', (
     tester,
   ) async {
     await open(
@@ -115,13 +100,10 @@ void main() {
       settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
     );
     expect(find.byKey(_map), findsOneWidget);
-    // Start inside the strip, move slowly: no flick velocity.
-    final strip = tester.getTopLeft(
-      find.byKey(const ValueKey('page-edge-swipe')),
-    );
-    final g = await tester.startGesture(strip + const Offset(20, 200));
-    for (var i = 0; i < 12; i++) {
-      await g.moveBy(const Offset(10, 0));
+    // Start mid-screen, move slowly past half a page: no flick velocity.
+    final g = await tester.startGesture(tester.getCenter(find.byKey(_map)));
+    for (var i = 0; i < 20; i++) {
+      await g.moveBy(const Offset(12, 0));
       await tester.pump(const Duration(milliseconds: 100));
     }
     await g.up();
@@ -200,17 +182,28 @@ void main() {
   });
 
   testWidgets(
-    'a swipe right outside the map goes back; on the map it does not',
+    'swipes change page both ways, over the numbers, the map and the button',
     (tester) async {
       await open(tester);
-      await tester.tap(find.byKey(_toggle));
+      // 1 -> 2 over the numbers.
+      await tester.fling(
+        find.byKey(const ValueKey('timer')),
+        const Offset(-300, 0),
+        1500,
+      );
       await settleAnimations(tester);
       expect(find.byKey(_map), findsOneWidget);
-      // On the map: the map's.
+      // 2 -> 1 over the map.
       await tester.fling(find.byKey(_map), const Offset(300, 0), 1500);
       await settleAnimations(tester);
-      expect(find.byKey(_map), findsOneWidget);
-      // On the button row (outside the map's rectangle): back to the numbers.
+      expect(find.byKey(_map), findsNothing);
+      await tester.fling(
+        find.byKey(const ValueKey('timer')),
+        const Offset(-300, 0),
+        1500,
+      );
+      await settleAnimations(tester);
+      // 2 -> 1 over the button row.
       await tester.fling(
         find.byKey(const ValueKey('page-numbers-button')),
         const Offset(200, 0),
@@ -219,16 +212,28 @@ void main() {
       await settleAnimations(tester);
       expect(find.byKey(_map), findsNothing);
       expect(find.byKey(const ValueKey('timer')), findsOneWidget);
-      // And page 1 still swipes on to the map.
-      await tester.fling(
-        find.byKey(const ValueKey('timer')),
-        const Offset(-300, 0),
-        1500,
-      );
-      await settleAnimations(tester);
-      expect(find.byKey(_map), findsOneWidget);
     },
   );
+
+  testWidgets('map page: big run numbers, map capped at 40% of the room', (
+    tester,
+  ) async {
+    await open(tester, mode: RecordMode.free);
+    await tester.tap(find.byKey(_toggle));
+    await settleAnimations(tester);
+    final map = tester.getSize(find.byKey(_map));
+    final pages = tester.getSize(find.byKey(_pages));
+    expect(map.height, lessThanOrEqualTo(pages.height * 0.4 + 1));
+    for (final k in ['map-page-distance', 'map-page-time', 'map-page-pace']) {
+      final t = tester.widget<Text>(find.byKey(ValueKey(k)));
+      expect(t.style!.fontSize, greaterThanOrEqualTo(36), reason: k);
+    }
+    // The numbers sit above the map.
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('map-page-pace'))).dy,
+      lessThan(tester.getTopLeft(find.byKey(_map)).dy),
+    );
+  });
 
   testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
@@ -262,7 +267,7 @@ void main() {
   });
 
   testWidgets('LAP and Pause / Stop are the same on both pages; the map page '
-      'repeats no run number', (tester) async {
+      'has no page-1 hero', (tester) async {
     await open(tester);
     final lap = tester.getSize(find.byType(LapButton));
     final stop = tester.getSize(find.byKey(const ValueKey('stop')));

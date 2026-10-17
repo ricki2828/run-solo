@@ -196,11 +196,18 @@ class LiveMapView extends StatefulWidget {
     this.terrain = false,
     this.retrace,
     this.mapBoxKey,
+    this.numbers,
   });
 
-  /// Lets the page switcher find the map's rectangle (a swipe outside it
-  /// goes back to the numbers; a swipe on it is the map's).
+  /// Keys the map's box (tests and layout checks find it by this).
   final GlobalKey? mapBoxKey;
+
+  /// The run numbers (distance, time, pace) above the map, big. They take the
+  /// room the map does not: the map is capped at [mapFraction] of the height.
+  final Widget? numbers;
+
+  /// The most of the page's height the map may take when [numbers] is set.
+  static const double mapFraction = 0.4;
 
   final MapSurfaceFactory maps;
   final LiveRouteTrack track;
@@ -261,17 +268,53 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
         )
       : const SizedBox.shrink(key: ValueKey('map-off'));
 
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      for (final r in widget.readouts) ...[r, const SizedBox(height: Space.x8)],
-      Expanded(
-        child: SizedBox(
-          key: widget.mapBoxKey ?? const ValueKey('map-page-map'),
-          child: _map(context),
-        ),
-      ),
-    ],
+  // The map is display-only: it follows the runner and recentres itself. It
+  // must not take touches, or its platform view eats the horizontal drags the
+  // page swiper needs (17-Oct: swipe still unreliable over the map).
+  Widget _mapBox(BuildContext context) => SizedBox(
+    key: widget.mapBoxKey ?? const ValueKey('map-page-map'),
+    child: IgnorePointer(
+      key: const ValueKey('map-ignore-touches'),
+      child: _map(context),
+    ),
   );
+
+  @override
+  Widget build(BuildContext context) {
+    final numbers = widget.numbers;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final r in widget.readouts) ...[
+          r,
+          const SizedBox(height: Space.x8),
+        ],
+        if (numbers == null)
+          Expanded(child: _mapBox(context))
+        else
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: SizedBox(width: c.maxWidth, child: numbers),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: Space.x8),
+                  SizedBox(
+                    height: c.maxHeight * LiveMapView.mapFraction,
+                    child: _mapBox(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
