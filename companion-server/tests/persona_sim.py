@@ -105,15 +105,21 @@ class Sim:
     persona: dict
     wd: Path
     log: list[Sent] = field(default_factory=list)
-    toasts: list[tuple[datetime, str]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.rng = random.Random(3)
         self.net = Net()
+        self.toasts: list[str] = []   # the text of every tap's toast (answerCallbackQuery)
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            if req.url.path.endswith("answerCallbackQuery") and req.content:
+                self.toasts.append(json.loads(req.content).get("text") or "")
+            return self.net.handler(req)
+
         s = Settings(db_path=str(self.wd / "sim.db"), pepper=b"s" * 32, allowed_ids=frozenset({"telegram:424242"}),
                      telegram_token="1:FAKE", telegram_bot="RSBot", telegram_webhook_secret="x" * 16,
                      openrouter_key=None, default_quiet=QUIET, weather_enabled=True, checkins_enabled=True)
-        self.svc = Service(s, httpx.Client(transport=httpx.MockTransport(self.net.handler)))
+        self.svc = Service(s, httpx.Client(transport=httpx.MockTransport(handler)))
         self.svc.weather = FakeWeather()
         t0 = hm(START + timedelta(days=self.persona["consent_day"]), "12:00", SG).astimezone(UTC)
         with db.tx(s.db_path) as c:
@@ -189,7 +195,8 @@ class Sim:
                 if btns:
                     self.tap(card, action=btns[0]["action"], now=at)
 
-    def go(self) -> "Sim":
+    def go(self, until: date | None = None) -> "Sim":
+        """Run the four weeks, or only the days before `until`."""
         feels, events = {}, []
         for (rid, d, t, typ, km, pace, tp, z, feel) in self.persona["plan"]:
             r = runin(rid, d, t, typ, km, pace, tp, z)
@@ -197,10 +204,14 @@ class Sim:
             feels[rid] = feel
         for k in range(DAYS):
             d = START + timedelta(days=k)
+            if until and d >= until:
+                break
             for mins in range(5 * 60, 24 * 60, 15):
                 events.append((hm(d, f"{mins // 60:02d}:{mins % 60:02d}", SG).astimezone(UTC), "tick", None))
         events.sort(key=lambda e: (e[0], e[1] == "tick"))
         for at, kind, r in events:
+            if until and to_local(at, SG).date() >= until:
+                break
             if kind == "run":
                 self.svc.ingest_run(self.uid, r, at)
             self.svc.tick(at)
@@ -208,6 +219,9 @@ class Sim:
         return self
 
 
-def simulate(name: str) -> Sim:
+def simulate(name: str, until: date | None = None, tweak=None) -> Sim:
+    """One persona through the real Service. `tweak(persona)` edits it first (a different tap on one run, say)."""
     persona = {"trail": persona_trail, "fresh": persona_fresh, "lapsed": persona_lapsed}[name](random.Random(11))
-    return Sim(persona, Path(tempfile.mkdtemp(prefix=f"persona-{name}-"))).go()
+    if tweak:
+        tweak(persona)
+    return Sim(persona, Path(tempfile.mkdtemp(prefix=f"persona-{name}-"))).go(until)

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Mapping, Sequence
 
 from .convo.questions import ENUMS as _EXTENDED_ENUMS
@@ -45,24 +45,23 @@ def hard_zone_share(run: Mapping[str, Any]) -> float | None:
 
 
 def is_hard_run(run: Mapping[str, Any]) -> bool:
-    """Whether a run was hard, judged from the zones and the feel tap, not the coach type alone.
+    """Whether a run was hard: the one definition the run card, the Next line, the evening suggestion and the default
+    coach week all use.
 
-    An interval session or a race/test effort is hard. Any run with 40%+ of its time in Z4 and Z5 is hard. A tempo
-    run (the coach's type for mostly Z3-Z4 time) is hard when the runner tapped Hard, and not when they tapped Easy
-    or Right (under 40% in Z4/Z5). With no tap it stays hard unless Z4+Z5 is under 15%: a real threshold run counts,
-    a mostly-Z3 one does not. With no zones and no tap, a tempo falls back to its type."""
+    An interval session or a race/test effort is hard. Otherwise the runner's own feel tap decides first: Easy or Right
+    is never hard, whatever the zones say, and Hard on a tempo run is hard. With no tap, any run with 40%+ of its time in
+    Z4 and Z5 is hard, and a tempo (the coach's type for mostly Z3-Z4 time) is hard unless Z4+Z5 is under 15%: a real
+    threshold run counts, a mostly-Z3 one does not. With no zones and no tap, a tempo falls back to its type."""
     typ, feel = run.get("type"), run.get("feel")
     if typ in ("interval", "race"):
         return True
+    if feel in ("easy", "right"):
+        return False
     share = hard_zone_share(run)
     if share is not None and share >= FLOOD_SHARE:
         return True
     if typ == "tempo":
-        if feel == "hard":
-            return True
-        if feel in ("easy", "right"):
-            return False
-        return share is None or share >= TEMPO_LIGHT_SHARE
+        return feel == "hard" or share is None or share >= TEMPO_LIGHT_SHARE
     return False
 
 
@@ -351,28 +350,44 @@ def suggest_after_run(run: Mapping[str, Any], history: Sequence[Mapping[str, Any
     return None
 
 
-def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, soften: bool = False) -> str:
+def _tomorrow_word(local_day: date, usual: frozenset[int] | None) -> str:
+    """"tomorrow", or "on Monday" when tomorrow is not one of the runner's usual days (the next usual day instead)."""
+    d = local_day + timedelta(days=1)
+    if usual is None or d.weekday() in usual:
+        return "tomorrow"
+    for _ in range(7):
+        d += timedelta(days=1)
+        if d.weekday() in usual:
+            return f"on {d.strftime('%A')}"
+    return "tomorrow"
+
+
+def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, soften: bool = False,
+              usual: frozenset[int] | None = None) -> str:
     """The fixed closing line of a post-run card: what to do next and when. Deterministic, never written by the model.
     The app's plan wins when it names the next session, unless it puts a push tomorrow after a hard run, high load, a
     hard feel or a flagged note (the evening suggestion turns that push easy too). Otherwise those, a long run, a run
     back after a break or a runner's first fortnight mean easy next, and a long gap since the last hard session means
-    one is due tomorrow (the same gap the evening suggestion uses)."""
-    from .convo.suggest import GAP_DAYS, NEW_RUNNER_DAYS, session_parts
+    one is due tomorrow (the same gap the evening suggestion uses). `usual` is the runner's usual weekdays: with it, a
+    fallback line never says "tomorrow" for a day they do not run, and a comeback run is never followed by more than
+    the comeback run itself."""
+    from .convo.suggest import GAP_DAYS, NEW_RUNNER_DAYS, session_parts, whole_km
     from .convo.touches import BREAK_DAYS
     when = _when(run)
     parts = session_parts("easy_load", history, when)
     easy = f"easy {parts[1]} km" if parts else "an easy run"
     ease = soften or run.get("feel") == "hard" or run.get("load_state") in LOAD_ALERT or is_hard_run(run)
     nxt, day = run.get("plan_next_type"), run.get("plan_next_day")
+    local = to_local(when, run.get("zone_id") or "UTC")
+    tmrw = _tomorrow_word(local.date(), usual)
     if nxt in ("easy", "long", "quality") and day:
         word = {"easy": "easy", "long": "long run", "quality": "quality session"}[nxt]
         if nxt != "easy" and run.get("plan_next_session_name"):
             word = run["plan_next_session_name"]   # the session's own name where the plan has one
         km = (f" {int(run['plan_next_m']) // 1000} km" if run["plan_next_m"] % 1000 == 0 else f" {fmt_km(run['plan_next_m'])} km") if run.get("plan_next_m") else ""
         lo, hi = run.get("plan_next_pace_lo"), run.get("plan_next_pace_hi")
-        if nxt == "quality" and lo and hi:   # every card shows the work pace where there is one
-            km += f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km"
-        local = to_local(when, run.get("zone_id") or "UTC")
+        if nxt == "quality" and lo and hi:   # every card shows the work pace where there is one, and says it is True Pace
+            km += f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km true pace"
         try:
             gap = (datetime.fromisoformat(day).date() - local.date()).days
         except ValueError:
@@ -386,18 +401,21 @@ def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, s
                 return f"Next: {word}{km} on {datetime.fromisoformat(day).strftime('%A')}"
             return f"Next: {word}{km} as planned"
     if ease or run.get("type") == "long":
-        return f"Next: {easy} tomorrow"
+        return f"Next: {easy} {tmrw}"
     if history and (when - _when(history[0])).days >= BREAK_DAYS:
-        return f"Next: {easy} tomorrow"   # back after a break: build back before any push
+        # back after a break: build back before any push, and never further than the run just done
+        if parts and run.get("distance_m"):
+            easy = f"easy {min(int(parts[1]), whole_km(run['distance_m']))} km"
+        return f"Next: {easy} {tmrw}"
     if history and len(history) < 60 and when - _when(history[-1]) < timedelta(days=NEW_RUNNER_DAYS):
-        return f"Next: {easy} tomorrow"   # first fortnight: no push yet, as the evening suggestion
+        return f"Next: {easy} {tmrw}"   # first fortnight: no push yet, as the evening suggestion
     gap = days_since_hard(history, when)
     if gap is not None and gap >= GAP_DAYS:
         q = session_parts("gap", history, when)
         if q:
-            return f"Next: {q[0]} {q[1]} km tomorrow"
-        return "Next: one harder session tomorrow"
-    return f"Next: {easy} tomorrow"
+            return f"Next: {q[0]} {q[1]} km {tmrw}"
+        return f"Next: one harder session {tmrw}"
+    return f"Next: {easy} {tmrw}"
 
 
 def suggest_evening(history: Sequence[Mapping[str, Any]], now: datetime) -> Suggestion | None:

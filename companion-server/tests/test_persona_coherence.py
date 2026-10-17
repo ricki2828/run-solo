@@ -79,7 +79,7 @@ def test_a_question_that_was_answered_is_not_asked_again(sim):
         pytest.skip("this persona taps nothing")
     asked = defaultdict(list)
     for x in sim.log:
-        if x.kind in ("question", "ci_shape", "trust", "ellis"):
+        if x.kind in ("question", "ci_shape", "ellis"):   # the weekly trust survey is a new week each time, by design
             asked[(x.kind, x.body)].append(f"{x.local:%d %b}")
     assert {k: v for k, v in asked.items() if len(v) > 1} == {}
 
@@ -97,3 +97,36 @@ def test_fresh_and_lapsed_runners_see_a_next_line_only_when_home_has_a_session(s
     for x in sim.log:
         if x.kind == "run" and "Next:" in x.body:
             assert x.home is not None, f"{x.local:%d %b}: Next line with nothing on Home: {x.body!r}"
+
+
+def test_the_shape_answer_is_the_runners_runs_per_week_and_the_monthly_poster_skips_the_recap_day(sim):
+    if sim.persona["name"] != "trail":
+        pytest.skip("the trail runner answers everything")
+    from companion import db
+    with db.ro(sim.svc.s.db_path) as c:
+        mem = sim.svc._memory_get(c, sim.uid, sim.log[-1].at)
+    assert mem.get("runs_per_week") == "3"
+    monthly = [x for x in sim.log if x.kind == "monthly"]
+    assert len(monthly) == 1 and monthly[0].local.weekday() != 6, "1 Nov is a Sunday: October's poster waits for Monday"
+
+
+def test_a_hard_tap_that_turns_the_promised_tempo_easy_says_so_once():
+    """Monday's card promises 'Tempo on Wednesday'; a Hard tap on Monday's run makes Wednesday easy. The tap's own toast
+    says so, once, rather than the plan changing silently (17-Oct sim #5)."""
+    from datetime import date
+
+    def feel(p, f):
+        r = list(p["plan"][0])
+        r[-1] = f
+        p["plan"][0] = tuple(r)
+
+    hard = simulate("trail", until=date(2026, 10, 20), tweak=lambda p: feel(p, "hard"))
+    right = simulate("trail", until=date(2026, 10, 20), tweak=lambda p: feel(p, "right"))
+    try:
+        said = [t for t in hard.toasts if "easy instead" in t]
+        assert said == ["Thanks. Wednesday's tempo is easy instead."]
+        assert not [t for t in right.toasts if "easy instead" in t]
+        assert any("Tempo" in x.body and "on Wednesday" in x.body for x in hard.log if x.kind == "run")
+    finally:
+        shutil.rmtree(hard.wd, ignore_errors=True)
+        shutil.rmtree(right.wd, ignore_errors=True)

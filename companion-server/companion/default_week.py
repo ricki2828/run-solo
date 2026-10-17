@@ -8,7 +8,8 @@ only asks here when `planned_from_run` found nothing). Nothing is stored: it is 
 The rules, all explainable:
 - Runs a week: the runner's `runs_per_week` answer, else what the last 4 weeks show (clamped to 2-4), else 3.
 - Days: spread evenly across the runner's usual days (weekdays or weekends); with no stated days, the weekdays they
-  actually run on, most often first.
+  keep running on (at least twice, and 60% as often as their busiest), most often first. A count that rounds up never
+  reaches into a day they do not run.
 - Shape: the last run of the week is the longer one (3+ runs), the middle one is the quality session, the rest are easy.
 - Distance: easy is the median of the recent runs, in whole km. Longer is about 1.4x that, never beyond the longest
   recent run plus 20 percent. Quality is the easy distance.
@@ -21,6 +22,7 @@ The rules, all explainable:
 """
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -40,6 +42,7 @@ HARD_GAP_H = 48
 MAX_RUNS_PER_WEEK = 4
 NEW_RUNNER_DAYS = 14    # as the evening suggestion: no push in a runner's first fortnight
 PACE_BAND_S = 5
+REGULAR_SHARE = 0.6     # a weekday is a usual one when they ran on it at least this share as often as on their busiest
 TEMPO = "Tempo"
 
 
@@ -117,7 +120,11 @@ def week_template(recent: Sequence[Mapping[str, Any]], n: int, usual: frozenset[
     else:   # no stated days: the weekdays this runner actually runs on, most often first
         zone = recent[0].get("zone_id") if recent else None
         freq = Counter(to_local(parse_iso(r["start_utc"]), r.get("zone_id") or zone).weekday() for r in recent)
-        wds = sorted(sorted(range(7), key=lambda w: (-freq[w], w))[:n])
+        # a day counts as theirs only when they keep running on it: one stray Saturday never becomes a long-run day, so
+        # a count that rounds up (3.5 runs a week is 4) stops at the days they really have
+        top = max(freq.values(), default=0)
+        regular = [w for w in range(7) if freq[w] >= max(2, math.ceil(REGULAR_SHARE * top))]
+        wds = sorted(sorted(regular or range(7), key=lambda w: (-freq[w], w))[:n])
     out: list[tuple[int, str, int]] = []
     for i, wd in enumerate(wds):
         if len(wds) >= 3 and i == len(wds) - 1:
@@ -180,7 +187,7 @@ def next_planned(history: Sequence[Mapping[str, Any]], *, memory: Mapping[str, s
 
 
 def shape_line(sessions: Sequence[DaySession], monday: date) -> str | None:
-    """"Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km." from the sessions that fall in the
+    """"Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km true pace, Fri long 6 km." from the sessions that fall in the
     week starting `monday`, or None when there are none."""
     mine = [x for x in sessions if monday <= x.day < monday + timedelta(days=7)]
     if not mine:
@@ -189,10 +196,11 @@ def shape_line(sessions: Sequence[DaySession], monday: date) -> str | None:
 
 
 def pace_range(lo: float | None, hi: float | None) -> str:
-    """" at 5:25-5:35/km", or nothing without a pace."""
+    """" at 5:25-5:35/km true pace", or nothing without a pace. A session's target pace is True Pace, so every message
+    that states one says so: it never reads as the average pace a run card or the recap quotes."""
     if lo is None or hi is None:
         return ""
-    return f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km"
+    return f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km true pace"
 
 
 def session_text(x: DaySession) -> str:

@@ -37,7 +37,7 @@ from . import trail as cv_trail
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from . import default_week as cv_default_week
-from .checkins import planned_from_run as ci_planned_from_run
+from .checkins import at_local as cv_ci_at_local, planned_from_run as ci_planned_from_run, usual_weekdays as ci_usual_weekdays
 from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
@@ -791,7 +791,12 @@ class Service(CheckinMixin, MeasureMixin):
         after: str | None = None  # a chat message to send once the transaction is closed
         with (db.origin() if replay_card else contextlib.nullcontext()), db.tx(self.s.db_path) as c:  # a replayed card's answers are the replay's rows
             if kind == "feel" and card["run_id"] and rest in ("easy", "right", "hard"):
+                before = self._coach_next(c, user, now) if rest == "hard" and not replay_card else None
                 c.execute("UPDATE runs SET feel=? WHERE user_id=? AND run_id=?", (rest, user["id"], card["run_id"]))
+                if before is not None:
+                    said = self._downgrade_line(c, user, before, now)
+                    if said:   # a Hard tap turned the promised quality session easy: say so once, here, not silently later
+                        msg = f"Thanks. {said}"
                 # the feel row goes after a tap; "Add a note" stays so a note can still follow
                 keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] == NOTE_ACTION]
             elif kind == "note":
@@ -861,6 +866,26 @@ class Service(CheckinMixin, MeasureMixin):
             ch.ack_callback(inb, msg)
         if kind == "feel" and not replay_card and card["run_id"] and rest in ("easy", "right", "hard"):
             self._late_edit(ch, user, card["run_id"], real_now)
+
+    def _coach_next(self, c, user: dict, now: datetime) -> tuple[Any, Any] | None:
+        """(planned, resolved) for the coach's next session as it stands, or None when there is none."""
+        _a, planned, _u, _t, res = self._ci_state(c, user, now, answers=self._ci_consented(c, user["id"]))
+        return None if planned is None or res is None else (planned, res)
+
+    def _downgrade_line(self, c, user: dict, before: tuple[Any, Any], now: datetime) -> str | None:
+        """"Wednesday's tempo is easy instead.", once, when the runner's Hard tap has just turned the coach's next quality
+        session into an easy one. None when nothing changed or it was said already."""
+        planned, res = before
+        after = self._coach_next(c, user, now)
+        if res.type != "quality" or after is None or after[1].day != res.day or after[1].type != "easy":
+            return None
+        key = f"{res.day.isoformat()}:{res.type}"
+        if c.execute("INSERT INTO convo_log (user_id, kind, key, ts) SELECT ?,?,?,? WHERE NOT EXISTS "
+                     "(SELECT 1 FROM convo_log WHERE user_id=? AND kind='downgrade' AND key=?)",
+                     (user["id"], "downgrade", key, iso(now), user["id"], key)).rowcount != 1:
+            return None
+        word = "tempo" if planned.session_name in (None, "Tempo") else planned.session_name
+        return f"{res.day.strftime('%A')}'s {word} is easy instead."
 
     def _tap_time(self, card_id: str, now: datetime) -> tuple[datetime, bool]:
         """(when a tap happened on the card's own clock, whether the card is a replayed one). A replayed card lives at
@@ -1377,8 +1402,13 @@ class Service(CheckinMixin, MeasureMixin):
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None, user_id=uid)
         body = w.body
-        nline = next_line(self._with_default_plan(uid, run, now), full, soften=soft)   # fixed text: what next and when, never the model's
-        body += f"\n{nline}"
+        # Fixed text: what next and when, never the model's. It names the coach's session and nothing else, so a runner with
+        # no coach week (too few runs, a first run, a comeback) has none: Home has nothing to show either.
+        planned_run = self._with_default_plan(uid, run, now)
+        nline = next_line(planned_run, full, soften=soft, usual=ci_usual_weekdays(mem.get("usual_days"))) \
+            if self._coach_names_next(planned_run) else None
+        if nline:
+            body += f"\n{nline}"
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
         with db.ro(self.s.db_path) as c:
@@ -1387,7 +1417,7 @@ class Service(CheckinMixin, MeasureMixin):
             body += f"\n\n{cv_quest.done_line(done)}"
         buttons = self._buttons(run["feel"], None, None, note=True)
         card_id = secrets.token_hex(16)
-        allowed = " ".join([f.text for f in res.facts] + [nline, v.allowed, suggestion.text if suggestion else "",
+        allowed = " ".join([f.text for f in res.facts] + [nline or "", v.allowed, suggestion.text if suggestion else "",
                                                           sline.allowed if sline else ""])
         used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
         if sline and w.source == "template":
@@ -1528,8 +1558,15 @@ class Service(CheckinMixin, MeasureMixin):
             tomorrow_d = to_local(now, zone_id).date() + timedelta(days=1)
             lighter = self._ci_lighter(c, uid, now, tomorrow_d)
             hold = self._ci_evening_held(c, uid, tomorrow_d, now)
+            coach_plan = coach = None
+            if self._ci_consented(c, uid):   # the coach week speaks for runners in the check-ins; the rest keep the rules below
+                _a, coach_plan, _u, _t, coach = self._ci_state(c, {"id": uid, "zone_id": zone_id}, now)
         if hold:   # ill or away: no suggestion at all; or a readiness question is due in this window and wins the day's cap
             return None
+        if hist and coach_plan is not None and coach is not None and coach.day == tomorrow_d:
+            hist = [self._plan_fields(hist[0], coach_plan, coach), *hist[1:]]   # the coach week names tomorrow's session
+        elif coach_plan is not None and coach_plan.derived:
+            return None   # the coach week has no session tomorrow: a rest day for this runner, nothing to suggest
         fc = None
         if hist:
             tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
@@ -1609,23 +1646,35 @@ class Service(CheckinMixin, MeasureMixin):
         return card_id
 
     def _with_default_plan(self, uid: str, run: dict, now: datetime) -> dict:
-        """The run row with the coach's default week in its plan_next_* fields when the app sent no plan, resolved with the
-        runner's check-in answers: the card's Next line then reads the same session as the evening card, the morning card
-        and Home. A real plan on the run is left alone."""
-        if ci_planned_from_run(run) is not None and run["plan_next_day"] >= to_local(now, run.get("zone_id") or "UTC").date().isoformat():
-            return run
+        """The run row with the coach's next session in its plan_next_* fields: the default week when the app sent no
+        plan, and the runner's check-in answers (a moved or easier session) over either. The card's Next line then reads
+        the same session as the evening card, the morning card and Home. A real plan nothing has moved is left alone."""
         with db.ro(self.s.db_path) as c:
             u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-            if u is None or not self._ci_consented(c, uid):
+            if u is None:
                 return run
-            _ans, planned, _usual, _today, res = self._ci_state(c, dict(u), now)
-        if res is None or planned is None or not planned.derived:
+            _ans, planned, _usual, _today, res = self._ci_state(c, dict(u), now, answers=self._ci_consented(c, uid))
+        if res is None or planned is None:
             return run
+        if not planned.derived and not (res.moved or res.easier):
+            return run
+        return self._plan_fields(run, planned, res)
+
+    @staticmethod
+    def _plan_fields(run: dict, planned: Any, res: Any) -> dict:
+        """The run row with the coach's resolved next session in its plan_next_* fields."""
         same = not res.easier   # a session made easy is not the named one: no name, no pace
         return dict(run, plan_next_type=res.type, plan_next_day=res.day.isoformat(),
                     plan_next_m=planned.distance_m if same else None,
                     plan_next_session_name=planned.session_name if same else None,
                     plan_next_pace_lo=planned.pace_lo_s if same else None, plan_next_pace_hi=planned.pace_hi_s if same else None)
+
+    @staticmethod
+    def _coach_names_next(run: dict) -> bool:
+        """Does the run row (after `_with_default_plan`) carry a session still to come? That is what Home shows too."""
+        if ci_planned_from_run(run) is None:
+            return False
+        return run["plan_next_day"] >= to_local(parse_iso(run["start_utc"]), run.get("zone_id") or "UTC").date().isoformat()
 
     def _recap_shape_line(self, c, uid: str, zone_id: str, now: datetime) -> str | None:
         """One line on what next week looks like, from the default coach week. Not when the runner has a 4-week plan on
@@ -1980,6 +2029,34 @@ class Service(CheckinMixin, MeasureMixin):
         return None
 
     # ---------------------------------------------------------------- outbox worker (C5)
+    DAY_CAP_KINDS = ("ci", "evening", "question", "quest_offer", "recap", "monthly", "trust", "ellis")
+    DAY_CAP_DEFER = ("quest_offer", "monthly")   # an offer or poster waits for tomorrow; the rest are dropped, like a late check-in
+    NONRUN_DAY_MAX = 2
+
+    def _nonrun_today(self, c, user: dict, now: datetime) -> int:
+        """Messages other than a run card already sent to this runner on their local day (an operator note is not one)."""
+        loc = to_local(now, user["zone_id"]).date()
+        lo, hi = cv_ci_at_local(loc, 0, user["zone_id"]), cv_ci_at_local(loc + timedelta(days=1), 0, user["zone_id"])
+        return c.execute("SELECT COUNT(*) FROM cards WHERE user_id=? AND kind NOT IN ('run','ops','ci_week') "
+                         "AND sent_at>=? AND sent_at<?", (user["id"], iso(lo), iso(hi))).fetchone()[0]
+
+    def _day_cap(self, user: dict, kind: str, now: datetime) -> tuple[str, datetime | None] | None:
+        """At most NONRUN_DAY_MAX unprompted messages a local day (run cards and answers to a tap excepted), so the 1st of
+        a month that falls on a Sunday is not a monthly poster, the recap and the shape question all at once. The monthly
+        poster also steps aside for the recap's day. -> the outbox verdict when the day is full, else None."""
+        if kind not in self.DAY_CAP_KINDS or db.origin_active():
+            return None
+        loc = to_local(now, user["zone_id"])
+        with db.ro(self.s.db_path) as c:
+            full = self._nonrun_today(c, user, now) >= self.NONRUN_DAY_MAX
+        if kind == "monthly" and loc.weekday() == cv_recap.RECAP_WEEKDAY:
+            full = True
+        if not full:
+            return None
+        if kind in self.DAY_CAP_DEFER:
+            return "defer", cv_ci_at_local(loc.date() + timedelta(days=1), cv_recap.MONTHLY_START_MIN, user["zone_id"])
+        return "skipped", None
+
     def _process(self, item: dict, now: datetime) -> tuple[str, datetime | None]:
         """-> (state, retry_at). state: done | skipped | defer."""
         with db.ro(self.s.db_path) as c:
@@ -2002,6 +2079,9 @@ class Service(CheckinMixin, MeasureMixin):
             if item["kind"] == "ci" and until >= self._ci_deadline(item["ref"]):
                 return "skipped", None   # a check-in is dropped, never sent late (C2)
             return "defer", until
+        capped = self._day_cap(user, item["kind"], now)
+        if capped is not None:
+            return capped
         if item["kind"] == "ci":
             return self._ci_process(user, item["ref"], now)
         if item["kind"] == "ops":
@@ -2187,8 +2267,8 @@ class Service(CheckinMixin, MeasureMixin):
                 (iso(now - timedelta(days=62)), *args))]
             for u in users:
                 loc = to_local(now, u["zone_id"])
-                if loc.day != cv_recap.MONTHLY_DAY:
-                    continue
+                if not cv_recap.MONTHLY_DAY <= loc.day < cv_recap.MONTHLY_DAY + cv_recap.MONTHLY_DAYS:
+                    continue   # the 1st, or the next two days when the 1st was a full one (a Sunday, the recap's day)
                 if not (cv_recap.MONTHLY_START_MIN <= loc.hour * 60 + loc.minute < cv_recap.MONTHLY_END_MIN):
                     continue
                 qs, qe = self._quiet(u)

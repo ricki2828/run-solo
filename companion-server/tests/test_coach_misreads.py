@@ -40,10 +40,20 @@ def test_mostly_z3_tempo_tapped_right_is_not_hard_and_gets_a_light_card():
     assert engine.media_for_run(r, "tempo", None).card == "light"
 
 
-def test_the_same_tempo_tapped_hard_or_with_real_z4_is_hard():
+def test_the_same_tempo_tapped_hard_or_with_real_z4_untapped_is_hard():
     assert is_hard_run(run(feel="hard"))
-    assert is_hard_run(run(feel="right", zone_min={"z2": 10.0, "z4": 12.0, "z5": 4.0}))
+    assert is_hard_run(run(feel=None, zone_min={"z2": 10.0, "z4": 12.0, "z5": 4.0}))
     assert engine.media_for_run(run(feel="hard"), "tempo", None).card == "flood"
+
+
+def test_an_easy_or_right_tap_is_never_called_hard_by_the_card_or_the_evening():
+    """One definition (18-Oct coherence): the runner's own Easy/Right outranks the zones, for the run card, the Next
+    line, the evening suggestion and the default week alike. Only an interval or a race is hard whatever they tap."""
+    z4 = {"z2": 10.0, "z4": 12.0, "z5": 4.0}
+    for feel in ("easy", "right"):
+        assert not is_hard_run(run(feel=feel, zone_min=z4))
+        assert engine.media_for_run(run(feel=feel, zone_min=z4), "tempo", None).card == "light"
+    assert is_hard_run(run(typ="interval", app="intervals", feel="right", zone_min={}))
 
 
 def test_an_untapped_tempo_is_hard_unless_zones_are_nearly_all_z3():

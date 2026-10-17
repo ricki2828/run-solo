@@ -34,7 +34,7 @@ def test_next_line_uses_the_apps_plan_when_it_names_the_next_session():
 def test_next_line_names_a_quality_session_and_its_pace():
     r = run(type="easy", start_utc=T0, plan_next_type="quality", plan_next_day="2026-10-18", plan_next_m=5000,
             plan_next_session_name="Tempo", plan_next_pace_lo=325, plan_next_pace_hi=335)
-    assert next_line(r, []) == "Next: Tempo 5 km at 5:25-5:35/km tomorrow"
+    assert next_line(r, []) == "Next: Tempo 5 km at 5:25-5:35/km true pace tomorrow"
 
 
 def test_next_line_with_no_plan_and_a_long_gap_since_hard_asks_for_quality_tomorrow():
@@ -78,11 +78,31 @@ def test_next_line_is_deterministic_and_softened_by_a_note():
     assert next_line(r, h, soften=True) == next_line(r, h, soften=True) == "Next: easy 5 km tomorrow"
 
 
-def test_every_run_card_ends_with_a_next_line(client, fakes):
+def test_a_run_card_ends_with_a_next_line_when_the_coach_has_a_session_to_name(client, fakes):
+    t = enrol(client)
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone(timezone(timedelta(minutes=780))).date()
+    send_run(client, t, plan_next={"type": "easy", "day": tomorrow.isoformat(), "week": 1, "distance_m": 6000})
+    body = q(client, "SELECT body FROM cards WHERE run_id='r1' AND kind='run'")[0]["body"]
+    assert body.rstrip().splitlines()[-1].startswith("Next: ")
+
+
+def test_a_runner_with_no_coach_week_gets_no_next_line_because_home_has_nothing_either(client, fakes):
+    """One run is no habit to build a week from: Home shows no session, so the card names none (they agree, 17-Oct sim)."""
     t = enrol(client)
     send_run(client, t)
     body = q(client, "SELECT body FROM cards WHERE run_id='r1' AND kind='run'")[0]["body"]
-    assert body.rstrip().splitlines()[-1].startswith("Next: ")
+    assert "Next:" not in body
+    assert client.svc.next_session(q(client, "SELECT id FROM users")[0]["id"])["next_session"] is None
+
+
+def test_a_comeback_run_is_followed_by_no_more_than_the_comeback_run_and_not_on_a_day_they_do_not_run():
+    sat = datetime(2026, 11, 7, 6, 30, tzinfo=timezone.utc)   # a Saturday; tomorrow is a Sunday
+    r = run(type="easy", start_utc=sat, distance_m=4000, zone_id="UTC")
+    back = [hist(0, type="easy", distance_m=7000) | {"start_utc": sat - timedelta(days=32), "zone_id": "UTC"}]
+    weekdays = frozenset(range(5))
+    assert next_line(r, back) == "Next: easy 4 km tomorrow"      # capped at the 4 km just run, not their usual 7
+    assert next_line(r, back, usual=weekdays) == "Next: easy 4 km on Monday"                  # Sunday is not one of their days
+    assert next_line(r, back, usual=frozenset({0, 1, 2, 3, 4, 5, 6})) == "Next: easy 4 km tomorrow"
 
 
 # --- fix 3: like with like, and the note keywords -------------------------------------------------

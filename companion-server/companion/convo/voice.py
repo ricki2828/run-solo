@@ -318,10 +318,10 @@ TOUCHES: dict[str, list[str]] = {
         "{month_km} km this month beats any other month I have.",
     ],
     "year_best": [
-        "Quickest of your {cnt} runs at this distance, {pace}/km.",
-        "Best pace for this distance among {cnt} logged runs: {pace}/km.",
-        "{pace}/km is your fastest of {cnt} runs at this distance.",
-        "Top of the list for this distance, {cnt} runs deep, at {pace}/km.",
+        "Quickest of your {cnt} runs at this distance, {pace}/km{basis}.",
+        "Best pace for this distance among {cnt} logged runs: {pace}/km{basis}.",
+        "{pace}/km{basis} is your fastest of {cnt} runs at this distance.",
+        "Top of the list for this distance, {cnt} runs deep, at {pace}/km{basis}.",
     ],
     "new_place": [
         "First run in {place}. New streets, same legs.",
