@@ -128,3 +128,34 @@ def test_advice_is_allowed_when_a_fact_states_it():
 def test_plain_description_still_passes():
     ok = CardText(headline="Slower on the day", body="30 s/km slower than your last similar interval session.")
     assert clean(ok, FACTS_17) is None
+
+
+# --- narrowed guards -------------------------------------------------------------------------------
+
+def test_descriptive_phrases_are_not_advice():
+    for body in ("Third run this week, 5.4 km.", "Didn't push it, 5.4 km.", "Exactly what an easy day should be, 5.4 km.",
+                 "Everything from here gets compared to it, 5.4 km.", "Got it done in 31 min."):
+        assert clean(CardText(headline="Steady one", body=body), FACTS_17) is None, body
+
+
+def test_real_advice_is_still_rejected():
+    for body in ("30 s/km slower. Work the pace back up next week.", "You should push harder, 5.4 km.",
+                 "Try to go faster, 5.4 km.", "Easy tomorrow, 5.4 km."):
+        assert clean(CardText(headline="Steady one", body=body), FACTS_17) == "unbacked_advice", body
+
+
+def test_note_flags_are_less_blunt():
+    for text in ("hill reps felt strong", "smoked it", "heated up nicely", "hills felt easier"):
+        assert not notes.flagged(text), text
+    for text in ("hills killed me", "heat was brutal", "smoke and haze", "hazy", "steep hills", "long flight",
+                 "hills were a grind", "so hot", "humid", "jet lagged", "legs dead on the climbs", "heatwave",
+                 "struggled up the hills", "hot and sticky"):
+        assert notes.flagged(text), text
+
+
+def test_every_run_card_style_exemplar_passes_the_advice_guard():
+    from companion.convo.voice import SITUATIONS
+    from companion.writer import ADVICE_RE
+    recap_only = {"missed_week"}   # weekly recap lines never go through the card writer
+    hits = [(k, b) for k, vs in SITUATIONS.items() if k not in recap_only for h, b in vs if ADVICE_RE.search(h + " " + b)]
+    assert hits == []

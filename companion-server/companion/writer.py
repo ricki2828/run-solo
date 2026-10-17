@@ -61,9 +61,9 @@ FORBIDDEN_DIRECTION = {"faster": (SLOWER_RE, LEVEL_RE), "slower": (FASTER_RE, LE
 # Forward-looking advice. The model may only say these when the facts already do (the "suggestion" fact); otherwise the
 # card falls back to the template. Matched text must appear verbatim in the facts.
 ADVICE_RE = re.compile(
-    r"\b(next (?:week|time|run|session)|this week|tomorrow|(?:work|push|build|bring|get) (?:the pace|your pace|it|back)|"
-    r"try(?:ing)? to|aim(?:ing)? (?:to|for)|you should|should|consider|make sure|focus on|remember to|don't forget|"
-    r"ease (?:back|into|off)|take it easy|rest up|going forward|from here)\b", re.I)
+    r"\b(next (?:week|time|run|session)|tomorrow|(?:work|push|build|bring) (?:the pace|your pace)|pace back up|"
+    r"try(?:ing)? to|aim(?:ing)? (?:to|for)|you should|should (?:try|aim|focus|ease|take|do|run|get|be able)|consider|"
+    r"make sure|focus on|remember to|don't forget|ease (?:back|into|off)|take it easy|rest up|going forward)\b", re.I)
 PHONE_RE = re.compile(r"\+?\d[\d\s-]{7,}\d")
 
 SYSTEM_PROMPT = """You write one short running recap card for a runner, in plain, calm, direct English.
