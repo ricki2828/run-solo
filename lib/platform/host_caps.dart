@@ -16,4 +16,7 @@ class HostCaps {
   static bool get strapPairing => !isIos;
 
   static bool get healthExport => !isIos;
+
+  /// Settings > Share diagnostics: the iOS recorder's log file (plan B4, P3).
+  static bool get diagnosticsShare => isIos;
 }
