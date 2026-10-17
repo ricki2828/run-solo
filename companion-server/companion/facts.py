@@ -29,6 +29,22 @@ TRAIL_TEMPO_Z45_SHARE = 0.5  # on a trail climbs push HR into Z3-Z4 at an easy e
 
 def hard_zone_share(run: Mapping[str, Any]) -> float | None:
     """Share of the zone time spent in Z4 and Z5, or None without zone data. Reads zone_min as the run row stores it."""
+    z = _zones(run)
+    total = sum(z.values())
+    return (z.get(4, 0) + z.get(5, 0)) / total if total else None
+
+
+def is_steady_trail(run: Mapping[str, Any]) -> bool:
+    """An easy-typed trail run with more than half its zone time in Z3 is steady, not easy: the card's label and its
+    words both say so."""
+    if run.get("app_type") != "trail" or run.get("type") != "easy":
+        return False
+    z = _zones(run)
+    total = sum(z.values())
+    return bool(total) and z.get(3, 0) / total > 0.5
+
+
+def _zones(run: Mapping[str, Any]) -> dict[int, float]:
     raw = run.get("zone_min")
     if isinstance(raw, str):
         try:
@@ -40,8 +56,7 @@ def hard_zone_share(run: Mapping[str, Any]) -> float | None:
         digits = "".join(ch for ch in str(k) if ch.isdigit())
         if digits and isinstance(v, (int, float)) and 1 <= int(digits) <= 6:
             z[int(digits)] = z.get(int(digits), 0.0) + float(v)
-    total = sum(z.values())
-    return (z.get(4, 0) + z.get(5, 0)) / total if total else None
+    return z
 
 
 def is_hard_run(run: Mapping[str, Any]) -> bool:
@@ -198,6 +213,8 @@ def run_label(run: Mapping[str, Any]) -> str:
     (easy, tempo, long): "tempo trail run". Other app types keep their own name (Cooper test)."""
     app = run.get("app_type") or ""
     if app == "trail":
+        if is_steady_trail(run):
+            return "steady trail run"
         return TRAIL_SESSION_LABEL.get(run.get("type") or "", "trail run")
     return APP_TYPE_LABEL.get(app) or TYPE_LABEL.get(run.get("type"), "run")
 
@@ -329,8 +346,13 @@ def verdict_delta(run: Mapping[str, Any], delta: int) -> int | None:
 
 
 def counts_as_hard(run: Mapping[str, Any]) -> bool:
-    """For spacing hard days: a run is hard if the card calls it hard or the runner tapped Hard, whatever its type."""
-    return is_hard_run(run) or run.get("feel") == "hard"
+    """For spacing hard days: a run is hard if the card calls it hard, the runner tapped Hard, whatever its type, or 40%+
+    of it was in Z4 and Z5 (a threshold run tapped Right is still a hard day for the legs, though the card never calls
+    it hard)."""
+    if is_hard_run(run) or run.get("feel") == "hard":
+        return True
+    share = hard_zone_share(run)
+    return share is not None and share >= FLOOD_SHARE
 
 
 def days_since_hard(history: Sequence[Mapping[str, Any]], now: datetime) -> int | None:

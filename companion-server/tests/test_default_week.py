@@ -236,3 +236,19 @@ def test_a_quickest_this_week_is_judged_on_true_pace_and_says_so_when_every_run_
     assert best_moment(wk, "Asia/Singapore") == "Quickest was 5:30/km true pace on Monday."
     wk[1].pop("true_pace_s_per_km")   # a mix of bases is never compared: the average pace, as the run cards quote it
     assert best_moment(wk, "Asia/Singapore") == "Quickest was 5:50/km on Wednesday."
+
+
+def test_the_day_cap_keeps_a_place_for_the_sunday_recap_and_never_drops_it(client, fakes):
+    """A weekend runner's Sunday: a morning check-in and a post-run question would fill the day's two before the 19:00
+    recap. The recap is never the one dropped: on its day everything else leaves it a place until it has gone."""
+    e = _env(client, fakes)
+    _seed(e)
+    sun = at(2026, 10, 18, 8, 0)
+    with db.tx(e.path) as c:
+        c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, sent_at) "
+                  "VALUES ('ci1', ?, 'ci:today', 'ci_today', 'h', 'b', '[]', 'template', ?, ?)", (e.uid, iso(sun), iso(sun)))
+    user = {"id": e.uid, "zone_id": "Europe/Rome"}
+    later = sun + timedelta(hours=3)
+    assert e.svc._day_cap(user, "question", later) == ("skipped", None)   # the second place is the recap's
+    assert e.svc._day_cap(user, "recap", later) is None
+    assert e.svc._day_cap(user, "question", at(2026, 10, 19, 11, 0)) is None   # Monday: two places again

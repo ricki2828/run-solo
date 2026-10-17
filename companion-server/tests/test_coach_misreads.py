@@ -195,14 +195,14 @@ def test_a_hard_tap_in_the_morning_stops_a_push_that_evening():
     hist = evening_hist("hard")
     assert suggest.evening(evening_hist("right"), now, None, {}, "s").suggestion.kind == "quality"   # the old gap push
     ev = suggest.evening(hist, now, None, {}, "s")
-    # the Hard tap counts as a hard day for spacing too, so there is no gap reason left to push on: no push at all
-    assert ev is None or (ev.suggestion.kind == "easy_next" and "easy" in ev.rendered.body.lower())
+    # the Hard tap counts as a hard day for spacing too, so there is no gap reason left to push on: no card at all
+    assert ev is None
 
 
 def test_a_hard_tap_and_a_flagged_note_together_stay_gentle():
     now = T0 + timedelta(hours=14)
     ev = suggest.evening(evening_hist("hard"), now, None, {}, "s", soften=True)
-    assert ev is None or ev.suggestion.kind == "easy_next"
+    assert ev is None   # nothing to push, so nothing to soften
 
 
 def test_soften_still_outranks_a_planned_session_after_a_hard_tap():
@@ -340,3 +340,12 @@ def test_a_run_tapped_hard_counts_as_hard_for_spacing_whatever_its_type():
 def test_an_easy_trail_run_that_is_mostly_z3_is_steady_not_easy():
     r = run(typ="easy", app="trail", feel=None, zone_min={"z1": 3.0, "z2": 7.0, "z3": 18.0, "z4": 1.0})
     assert engine.situation_for(r, [], None)[0] == "trail_steady"
+    assert run_label(r) == "steady trail run"   # the fact line and the words agree: never "Easy trail run ... steady"
+    assert "Steady trail run" in texts(build_facts(r, [], {}))["base"]
+
+
+def test_a_threshold_run_tapped_right_is_never_called_hard_but_still_spaces_the_next_hard_day():
+    from companion.facts import counts_as_hard
+    r = run(typ="easy", app="free", feel="right", zone_min={"z2": 10.0, "z4": 12.0, "z5": 4.0})   # 62% Z4+Z5
+    assert not is_hard_run(r) and counts_as_hard(r)
+    assert not counts_as_hard(run(typ="tempo", feel="right"))   # mostly Z3, tapped Right: an ordinary day

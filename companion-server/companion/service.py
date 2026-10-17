@@ -2049,12 +2049,19 @@ class Service(CheckinMixin, MeasureMixin):
     def _day_cap(self, user: dict, kind: str, now: datetime) -> tuple[str, datetime | None] | None:
         """At most NONRUN_DAY_MAX unprompted messages a local day (run cards and answers to a tap excepted), so the 1st of
         a month that falls on a Sunday is not a monthly poster, the recap and the shape question all at once. The monthly
-        poster also steps aside for the recap's day. -> the outbox verdict when the day is full, else None."""
-        if kind not in self.DAY_CAP_KINDS or db.origin_active():
+        poster also steps aside for the recap's day. The weekly recap is never the one dropped: on its day the other
+        messages leave it a place until it has gone. -> the outbox verdict when the day is full, else None."""
+        if kind not in self.DAY_CAP_KINDS or kind == "recap" or db.origin_active():
             return None
         loc = to_local(now, user["zone_id"])
+        limit = self.NONRUN_DAY_MAX
         with db.ro(self.s.db_path) as c:
-            full = self._nonrun_today(c, user, now) >= self.NONRUN_DAY_MAX
+            sent = self._nonrun_today(c, user, now)
+            if loc.weekday() == cv_recap.RECAP_WEEKDAY and not c.execute(
+                    "SELECT 1 FROM cards WHERE user_id=? AND kind='recap' AND sent_at>=?",
+                    (user["id"], iso(cv_ci_at_local(loc.date(), 0, user["zone_id"])))).fetchone():
+                limit -= 1   # the recap (19:00) is still to come today
+        full = sent >= limit
         if kind == "monthly" and loc.weekday() == cv_recap.RECAP_WEEKDAY:
             full = True
         if not full:
