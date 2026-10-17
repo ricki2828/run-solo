@@ -29,6 +29,7 @@ import '../widgets/pace_dial.dart';
 import '../widgets/route_to_go.dart';
 import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
+import '../widgets/quest_done_toast.dart';
 import '../widgets/trail_ghost.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
@@ -101,6 +102,35 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   /// The run this screen watched while it was live (auto-stop hand-off).
   String? _liveRunId;
+
+  /// The quest toast: shown once per quest id for 4 s. A quest already done
+  /// when this screen first sees the run (the screen was recreated mid-run)
+  /// is not toasted again.
+  String? _questToast;
+  String? _questToastedId;
+  bool _questSeen = false;
+  Timer? _questTimer;
+
+  void _questToastCheck(RecordingSnapshot s) {
+    if (s.runId == null) return;
+    final id = s.questDoneId;
+    if (!_questSeen) {
+      _questSeen = true;
+      _questToastedId = id;
+      return;
+    }
+    if (id == null || id == _questToastedId) return;
+    _questToastedId = id;
+    final active = _services?.quests.state.active;
+    final title = active != null && active.id == id ? active.title : null;
+    _questTimer?.cancel();
+    setState(
+      () => _questToast = title == null ? 'QUEST DONE' : 'QUEST DONE · $title',
+    );
+    _questTimer = Timer(QuestDoneToast.shownFor, () {
+      if (mounted) setState(() => _questToast = null);
+    });
+  }
 
   /// Auto-stop (#53 review P3): only the recorder's own finalising → idle
   /// hands off, never another route to idle.
@@ -227,6 +257,7 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   void _onSnapshot() {
     final s = _ctl!.snapshot;
+    _questToastCheck(s);
     _sampleTruePace(s);
     if (s.active &&
         (runModeOf(s.mode).showsLiveTruePace || _ctl!.coachTarget != null)) {
@@ -398,6 +429,7 @@ class _RecordingScreenState extends State<RecordingScreen>
     _ctl?.repCompletePulse.removeListener(_onRepComplete);
     _ctl?.repStartPulse.removeListener(_onRepStart);
     _invert.dispose();
+    _questTimer?.cancel();
     _pageCtl?.dispose();
     super.dispose();
   }
@@ -828,6 +860,13 @@ class _RecordingScreenState extends State<RecordingScreen>
                           _Banner(text: gpsBannerCopy(s), color: t.semWarn)
                         else if (s.notice != null)
                           _Banner(text: s.notice!, color: t.semWarn),
+                        if (_questToast case final q? when !pausedNow)
+                          QuestDoneToast(
+                            text: q,
+                            fill: t.inkPrimary,
+                            ink: t.bgBase,
+                            compact: compact,
+                          ),
                         if (s.trail?.turnCue == true && !pausedNow)
                           TrailTurnCard(
                             fill: t.inkPrimary,

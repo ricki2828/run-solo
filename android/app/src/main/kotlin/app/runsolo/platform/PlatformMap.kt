@@ -5,6 +5,7 @@ import app.runsolo.core.model.LapSource as CoreLapSource
 import app.runsolo.core.model.LiveBoard as CoreLiveBoard
 import app.runsolo.core.model.LiveBoardKind as CoreLiveBoardKind
 import app.runsolo.core.model.LiveContext as CoreLiveContext
+import app.runsolo.core.model.LiveQuest as CoreLiveQuest
 import app.runsolo.core.route.FollowRoute as CoreFollowRoute
 import app.runsolo.core.trail.TrailClimb as CoreTrailClimb
 import app.runsolo.core.trail.TrailProfile as CoreTrailProfile
@@ -152,6 +153,13 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
     engineVersion = engineVersion.toInt(),
     // One malformed trail costs the run that trail's ghost, never the boards, target and Cooper curve with it.
     trails = trails.orEmpty().mapNotNull { t -> runCatching { t.toCore() }.getOrNull() },
+    // Likewise a quest that breaks its contract costs the run its quest beat alone.
+    quest = quest?.let { q -> runCatching { q.toCore() }.getOrNull() },
+)
+
+private fun LiveQuest.toCore() = CoreLiveQuest(
+    id = id, kind = kind, title = title, line = line, remaining = remaining, trailId = trailId,
+    climbStartM = climbStartM, climbEndM = climbEndM, targetMs = targetMs,
 )
 
 private fun TrailProfile.toCore() = CoreTrailProfile(runId = runId, dateMs = dateMs, ms = ms)

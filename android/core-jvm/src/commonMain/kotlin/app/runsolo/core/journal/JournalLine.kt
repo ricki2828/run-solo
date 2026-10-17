@@ -117,6 +117,13 @@ sealed class JournalLine {
     data class TipsMuted(override val t: Long, override val w: Long) : JournalLine()
 
     /**
+     * `qd`: the quest [questId] was completed this run (in-run "quest done", quests spec §4). Written when
+     * the beat fires, so `restore()` never fires or toasts it again. An older build reads it as a bad line
+     * and skips it. Not a run event.
+     */
+    data class QuestDone(override val t: Long, override val w: Long, val questId: String) : JournalLine()
+
+    /**
      * `route`: the route being followed (Follow a route), written straight after the header (and the live
      * context) when the run follows one, so `restore()` keeps following it after a kill. No line (older build,
      * or no route) = a run that follows nothing. An older build reads it as a bad line and skips it. Not a run event.

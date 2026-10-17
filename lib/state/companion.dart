@@ -563,6 +563,7 @@ class CoachNext {
     this.generatedAt,
     this.careWeeks = const [],
     this.quest,
+    this.supportsQuests = false,
   });
   final CoachSession? session;
   final CoachLine? line;
@@ -574,6 +575,11 @@ class CoachNext {
 
   /// The quest accepted in Telegram, if any.
   final CoachQuest? quest;
+
+  /// The server knows quests: its reply carries the `quest` and `care_weeks`
+  /// keys (an older server sends neither). Only then does a run upload carry a
+  /// `quest` block, because an older server refuses any key it does not know.
+  final bool supportsQuests;
 
   bool get isEmpty => session == null && line == null;
 
@@ -591,6 +597,7 @@ class CoachNext {
             ?CoachSession._day(d),
       ],
       quest: CoachQuest.fromJson(j['quest']),
+      supportsQuests: j.containsKey('quest') || j.containsKey('care_weeks'),
     );
   }
 }
@@ -698,7 +705,13 @@ class CompanionMe {
     this.quietEndMin,
     this.channel,
     this.checkins = const [],
+    this.quests,
   });
+
+  /// How many quests the server keeps, by state (`taken`, `waiting` = offered,
+  /// `ended` = done, expired or passed on), from `quests` in `GET /v1/me`.
+  /// Null when the server does not send the list (an older server).
+  final ({int taken, int waiting, int ended})? quests;
 
   /// The check-in answers the server holds (kept 14 days), newest first.
   final List<CheckinAnswer> checkins;
@@ -753,7 +766,24 @@ class CompanionMe {
         for (final a in answers) ?CheckinAnswer.fromJson(a),
     ]..sort((a, b) => b.sortKey.compareTo(a.sortKey));
     int? mins(Object? v) => v is int && v >= 0 && v < 1440 ? v : null;
+    final qs = j['quests'];
+    ({int taken, int waiting, int ended})? quests;
+    if (qs is List) {
+      var taken = 0, waiting = 0, ended = 0;
+      for (final q in qs) {
+        switch (q is Map ? q['state'] : null) {
+          case 'accepted':
+            taken++;
+          case 'offered':
+            waiting++;
+          case 'done' || 'expired' || 'skipped':
+            ended++;
+        }
+      }
+      quests = (taken: taken, waiting: waiting, ended: ended);
+    }
     return CompanionMe(
+      quests: quests,
       goal: s(memory['goal_type']),
       raceMonth: s(memory['race_month']),
       usualDays: s(memory['usual_days']),
@@ -831,7 +861,21 @@ class CompanionMe {
       'Notes sent, last 30 days',
       messagesSent30d == 0 ? 'None' : '$messagesSent30d',
     ),
+    if (quests case final q?) ('Quests', _questsWords(q)),
   ];
+
+  /// "1 running, 3 offered, 2 ended". The numbers only: no quest, run or
+  /// trail is named here, and each is kept 90 days after it ends.
+  static String _questsWords(({int taken, int waiting, int ended}) q) {
+    final parts = [
+      if (q.taken > 0) '${q.taken} running',
+      if (q.waiting > 0) '${q.waiting} offered',
+      if (q.ended > 0) '${q.ended} ended',
+    ];
+    return parts.isEmpty
+        ? 'None'
+        : '${parts.join(', ')}. Kept 90 days after they end';
+  }
 }
 
 // --------------------------------------------------------------- controller
@@ -1005,6 +1049,12 @@ class CompanionController extends ChangeNotifier {
   /// Only the dates: the server never says why.
   List<DateTime> get careWeeks =>
       enrolled && consentCurrent ? _coachNext?.careWeeks ?? const [] : const [];
+
+  /// The server's last next-session reply says it knows quests, so a run may
+  /// carry a `quest` block. False until a reply says so (and for an older
+  /// server): the block is optional, so waiting costs only a later offer.
+  bool get questsSupported =>
+      enrolled && consentCurrent && (_coachNext?.supportsQuests ?? false);
 
   /// The quest accepted in Telegram, if the last reply said so.
   CoachQuest? get coachQuest =>
@@ -1927,6 +1977,7 @@ Map<String, Object?>? companionSummary(
   List<engine.PrivacyZone> privacyZones = const [],
   Map<String, Object?> plan = const {},
   Map<String, Object?>? trail,
+  Map<String, Object?>? quest,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -1967,6 +2018,8 @@ Map<String, Object?>? companionSummary(
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
     'trail': ?trail,
+    // Built by questWire, only for a server that knows quests.
+    'quest': ?quest,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
     // degree (about 11 km) here on the phone, so the server never gets more.
     if (withArea && s.startPoint != null) ...{
@@ -2034,6 +2087,12 @@ class CompanionTarget extends ExportTarget {
   Future<Map<String, Object?>?> Function(RunDetail run, {required bool names})?
   trailFacts;
 
+  /// The quest block for a run (`questWire`), wired by AppServices; null sends
+  /// none. Gets whether trail names may go out. Only called for a server that
+  /// has said it knows quests.
+  Future<Map<String, Object?>?> Function(RunDetail run, {required bool names})?
+  questFacts;
+
   /// When the server last answered 422 (older than this app). For
   /// [outdatedWait] no run is sent and no automatic try is spent; a new app
   /// start clears it, so it is also retried on the next open.
@@ -2077,6 +2136,21 @@ class CompanionTarget extends ExportTarget {
     }
   }
 
+  /// A quest read that fails or takes over 3 s sends the run without a quest
+  /// block. Never sent to a server that has not said it knows quests: it
+  /// refuses the whole run for a key it does not know.
+  Future<Map<String, Object?>?> _quest(RunDetail run) async {
+    if (!controller.questsSupported) return null;
+    try {
+      return await questFacts
+          ?.call(run, names: controller.placeNamesOn)
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      companionLog('quest read failed (${e.runtimeType})');
+      return null;
+    }
+  }
+
   @override
   Future<SendResult> send(SendRequest req) async {
     final d = req.detail;
@@ -2108,6 +2182,7 @@ class CompanionTarget extends ExportTarget {
         privacyZones: hide ?? const [],
         plan: await _plan(d),
         trail: await _trail(d),
+        quest: await _quest(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

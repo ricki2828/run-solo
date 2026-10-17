@@ -182,6 +182,14 @@ object VoiceCopyFixture {
         add("nudge.fast-start", ReplayScenarios.T4.FAST_START_5K)
         add("nudge.rep-fade", ReplayScenarios.T4.REP_FADE)
         add("nudge.hr-drift", ReplayScenarios.T4.HR_DRIFT)
+
+        // Quest completions: the app builds these (QuestDef.liveLine) and packs them in LiveQuest.line, so Kotlin only
+        // says them. Kept here so the budget and copy rules hold for them too.
+        add("quest.climb-month", "1100 metres climbed this month. Quest done.")
+        add("quest.distance-month", "120 kilometres run this month. Quest done.")
+        add("quest.trail-visits", "Saddle number five. Quest done.")
+        add("quest.trail-visits-long-name", "Mount Wellington Summit number eight. Quest done.")
+        add("quest.climb-best", "Best ever up the climb. Quest done.")
         return out
     }
 

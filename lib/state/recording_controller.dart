@@ -104,6 +104,7 @@ class RecordingSnapshot {
     this.retrace = LiveRetrace.none,
     this.route,
     this.trail,
+    this.questDoneId,
   });
 
   final RecorderState state;
@@ -215,6 +216,10 @@ class RecordingSnapshot {
   /// computes it, so the screen and the voice agree. Null until matched, and
   /// for a run on no known trail.
   final TrailProgress? trail;
+
+  /// The quest this run completed live (native fired its beat and journaled
+  /// it): the screen shows its toast once per id. Never cleared within a run.
+  final String? questDoneId;
 
   /// The run follows a route.
   bool get followsRoute => route != null;
@@ -355,6 +360,7 @@ class RecordingSnapshot {
     bool clearRoute = false,
     TrailProgress? trail,
     bool clearTrail = false,
+    String? questDoneId,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -398,6 +404,7 @@ class RecordingSnapshot {
     retrace: retrace ?? this.retrace,
     route: clearRoute ? null : (route ?? this.route),
     trail: clearTrail ? null : (trail ?? this.trail),
+    questDoneId: questDoneId ?? this.questDoneId,
   );
 }
 
@@ -607,6 +614,7 @@ class RecordingController extends ChangeNotifier {
       clearRoute: s.route == null,
       trail: s.trail,
       clearTrail: s.trail == null,
+      questDoneId: s.questDoneId,
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
@@ -898,6 +906,7 @@ class RecordingController extends ChangeNotifier {
       clearRoute: t.route == null,
       trail: t.trail,
       clearTrail: t.trail == null,
+      questDoneId: t.questDoneId,
     );
   }
 

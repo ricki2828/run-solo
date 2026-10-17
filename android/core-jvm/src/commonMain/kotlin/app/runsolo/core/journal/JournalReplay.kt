@@ -66,6 +66,8 @@ data class Replay(
     val tipsMuted: Boolean = false,
     /** The `route` line's route (Follow a route); null = the run follows nothing. */
     val route: FollowRoute? = null,
+    /** A `qd` line: the quest completed in this run before a kill; restore never fires its beat again. */
+    val questDoneId: String? = null,
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it.isPauseEdge }.let { it is RunEvent.Pause || it is RunEvent.AutoPause }
@@ -103,6 +105,7 @@ object JournalReplay {
         var liveContext: LiveContext? = null
         val cuesFired = ArrayList<JournalLine.CueFired>()
         var tipsMuted = false
+        var questDoneId: String? = null
         var route: FollowRoute? = null
         var clockJumps = 0
         var outOfOrder = 0
@@ -137,6 +140,7 @@ object JournalReplay {
             if (line is JournalLine.LiveContextLine) { if (liveContext == null) liveContext = line.context; continue }
             if (line is JournalLine.CueFired) { cuesFired.add(line); continue }
             if (line is JournalLine.TipsMuted) { tipsMuted = true; continue }
+            if (line is JournalLine.QuestDone) { if (questDoneId == null) questDoneId = line.questId; continue }
             if (line is JournalLine.RouteLine) { if (route == null) route = line.route; continue }
             val runT: Long
             if (line is JournalLine.Gap) {
@@ -169,7 +173,7 @@ object JournalReplay {
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
                         is JournalLine.LiveContextLine, is JournalLine.CueFired,
-                        is JournalLine.TipsMuted, is JournalLine.RouteLine -> throw IllegalStateException()
+                        is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine -> throw IllegalStateException()
                     },
                 )
             }
@@ -196,6 +200,7 @@ object JournalReplay {
             cuesFired = cuesFired,
             tipsMuted = tipsMuted,
             route = route,
+            questDoneId = questDoneId,
         )
     }
 }

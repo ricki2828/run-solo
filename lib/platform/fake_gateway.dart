@@ -159,6 +159,9 @@ class FakeRecorderGateway implements RecorderGateway {
 
   /// Scripted known-trail figures (the in-run ghost). Null = no trail matched.
   TrailProgress? trailProgress;
+
+  /// The quest the fake run "completed live": status and ticks carry it.
+  String? questDoneId;
   double _routeLengthM = 0;
   double? _routeClimbM;
   bool _following = false;
@@ -580,6 +583,7 @@ class FakeRecorderGateway implements RecorderGateway {
     heightVsStartM: heightVsStartM,
     route: _state == RecorderState.idle ? null : _route,
     trail: _state == RecorderState.idle ? null : trailProgress,
+    questDoneId: _state == RecorderState.idle ? null : questDoneId,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -1021,6 +1025,7 @@ class FakeRecorderGateway implements RecorderGateway {
         heightVsStartM: heightVsStartM,
         route: _route,
         trail: trailProgress,
+        questDoneId: questDoneId,
       ),
     );
   }

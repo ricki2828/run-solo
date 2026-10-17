@@ -6,6 +6,7 @@ import app.runsolo.core.model.LiveBoard
 import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.LiveEntry
+import app.runsolo.core.model.LiveQuest
 import app.runsolo.core.model.LiveTarget
 import app.runsolo.core.model.NudgePlan
 import app.runsolo.core.model.RunMode
@@ -229,5 +230,58 @@ class LiveContextJournalTest {
         assertEquals(0, muted.badLines)
         assertTrue(muted.tipsMuted)
         assertTrue(!plain.tipsMuted)
+    }
+
+    private val quest = LiveQuest(
+        id = "q_2026-11_trail_visits_ab12", kind = LiveQuest.TRAIL_VISITS, title = "SADDLE ×5",
+        line = "Saddle number five. Quest done.", remaining = 1.0, trailId = "trail:x",
+    )
+
+    @Test
+    fun `a context without a quest has no quest key and an old journal restores unchanged`() {
+        assertTrue(!context.toJson().containsKey("quest"))
+        val r = JournalReplay.read(enc(header, JournalLine.LiveContextLine(t0, w0, context)).encodeToByteArray())
+        assertNull(r.liveContext!!.quest)
+        assertEquals(context, r.liveContext)
+    }
+
+    @Test
+    fun `a quest rides in the journaled context and round trips`() {
+        val withQuest = context.copy(quest = quest)
+        val r = JournalReplay.read(enc(header, JournalLine.LiveContextLine(t0, w0, withQuest)).encodeToByteArray())
+        assertEquals(withQuest, r.liveContext)
+        assertEquals(quest, r.liveContext!!.quest)
+        val climb = LiveQuest(
+            "q_2026-11_climb_best_ab12", LiveQuest.CLIMB_BEST, "THE 1.2 K CLIMB, SADDLE", "Best ever up the climb. Quest done.",
+            trailId = "trail:x", climbStartM = 1200.0, climbEndM = 2400.0, targetMs = 580_000L,
+        )
+        assertEquals(climb, LiveQuest.fromJson(climb.toJson()))
+    }
+
+    @Test
+    fun `a quest that breaks its contract is refused`() {
+        assertFailsWith<IllegalArgumentException> { quest.copy(kind = "trail_best") }
+        assertFailsWith<IllegalArgumentException> { quest.copy(remaining = null) }
+        assertFailsWith<IllegalArgumentException> { quest.copy(remaining = Double.NaN) }
+        assertFailsWith<IllegalArgumentException> { quest.copy(trailId = null) }
+        assertFailsWith<IllegalArgumentException> { quest.copy(line = " ") }
+        assertFailsWith<IllegalArgumentException> {
+            LiveQuest("q_x", LiveQuest.CLIMB_BEST, "t", "l", trailId = "a", climbStartM = 2.0, climbEndM = 1.0, targetMs = 1L)
+        }
+    }
+
+    @Test
+    fun `a quest done line is pinned round trips and survives replay`() {
+        val qd = JournalLine.QuestDone(5, 6, "q_x")
+        assertEquals("""{"k":"qd","t":5,"w":6,"id":"q_x"}""", JournalCodec.encode(qd))
+        assertEquals(qd, JournalCodec.decode(JournalCodec.encode(qd)))
+        val plain = JournalReplay.read(enc(header, sample(t0 + 1000), sample(t0 + 2000)).encodeToByteArray())
+        val done = JournalReplay.read(
+            enc(header, sample(t0 + 1000), JournalLine.QuestDone(t0 + 1500, w0 + 1500, "q_x"), sample(t0 + 2000)).encodeToByteArray(),
+        )
+        assertEquals(plain.events, done.events)
+        assertEquals(0, done.badLines)
+        assertEquals("q_x", done.questDoneId)
+        assertNull(plain.questDoneId)
     }
 }

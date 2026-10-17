@@ -310,6 +310,31 @@ class QuestDef {
           '${days == 1 ? 'day' : 'days'}. Your biggest month yet.',
   };
 
+  /// What the recorder says when the quest is done mid-run: short, plain, ending "Quest done."
+  /// (`trail_best` is never done live; its line is only here for completeness.)
+  String get liveLine => switch (kind) {
+    QuestKind.trailVisits =>
+      '$_spokenTrail number ${target <= 10 ? Quests.word(target).toLowerCase() : target}. '
+          'Quest done.',
+    QuestKind.trailBest => 'A new best on $_spokenTrail. Quest done.',
+    QuestKind.climbBest => 'Best ever up the climb. Quest done.',
+    QuestKind.climbMonth => '$target metres climbed this month. Quest done.',
+    QuestKind.distanceMonth => '$target kilometres run this month. Quest done.',
+  };
+
+  /// The trail name as it is said: plain words only, at most three of them.
+  String get _spokenTrail {
+    if (trailName == null || trailName!.trim().isEmpty) return 'Your trail';
+    final words = _trail
+        .replaceAll(RegExp(r"[^\p{L}\p{N}' -]", unicode: true), ' ')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(3)
+        .toList();
+    if (words.isEmpty) return 'Your trail';
+    return words.join(' ');
+  }
+
   String _climbName() {
     final len = climbLengthM;
     if (len == null) return '';

@@ -6,6 +6,7 @@ import '../app/event_names.dart';
 import '../app/services.dart';
 import '../state/boards.dart';
 import '../state/history_store.dart';
+import '../state/quests/quest_chip.dart';
 import '../theme/theme.dart';
 import 'rank_chip.dart';
 
@@ -33,6 +34,7 @@ class BoardChips extends StatefulWidget {
 
 class _BoardChipsState extends State<BoardChips> {
   Boards? _boards;
+  QuestChip? _quest;
   RunStore? _history;
   Timer? _pendingText;
 
@@ -60,11 +62,32 @@ class _BoardChipsState extends State<BoardChips> {
     final history = _history;
     if (history == null) return;
     final boards = await history.boards();
+    final quest = await _questChip(history);
     if (!mounted) return;
-    setState(() => _boards = boards);
+    setState(() {
+      _boards = boards;
+      _quest = quest;
+    });
     if (!boards.updating) {
       history.derivedChanged.removeListener(_fold);
       _pendingText?.cancel();
+    }
+  }
+
+  /// This run's quest chip; null when it did nothing for the quest. Never
+  /// throws: no chip is better than no result screen.
+  Future<QuestChip?> _questChip(RunStore history) async {
+    try {
+      if (!mounted) return null;
+      final quests = AppServices.of(context).quests;
+      final state = await quests.load();
+      return questChipFor(
+        state,
+        quests.inputsFor(await history.list()),
+        widget.runId,
+      );
+    } catch (_) {
+      return null;
     }
   }
 
@@ -88,7 +111,8 @@ class _BoardChipsState extends State<BoardChips> {
       for (final c in chips ?? const <BoardChip>[])
         if (!c.pending || _showPending) c,
     ];
-    if (shown.isEmpty) return const SizedBox.shrink();
+    final quest = _quest;
+    if (shown.isEmpty && quest == null) return const SizedBox.shrink();
     return Column(
       key: const ValueKey('board-chips'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,6 +130,16 @@ class _BoardChipsState extends State<BoardChips> {
             onTap: widget.onTapBoard == null || c.pending
                 ? null
                 : () => widget.onTapBoard!(c.boardKey),
+          ),
+        ],
+        if (quest != null) ...[
+          if (shown.isNotEmpty) const SizedBox(height: Space.x8),
+          RankChip(
+            key: ValueKey('chip-quest-${quest.done}'),
+            label: quest.label,
+            pb: quest.done,
+            celebrate: false,
+            haptics: settings.haptics,
           ),
         ],
         const SizedBox(height: Space.x4),

@@ -53,6 +53,22 @@ class CuePlayerBudgetTest {
     }
 
     @Test
+    fun `a quest done line held behind a km cue is said by dueMoment once the gap opens`() {
+        val cues = coachPlayer()
+        // The km cue and the quest completing on the same tick: the km goes first.
+        assertNotNull(cues.play(null, "5 k.", null, key = "km:5"))
+        val quest = TalkLine(CueSlot.questDone, "questDone:q_x", "Saddle number five. Quest done.", holdMs = 30_000L)
+        clock = 100
+        assertNull(cues.moment(quest))
+        // Past the usual 10 s hold, still waiting for the gap after the km cue.
+        clock = 12_000
+        assertNull(cues.dueMoment())
+        clock = 27_000
+        assertEquals("Saddle number five. Quest done.", cues.dueMoment()?.text)
+        assertNull(cues.dueMoment())
+    }
+
+    @Test
     fun `hard effort keeps the km quiet`() {
         val cues = coachPlayer()
         cues.hardEffort = true

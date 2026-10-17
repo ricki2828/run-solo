@@ -79,6 +79,7 @@ object JournalCodec {
                 m["kind"] = line.kind.name; m["key"] = line.key; m["i"] = line.index; m["at"] = line.atMs
             }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
+            is JournalLine.QuestDone -> { m["k"] = "qd"; m["t"] = line.t; m["w"] = line.w; m["id"] = line.questId }
             is JournalLine.RouteLine -> { m["k"] = "route"; m["t"] = line.t; m["w"] = line.w; m["route"] = line.route.toJson() }
         }
         return Json.write(m)
@@ -165,6 +166,7 @@ object JournalCodec {
             "lctx" -> JournalLine.LiveContextLine(t, w, LiveContext.fromJson(m.obj("ctx") ?: throw IllegalArgumentException("lctx.ctx")))
             "cf" -> JournalLine.CueFired(t, w, JournalLine.FiredKind.valueOf(m.string("kind")), m.string("key"), m.int("i"), m.long("at"))
             "tm" -> JournalLine.TipsMuted(t, w)
+            "qd" -> JournalLine.QuestDone(t, w, m.string("id"))
             "route" -> JournalLine.RouteLine(t, w, FollowRoute.fromJson(m.obj("route") ?: throw IllegalArgumentException("route.route")))
             else -> throw IllegalArgumentException("Unknown journal line kind '$k'")
         }
