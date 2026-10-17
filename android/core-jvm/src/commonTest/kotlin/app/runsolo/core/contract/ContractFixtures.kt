@@ -22,6 +22,7 @@ import app.runsolo.core.platform.cos
 import app.runsolo.core.platform.toRadians
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.replay.ReplayRun
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.replay.TraceFixture
 import app.runsolo.core.route.FollowRoute
@@ -279,32 +280,7 @@ object ContractFixtures {
      * run file against this one. An auto-stop ends the run at that tick, as the service does.
      */
     /** [fs]: a real file system in the Apple test (AppleFileSystemTest); the in-memory fake otherwise. */
-    fun replayKind(kind: String, fs: FileSystem = FakeFileSystem()): String {
-        val sc = ReplayScenarios.create(kind) ?: error("no replay scenario $kind")
-        val s = Session("replay-$kind", sc.mode, sc.spec, fs = fs)
-        val driver = ReplayScenarios.Driver(
-            s.core, s.ticker, sc.presses,
-            onSamples = { for (x in it) s.writer.append(x) },
-            onOutputs = { s.emit(it) },
-            onPause = { t -> s.writer.append(JournalLine.Pause(t, W0 + (t - T0))) },
-            onAutoPause = { t -> s.writer.append(JournalLine.AutoPause(t, W0 + (t - T0))) },
-            onAutoResume = { t -> s.writer.append(JournalLine.AutoResume(t, W0 + (t - T0))) },
-        )
-        val hr = sc.hr.iterator()
-        var next = if (hr.hasNext()) hr.next() else null
-        for (f in sc.fixes) {
-            val t = T0 + f.t
-            s.t = t
-            s.wall = W0 + f.t
-            while (next != null && next.t <= f.t) { // HR items come first, as ReplaySource orders them
-                s.ticker.onHr(HrReading(T0 + next.t, next.bpm))
-                next = if (hr.hasNext()) hr.next() else null
-            }
-            driver.step(f.copy(t = t), null)
-            if (s.autoStopped) break
-        }
-        return s.finish()
-    }
+    fun replayKind(kind: String, fs: FileSystem = FakeFileSystem()): String = ReplayRun.runFileJson(kind, fs)
 
     /** 10 min Laps run with no GPS fix at all, HR ramp 120→150, one manual lap at 5:00. */
     private fun treadmillNoFixHr(): String {

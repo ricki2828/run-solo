@@ -14,10 +14,10 @@ import app.runsolo.core.run.RunPaths
 
 /**
  * One [ReplayScenarios] run through the real pipeline (ticker -> core -> journal -> finaliser ->
- * gzip run file) on a caller-supplied [FileSystem], returning the run file as JSON. Same
- * constants and steps as the contract-fixture generator (`ContractFixtures.replayKind`), so the
- * result equals the checked-in `replay_<kind>.json`. The iOS XCTest drives this through the
- * XCFramework facade to prove the Swift wiring matches the Kotlin fixtures.
+ * gzip run file) on a caller-supplied [FileSystem], returning the run file as JSON. The contract
+ * fixture generator (`ContractFixtures.replayKind`) calls this, so the JVM fixture test pins it to
+ * the checked-in `replay_<kind>.json`. The iOS XCTest drives it through the XCFramework facade to
+ * prove the Swift wiring matches the Kotlin fixtures.
  */
 object ReplayRun {
     private const val T0 = 1_000_000L
