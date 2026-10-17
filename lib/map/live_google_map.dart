@@ -272,6 +272,10 @@ class _LiveGoogleMapState extends State<LiveGoogleMap> {
         trafficEnabled: false,
         // North-up always: no rotate, no tilt.
         rotateGesturesEnabled: false,
+        // Display-only (the page swiper owns every drag); belt and braces
+        // with the IgnorePointer in LiveMapView.
+        scrollGesturesEnabled: false,
+        zoomGesturesEnabled: false,
         tiltGesturesEnabled: false,
         padding: const EdgeInsets.only(left: 8, bottom: 8),
         polylines: {
