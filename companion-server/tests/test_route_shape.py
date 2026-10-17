@@ -423,6 +423,9 @@ def no_coordinates(obj):
     if isinstance(obj, dict):
         assert not {"lat", "lon", "latitude", "longitude", "route", "area_lat", "area_lon"} & set(obj)
         for k, v in obj.items():
+            if k == "share":   # the share image's opt-in switches: booleans only, never a place
+                assert all(type(x) is bool for x in v.values())
+                continue
             if k == "route_xy":
                 assert all(type(c) is int and 0 <= c <= 255 for p in v for c in p)
             no_coordinates(v)
@@ -431,8 +434,8 @@ def no_coordinates(obj):
             no_coordinates(v)
 
 
-@pytest.mark.parametrize("name,fields,card", [("pb", PB_RUN, "pb"), ("big session", BIG_SESSION, "flood")])
-def test_pb_and_big_session_runs_get_the_card_with_the_route_and_the_video(tmp_path, fakes, worker, name, fields, card):
+@pytest.mark.parametrize("name,fields", [("pb", PB_RUN), ("big session", BIG_SESSION)])
+def test_pb_and_big_session_runs_get_the_card_with_the_route_and_the_video(tmp_path, fakes, worker, name, fields):
     app = media_client(tmp_path, fakes, worker)
     shape = shape_payload(distance_m=fields["distance_m"], duration_s=fields["duration_s"], reps=fields["type"] == "tempo")
     with TestClient(app) as c:
@@ -440,8 +443,9 @@ def test_pb_and_big_session_runs_get_the_card_with_the_route_and_the_video(tmp_p
         assert c.post("/v1/runs", json=run_payload("r1", verdict="faster", **fields, **shape), headers=auth(t)).status_code == 202
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
     assert worker.refused == 0
-    assert worker.kinds() == [("card", card), ("video", "run")], worker.kinds()
+    assert worker.kinds() == [("card", "share"), ("video", "run")], worker.kinds()   # the picture is the share image
     card_facts, video_facts_ = worker.asked[0][2], worker.asked[1][2]
+    assert card_facts["share"]["route"] is True and not card_facts["share"].get("place")
     assert card_facts["route_xy"] == shape["route"] and len(card_facts["splits"]) == len(shape["splits"])
     assert video_facts_["route_xy"] == shape["route"] and video_facts_["title"] and "pb" not in video_facts_
     assert "reps" not in card_facts   # reps are drawn for interval runs only
@@ -460,7 +464,7 @@ def test_an_interval_run_sends_its_rep_times_to_the_card_and_the_video(tmp_path,
         c.post("/v1/runs", json=run_payload("r1", type="interval", distance_m=9600, duration_s=3170, pace_s_per_km=330.2,
                                             verdict="faster", zone_min={"z4": 12, "z5": 10}, **shape), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
-    assert worker.kinds() == [("card", "flood"), ("video", "run")]
+    assert worker.kinds() == [("card", "share"), ("video", "run")]
     assert [r["time_s"] for r in worker.asked[0][2]["reps"]] == [84.0, 83.0, 82.0, 81.0, 80.0, 79.0]
     assert worker.asked[1][2]["reps"] == worker.asked[0][2]["reps"]
 
@@ -471,8 +475,9 @@ def test_without_a_shape_the_card_is_still_made_and_there_is_no_video(tmp_path, 
         t = enrol(c)
         c.post("/v1/runs", json=run_payload("r1", verdict="faster", **PB_RUN), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
-    assert worker.kinds() == [("card", "pb")] and "sendVideo" not in fakes.tg_methods()
+    assert worker.kinds() == [("card", "share")] and "sendVideo" not in fakes.tg_methods()
     assert not {"route_xy", "splits", "reps"} & set(worker.asked[0][2])
+    assert worker.asked[0][2]["share"]["route"] is False
 
 
 def test_with_the_route_switch_off_the_card_has_splits_but_no_route_and_there_is_no_video(tmp_path, fakes, worker):
@@ -482,9 +487,10 @@ def test_with_the_route_switch_off_the_card_has_splits_but_no_route_and_there_is
         assert put(c, t, route_shape=False).status_code == 200
         c.post("/v1/runs", json=run_payload("r1", verdict="faster", **PB_RUN, **shape_payload(5000, 1301)), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
-    assert worker.kinds() == [("card", "pb")]
+    assert worker.kinds() == [("card", "share")]
     facts = worker.asked[0][2]
     assert "route_xy" not in facts and len(facts["splits"]) == 5
+    assert facts["share"]["route"] is False   # no shape stored, so the share image has no route to opt in
 
 
 def test_a_broken_worker_still_sends_the_text_card(tmp_path, fakes):
