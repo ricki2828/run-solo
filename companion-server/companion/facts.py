@@ -147,10 +147,17 @@ def is_goal_run(run: Mapping[str, Any]) -> bool:
     return bool(k) and k[1] == GOAL_PURPOSE
 
 
+def stopped_early(run: Mapping[str, Any]) -> bool:
+    """An interval session the runner started and stopped before the first rep: stored as a free run (infer_coach_type),
+    app_type intervals, a built-in session name, no reps and no work pace. Context only: never judged as the session."""
+    k = known_session(run.get("session_name"))
+    return run.get("app_type") == "intervals" and bool(k) and k[1] != GOAL_PURPOSE \
+        and not run.get("reps_done") and not run.get("work_pace_s_per_km")
+
+
 def named_run(run: Mapping[str, Any]) -> bool:
-    """A run whose session the app named (a goal, or an interval session without a work pace): the card must say which."""
-    return not is_session_run(run) and bool(known_session(run.get("session_name"))) \
-        and (is_goal_run(run) or run.get("type") == "interval")
+    """A run whose session the app named and the card must say which: a goal effort."""
+    return is_goal_run(run)
 
 
 def session_label(run: Mapping[str, Any]) -> str:
@@ -433,9 +440,6 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
             # The headline names the goal and says whether it was reached; the whole-run pace is a plain fact of the run.
             reached = {1: ", goal reached", 0: ", goal not reached"}.get(run.get("goal_reached"), "")
             head = f"{named[0]} run"
-        elif named and run.get("type") == "interval":
-            head = session_label(run)   # a named session whose reps were not detected: still name it
-            reached = ""
         else:
             head, reached = label.capitalize(), ""
         base_txt = f"{head}: {fmt_km(dist)} km in {round(dur / 60)} min"
@@ -498,6 +502,9 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
             picked.append(Fact("recovery", f"Recovery pace {fmt_pace(run['recovery_pace_s_per_km'])}/km"))
     elif len(picked) < 2 or named_run(run):
         picked = [base, *[f for f in picked if f is not base]][:3]
+    if stopped_early(run):   # plain context, no work-pace judgement and no session headline
+        picked = [base, Fact("session", f"Started {run['session_name']}, stopped before the first rep"),
+                  *[f for f in picked if f is not base]][:3]
     if run.get("feel") and len(picked) < 3:
         picked.append(Fact("feel", f"You rated it {run['feel']}"))
 
@@ -505,7 +512,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     if session_run:
         k = known_session(run.get("session_name"))
         session = {"name": k[0], "purpose": k[1]} if k else {"purpose": GENERIC_SESSION}
-    elif is_goal_run(run) or (run.get("type") == "interval" and known_session(run.get("session_name"))):
+    elif is_goal_run(run):
         k = known_session(run["session_name"])
         session = {"name": k[0], "purpose": k[1]}
     return FactsResult(tuple(picked), suggest_after_run(run, history), tone, False, "ok", session)

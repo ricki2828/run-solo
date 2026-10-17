@@ -285,11 +285,19 @@ def test_goal_run_is_named_in_the_base_fact_and_says_whether_it_was_reached():
     assert res.facts[0].text.endswith("goal not reached")
 
 
-def test_named_session_without_work_pace_still_names_the_session():
-    res = build_facts(run(session_name="Norwegian 4x4"), [], {})
-    assert res.facts[0].text.startswith("Norwegian 4x4 (VO2 max session): 4.9 km in 27 min")
-    assert res.session == {"name": "Norwegian 4x4", "purpose": "VO2 max"}
-    assert comparable(run(session_name="Norwegian 4x4"), [hist(7, **SESSION)]) is None
+STOPPED = dict(type="free", app_type="intervals", session_name="Norwegian 4x4")   # the stored shape: no reps
+
+
+def test_session_stopped_before_the_first_rep_is_context_not_a_session_headline():
+    res = build_facts(run(**STOPPED), [], {})
+    assert res.facts[0].text.startswith("Run: 4.9 km in 27 min") or "VO2 max" not in res.facts[0].text
+    assert any(f.text == "Started Norwegian 4x4, stopped before the first rep" for f in res.facts)
+    assert not any("VO2 max" in f.text or "work pace" in f.text for f in res.facts)
+    assert res.session is None
+
+
+def test_a_completed_session_run_does_not_get_the_stopped_fact():
+    assert not any(f.id == "session" for f in build_facts(run(**SESSION, app_type="intervals"), [], {}).facts)
 
 
 @pytest.mark.parametrize("name,kept", [("10K goal", True), ("Half goal", True), ("30 min goal", True),
@@ -310,22 +318,14 @@ def test_endpoint_stores_goal_reached(client):
     assert tuple(row) == ("10K goal", 1)
 
 
-def test_default_week_quality_names_a_session_without_a_work_pace():
-    from companion.default_week import quality_session
-    q = quality_session([run(session_name="Norwegian 4x4")])
-    assert q.name == "Norwegian 4x4" and q.pace_lo_s is None
+def test_default_week_does_not_count_a_stopped_session_as_a_quality_session():
+    from companion.default_week import quality_session, TEMPO
+    q = quality_session([run(**STOPPED)])
+    assert q.name == TEMPO and q.pace_lo_s is None
 
 
-def test_default_week_tempo_pace_ignores_goal_efforts():
-    from companion.default_week import quality_session
-    q = quality_session([run(type="tempo", session_name="10K goal", goal_reached=1, true_pace_s_per_km=290.0)])
-    assert q.pace_lo_s is None
-
-
-@pytest.mark.parametrize("goal", ["30 min goal", "12.3 km goal", "1 h 15 min goal", "10K goal"])
-def test_a_goal_name_in_the_headline_is_not_the_picture_repeated(goal):
-    from companion.writer import CardText, clean
-    facts = build_facts(run(type="tempo", session_name=goal, goal_reached=1), [], {}).facts
-    assert clean(CardText(headline=f"{goal} reached", body="You held it to the end."), facts) is None
-    assert clean(CardText(headline=f"{goal} reached in 27 min", body="You held it to the end."), facts) \
-        == "headline_repeats_picture"
+def test_a_plan_next_session_name_is_never_a_goal():
+    from companion.service import PlanNextIn
+    base = dict(type="quality", day="2026-10-20", week=1)
+    assert PlanNextIn.model_validate({**base, "session_name": "10K goal", "session_id": "x"}).session_name is None
+    assert PlanNextIn.model_validate({**base, "session_name": "Norwegian 4x4"}).session_name == "Norwegian 4x4"

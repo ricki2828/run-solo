@@ -42,7 +42,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, FactsResult, build_facts, next_line, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, GOAL_PURPOSE, FactsResult, build_facts, next_line, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
@@ -202,7 +202,8 @@ class PlanNextIn(BaseModel):
     def _built_in_only(cls, v):
         """Only the app's own built-in session names, exactly (facts.known_session): nothing a runner typed, nothing that
         merely looks like a name (a homoglyph, a link, a handle). Anything else drops the name."""
-        return v if v is None or known_session(v) else None
+        k = known_session(v) if v else None
+        return v if v is None or (k and k[1] != GOAL_PURPOSE) else None   # a planned session is never a goal run
 
     @model_validator(mode="after")
     def _id_needs_a_name(self):

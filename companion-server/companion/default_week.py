@@ -79,10 +79,6 @@ def quality_session(recent: Sequence[Mapping[str, Any]]) -> Quality:
         if k and r.get("type") == "interval" and r.get("work_pace_s_per_km"):
             w = r["work_pace_s_per_km"]
             return Quality(k[0], _km(r["distance_m"]) * 1000 if r.get("distance_m") else None, w - PACE_BAND_S, w + PACE_BAND_S)
-    for r in recent:   # a named session whose reps were not detected: the session, but no pace to quote
-        k = known_session(r.get("session_name"))
-        if k and r.get("type") == "interval":
-            return Quality(k[0], _km(r["distance_m"]) * 1000 if r.get("distance_m") else None, None, None)
     return Quality(TEMPO, None, None, None)
 
 
