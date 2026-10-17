@@ -67,7 +67,7 @@ final class RecorderHostTests: XCTestCase {
     XCTAssertEqual(try reopened.finalise(runId: "replay-4x4"), path) // idempotent: already committed
     let run = try reopened.readRunFile(runId: "replay-4x4")
     XCTAssertEqual(run["schema"] as? Int, 7)
-    XCTAssertFalse(try fixture("replay_4x4").isEqual(to: run)) // shorter than the full run
+    XCTAssertNotEqual(run as NSDictionary, try fixture("replay_4x4")) // shorter than the full run
   }
 
   func testDiscardJournalRemovesTheOrphan() throws {
@@ -127,12 +127,12 @@ final class RecorderHostTests: XCTestCase {
 
   func testStructuredSessionMapsToTheCore() throws {
     let spec = SessionSpec(
-      templateId: "norwegian-4x4", templateVersion: 1, name: "4x4", warmupSeconds: 600, cooldownSeconds: 300,
-      lapLockout: false, cueProfile: .standard,
+      templateId: "norwegian-4x4", templateVersion: 1, name: "Norwegian 4x4", warmupSeconds: nil, cooldownSeconds: nil,
+      lapLockout: false, cueProfile: .standard, hrBandLow: 0.85, hrBandHigh: 0.95,
       steps: [
-        SessionStep(kind: .work, target: .time, value: 240, style: .run, repIndex: 0),
-        SessionStep(kind: .recovery, target: .time, value: 180, style: .jog, repIndex: 0),
         SessionStep(kind: .work, target: .time, value: 240, style: .run, repIndex: 1),
+        SessionStep(kind: .recovery, target: .time, value: 180, style: .jog, repIndex: 1),
+        SessionStep(kind: .work, target: .time, value: 240, style: .run, repIndex: 2),
       ])
     let json = try JSONSerialization.jsonObject(with: Data(RecorderHost.specJson(spec).utf8)) as? [String: Any]
     XCTAssertEqual(json?["cueProfile"] as? String, "standard")
