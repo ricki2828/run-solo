@@ -14,9 +14,5 @@ def test_real_sunday_recap_then_shape_then_trust_on_monday(env):
     assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='trust'")[0]["n"] == 0        # trust waits for a later day
     env.svc.tick(at(2026, 10, 26, 19, 40))
     env.svc.tick(at(2026, 10, 26, 19, 41))
-    trust = env.q("SELECT body FROM cards WHERE kind='trust'")
-    assert len(trust) <= 1                                                               # lands Monday evening unless Monday had a question
-    if not trust:
-        env.svc.tick(at(2026, 10, 27, 19, 40))
-        env.svc.tick(at(2026, 10, 27, 19, 41))
-        assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='trust'")[0]["n"] == 1
+    env.svc.run_outbox(at(2026, 10, 26, 19, 42))
+    assert env.q("SELECT COUNT(*) n FROM cards WHERE kind='trust'")[0]["n"] == 1         # lands Monday evening, exactly
