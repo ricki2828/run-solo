@@ -69,6 +69,22 @@ def test_no_repeat_inside_a_month():
         seen.append((r.variant_id, now))
 
 
+@pytest.mark.parametrize("table", ["SITUATIONS", "SUGGESTIONS"])
+def test_no_variant_repeats_inside_14_days_in_any_situation(table):
+    """A runner who gets this card every other day (more often than any real one) never sees a variant twice in 14 days."""
+    for sit, variants in getattr(voice, table).items():
+        assert len(variants) >= 8, (sit, len(variants))   # 8 variants at one card per 2 days is a 16 day cycle
+        used, seen = {}, []
+        for i in range(40):
+            now = NOW + timedelta(days=2 * i)
+            slots = {k: "7" for k in voice.slots_of("".join(h + b for h, b in variants))}
+            r = voice.render(sit, slots, used, now, f"s{i}")
+            assert r is not None, sit
+            assert r.variant_id not in [v for v, t in seen if now - t < timedelta(days=14)], (sit, i)
+            used[r.variant_id] = now
+            seen.append((r.variant_id, now))
+
+
 def test_render_needs_all_slots_and_exemplars_have_no_numbers():
     assert voice.render("pb", {"km": "5.0"}, {}, NOW, "x") is None
     for sit in voice.SITUATIONS:

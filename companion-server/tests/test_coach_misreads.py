@@ -350,7 +350,7 @@ def test_an_easy_road_run_that_is_mostly_z3_is_steady_not_easy():
     assert is_steady_road(r)
     assert engine.situation_for(r, [], None)[0] == "road_steady"
     assert run_label(r) == "steady run"
-    assert len(voice.SITUATIONS["road_steady"]) == 4
+    assert len(voice.SITUATIONS["road_steady"]) >= 8
     for _, body in voice.SITUATIONS["road_steady"]:
         assert "easy effort" not in body and "Nothing to prove" not in body
     tempo_ish = run(typ="easy", app="free", feel=None, zone_min={"z2": 5.0, "z3": 18.0, "z4": 5.0})   # 18% Z4+Z5: not steady
