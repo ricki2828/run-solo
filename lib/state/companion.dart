@@ -2047,7 +2047,9 @@ Map<String, Object?>? companionSummary(
 /// free run named by its goal ("10K goal") with whether it was reached, never
 /// as an interval session. Parkrun sends none.
 Map<String, Object?> companionIntervalFacts(RunSummary s) {
-  if (s.isParkrun || s.mode != RecordMode.intervals) return const {};
+  if (s.isParkrun || !(s.isFourByFour || s.spec?.isGoal == true)) {
+    return const {};
+  }
   if (s.spec?.isGoal == true) {
     final g = s.goalResult;
     final name = g == null ? null : '${g.name} goal';
