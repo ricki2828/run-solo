@@ -110,6 +110,16 @@ def wire_core(project, runner)
   fw = File.join(File.dirname(PROJECT_PATH), CORE_XCFRAMEWORK)
   fail!("#{CORE_XCFRAMEWORK} missing: build it first (cd android/core-jvm && ./gradlew assembleRunCoreReleaseXCFramework, copy build/XCFrameworks/release/RunCore.xcframework to ios/RunCore/)") unless File.directory?(fw)
   changed = false
+  # The framework has no x86_64 simulator slice (Kotlin/Native iosX64 is not built), and Flutter
+  # builds the simulator app for x86_64 + arm64 unless told otherwise.
+  [runner, tests].each do |t|
+    t.build_configurations.each do |config|
+      key = 'EXCLUDED_ARCHS[sdk=iphonesimulator*]'
+      next if config.build_settings[key] == 'x86_64'
+      config.build_settings[key] = 'x86_64'
+      changed = true
+    end
+  end
   unless project.frameworks_group.files.any? { |f| f.path == CORE_XCFRAMEWORK }
     ref = project.frameworks_group.new_reference(CORE_XCFRAMEWORK, :project)
     ref.last_known_file_type = 'wrapper.xcframework'
