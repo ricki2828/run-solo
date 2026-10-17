@@ -53,7 +53,7 @@ def quote(note: str) -> str:
 # What a flagged note is called on the card's "Noted: ..." line. The note's own words never go on a card.
 _LABELS = (
     (r"flight|jet\s?lag|travel", "the travel"),
-    (r"heat|humid|swelter|\bhot\b", "the heat"),   # before the haze: "smoked it, so hot" is the heat
+    (r"\bheat|humid|swelter|\bhot\b", "the heat"),   # before the haze: "smoked it, so hot" is the heat
     (r"haz[ey]|smok", "the haze"),
     (r"hill|climb", "the hills"),
     (r"niggl|sore|injur", "the niggle"),

@@ -133,6 +133,7 @@ def test_flag_label_never_echoes_the_note():
 def test_flag_label_priority_and_unmatched_flag():
     assert notes.flag_label("smoked it, so hot") == "the heat"
     assert notes.flag_label("hazy and smoky") == "the haze"
+    assert notes.flag_label("hazy, cheated the last km") == "the haze"   # "cheated" is not the heat
     assert notes.flag_label("hills were a grind") == "the hills"
     assert notes.flagged("legs dead on the climbs") and notes.flag_label("legs dead on the climbs") == "the hills"
     assert notes.flagged("was hot and sticky") and notes.flag_label("was hot and sticky") == "the heat"
