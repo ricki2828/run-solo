@@ -223,6 +223,7 @@ def test_no_question_when_nothing_changes_or_without_a_plan(env):
     assert env.step(at(2026, 10, 14, 21, 0)) == 0          # after it
     with db.tx(env.path) as c:
         c.execute("UPDATE runs SET plan_next_type=NULL, plan_next_day=NULL")
+        c.execute("DELETE FROM runs WHERE run_id<>'last'")   # no plan and no habit to build a default week from
     assert env.step(at(2026, 10, 14, 20, 5)) == 0
     assert env.sends() == []
 
@@ -838,11 +839,12 @@ def test_next_session_returns_the_plan_then_the_moved_session_with_the_latest_co
     assert line["kind"] == "run" and line["headline"] and line["sent_at"]
 
 
-def test_next_session_is_empty_without_a_plan_and_the_json_holds_no_answer(env):
+def test_next_session_without_a_plan_is_the_default_week_and_the_json_holds_no_answer(env):
     with db.tx(env.path) as c:
         c.execute("UPDATE runs SET plan_next_type=NULL, plan_next_day=NULL")
     out = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))
-    assert out["next_session"] is None and out["coach_line"] is None
+    assert out["next_session"]["derived"] is True and out["next_session"]["week"] is None
+    assert out["coach_line"] is None
 
 
 def test_next_session_is_the_same_resolver_the_questions_use(env):

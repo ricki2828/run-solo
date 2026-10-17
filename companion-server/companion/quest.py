@@ -214,6 +214,20 @@ def offered_rows(c, uid: str, month: str) -> list[dict]:
                                        (uid, month))]
 
 
+TRAIL_KINDS = frozenset({"trail_visits", "trail_best"})
+
+
+def suggestable(c, uid: str, rows: list[dict]) -> list[dict]:
+    """The offers worth putting on a card. Trail quests only when the runner's newest run was a trail run (or the app did not say what it was): a runner who
+    is travelling or has gone back to the road is not offered a trail they are not on."""
+    if not any(r["kind"] in TRAIL_KINDS for r in rows):
+        return rows
+    last = c.execute("SELECT app_type FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 1", (uid,)).fetchone()
+    if last is None or last["app_type"] in (None, "trail"):   # no run, or the app did not say: do not guess
+        return rows
+    return [r for r in rows if r["kind"] not in TRAIL_KINDS]
+
+
 def month_is_decided(c, uid: str, month: str) -> bool:
     """A quest was taken, skipped, finished or lapsed this month: nothing more is offered until next month."""
     return c.execute("SELECT 1 FROM quests WHERE user_id=? AND month=? AND state<>'offered'", (uid, month)).fetchone() is not None

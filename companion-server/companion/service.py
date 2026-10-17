@@ -36,6 +36,8 @@ from . import quest as cv_quest
 from . import trail as cv_trail
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
+from . import default_week as cv_default_week
+from .checkins import planned_from_run as ci_planned_from_run
 from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
@@ -808,8 +810,18 @@ class Service(CheckinMixin, MeasureMixin):
                     msg = "That button has expired."
                 else:
                     msg = cv_measure.TRUST_THANKS if kind == "trust" else "Thanks."
+                    if kind == "trust" and rest == "not" and not replay_card and card["run_id"]:
+                        self._trust_not_followup(c, user, card["run_id"], now)
                     # nothing more to show under either survey card
                     keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] == cv_feedback.FEEDBACK_ACTION]
+            elif kind == cv_measure.WHY_OFF_ACTION:
+                if replay_card or not self._why_off_answer(c, user, dict(card), rest, now):
+                    msg = "That button has expired."
+                elif rest == "other":
+                    refusal = self._fb_start(c, user, real_now)
+                    msg, fb_prompt = (cv_measure.WHY_OFF_THANKS, cv_measure.WHY_OFF_OTHER) if refusal is None else ("Not now.", refusal)
+                else:
+                    msg = cv_measure.WHY_OFF_THANKS
             elif kind == "ans":
                 key, _, val = rest.partition(":")
                 if valid_answer(key, val):
@@ -1431,7 +1443,7 @@ class Service(CheckinMixin, MeasureMixin):
         with db.tx(self.s.db_path) as c:
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
             today = cv_quest.local_today(zone_id, now)
-            offers = cv_quest.offered_rows(c, uid, month)
+            offers = cv_quest.suggestable(c, uid, cv_quest.offered_rows(c, uid, month))
             if not offers or cv_quest.month_is_decided(c, uid, month) or cv_quest.active_row(c, uid, today):
                 return None
             if self._ci_cap_taken(c, uid, now, today.isoformat()) or not self._claim_suggestion(c, uid, now):
@@ -1459,7 +1471,8 @@ class Service(CheckinMixin, MeasureMixin):
             if row is not None and choice in ("take", "next", "skip"):
                 row = dict(row)
                 month = row["month"]
-                everything = cv_quest.offered_rows(c, uid, month)
+                everything = [r for r in cv_quest.offered_rows(c, uid, month)
+                              if r in cv_quest.suggestable(c, uid, [r]) or r["quest_id"] == row["quest_id"]]
                 if choice == "next":
                     nxt = everything[(next(i for i, r in enumerate(everything) if r["quest_id"] == row["quest_id"]) + 1) % len(everything)]
                     if nxt["quest_id"] == row["quest_id"]:
@@ -1568,16 +1581,36 @@ class Service(CheckinMixin, MeasureMixin):
         with db.tx(self.s.db_path) as c:
             buttons = [{"label": "Tell Ricki", "action": cv_feedback.FEEDBACK_ACTION, "row": 0}]
             body = rc.rendered.body
+            allowed = rc.rendered.allowed
+            shape = None if rc.empty else self._recap_shape_line(c, uid, zone_id, now)
+            if shape:   # said again only when it changed: the same line every Sunday is noise
+                last = c.execute("SELECT key FROM convo_log WHERE user_id=? AND kind='recap_shape' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+                if last is None or last["key"] != shape:
+                    body, allowed = f"{body}\n\n{shape}", f"{allowed} {shape}"   # its numbers come from the default week
+                    c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)", (uid, "recap_shape", shape, iso(now)))
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, "
                       "quote_run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                       (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, body,
                        json.dumps(buttons), "template", iso(now), quote_rid))
-            self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
+            self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, allowed,
                               [rc.rendered.variant_id], None)
             if rc.empty:
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)",
                           (uid, "recap_empty", week_ref, iso(now)))
         return card_id
+
+    def _recap_shape_line(self, c, uid: str, zone_id: str, now: datetime) -> str | None:
+        """One line on what next week looks like, from the default coach week. Not when the runner has a 4-week plan on
+        their newest run: the plan owns the shape then."""
+        if ci_planned_from_run(self._ci_latest_run(c, uid)) is not None:
+            return None
+        today = to_local(now, zone_id).date()
+        monday = today + timedelta(days=7 - today.weekday())
+        user = {"id": uid, "zone_id": zone_id}
+        hist = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 80", (uid,))]
+        memory = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM memory WHERE user_id=?", (uid,))}
+        week = cv_default_week.build_week(hist, memory=memory, zone_id=user["zone_id"], today=monday, now=now)
+        return cv_default_week.shape_line(week, monday)
 
     def _build_monthly_card(self, uid: str, month_ref: str, now: datetime) -> str | None:
         """The month poster for 'YYYY-MM' (the month just ended). Nothing is stored for the picture: it is rebuilt from the
@@ -1890,6 +1923,10 @@ class Service(CheckinMixin, MeasureMixin):
             if user["channel"] != "telegram":
                 return "skipped", None
             card_id = self._build_trust_card(user["id"], item["ref"], now)
+        elif item["kind"] == "trust_why":
+            if user["channel"] != "telegram":
+                return "skipped", None
+            card_id = self._build_trust_why_card(user["id"], item["ref"], now)
         elif item["kind"] == "ellis":
             if user["channel"] != "telegram":
                 return "skipped", None

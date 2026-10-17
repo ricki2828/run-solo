@@ -27,6 +27,8 @@ API: `POST /v1/enrol/start` (returns nonce + poll_secret), `POST /v1/enrol/statu
 
 ### `GET /v1/me/next-session` (read-only, device token, same as `POST /v1/runs`)
 
+With no 4-week plan on the newest run, the session comes from the default coach week (`default_week.py`: usual days, runs a week, recent distances, one quality and one long run) and `next_session` carries `"derived": true` and `week`/`weeks` null. A real plan always wins; the key is absent then.
+
 For the app's Home (stream S3). `Cache-Control: no-store`. A server without check-ins answers 404: treat that as "nothing".
 
 ```json

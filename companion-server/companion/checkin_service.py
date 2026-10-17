@@ -25,6 +25,7 @@ from typing import Any
 from . import checkin_copy as cc
 from . import checkins as ci
 from . import db
+from . import default_week as dw
 from . import heat
 from . import quest as cv_quest
 from .channels import ChannelError
@@ -70,6 +71,13 @@ class CheckinMixin:
         r = c.execute("SELECT * FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 1", (uid,)).fetchone()
         return dict(r) if r else None
 
+    @staticmethod
+    def _ci_default_planned(c, user: dict, today: date, now: datetime) -> ci.Planned | None:
+        uid = user["id"]
+        hist = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 80", (uid,))]
+        memory = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM memory WHERE user_id=?", (uid,))}
+        return dw.next_planned(hist, memory=memory, zone_id=user["zone_id"], today=today, now=now)
+
     def _ci_state(self, c, user: dict, now: datetime):
         """-> (answers, planned, usual weekdays, runner's local today, resolved next session)."""
         uid = user["id"]
@@ -77,6 +85,8 @@ class CheckinMixin:
         planned = ci.planned_from_run(self._ci_latest_run(c, uid))
         usual = self._ci_usual(c, uid)
         today = to_local(now, user["zone_id"]).date()
+        if planned is None:   # no 4-week plan: the default coach week, so the check-ins still have a session to work with
+            planned = self._ci_default_planned(c, user, today, now)
         return ans, planned, usual, today, ci.resolve(planned, ans, today, usual)
 
     @staticmethod
@@ -602,12 +612,21 @@ class CheckinMixin:
             typ, km = done.get(i, (r["type"], 0.0))
             done[i] = (r["type"] if r["type"] in ("long", "tempo", "interval", "race") else typ, km + r["distance_m"] / 1000)
         _a, planned, _u, today, res = self._ci_state(c, user, now)
+        coming: dict[date, Any] = {}
+        if planned and planned.derived:   # the default week: show every planned day, not only the next one
+            with db.ro(self.s.db_path) as c2:
+                hist = [dict(r) for r in c2.execute("SELECT * FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 80", (uid,))]
+                mem = {r["key"]: r["value"] for r in c2.execute("SELECT key, value FROM memory WHERE user_id=?", (uid,))}
+            coming = {s_.day: s_ for s_ in dw.build_week(hist, memory=mem, zone_id=zone_id, today=today, now=now)}
         days = []
         for i in range(7):
             d = monday + timedelta(days=i)
             entry: dict[str, Any] = {"type": "rest", "planned_km": 0, "done_km": 0}
             if res and res.day == d and planned:
                 entry.update(type=self._ci_card_type(res.type), planned_km=round((planned.distance_m or 0) / 1000, 1))
+            elif planned and planned.derived and d in coming:
+                s_ = coming[d]
+                entry.update(type=self._ci_card_type(s_.type), planned_km=round(s_.distance_m / 1000, 1))
             if i in done:
                 entry.update(type=done[i][0] if done[i][0] in ci_types() else "easy", done_km=round(done[i][1], 1))
             days.append(entry)
@@ -799,6 +818,8 @@ class CheckinMixin:
                        "original_date": res.original_day.isoformat() if res.moved else None,
                        "label": cc.session_label(res.type, planned.minutes if not res.easier else None,
                                                  planned.distance_m if not res.easier else None, name_)}
+        if session is not None and planned is not None and planned.derived:
+            session["derived"] = True   # the coach's default week, not a plan built in the app
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),
