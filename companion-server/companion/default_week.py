@@ -12,8 +12,11 @@ The rules, all explainable:
 - Shape: the last run of the week is the longer one (3+ runs), the middle one is the quality session, the rest are easy.
 - Distance: easy is the median of the recent runs, in whole km. Longer is about 1.4x that, never beyond the longest
   recent run plus 20 percent. Quality is the easy distance.
-- Quality only when the runner has run at least 4 times in 4 weeks, no hard run in the 48 h before it, and goal is not
-  'recovery'. Otherwise that day is easy.
+- Quality only when the runner has run at least 4 times in 4 weeks, is past their first fortnight, has no hard run in
+  the 48 h before it, and goal is not 'recovery'. Otherwise that day is easy.
+- The quality day is a named session with a pace from the runner's own runs: a tempo at the median True Pace of their
+  recent tempo runs (+-5 s), else the newest built-in interval session they ran with its work pace ("Norwegian 4x4"),
+  else a tempo with no pace (never a made-up number).
 - A week with its runs already done waits for next Monday. Today does not count when a run is already done today.
 """
 from __future__ import annotations
@@ -25,16 +28,19 @@ from statistics import median
 from typing import Any, Mapping, Sequence
 
 from .checkins import Planned, at_local, usual_weekdays
-from .facts import is_hard_run
+from .facts import fmt_pace, is_hard_run, known_session
 from .timeutil import parse_iso, to_local
 
 WINDOW_DAYS = 28
-MIN_RUNS = 2            # fewer runs in the window and there is no habit to build a week from
+MIN_RUNS = 3            # fewer runs in the window and there is no habit to build a week from
 MIN_RUNS_FOR_QUALITY = 4
 MIN_EASY_KM, MAX_EASY_KM, DEFAULT_EASY_KM = 3, 12, 4
 LONG_FACTOR, LONG_CAP_FACTOR = 1.4, 1.2
 HARD_GAP_H = 48
 MAX_RUNS_PER_WEEK = 4
+NEW_RUNNER_DAYS = 14    # as the evening suggestion: no push in a runner's first fortnight
+PACE_BAND_S = 5
+TEMPO = "Tempo"
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,35 @@ class DaySession:
     day: date
     type: str            # easy | long | quality
     distance_m: int
+    name: str | None = None          # the quality session's name ("Tempo", "Norwegian 4x4")
+    pace_lo_s: float | None = None   # its target pace (True Pace s/km), when the runner's runs give one
+    pace_hi_s: float | None = None
+
+
+@dataclass(frozen=True)
+class Quality:
+    name: str
+    distance_m: int | None
+    pace_lo_s: float | None
+    pace_hi_s: float | None
+
+
+def quality_session(recent: Sequence[Mapping[str, Any]]) -> Quality:
+    """The quality day's session, from the runner's own recent runs (newest first). Never a guessed pace."""
+    tempos = [r for r in recent if r.get("type") == "tempo"]
+    paces = [r.get("true_pace_s_per_km") or r.get("pace_s_per_km") for r in tempos]
+    paces = [p for p in paces if p]
+    if paces:
+        mid = median(paces)
+        dists = [r["distance_m"] for r in tempos if r.get("distance_m")]
+        km = max(MIN_EASY_KM, min(MAX_EASY_KM, _km(median(dists)))) if dists else None
+        return Quality(TEMPO, km * 1000 if km else None, mid - PACE_BAND_S, mid + PACE_BAND_S)
+    for r in recent:
+        k = known_session(r.get("session_name"))
+        if k and r.get("type") == "interval" and r.get("work_pace_s_per_km"):
+            w = r["work_pace_s_per_km"]
+            return Quality(k[0], _km(r["distance_m"]) * 1000 if r.get("distance_m") else None, w - PACE_BAND_S, w + PACE_BAND_S)
+    return Quality(TEMPO, None, None, None)
 
 
 def _local_day(r: Mapping[str, Any], zone_id: str) -> date:
@@ -101,8 +136,10 @@ def build_week(history: Sequence[Mapping[str, Any]], *, memory: Mapping[str, str
         return []
     usual = usual_weekdays(memory.get("usual_days"))
     n = runs_per_week(memory.get("runs_per_week"), recent)
-    allow_quality = len(recent) >= MIN_RUNS_FOR_QUALITY and memory.get("goal_type") != "recovery"
+    fresh = (now - parse_iso(history[-1]["start_utc"])).days < NEW_RUNNER_DAYS   # history[-1]: the oldest run we hold
+    allow_quality = len(recent) >= MIN_RUNS_FOR_QUALITY and not fresh and memory.get("goal_type") != "recovery"
     tmpl = week_template(recent, n, usual, allow_quality)
+    q = quality_session(recent) if allow_quality else None
     ran_days = {_local_day(r, zone_id) for r in history}
     hards = [parse_iso(r["start_utc"]) for r in history if is_hard_run(r)]
     monday = today - timedelta(days=today.weekday())
@@ -122,7 +159,10 @@ def build_week(history: Sequence[Mapping[str, Any]], *, memory: Mapping[str, str
                 start = at_local(d, 0, zone_id)
                 if any(abs((start - h).total_seconds()) < HARD_GAP_H * 3600 for h in hards):
                     typ = "easy"
-            out.append(DaySession(d, typ, dist))
+            if typ == "quality" and q is not None:
+                out.append(DaySession(d, typ, q.distance_m or dist, q.name, q.pace_lo_s, q.pace_hi_s))
+            else:
+                out.append(DaySession(d, typ, dist))
     return out
 
 
@@ -132,13 +172,26 @@ def next_planned(history: Sequence[Mapping[str, Any]], *, memory: Mapping[str, s
     if not week:
         return None
     s = week[0]
-    return Planned(s.type, s.day, distance_m=s.distance_m, derived=True)
+    return Planned(s.type, s.day, distance_m=s.distance_m, session_name=s.name, pace_lo_s=s.pace_lo_s,
+                   pace_hi_s=s.pace_hi_s, derived=True)
 
 
 def shape_line(sessions: Sequence[DaySession], monday: date) -> str | None:
-    """"Next week: Mon easy 5 km, Wed quality 5 km, Fri long 6 km." from the sessions that fall in the week starting
-    `monday`, or None when there are none."""
+    """"Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km." from the sessions that fall in the
+    week starting `monday`, or None when there are none."""
     mine = [x for x in sessions if monday <= x.day < monday + timedelta(days=7)]
     if not mine:
         return None
-    return "Next week: " + ", ".join(f"{x.day:%a} {x.type} {_km(x.distance_m)} km" for x in mine) + "."
+    return "Next week: " + ", ".join(f"{x.day:%a} {session_text(x)}" for x in mine) + "."
+
+
+def pace_range(lo: float | None, hi: float | None) -> str:
+    """" at 5:25-5:35/km", or nothing without a pace."""
+    if lo is None or hi is None:
+        return ""
+    return f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km"
+
+
+def session_text(x: DaySession) -> str:
+    word = "tempo" if x.name == TEMPO else (x.name or x.type)
+    return f"{word} {_km(x.distance_m)} km{pace_range(x.pace_lo_s, x.pace_hi_s)}"

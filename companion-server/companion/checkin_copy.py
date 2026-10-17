@@ -50,7 +50,7 @@ def _kb(*rows: Sequence[Button]) -> Keyboard:
 def ready(stage: str | None, c: Ctx) -> tuple[str, str, Keyboard]:
     label = c.label or "Tomorrow's run"
     if stage is None:
-        return (f"{label} tomorrow", "How's the body?",
+        return (f"{label} tomorrow{pace_clause(c.work_pace_s)}", "How's the body?",
                 _kb([("Fresh", "r.fresh"), ("Normal", "r.normal"), ("Flat", "r.flat")],
                     [("Sore somewhere", "r.sore"), ("Not tomorrow", "r.not")]))
     again = _kb([("Change", "r.chg")])

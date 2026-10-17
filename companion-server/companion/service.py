@@ -1603,7 +1603,7 @@ class Service(CheckinMixin, MeasureMixin):
         """The run row with the coach's default week in its plan_next_* fields when the app sent no plan, resolved with the
         runner's check-in answers: the card's Next line then reads the same session as the evening card, the morning card
         and Home. A real plan on the run is left alone."""
-        if run.get("plan_next_type"):
+        if ci_planned_from_run(run) is not None and run["plan_next_day"] >= to_local(now, run.get("zone_id") or "UTC").date().isoformat():
             return run
         with db.ro(self.s.db_path) as c:
             u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
@@ -1612,17 +1612,21 @@ class Service(CheckinMixin, MeasureMixin):
             _ans, planned, _usual, _today, res = self._ci_state(c, dict(u), now)
         if res is None or planned is None or not planned.derived:
             return run
+        same = not res.easier   # a session made easy is not the named one: no name, no pace
         return dict(run, plan_next_type=res.type, plan_next_day=res.day.isoformat(),
-                    plan_next_m=None if res.easier else planned.distance_m)
+                    plan_next_m=planned.distance_m if same else None,
+                    plan_next_session_name=planned.session_name if same else None,
+                    plan_next_pace_lo=planned.pace_lo_s if same else None, plan_next_pace_hi=planned.pace_hi_s if same else None)
 
     def _recap_shape_line(self, c, uid: str, zone_id: str, now: datetime) -> str | None:
         """One line on what next week looks like, from the default coach week. Not when the runner has a 4-week plan on
         their newest run: the plan owns the shape then."""
-        if ci_planned_from_run(self._ci_latest_run(c, uid)) is not None:
+        user = {"id": uid, "zone_id": zone_id}
+        _a, planned, *_ = self._ci_state(c, user, now)
+        if planned is not None and not planned.derived:   # a live plan (a stale one has fallen back to the default week)
             return None
         today = to_local(now, zone_id).date()
         monday = today + timedelta(days=7 - today.weekday())
-        user = {"id": uid, "zone_id": zone_id}
         hist = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT 80", (uid,))]
         memory = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM memory WHERE user_id=?", (uid,))}
         week = cv_default_week.build_week(hist, memory=memory, zone_id=user["zone_id"], today=monday, now=now)

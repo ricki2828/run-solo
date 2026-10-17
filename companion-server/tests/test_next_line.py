@@ -28,7 +28,13 @@ def test_next_line_after_a_hard_run_is_easy_tomorrow():
 
 def test_next_line_uses_the_apps_plan_when_it_names_the_next_session():
     r = run(type="easy", start_utc=T0, plan_next_type="long", plan_next_day="2026-10-18", plan_next_m=12000)
-    assert next_line(r, []) == "Next: long run 12.0 km tomorrow"
+    assert next_line(r, []) == "Next: long run 12 km tomorrow"
+
+
+def test_next_line_names_a_quality_session_and_its_pace():
+    r = run(type="easy", start_utc=T0, plan_next_type="quality", plan_next_day="2026-10-18", plan_next_m=5000,
+            plan_next_session_name="Tempo", plan_next_pace_lo=325, plan_next_pace_hi=335)
+    assert next_line(r, []) == "Next: Tempo 5 km at 5:25-5:35/km tomorrow"
 
 
 def test_next_line_with_no_plan_and_a_long_gap_since_hard_asks_for_quality_tomorrow():

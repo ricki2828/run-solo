@@ -85,9 +85,12 @@ class CheckinMixin:
         planned = ci.planned_from_run(self._ci_latest_run(c, uid))
         usual = self._ci_usual(c, uid)
         today = to_local(now, user["zone_id"]).date()
-        if planned is None:   # no 4-week plan: the default coach week, so the check-ins still have a session to work with
-            planned = self._ci_default_planned(c, user, today, now)
-        return ans, planned, usual, today, ci.resolve(planned, ans, today, usual)
+        res = ci.resolve(planned, ans, today, usual)
+        if res is None:   # no 4-week plan, or its last snapshot has gone by: the default coach week, so there is still a session
+            dflt = self._ci_default_planned(c, user, today, now)
+            if dflt is not None:
+                planned, res = dflt, ci.resolve(dflt, ans, today, usual)
+        return ans, planned, usual, today, res
 
     @staticmethod
     def _ci_when(c, uid: str, user: dict, for_date: date, now: datetime) -> str | None:
@@ -100,8 +103,8 @@ class CheckinMixin:
 
     @staticmethod
     def _ci_session_name(planned: ci.Planned | None, typ: str) -> str | None:
-        """The display name when the app's plan named the session and it is still that session (a session the
-        coach made easy is a different one). Never guessed from the runner's past runs: none means "kind-level name"."""
+        """The display name when the plan named the session and it is still that session (a session the coach made easy
+        is a different one). The app's plan names it, or the default week does from the runner's own runs (default_week)."""
         if planned and planned.session_name and typ == planned.type:
             return planned.session_name
         return None

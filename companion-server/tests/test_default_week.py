@@ -27,7 +27,8 @@ MEMORY = {"goal_type": "fitness", "usual_days": "weekdays"}
 
 def history(rows=RICKI):
     return [{"start_utc": iso(sgt(2026, *d)), "zone_id": "Asia/Singapore", "distance_m": m, "type": t,
-             "zone_min": {}, "feel": "hard" if t == "interval" else None} for d, m, t in reversed(rows)]
+             "zone_min": {}, "feel": "hard" if t == "interval" else None,
+             "true_pace_s_per_km": 330 if t == "tempo" else None} for d, m, t in reversed(rows)]
 
 
 def week(today=date(2026, 10, 17), now=sgt(2026, 10, 17, 9, 0), memory=MEMORY, rows=RICKI):
@@ -37,6 +38,26 @@ def week(today=date(2026, 10, 17), now=sgt(2026, 10, 17, 9, 0), memory=MEMORY, r
 def test_rickis_week_is_three_weekday_runs_easy_quality_long_sized_from_his_own_runs():
     got = [(s.day.strftime("%a %d"), s.type, s.distance_m) for s in week()[:3]]
     assert got == [("Mon 19", "easy", 5000), ("Wed 21", "quality", 5000), ("Fri 23", "long", 6000)]
+    q = week()[1]   # the quality day names the session and its pace, from his own tempo runs
+    assert (q.name, q.pace_lo_s, q.pace_hi_s) == ("Tempo", 325, 335)
+    assert dw.shape_line(week(), date(2026, 10, 19)) == "Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km."
+
+
+def test_a_built_in_interval_session_with_its_work_pace_is_named_when_there_are_no_tempos():
+    rows = [(d, m, "easy") for d, m, _t in RICKI[:-1]] + [RICKI[-1]]
+    h = history(rows)
+    h[0].update(session_name="Norwegian 4x4", work_pace_s_per_km=257)
+    w = dw.build_week(h, memory=MEMORY, zone_id="Asia/Singapore", today=date(2026, 10, 19), now=sgt(2026, 10, 19, 9, 0))
+    q = next(s for s in w if s.type == "quality")
+    assert (q.name, q.pace_lo_s, q.pace_hi_s) == ("Norwegian 4x4", 252, 262)
+
+
+def test_no_pace_is_made_up_and_a_fresh_runner_gets_no_quality_day():
+    rows = [(d, m, "easy") for d, m, _t in RICKI]
+    q = next(s for s in week(rows=rows) if s.type == "quality")
+    assert q.name == "Tempo" and q.pace_lo_s is None
+    fresh = RICKI[-5:]   # 5 runs, all inside his first fortnight
+    assert {s.type for s in week(rows=fresh)} <= {"easy", "long"}
 
 
 def test_the_long_run_never_jumps_past_the_longest_recent_run_plus_a_fifth():
@@ -59,6 +80,7 @@ def test_a_week_that_is_done_waits_for_monday_and_today_is_skipped_once_run():
 
 def test_no_habit_no_week():
     assert week(rows=RICKI[-1:]) == []
+    assert week(rows=RICKI[-2:]) == []   # two runs is not a habit yet
     assert week(rows=[]) == []
 
 
@@ -89,7 +111,7 @@ def _seed(e):
         e.run(f"r{i}", at(2026, d[0], d[1], d[2], d[3]), type=t)
     with db.tx(e.path) as c:   # Env.run fixes the distance at 7 km: set the fixture's own
         for i, (_d, m, _t) in enumerate(RICKI):
-            c.execute("UPDATE runs SET distance_m=? WHERE run_id=?", (m, f"r{i}"))
+            c.execute("UPDATE runs SET distance_m=?, true_pace_s_per_km=330 WHERE run_id=?", (m, f"r{i}"))
 
 
 def test_the_evening_card_says_tomorrow_quality_with_buttons_and_home_gets_a_session(client, fakes):
@@ -98,7 +120,7 @@ def test_the_evening_card_says_tomorrow_quality_with_buttons_and_home_gets_a_ses
     # Rome clock, same shape: the newest run is on Sat 17 Oct, so Tuesday evening asks about Wednesday's quality run
     assert e.step(at(2026, 10, 20, 20, 5)) == 1
     [msg] = e.sends()
-    assert msg["text"].startswith("Quality session, 5 km tomorrow")
+    assert msg["text"].startswith("Tempo, 5 km tomorrow · 5:30/km work pace")
     assert [b["text"] for row in msg["reply_markup"]["inline_keyboard"] for b in row][:3] == ["Fresh", "Normal", "Flat"]
     n = e.svc.next_session(e.uid, at(2026, 10, 18, 9, 0))["next_session"]
     assert n["derived"] is True and n["date"] == "2026-10-19" and n["label"] == "Easy run, 5 km"
@@ -115,13 +137,23 @@ def test_a_real_plan_on_the_newest_run_beats_the_default_week(client, fakes):
     assert n["date"] == "2026-10-22" and n["type"] == "long" and "derived" not in n and n["week"] == 2
 
 
+def test_a_stale_plan_falls_back_to_the_default_week(client, fakes):
+    e = _env(client, fakes)
+    _seed(e)
+    e.run("planned", at(2026, 10, 17, 9, 0), plan_next={"type": "long", "day": "2026-10-17", "week": 2, "distance_m": 9000})
+    n = e.svc.next_session(e.uid, at(2026, 10, 20, 9, 0))["next_session"]   # the plan's day has gone by
+    assert n["derived"] is True and n["date"] == "2026-10-21" and n["label"] == "Tempo, 5 km"
+    cid = e.svc._build_recap_card(e.uid, "2026-W42", at(2026, 10, 18, 19, 0))
+    assert "Next week:" in e.q("SELECT body FROM cards WHERE card_id=?", cid)[0]["body"]
+
+
 def test_the_recap_ends_with_one_shape_of_next_week_line(client, fakes):
     e = _env(client, fakes)
     _seed(e)
     now = at(2026, 10, 18, 19, 0)   # Sunday evening, after the week's last run
     cid = e.svc._build_recap_card(e.uid, "2026-W42", now)
     body = e.q("SELECT body FROM cards WHERE card_id=?", cid)[0]["body"]
-    assert body.endswith("Next week: Mon easy 5 km, Wed quality 5 km, Fri long 6 km.")
+    assert body.endswith("Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km.")
     assert "—" not in body
 
 
@@ -159,4 +191,4 @@ def test_the_run_card_next_line_agrees_with_the_evening_card_and_home(client, fa
         for k in ORDER:
             c.execute("INSERT OR IGNORE INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (e.uid, k, "x", "2026-10-01T00:00:00Z"))
     e.step(at(2026, 10, 20, 20, 5))
-    assert e.sends()[-1]["text"].startswith("Quality session, 5 km tomorrow")
+    assert e.sends()[-1]["text"].startswith("Tempo, 5 km tomorrow · 5:30/km work pace")
