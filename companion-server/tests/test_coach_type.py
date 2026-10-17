@@ -107,3 +107,16 @@ def test_a_trail_run_stays_a_trail_run_in_the_copy(client, fakes):
     assert "trail" in fakes.tg_texts()[-1].lower()
 
 
+
+
+def test_trail_run_is_not_a_tempo_because_climbs_lift_hr_into_z3():
+    # Ricki's 14 Oct trail run: 4.7 km in 28 min, 17 of 28 min in Z3, 2.7 in Z4 -> was "tempo", is an easy trail run.
+    z = {"z1": 0.7, "z2": 8.6, "z3": 16.3, "z4": 2.7, "z5": 0.0}
+    assert infer("trail", km=4.7, mins=28.5, zones=z) == "easy"
+    assert infer("free", km=4.7, mins=28.5, zones=z) == "tempo"  # a road/free run keeps the Z3-Z4 rule
+
+
+def test_trail_run_is_a_tempo_only_when_mostly_z4_z5():
+    z = {"z1": 0.6, "z2": 2.0, "z3": 9.1, "z4": 26.7, "z5": 0.0}
+    assert infer("trail", km=6.5, mins=38.7, zones=z) == "tempo"
+    assert infer("trail", km=6.5, mins=38.7, zones=None) == "easy"
