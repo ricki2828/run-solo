@@ -363,6 +363,7 @@ EXPORTED_TABLES = {
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
     "feedback": "feedback", "quests": "quests",
+    "ops_sends": "ops_messages",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -375,7 +376,6 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "question_cap": "one row per local day a question was sent (the daily cap)",
     "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
     "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
-    "ops_sends": "which fixed ops template went to which tester, and when (a hash, never the text)",
     "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
 }
 
@@ -879,6 +879,8 @@ class Service(CheckinMixin):
             memory = self._memory_get(c, uid, now)
             checkins = self._ci_export(c, uid, now)
             quests = cv_quest.export_rows(c, uid)
+            ops_msgs = [{"template": r["template"], "date": r["ts"][:10]} for r in c.execute(
+                "SELECT template, ts FROM ops_sends WHERE user_id=? AND result='sent' ORDER BY id", (uid,))]   # which fixed message, never its words
             optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
@@ -898,7 +900,7 @@ class Service(CheckinMixin):
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "memory": memory, "suggestion_outcomes": outcomes,
-            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests,
+            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests, "ops_messages": ops_msgs,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
@@ -1664,12 +1666,16 @@ class Service(CheckinMixin):
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT o.template, o.text_hash FROM ops_sends o WHERE o.card_id=? AND o.user_id=?",
                             (card_id, user["id"])).fetchone()
+            card = c.execute("SELECT body FROM cards WHERE card_id=?", (card_id,)).fetchone()
         if row is None:
+            return False
+        if card is None or ops_send.text_hash(card["body"]) != row["text_hash"]:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: text changed")
             return False
         if user["checkin_consent"] is None or user["checkin_consent"] < self.s.checkin_consent_required:
             self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: no consent")
             return False
-        if (row["template"], row["text_hash"]) not in ops_send.approved():
+        if (row["template"], row["text_hash"]) not in ops_send.approved_hashes():
             self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: approval withdrawn")
             return False
         with db.ro(self.s.db_path) as c:   # the weekly cap: one ops message that actually went out in the last 7 days
@@ -2043,6 +2049,8 @@ class Service(CheckinMixin):
                       "AND r.run_id=run_notes.run_id)")  # belt and braces: a note never outlives its run
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             cv_quest.purge(c, now, held)
+            if now.strftime("%Y-%m-%d") >= self.s.test_end_date:   # the tester programme's audit goes when the test ends
+                c.execute("DELETE FROM ops_sends")
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))

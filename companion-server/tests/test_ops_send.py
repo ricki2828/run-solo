@@ -17,7 +17,7 @@ NOW = datetime(2026, 10, 20, 2, 0, tzinfo=UTC)    # 10:00 in Singapore: outside 
 N1 = "Any run counts, even 20 easy minutes. Next time out is fine."
 N2 = "Quiet week. No stress."
 INVITE = "Keen for a chat? {booking_link}"
-LINK = "https://cal.example.com/ricki"
+LINK = "https://calendar.app.google/abc123"
 
 
 @pytest.fixture
@@ -44,9 +44,15 @@ def env(tmp_path, monkeypatch):
     def draft(**texts):
         (d / "templates-draft.md").write_text("\n".join(f"## {k}\n" + "\n".join("> " + ln for ln in v.split("\n")) + "\n" for k, v in texts.items()))
 
-    def approve(*ids):
+    def approve(*ids, link=LINK):
         drafts = ops_send.load_drafts()
-        (d / "templates-approved.json").write_text(json.dumps({"approved": [{"id": i, "sha256": ops_send.text_hash(drafts[i])} for i in ids]}))
+        ent = []
+        for i in ids:
+            if "{booking_link}" in drafts[i]:
+                ent.append({"id": i, "sha256": ops_send.text_hash(drafts[i].replace("{booking_link}", link)), "link": link})
+            else:
+                ent.append({"id": i, "sha256": ops_send.text_hash(drafts[i])})
+        (d / "templates-approved.json").write_text(json.dumps({"approved": ent}))
 
     def send(who, tpl, link=None, dry=False, now=NOW):
         e.out.clear()
@@ -68,7 +74,7 @@ def env(tmp_path, monkeypatch):
 def test_approved_list_starts_empty_and_nothing_is_approved(env):
     assert env.send("T1", "N1") == 1 and "not approved" in env.out[0]
     assert env.rows("SELECT * FROM ops_sends") == [] and env.rows("SELECT * FROM outbox") == []
-    assert all("not approved" in ln for ln in ops_send.templates() if "no text" not in ln)
+    assert not any("APPROVED" in ln for ln in ops_send.templates(LINK))
 
 
 def test_an_edited_template_is_refused_even_after_it_was_approved(env):
@@ -84,7 +90,7 @@ def test_an_approved_template_is_queued_then_sent_through_the_outbox(env):
     assert env.sent() == []                                   # nothing goes out from the CLI itself
     env.svc.run_outbox(NOW)
     msgs = env.sent()
-    assert len(msgs) == 1 and msgs[0]["chat_id"] == 8001 and N1 in msgs[0]["text"]
+    assert len(msgs) == 1 and msgs[0]["chat_id"] == 8001 and msgs[0]["text"] == N1   # no blank first line
     [row] = env.rows("SELECT * FROM ops_sends")
     assert (row["template"], row["result"], row["text_hash"]) == ("N1", "sent", ops_send.text_hash(N1))
     assert "T1 N1" in ops_send.sends(env.s)[0] and N1 not in ops_send.sends(env.s)[0]    # the audit holds a hash, not text
@@ -97,23 +103,69 @@ def test_each_template_goes_once_per_tester(env):
     assert env.send("T2", "N1") == 0                           # another tester is unaffected
 
 
-def test_one_ops_message_per_tester_in_three_days_and_a_daily_cap(env, monkeypatch):
+def test_one_ops_message_per_tester_per_week_and_a_daily_cap(env, monkeypatch):
     env.approve("N1", "N2")
     assert env.send("T1", "N1") == 0
-    assert env.send("T1", "N2", now=NOW + timedelta(days=2)) == 1 and "last 3 days" in env.out[0]
-    assert env.send("T1", "N2", now=NOW + timedelta(days=4)) == 0
+    assert env.send("T1", "N2", now=NOW + timedelta(days=4)) == 1 and "last 7 days" in env.out[0]
+    assert env.send("T1", "N2", now=NOW + timedelta(days=8)) == 0
     monkeypatch.setattr(ops_send, "DAILY_CAP", 1)
-    assert env.send("T2", "N1", now=NOW + timedelta(days=4)) == 1 and "daily cap" in env.out[0]
+    assert env.send("T2", "N1", now=NOW + timedelta(days=8)) == 1 and "daily cap" in env.out[0]
 
 
 def test_invite_needs_a_https_link_and_no_placeholder_leaks(env):
+    assert env.send("T1", "INVITE") == 1 and "link" in env.out[0]       # nothing approved: no link to use
     env.approve("INVITE")
-    assert env.send("T1", "INVITE") == 1 and "--link" in env.out[0]
     assert env.send("T1", "INVITE", link="http://x") == 1
     assert env.send("T1", "N1", link=LINK) == 1
     assert env.send("T1", "INVITE", link=LINK) == 0
     env.svc.run_outbox(NOW)
     assert LINK in env.sent()[0]["text"] and "{" not in env.sent()[0]["text"]
+
+
+def test_the_link_is_part_of_the_approval(env):
+    env.approve("INVITE")
+    assert env.send("T1", "INVITE", link="https://calendar.app.google/other") == 1 and "approved with" in env.out[0]
+    assert env.send("T1", "INVITE", link="https://evil.example.com/x", dry=True) == 1
+    assert env.rows("SELECT * FROM outbox") == []
+    assert env.send("T1", "INVITE") == 0                       # no --link: the approved one is used
+    env.svc.run_outbox(NOW)
+    assert LINK in env.sent()[0]["text"]
+
+
+def test_a_link_off_the_calendar_allowlist_cannot_be_approved_or_sent(env):
+    env.approve("INVITE", link="https://cal.example.com/ricki")
+    assert env.send("T1", "INVITE") == 1 and "calendar" in env.out[0]
+    assert env.send("T1", "INVITE", link="http://calendar.app.google/x") == 1
+    assert env.rows("SELECT * FROM outbox") == []
+
+
+def test_a_skipped_send_does_not_burn_the_template_and_can_be_queued_again(env):
+    env.approve("N1")
+    assert env.send("T1", "N1") == 0
+    (env.d / "templates-approved.json").write_text(json.dumps({"approved": []}))
+    env.svc.run_outbox(NOW)                                    # skipped: approval withdrawn
+    env.approve("N1")
+    assert env.send("T1", "N1", now=NOW + timedelta(hours=2)) == 0
+    env.svc.run_outbox(NOW + timedelta(hours=2))
+    assert [r["result"] for r in env.rows("SELECT result FROM ops_sends ORDER BY id")] == ["skipped: approval withdrawn", "sent"]
+
+
+def test_the_runner_export_lists_template_and_date_only(env):
+    env.approve("N1")
+    env.send("T1", "N1")
+    env.svc.run_outbox(NOW)
+    exp = env.svc.get_me("u1", NOW)
+    assert exp["ops_messages"] == [{"template": "N1", "date": "2026-10-20"}]
+    assert N1 not in json.dumps(exp["ops_messages"])
+
+
+def test_the_audit_is_purged_when_the_test_ends(env):
+    env.approve("N1")
+    env.send("T1", "N1")
+    env.svc.purge(NOW)
+    assert len(env.rows("SELECT * FROM ops_sends")) == 1
+    env.svc.purge(datetime(2026, 12, 15, 3, 0, tzinfo=UTC))
+    assert env.rows("SELECT * FROM ops_sends") == []
 
 
 def test_dry_run_prints_the_exact_message_and_sends_and_records_nothing(env):

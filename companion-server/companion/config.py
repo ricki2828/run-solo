@@ -99,6 +99,8 @@ class Settings:
     # The app's kCompanionConsentVersion that covers check-in data (lib/state/companion.dart). A runner whose app has not
     # told the server it agreed to at least this version gets no check-in of any kind.
     checkin_consent_required: int = 2
+    # The last day of the closed test (YYYY-MM-DD). From that day the tick deletes the tester-programme audit (ops_sends).
+    test_end_date: str = "2026-12-15"
     # Telegram Mini App (read-only week, latest run and lanes), served under /miniapp/. Off by default.
     miniapp_enabled: bool = False
     miniapp_url: str = "https://companion.taiaroa.xyz/miniapp/"  # what the web_app buttons open
@@ -168,5 +170,6 @@ class Settings:
             rate_per_min=_posint(e.get("COMPANION_RATE_PER_MIN"), 20),
             rate_per_day=_posint(e.get("COMPANION_RATE_PER_DAY"), 200),
             rate_strikes_to_pause=_posint(e.get("COMPANION_RATE_STRIKES"), 3),
+            test_end_date=e.get("COMPANION_TEST_END_DATE", "2026-12-15"),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )

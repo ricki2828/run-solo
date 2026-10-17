@@ -204,7 +204,7 @@ class TelegramChannel:
         return out
 
     def send_card(self, ref: str, card: OutCard, **_: Any) -> str:
-        text = f"{card.headline}\n{card.body}"
+        text = "\n".join(x for x in (card.headline, card.body) if x)
         if card.media and card.media.has_content:
             return self._send_media(ref, card, photo_caption(card))
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
@@ -568,7 +568,7 @@ class WhatsAppChannel:
 
         `media_id` is an already-uploaded Meta media id for the template header. Nothing here uploads: the media
         upload is built by wa_media_upload_spec and stays unwired until a Meta account exists."""
-        text = f"{card.headline}\n{card.body}"
+        text = "\n".join(x for x in (card.headline, card.body) if x)
         base = {"messaging_product": "whatsapp", "to": ref}
         if in_window:
             # "Add a note" is not offered on WhatsApp (it would turn the three feel buttons into a list). The index of

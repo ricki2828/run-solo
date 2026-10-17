@@ -22,6 +22,9 @@ ProtectSystem=strict
 ProtectHome=tmpfs
 BindReadOnlyPaths=%h/run-solo/companion-server
 BindPaths=%h/companion-data
+# `ops send` reads the tester programme's approved templates (read-only). Without this the sandbox hides them and every ops message is skipped.
+BindReadOnlyPaths=-%h/ai/state/run-supreme-testers
+Environment=COMPANION_OPS_STATE_DIR=%h/ai/state/run-supreme-testers
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
