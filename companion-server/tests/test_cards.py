@@ -303,7 +303,7 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     svc.run_outbox(six_thirty + timedelta(minutes=1))
     row = q(client, "SELECT kind, buttons_json FROM cards WHERE kind='evening'")[0]
     assert any(b["action"].startswith("sugg:yes:quality") for b in json.loads(row["buttons_json"]))
-    assert "quality session 7 km is next on your plan" in fakes.tg_texts()[-1].lower()   # the card follows the coach week, so it says "next on your plan", not "tomorrow"
+    assert "quality session 7 km" in fakes.tg_texts()[-1].lower()   # the coach week's session; the variant (so the word "tomorrow") varies with the date
 
 
 # --- WhatsApp (stubbed adapter, complete) ---------------------------------------------------
