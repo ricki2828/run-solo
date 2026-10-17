@@ -324,4 +324,13 @@ def test_n3_is_week_3_only():
 def test_the_model_pass_has_no_tools():
     seen = {}
     digest.claude_narrative("{}", runner=lambda argv, **k: seen.update(s=argv[-1]) or subprocess.CompletedProcess(argv, 1, "", ""))
-    assert '--tools ""' in seen["s"]
+    assert '--tools ""' in seen["s"] and "--strict-mcp-config" in seen["s"]
+
+
+def test_feedback_prose_is_not_mangled_but_failures_are_redacted(tmp_path, monkeypatch):
+    prose = "T3 2026-10-26T08:00:00Z the token: refresh is slow, secret = my pace"
+    (tmp_path / "f.py").write_text(f"import sys\nprint({prose!r}) if sys.argv[2:3] == ['feedback'] else (print({TOKEN!r}), sys.exit(1))")
+    monkeypatch.setenv("RS_OPS_CMD", f"{sys.executable} {tmp_path / 'f.py'}")
+    assert common.run_ops(["feedback", "7"]) == (0, prose)
+    code, out = common.run_ops(["status"])
+    assert code == 1 and "AAH" not in out

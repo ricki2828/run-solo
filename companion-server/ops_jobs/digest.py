@@ -175,7 +175,7 @@ JSON:
 
 def claude_narrative(data: str, runner=subprocess.run) -> tuple[str | None, str]:
     """-> (text or None, note). Max login: the API key is stripped by assistant_env. The prompt goes in on stdin."""
-    script = f'source "{ASSISTANT_ENV}" && strip_claude_env && cd "$(mktemp -d)" && exec claude -p --model sonnet --tools ""'
+    script = f'source "{ASSISTANT_ENV}" && strip_claude_env && cd "$(mktemp -d)" && exec claude -p --model sonnet --tools "" --strict-mcp-config'
     try:
         r = runner(["bash", "-c", script], input=PROMPT + data, capture_output=True, text=True, timeout=240)
     except (OSError, subprocess.TimeoutExpired) as e:

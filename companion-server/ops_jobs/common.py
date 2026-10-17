@@ -86,4 +86,6 @@ def run_ops(args: list[str], timeout: int = 120) -> tuple[int, str]:
         r = subprocess.run(ops_argv() + args, capture_output=True, text=True, timeout=timeout, env=ops_env())
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, f"could not run the ops command: {type(e).__name__}"
-    return r.returncode, redact(((r.stdout or "") + (r.stderr or "")).strip())
+    text = ((r.stdout or "") + (r.stderr or "")).strip()
+    # a success carries data (feedback is the runner's own words: leave it alone); only a failure's output is an error message
+    return r.returncode, text if r.returncode == 0 else redact(text)
