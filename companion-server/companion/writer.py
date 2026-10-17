@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import db
 from .config import Settings
-from .facts import Fact, FactsResult
+from .facts import GOAL_NAME_IN_TEXT_RE, Fact, FactsResult
 from .rails import add_alert, tag
 from .timeutil import iso, now_utc
 
@@ -75,7 +75,7 @@ Rules:
 - If a fact starts with "Verdict:", the app has already judged the run: your text must agree with it and must not use any other word for faster, slower or level. Do not put the verdict in the headline; the app adds it.
 - Quote a pace only as its own fact gives it. Never put a pace from one fact beside a gap from another. A gap "on true pace" is compared with the true paces in that same fact.
 - The picture already shows distance, time and pace. The headline names the session in plain words with no distance, time or pace and no full stop. The body is one short sentence of judgement (a comparison, a hard minute count, a climb), not a repeat of the picture.
-- If the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
+- If the JSON has a "session" whose purpose is "goal effort", the run was that goal ("10K goal"): name it in the headline and say whether it was reached, as the facts do. Otherwise, if the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
 - Give no advice and no instructions about future runs ("next week", "tomorrow", "try to", "work the pace"). Only describe what happened, unless a fact states the advice.
 - No medical advice, no diagnosis, no links, no phone numbers, no emojis.
 - headline: at most 60 characters. body: at most 160 characters, one short sentence (two at most).
@@ -179,7 +179,9 @@ def clean(out: CardText, facts: Sequence[Fact] = ()) -> str | None:
         return "unbacked_advice"
     if PIPE_RE.search(text) or out.headline.rstrip().endswith("."):
         return "format"
-    if MEASURE_RE.search(out.headline):
+    # A goal's own name ("30 min goal", "12.3 km goal") is the session, not the picture's numbers, when the facts give it.
+    headline = GOAL_NAME_IN_TEXT_RE.sub(lambda m: "" if m.group(0).lower() in fact_low else m.group(0), out.headline)
+    if MEASURE_RE.search(headline):
         return "headline_repeats_picture"
     direction = stated_direction(facts)
     if direction is not None and any(r.search(text) for r in FORBIDDEN_DIRECTION[direction]):

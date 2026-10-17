@@ -273,3 +273,74 @@ def test_a_typed_session_name_never_reaches_the_model_card_render_facts_or_logs(
                                                  **{**SESSION, "session_name": "custom:0123456789abcdef"}), headers=auth(t))
     assert r.status_code == 202
     assert c.execute("SELECT session_name FROM runs WHERE run_id='leak2'").fetchone()[0] == "custom:0123456789abcdef"
+
+
+# --- named runs without a work pace: a goal run, a session whose reps were not detected (17-Oct) -----------------
+
+def test_goal_run_is_named_in_the_base_fact_and_says_whether_it_was_reached():
+    res = build_facts(run(type="tempo", session_name="10K goal", goal_reached=1), [], {})
+    assert res.facts[0].text.startswith("10K goal run: 4.9 km in 27 min at 5:30/km, goal reached")
+    assert res.session == {"name": "10K goal", "purpose": "goal effort"}
+    res = build_facts(run(type="tempo", session_name="10K goal", goal_reached=0), [], {})
+    assert res.facts[0].text.endswith("goal not reached")
+
+
+STOPPED = dict(type="free", app_type="intervals", session_name="Norwegian 4x4")   # the stored shape: no reps
+
+
+def test_session_stopped_before_the_first_rep_is_context_not_a_session_headline():
+    res = build_facts(run(**STOPPED), [], {})
+    assert res.facts[0].text.startswith("Run: 4.9 km in 27 min") or "VO2 max" not in res.facts[0].text
+    assert any(f.text == "Started Norwegian 4x4, stopped before the first rep" for f in res.facts)
+    assert not any("VO2 max" in f.text or "work pace" in f.text for f in res.facts)
+    assert res.session is None
+
+
+def test_a_completed_session_run_does_not_get_the_stopped_fact():
+    assert not any(f.id == "session" for f in build_facts(run(**SESSION, app_type="intervals"), [], {}).facts)
+
+
+@pytest.mark.parametrize("name,kept", [("10K goal", True), ("Half goal", True), ("30 min goal", True),
+                                       ("1 hour goal", True), ("1 h 15 min goal", True), ("12.3 km goal", True),
+                                       ("7.5 mi goal", True), ("Sarah's goal", False), ("10K goal http://x.io", False),
+                                       ("10 km goal", False), ("1 hour goal!", False)])
+def test_only_the_apps_own_goal_names_are_kept(name, kept):
+    m = RunIn.model_validate({**run_payload("g1", type="free"), "session_name": name})
+    assert (m.session_name is not None) == kept
+
+
+def test_endpoint_stores_goal_reached(client):
+    t = enrol(client)
+    r = client.post("/v1/runs", json=run_payload("g2", type="free", session_name="10K goal", goal_reached=True),
+                    headers=auth(t))
+    assert r.status_code == 202
+    row = sqlite3.connect(client.svc.s.db_path).execute("SELECT session_name, goal_reached FROM runs").fetchone()
+    assert tuple(row) == ("10K goal", 1)
+
+
+def test_default_week_does_not_count_a_stopped_session_as_a_quality_session():
+    from companion.default_week import quality_session, TEMPO
+    q = quality_session([run(**STOPPED)])
+    assert q.name == TEMPO and q.pace_lo_s is None
+
+
+def test_a_plan_next_session_name_is_never_a_goal():
+    from companion.service import PlanNextIn
+    base = dict(type="quality", day="2026-10-20", week=1)
+    assert PlanNextIn.model_validate({**base, "session_name": "10K goal", "session_id": "x"}).session_name is None
+    assert PlanNextIn.model_validate({**base, "session_name": "Norwegian 4x4"}).session_name == "Norwegian 4x4"
+
+
+def test_default_week_tempo_pace_ignores_goal_efforts():
+    from companion.default_week import quality_session
+    q = quality_session([run(type="tempo", session_name="10K goal", goal_reached=1, true_pace_s_per_km=290.0)])
+    assert q.pace_lo_s is None
+
+
+@pytest.mark.parametrize("goal", ["30 min goal", "12.3 km goal", "1 h 15 min goal", "10K goal"])
+def test_a_goal_name_in_the_headline_is_not_the_picture_repeated(goal):
+    from companion.writer import CardText, clean
+    facts = build_facts(run(type="tempo", session_name=goal, goal_reached=1), [], {}).facts
+    assert clean(CardText(headline=f"{goal} reached", body="You held it to the end."), facts) is None
+    assert clean(CardText(headline=f"{goal} reached in 27 min", body="You held it to the end."), facts) \
+        == "headline_repeats_picture"

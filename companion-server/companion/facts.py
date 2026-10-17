@@ -117,6 +117,13 @@ SESSION_PURPOSE = {
     "1 km repeats": "5k to 10k pace",
 }
 _REPS_400_RE = re.compile(r"^\d{1,2} × 400 m$")  # "8 × 400 m": the 400s session names its rep count
+# A goal run (one continuous effort at a distance or time, e.g. "10K goal"): the app names it from its own goal, never
+# from typed text, so only this shape is accepted (GoalCatalogue.nameFor / Settings.goalName: "5K", "Half", "12.3 km",
+# "7.5 mi", "45 min", "1 hour", "1 h 15 min").
+_GOAL_NAME = r"(?:\d{1,2}K|Half|Marathon|\d{1,3}\.\d (?:km|mi)|\d{1,2} min|1 hour|\d{1,2} h(?: \d{1,2} min)?) goal"
+_GOAL_RE = re.compile(f"^{_GOAL_NAME}$")
+GOAL_NAME_IN_TEXT_RE = re.compile(rf"\b{_GOAL_NAME}\b", re.I)  # a goal name inside a headline (writer.clean)
+GOAL_PURPOSE = "goal effort"
 GENERIC_SESSION = "interval session"
 REP_BAND_S = 10  # the app's rep band: reps this close count as "within"
 
@@ -129,7 +136,28 @@ def known_session(name: str | None) -> tuple[str, str] | None:
         return name, SESSION_PURPOSE[name]
     if _REPS_400_RE.match(name):
         return name, "speed"
+    if _GOAL_RE.match(name):
+        return name, GOAL_PURPOSE
     return None
+
+
+def is_goal_run(run: Mapping[str, Any]) -> bool:
+    """A goal run: it goes up as a free run, named by its goal ("10K goal")."""
+    k = known_session(run.get("session_name"))
+    return bool(k) and k[1] == GOAL_PURPOSE
+
+
+def stopped_early(run: Mapping[str, Any]) -> bool:
+    """An interval session the runner started and stopped before the first rep: stored as a free run (infer_coach_type),
+    app_type intervals, a built-in session name, no reps and no work pace. Context only: never judged as the session."""
+    k = known_session(run.get("session_name"))
+    return run.get("app_type") == "intervals" and bool(k) and k[1] != GOAL_PURPOSE \
+        and not run.get("reps_done") and not run.get("work_pace_s_per_km")
+
+
+def named_run(run: Mapping[str, Any]) -> bool:
+    """A run whose session the app named and the card must say which: a goal effort."""
+    return is_goal_run(run)
 
 
 def session_label(run: Mapping[str, Any]) -> str:
@@ -407,9 +435,17 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
         base_txt = f"{session_label(run)}: " + (f"{reps} reps at " if reps else "") + \
             f"{fmt_pace(run['work_pace_s_per_km'])}/km work pace{spread_text(run)}"
     else:
-        base_txt = f"{label.capitalize()}: {fmt_km(dist)} km in {round(dur / 60)} min"
+        named = run.get("session_name") and known_session(run.get("session_name"))
+        if is_goal_run(run):
+            # The headline names the goal and says whether it was reached; the whole-run pace is a plain fact of the run.
+            reached = {1: ", goal reached", 0: ", goal not reached"}.get(run.get("goal_reached"), "")
+            head = f"{named[0]} run"
+        else:
+            head, reached = label.capitalize(), ""
+        base_txt = f"{head}: {fmt_km(dist)} km in {round(dur / 60)} min"
         if pace and not true_basis:  # a true-pace comparison below must not sit beside the raw pace
             base_txt += f" at {fmt_pace(pace)}/km"
+        base_txt += reached
     base = Fact("base", base_txt)
 
     worthy: list[Fact] = []
@@ -464,8 +500,11 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
         picked = [base, *worthy[:2]]  # the model must always be told which session this was
         if run.get("recovery_pace_s_per_km") and len(picked) < 3:
             picked.append(Fact("recovery", f"Recovery pace {fmt_pace(run['recovery_pace_s_per_km'])}/km"))
-    elif len(picked) < 2:
-        picked = [base, *picked]
+    elif len(picked) < 2 or named_run(run):
+        picked = [base, *[f for f in picked if f is not base]][:3]
+    if stopped_early(run):   # plain context, no work-pace judgement and no session headline
+        picked = [base, Fact("session", f"Started {run['session_name']}, stopped before the first rep"),
+                  *[f for f in picked if f is not base]][:3]
     if run.get("feel") and len(picked) < 3:
         picked.append(Fact("feel", f"You rated it {run['feel']}"))
 
@@ -473,6 +512,9 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
     if session_run:
         k = known_session(run.get("session_name"))
         session = {"name": k[0], "purpose": k[1]} if k else {"purpose": GENERIC_SESSION}
+    elif is_goal_run(run):
+        k = known_session(run["session_name"])
+        session = {"name": k[0], "purpose": k[1]}
     return FactsResult(tuple(picked), suggest_after_run(run, history), tone, False, "ok", session)
 
 
