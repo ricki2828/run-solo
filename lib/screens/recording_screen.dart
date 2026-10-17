@@ -621,9 +621,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                         track: ctl.liveRoute,
                         typeColor: liveRunTypeColor(runType),
                         readouts: readouts,
-                        // A short phone with the big LAP button (laps, 4x4)
-                        // leaves the map under ~100 dp: numbers only there.
-                        hideMap: compact && (s.lapsEnabled || s.isPreset),
+                        // A short phone with the big LAP button leaves the
+                        // map under ~100 dp: numbers only there. A 4x4 has
+                        // no LAP button, so its map keeps the room.
+                        hideMap: compact && s.lapsEnabled && !s.isPreset,
                         numbers: EqualFigures(
                           figures: runSoFarFigures(s, ctl, settings.units),
                           valueKeys: const [
