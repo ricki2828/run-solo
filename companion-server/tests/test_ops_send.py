@@ -248,3 +248,23 @@ def test_cli_wiring(env, capsys):
     assert ops.main(env.s, ["send", "--tester", "T1", "--template", "N9"], out.append) == 2
     assert ops.main(env.s, ["send", "--bogus"], out.append) == 2
     assert ops.main(env.s, ["sends"], out.append) == 0 and out[-1] == "no ops sends"
+
+
+def test_a_bad_test_end_date_falls_back_to_the_default_and_never_purges_early(env, monkeypatch):
+    from companion.config import Settings, _iso_date
+    for bad in ("", "soon", "2026-13-40", None):
+        assert _iso_date(bad) == "2026-12-15"
+    assert _iso_date(" 2027-01-02 ") == "2027-01-02"
+    env.approve("N1")
+    env.send("T1", "N1")
+    env.svc.purge(NOW)                                         # well before the default end: the audit stays
+    assert len(env.rows("SELECT * FROM ops_sends")) == 1
+
+
+def test_nothing_is_sent_after_the_test_ends_even_if_queued_before(env):
+    env.approve("N1", "N2")
+    assert env.send("T1", "N1") == 0
+    end = datetime(2026, 12, 15, 2, 0, tzinfo=UTC)
+    assert env.send("T2", "N2", now=end) == 1 and "test ended" in env.out[0]
+    env.svc.run_outbox(end)
+    assert env.sent() == [] and env.rows("SELECT result FROM ops_sends")[0]["result"] == "skipped: test ended"

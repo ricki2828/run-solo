@@ -28,6 +28,7 @@ from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import GHOST_CLIP_S, Media, MediaError, from_settings
 from . import feedback as cv_feedback
+from . import ops_send
 from . import notes as cv_notes
 from . import quest as cv_quest
 from . import trail as cv_trail
@@ -1662,7 +1663,9 @@ class Service(CheckinMixin):
 
     def _send_ops(self, user: dict, card_id: str, now: datetime) -> bool:
         """An approved ops template, queued by `ops send`. Checked again here: consent v2, still approved, one a week."""
-        from . import ops_send
+        if ops_send.test_over(self.s, now):
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: test ended")
+            return False
         with db.ro(self.s.db_path) as c:
             row = c.execute("SELECT o.template, o.text_hash FROM ops_sends o WHERE o.card_id=? AND o.user_id=?",
                             (card_id, user["id"])).fetchone()
@@ -2049,7 +2052,7 @@ class Service(CheckinMixin):
                       "AND r.run_id=run_notes.run_id)")  # belt and braces: a note never outlives its run
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             cv_quest.purge(c, now, held)
-            if now.strftime("%Y-%m-%d") >= self.s.test_end_date:   # the tester programme's audit goes when the test ends
+            if ops_send.test_over(self.s, now):   # the tester programme's audit goes when the test ends
                 c.execute("DELETE FROM ops_sends")
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "

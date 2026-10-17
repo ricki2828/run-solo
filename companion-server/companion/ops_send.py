@@ -18,7 +18,7 @@ import json
 import os
 import re
 import secrets
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Callable
@@ -36,6 +36,12 @@ LINK_HOSTS = ("calendar.app.google", "calendar.google.com")   # booking links: h
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 USAGE = ("usage: ops send --tester T<n> --template N1|N2|N3|INVITE [--link https://...] [--dry-run] | ops sends [T<n>] | "
          "ops templates")
+
+
+def test_over(s: Settings, now) -> bool:
+    """True from the test's last day on: nothing more is sent, and the audit may be purged without reopening once-per-tester."""
+    from .config import _iso_date
+    return now.date() >= date.fromisoformat(_iso_date(s.test_end_date))
 
 
 def state_dir() -> Path:
@@ -152,6 +158,9 @@ def send(s: Settings, who: str, template: str, link: str | None = None, dry_run:
          out: Callable[[str], None] = print, now=None) -> int:
     now = now or now_utc()
     template = (template or "").upper()
+    if test_over(s, now):
+        out(f"refused: the test ended on {s.test_end_date}. Nothing is sent.")
+        return 1
     if template not in TEMPLATE_IDS or not TESTER.match(who or ""):
         out(USAGE)
         return 2
