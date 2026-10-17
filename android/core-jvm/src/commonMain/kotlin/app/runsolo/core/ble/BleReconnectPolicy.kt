@@ -1,49 +1,64 @@
 package app.runsolo.core.ble
 
 /**
- * Reconnect decisions for the paired strap (plan §3, W7). The Android client asks this object
- * what to do on every link event and does exactly that. Rescanning is the exception, never a
- * loop: Android throttles scan starts (5 per 30 s) and suppresses unfiltered scans while the
- * screen is off. The one exception is the name fallback below.
+ * Connect and reconnect decisions for the paired strap (plan §3, W7). The Android client asks
+ * this object what to do on every link and scan event and does exactly that.
  *
- *  - Pairing scans once (outside this object) and saves the address.
- *  - At start (and pairing) the connect is direct (`autoConnect = false`: seconds, not the
- *    10–60 s a passive autoConnect can take). Every reconnect after a drop is `gatt.close()`
- *    first (GATT 133 leak), then `connectGatt(autoConnect = true)` to the saved address —
- *    a passive, OS-managed wait, so there is no give-up.
- *  - Name fallback: a strap that broadcasts with a rotating random private address (not bonded)
- *    leaves the saved address stale, so connectGatt never succeeds. When a connect yields no
- *    measurement within the client's window, [onNoMeasurement] asks for ONE filtered scan
- *    (HR service) per episode, matched on the saved device name; a match re-points the saved
- *    address ([onScanResult]), no match leaves the strap paired but [LinkState.NOT_FOUND].
- *    Scan starts are budgeted ([SCAN_STARTS_PER_WINDOW] per [SCAN_WINDOW_MS]) and the pairing
- *    scan counts against the same budget ([noteScanStart]).
- *  - An explicit retry after a failed connect attempt backs off 1 s → 2 s → 4 s … capped at
- *    [maxDelayMs]; the backoff resets after a link that stayed up ≥ [stableMs].
+ * Why scan-first: a WHOOP in "Broadcast Heart Rate" advertises from a rotating resolvable private
+ * address and is not bonded, so the address saved at pairing goes stale between sessions (and can
+ * change after a mid-run drop). A direct `connectGatt` to a stale address hangs ~30 s before it
+ * fails, and a passive `autoConnect` to it waits forever. So, apart from pairing, the strap is only
+ * connected directly at an address a scan has just seen:
+ *
+ *  - Pairing connects directly to the address its scan just returned ([pair]).
+ *  - Otherwise every connect starts with a hunt ([Action.Hunt]): ONE long filtered scan (Heart Rate
+ *    service 0x180D; filtered scans keep running screen-off) plus, alongside it, a passive
+ *    `autoConnect` to the saved address for straps with a fixed address. Each scan result goes to
+ *    [onScanResult]; the first that is the saved strap is connected directly at its fresh
+ *    address, and the saved address (and name) are re-pointed.
+ *  - A connect with no first measurement within the client's window, a dropped link, or a failed
+ *    setup all go back to a hunt after a short backoff (0.5 s → 1 s → 2 s … capped at
+ *    [maxDelayMs], reset after a link that stayed up ≥ [stableMs]).
+ *  - Scan starts are budgeted ([SCAN_STARTS_PER_WINDOW] per [SCAN_WINDOW_MS]; Android allows 5 per
+ *    30 s), and the pairing scan counts against the same budget ([noteScanStart]). A hunt that
+ *    would exceed it is delayed until a start frees up, never dropped.
+ *
+ * Matching (never another runner's strap): the saved address, else the saved name
+ * (case-insensitive). Nothing looser: a lone same-brand strap at a parkrun start is as likely to be
+ * a stranger's (with ours not broadcasting yet) as ours with a changed name, and taking it would
+ * record their HR and re-point the saved strap to them. WHOOP's advertised name carries its serial;
+ * if a phone ever shows it changing, the trail's `hunt saw … name=` lines will say so.
  */
 class BleReconnectPolicy(
     address: String?,
     name: String? = null,
-    private val initialDelayMs: Long = 1_000,
-    private val maxDelayMs: Long = 30_000,
+    private val initialDelayMs: Long = 500,
+    private val maxDelayMs: Long = 8_000,
     private val stableMs: Long = 10_000,
 ) {
     sealed class Action {
-        /** Close the current GATT (if any), then connectGatt(autoConnect = [autoConnect]) after [delayMs]. */
-        data class Reconnect(val address: String, val autoConnect: Boolean, val delayMs: Long, val closeFirst: Boolean) : Action()
         object Nothing : Action()
 
-        /** One filtered HR-service scan, [timeoutMs] long, then call [onScanResult] with what matched. */
-        data class ScanForName(val name: String, val timeoutMs: Long) : Action()
+        /** Stop any scan, close the current GATT, then `connectGatt(autoConnect = false)` to [address] after [delayMs]. */
+        data class Connect(val address: String, val delayMs: Long) : Action()
+
+        /**
+         * Close the current GATT, then after [delayMs] start one filtered 0x180D scan of up to
+         * [scanMs] (results to [onScanResult], its end to [onScanEnded]) and a passive
+         * `connectGatt(autoConnect = true)` to [passiveAddress]. [lowLatency]: the first hunts of
+         * an episode scan at low latency; a strap still missing after that is looked for at the
+         * balanced (battery) rate.
+         */
+        data class Hunt(val delayMs: Long, val scanMs: Long, val passiveAddress: String, val lowLatency: Boolean = true) : Action()
     }
 
-    enum class LinkState { IDLE, CONNECTING, SCANNING, NOT_FOUND, CONNECTED }
+    enum class LinkState { IDLE, HUNTING, CONNECTING, CONNECTED }
 
     /** One HR peripheral seen by a scan. */
     data class Candidate(val address: String, val name: String?, val rssi: Int = 0)
 
-    /** Why a name scan was or was not started; for logs (no addresses). */
-    enum class FallbackReason { NO_NAME, ALREADY_SCANNED, THROTTLED, STARTED }
+    /** How a scan result was matched to the saved strap; for logs. */
+    enum class Match { ADDRESS, NAME }
 
     var savedAddress: String? = address
         private set
@@ -53,46 +68,69 @@ class BleReconnectPolicy(
         private set
     var state: LinkState = LinkState.IDLE
         private set
-    var lastFallback: FallbackReason? = null
+
+    /** How the last connect from a hunt was matched (null after pairing); for logs. */
+    var lastMatch: Match? = null
         private set
-    private var scannedThisEpisode = false
-    private val scanStarts = ArrayList<Long>()
+    private val scanStarts = ArrayList<Long>() // may hold one planned (future) hunt start
     private var nextDelay = initialDelayMs
     private var connectedAt: Long? = null
+    private val seen = LinkedHashMap<String, Candidate>() // this hunt's HR peripherals by address
+    private var huntsThisEpisode = 0
 
-    /** `blePair(address)`: remember the strap; the first connection is direct (autoConnect = false). */
+    /** `blePair(address)`: remember the strap and connect directly (a scan just saw this address). */
     fun pair(address: String, name: String? = null): Action {
         savedAddress = address
         savedName = name
-        scannedThisEpisode = false
-        state = LinkState.CONNECTING
         attempts = 0
         nextDelay = initialDelayMs
-        return Action.Reconnect(address, autoConnect = false, delayMs = 0, closeFirst = true)
+        lastMatch = null
+        state = LinkState.CONNECTING
+        return Action.Connect(address, delayMs = 0)
     }
 
-    /** `bleForget()`: drop the address; nothing reconnects afterwards. */
+    /** `bleForget()`: drop the strap; nothing connects afterwards. */
     fun forget(): Action {
         savedAddress = null
         savedName = null
-        connectedAt = null
-        state = LinkState.IDLE
+        stop()
         return Action.Nothing
     }
 
-    /** Recording starts (or the app opens with a saved strap): a direct connect now. */
-    fun onStart(): Action {
-        val a = savedAddress ?: return Action.Nothing
-        scannedThisEpisode = false
-        state = LinkState.CONNECTING
-        return Action.Reconnect(a, autoConnect = false, delayMs = 0, closeFirst = true)
+    /** Nobody wants the strap any more (run ended, Start/Ready left): the client closes everything. */
+    fun stop() {
+        connectedAt = null
+        seen.clear()
+        state = LinkState.IDLE
     }
 
-    /** The first measurement arrived: the saved address works, so the next failure gets a fresh fallback. */
+    /**
+     * The strap is wanted (Start/Ready on screen, or a run starts). Already hunting, connecting or
+     * connected: carry on. Otherwise hunt now.
+     */
+    fun onStart(nowMs: Long): Action {
+        if (savedAddress == null || state != LinkState.IDLE) return Action.Nothing
+        attempts = 0
+        nextDelay = initialDelayMs
+        huntsThisEpisode = 0
+        return hunt(nowMs, 0)
+    }
+
+    /**
+     * The hunt's passive connect to the saved address came up (a strap with a fixed address): it
+     * is now being set up, so the client stops the scan and later scan results are ignored.
+     */
+    fun onLinkUp() {
+        if (state != LinkState.HUNTING) return
+        lastMatch = Match.ADDRESS
+        state = LinkState.CONNECTING
+    }
+
+    /** The first measurement arrived. */
     fun onConnected(nowMs: Long) {
         connectedAt = nowMs
         attempts = 0
-        scannedThisEpisode = false
+        huntsThisEpisode = 0
         state = LinkState.CONNECTED
     }
 
@@ -109,84 +147,99 @@ class BleReconnectPolicy(
     }
 
     private fun prune(nowMs: Long) {
-        scanStarts.removeAll { nowMs - it >= SCAN_WINDOW_MS || it > nowMs }
+        scanStarts.removeAll { nowMs - it >= SCAN_WINDOW_MS }
     }
 
-    /**
-     * A connect (direct or passive) produced no measurement within the client's window. At most
-     * one name scan per episode (start, pair, or last working link), and only inside the scan-start
-     * budget. Without a saved name nothing can be matched safely (another runner's strap would
-     * also advertise 0x180D), so the strap is left [LinkState.NOT_FOUND] without scanning.
-     */
-    fun onNoMeasurement(nowMs: Long): Action {
-        if (savedAddress == null || state == LinkState.CONNECTED) return Action.Nothing
-        val n = savedName
-        if (n.isNullOrBlank()) {
-            lastFallback = FallbackReason.NO_NAME
-            state = LinkState.NOT_FOUND
-            return Action.Nothing
-        }
-        if (scannedThisEpisode) {
-            lastFallback = FallbackReason.ALREADY_SCANNED
-            state = LinkState.NOT_FOUND // the scanned-for address also failed: say so, do not loop
-            return Action.Nothing
-        }
-        prune(nowMs)
-        if (scanStarts.size >= SCAN_STARTS_PER_WINDOW) {
-            lastFallback = FallbackReason.THROTTLED
-            return Action.Nothing
-        }
-        scannedThisEpisode = true
-        scanStarts.add(nowMs)
-        lastFallback = FallbackReason.STARTED
-        state = LinkState.SCANNING
-        return Action.ScanForName(n, SCAN_TIMEOUT_MS)
-    }
-
-    /**
-     * Result of the name scan. A name match (case-insensitive, strongest signal wins) re-points
-     * the saved address and connects directly; no match leaves the strap paired but disconnected
-     * ([LinkState.NOT_FOUND]) with the old address kept for the passive reconnect already pending.
-     */
-    fun onScanResult(found: List<Candidate>, nowMs: Long): Action {
-        if (savedAddress == null) return Action.Nothing
-        if (state == LinkState.CONNECTED) return Action.Nothing // the old link came up during the scan: leave it alone
-        val n = savedName
-        val hit = if (n.isNullOrBlank()) null else
-            found.filter { it.name.equals(n, ignoreCase = true) }.maxByOrNull { it.rssi }
-        if (hit == null) {
-            state = LinkState.NOT_FOUND
-            return Action.Nothing
-        }
-        savedAddress = hit.address
-        attempts = 0
-        nextDelay = initialDelayMs
-        state = LinkState.CONNECTING
-        return Action.Reconnect(hit.address, autoConnect = false, delayMs = 0, closeFirst = true)
-    }
-
-    /** Link dropped (`onConnectionStateChange` disconnected, any status incl. 133). */
-    fun onDisconnected(nowMs: Long): Action {
+    /** A hunt starting at `now + delay`, pushed later if the scan-start budget is spent. */
+    private fun hunt(nowMs: Long, delayMs: Long): Action {
         val a = savedAddress ?: return Action.Nothing
+        prune(nowMs)
+        var at = nowMs + delayMs
+        if (scanStarts.size >= SCAN_STARTS_PER_WINDOW) {
+            val freeAt = scanStarts.sorted()[scanStarts.size - SCAN_STARTS_PER_WINDOW] + SCAN_WINDOW_MS
+            at = maxOf(at, freeAt)
+        }
+        scanStarts.add(at)
+        seen.clear()
+        state = LinkState.HUNTING
+        val fast = huntsThisEpisode < FAST_HUNTS
+        huntsThisEpisode++
+        return Action.Hunt(delayMs = at - nowMs, scanMs = if (fast) FAST_SCAN_MS else HUNT_SCAN_MS, passiveAddress = a, lowLatency = fast)
+    }
+
+    /** One scan result during a hunt: connect the first one that is the saved strap. */
+    fun onScanResult(c: Candidate, nowMs: Long): Action {
+        if (state != LinkState.HUNTING || savedAddress == null) return Action.Nothing
+        seen[c.address] = c
+        return evaluate()
+    }
+
+    /** Periodic re-check while hunting (a no-op today: every match is made on a scan result). */
+    fun onHuntTick(nowMs: Long): Action {
+        if (state != LinkState.HUNTING || savedAddress == null) return Action.Nothing
+        return evaluate()
+    }
+
+    private fun evaluate(): Action {
+        val (c, how) = pick() ?: return Action.Nothing
+        savedAddress = c.address
+        lastMatch = how
+        state = LinkState.CONNECTING
+        return Action.Connect(c.address, delayMs = 0)
+    }
+
+    private fun pick(): Pair<Candidate, Match>? {
+        val all = seen.values
+        all.firstOrNull { it.address == savedAddress }?.let { return it to Match.ADDRESS }
+        val n = savedName?.trim()
+        if (n.isNullOrEmpty()) return null
+        return all.filter { it.name?.trim().equals(n, ignoreCase = true) }.maxByOrNull { it.rssi }?.let { it to Match.NAME }
+    }
+
+    /**
+     * The hunt's scan ended without a match: it ran its full length, or it could not start / failed
+     * ([failed]). Hunt again, after the backoff when it failed.
+     */
+    fun onScanEnded(nowMs: Long, failed: Boolean): Action {
+        if (state != LinkState.HUNTING) return Action.Nothing
+        return hunt(nowMs, if (failed) backoff() else 0)
+    }
+
+    /**
+     * The link dropped (`onConnectionStateChange` disconnected, any status incl. 133), a connect
+     * had no first measurement in time, or setup failed twice. While hunting this can only be the
+     * passive connect giving up: the scan carries on. Otherwise hunt again after the backoff.
+     */
+    fun onDisconnected(nowMs: Long): Action {
+        if (savedAddress == null || state == LinkState.IDLE || state == LinkState.HUNTING) return Action.Nothing
         val stable = connectedAt?.let { nowMs - it >= stableMs } ?: false
         connectedAt = null
-        if (state == LinkState.CONNECTED) state = LinkState.CONNECTING
         if (stable) {
             nextDelay = initialDelayMs
             attempts = 0
         }
-        val delay = nextDelay
-        attempts++
-        nextDelay = (nextDelay * 2).coerceAtMost(maxDelayMs)
-        return Action.Reconnect(a, autoConnect = true, delayMs = delay, closeFirst = true)
+        return hunt(nowMs, backoff())
     }
 
-    /** `connectGatt` returned null or threw (adapter off): same backoff as a drop. */
+    /** `connectGatt` returned null or threw, or no first measurement in time: same as a drop. */
     fun onConnectFailed(nowMs: Long): Action = onDisconnected(nowMs)
+
+    private fun backoff(): Long {
+        val d = nextDelay
+        attempts++
+        nextDelay = (nextDelay * 2).coerceAtMost(maxDelayMs)
+        return d
+    }
 
     companion object {
         const val SCAN_STARTS_PER_WINDOW = 4 // Android allows 5 starts per 30 s; keep one spare
         const val SCAN_WINDOW_MS = 30_000L
-        const val SCAN_TIMEOUT_MS = 8_000L
+
+        /** One balanced hunt scan's length; restarted when it ends (well under Android's 30 min opportunistic downgrade). */
+        const val HUNT_SCAN_MS = 5 * 60_000L
+
+        /** Low-latency hunts per episode, and their length: a broadcasting strap is seen in a second or two. */
+        const val FAST_HUNTS = 2
+        const val FAST_SCAN_MS = 60_000L
     }
 }

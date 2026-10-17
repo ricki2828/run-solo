@@ -29,21 +29,24 @@ import app.runsolo.core.model.HrReading
 import java.util.UUID
 
 /**
- * Heart Rate Profile client (plan §3, W7). Pairs by one filtered scan for 0x180D; after that
- * every connection is to the saved address (Android throttles scan starts and suppresses
- * unfiltered scans screen-off). One exception: a WHOOP broadcasts from a rotating random
- * private address, so the saved one can go stale. When a connect yields no measurement within
- * [FALLBACK_MS], [BleReconnectPolicy] may allow ONE filtered 0x180D scan per episode that
- * matches the saved device name and silently re-points the saved address. We deliberately do
- * not createBond: a broadcast-mode strap is not bondable, so it would only raise a pairing
- * prompt or fail, and a bond is the only way the OS could resolve a private address. At run start an existing link is kept, otherwise a
- * direct `connectGatt(autoConnect = false)`; after a drop `autoConnect = true` (passive, OS
- * managed). `gatt.close()` always precedes a reconnect (GATT 133 leak). "Connected" is reported
- * only once notifications are enabled (the CCCD write succeeded) AND the first measurement
- * has arrived — a link that never delivers is not a working strap; a failed discovery or CCCD
- * write is retried once, then the link is closed and reconnected, and a link that stays silent
- * for [SILENT_LINK_MS] after setup is treated the same way. Whoop broadcast is a
- * standard HR-profile peripheral; its contact bits are a Phase 1 device-test item.
+ * Heart Rate Profile client (plan §3, W7). Pairs by one filtered scan for 0x180D; every later
+ * connection is decided by [BleReconnectPolicy], scan-first: a WHOOP in "Broadcast Heart Rate"
+ * advertises from a rotating private address and is not bondable (so we never createBond, and
+ * the OS cannot resolve the address for us), which leaves the address saved at pairing stale.
+ * So, apart from pairing, the strap is found by a hunt — one long filtered 0x180D scan plus a
+ * passive `autoConnect` to the saved address for straps with a fixed one — and connected
+ * directly (`autoConnect = false`) at the address the scan just saw, using the scan's own
+ * [BluetoothDevice] so the stack keeps its random address type. The saved address (and name)
+ * follow the strap.
+ *
+ * The strap is wanted while the Start/Ready GPS probe runs ([OWNER_START]) and while a run
+ * records ([OWNER_RUN]); when nobody wants it any more the client lets go after [LINGER_MS] (so
+ * Ready → GO keeps the warm link). `gatt.close()` always precedes a new connect (GATT 133 leak).
+ * "Connected" is reported only once notifications are enabled (the CCCD write succeeded) AND
+ * the first measurement has arrived; a connect with no measurement within [CONNECT_WINDOW_MS],
+ * a failed discovery or CCCD write (retried once), or a link silent for [SILENT_LINK_MS] after
+ * setup all go back to a hunt. Every transition is written to [BleTrail] so a failure on a real
+ * phone can be explained afterwards.
  *
  * Readings go to [listener] with `t = elapsedRealtime` at receipt; a no-contact packet is
  * reported as [Listener.onNoContact]. All callbacks are marshalled to the main thread.
@@ -61,13 +64,19 @@ class BleHrClient(context: Context) {
     private val manager = this.context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager // null without Bluetooth
     private val adapter: BluetoothAdapter? get() = manager?.adapter
     private val policy = BleReconnectPolicy(prefs.getString(KEY_ADDRESS, null), prefs.getString(KEY_NAME, null))
+    private val trail = BleTrail(this.context)
     private var gatt: BluetoothGatt? = null
-    private var pendingReconnect: Runnable? = null
+    private var pending: Runnable? = null
     private var setupRetried = false
     private var notificationsOn = false
     private var silentWatchdog: Runnable? = null
-    private var fallbackTimer: Runnable? = null
-    private var nameScanCb: ScanCallback? = null
+    private var connectWindow: Runnable? = null
+    private var huntCb: ScanCallback? = null
+    private var huntEnd: Runnable? = null
+    private var huntTick: Runnable? = null
+    private val huntDevices = HashMap<String, BluetoothDevice>() // this hunt's scan results, connected by object (keeps the address type)
+    private val owners = HashSet<String>()
+    private var linger: Runnable? = null
     private val seenNames = HashMap<String, String>() // address -> name from the last pairing scan, capped at MAX_SEEN_NAMES
     var listener: Listener? = null
 
@@ -79,8 +88,6 @@ class BleHrClient(context: Context) {
     var deviceName: String? = prefs.getString(KEY_NAME, null)
         private set
     val savedAddress: String? get() = policy.savedAddress
-    /** Paired but the strap was not seen: the UI hint is "start the broadcast, then scan again". */
-    val notFound: Boolean get() = policy.state == BleReconnectPolicy.LinkState.NOT_FOUND
     val adapterOn: Boolean get() = adapter?.isEnabled == true
 
     fun hasPermissions(): Boolean {
@@ -92,6 +99,8 @@ class BleHrClient(context: Context) {
     }
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+
+    private fun now() = SystemClock.elapsedRealtime()
 
     // ---- pairing ----
 
@@ -172,172 +181,254 @@ class BleHrClient(context: Context) {
         deviceName = name
         prefs.edit().putString(KEY_NAME, name).apply()
         Log.i(TAG, "paired addressType=${addressType(address)} hasName=${name != null}")
+        trail.note("pair ${addr(address)} name=${name ?: "-"}")
+        // Pairing holds the strap for a while (the pairing screen shows its HR) even outside Start/Ready.
+        want(OWNER_PAIR, start = false)
+        main.postDelayed({ release(OWNER_PAIR) }, PAIR_HOLD_MS)
         apply(policy.pair(address, name))
     }
 
     fun forget() {
         prefs.edit().remove(KEY_ADDRESS).remove(KEY_NAME).apply()
         deviceName = null
-        cancelReconnect()
-        cancelFallback()
-        stopNameScan()
-        closeGatt()
+        trail.note("forget")
+        shutdown()
         apply(policy.forget())
-        setConnected(false)
     }
 
     // ---- link ----
 
-    /** Recording starts: keep a working link, otherwise connect directly to the saved strap. */
-    fun connectIfPaired() {
-        if (connected && gatt != null) {
-            listener?.onLink(true)
-            return
-        }
-        apply(policy.onStart())
+    /** Recording starts: keep a working link, otherwise hunt for the saved strap. Any thread. */
+    fun connectIfPaired() = main.post { want(OWNER_RUN) }
+
+    /** Recording stopped: let go of the strap unless the Start/Ready screen still wants it. Any thread. */
+    fun disconnect() = main.post { release(OWNER_RUN) }
+
+    /** The Start/Ready GPS probe started (main thread): connect the saved strap before GO. */
+    fun startScreenWants() = want(OWNER_START)
+
+    /** The Start/Ready GPS probe stopped (main thread). */
+    fun startScreenReleases() = release(OWNER_START)
+
+    private fun want(owner: String, start: Boolean = true) {
+        linger?.let { main.removeCallbacks(it) }
+        linger = null
+        if (owners.add(owner)) trail.note("want $owner owners=$owners state=${policy.state}")
+        if (connected && gatt != null) listener?.onLink(true)
+        if (start) apply(policy.onStart(now()))
     }
 
-    fun disconnect() {
-        cancelReconnect()
-        cancelFallback()
-        stopNameScan()
+    private fun release(owner: String) {
+        if (!owners.remove(owner)) return
+        trail.note("release $owner owners=$owners")
+        if (owners.isNotEmpty() || linger != null) return
+        val r = Runnable {
+            linger = null
+            if (owners.isEmpty()) {
+                trail.note("idle: letting go of the strap")
+                shutdown()
+            }
+        }
+        linger = r
+        main.postDelayed(r, LINGER_MS)
+    }
+
+    /** Close everything; nothing connects again until someone wants the strap. */
+    private fun shutdown() {
+        cancelPending()
+        cancelConnectWindow()
+        stopHunt()
         closeGatt()
+        policy.stop()
         setConnected(false)
     }
 
     private fun apply(action: BleReconnectPolicy.Action) {
         when (action) {
             is BleReconnectPolicy.Action.Nothing -> Unit
-            is BleReconnectPolicy.Action.Reconnect -> {
-                cancelReconnect()
-                val r = Runnable {
-                    pendingReconnect = null
-                    if (action.closeFirst) closeGatt()
-                    connect(action.address, action.autoConnect)
+            is BleReconnectPolicy.Action.Connect -> {
+                persistIdentity()
+                schedule(action.delayMs) {
+                    stopHunt()
+                    closeGatt()
+                    connect(action.address, autoConnect = false)
                 }
-                pendingReconnect = r
-                main.postDelayed(r, action.delayMs)
             }
-            is BleReconnectPolicy.Action.ScanForName -> startNameScan(action)
+            is BleReconnectPolicy.Action.Hunt -> {
+                stopHunt()
+                closeGatt()
+                cancelConnectWindow()
+                if (action.delayMs > 0) trail.note("hunt in ${action.delayMs}ms")
+                schedule(action.delayMs) { startHunt(action) }
+            }
         }
     }
 
-    private fun cancelReconnect() {
-        pendingReconnect?.let { main.removeCallbacks(it) }
-        pendingReconnect = null
+    private fun schedule(delayMs: Long, block: () -> Unit) {
+        cancelPending()
+        val r = Runnable {
+            pending = null
+            block()
+        }
+        pending = r
+        main.postDelayed(r, delayMs)
+    }
+
+    private fun cancelPending() {
+        pending?.let { main.removeCallbacks(it) }
+        pending = null
+    }
+
+    /** The policy re-points the saved address to the strap a scan found by address or name. */
+    private fun persistIdentity() {
+        val a = policy.savedAddress
+        val n = policy.savedName
+        if (a != prefs.getString(KEY_ADDRESS, null) || n != prefs.getString(KEY_NAME, null)) {
+            prefs.edit().putString(KEY_ADDRESS, a).putString(KEY_NAME, n).apply()
+            deviceName = n
+            trail.note("saved strap re-pointed to ${a?.let { addr(it) }} name=${n ?: "-"} match=${policy.lastMatch}")
+        }
     }
 
     @SuppressLint("MissingPermission")
     private fun connect(address: String, autoConnect: Boolean) {
         val a = adapter
         if (a == null || !a.isEnabled || !hasPermissions()) {
-            apply(policy.onConnectFailed(SystemClock.elapsedRealtime()))
+            trail.note("connect skipped: adapter=${a?.isEnabled} perms=${hasPermissions()}")
+            if (!autoConnect) apply(policy.onConnectFailed(now()))
             return
         }
-        val device: BluetoothDevice = try {
+        val device: BluetoothDevice = huntDevices[address] ?: try {
             a.getRemoteDevice(address)
         } catch (_: IllegalArgumentException) {
+            if (!autoConnect) apply(policy.onConnectFailed(now()))
             return
         }
         Log.i(TAG, "connectGatt autoConnect=$autoConnect addressType=${addressType(address)}")
+        trail.note("connectGatt ${addr(address)} auto=$autoConnect fromScan=${huntDevices.containsKey(address)}")
         setupRetried = false
-        // Only a direct connect is expected to produce a measurement within seconds; a passive autoConnect after a drop can legitimately take a minute.
-        if (!autoConnect) armFallback() else cancelFallback()
+        // A direct connect goes to an address a scan (or pairing) just saw: it must deliver within seconds.
+        if (!autoConnect) armConnectWindow()
         gatt = try {
             device.connectGatt(context, autoConnect, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
             Log.w(TAG, "connectGatt threw: $e")
             null
         }
-        if (gatt == null) apply(policy.onConnectFailed(SystemClock.elapsedRealtime()))
-    }
-
-    /** No measurement [FALLBACK_MS] after a connect attempt: ask the policy whether a name scan is allowed. */
-    private fun armFallback() {
-        cancelFallback()
-        val r = Runnable {
-            fallbackTimer = null
-            if (connected) return@Runnable
-            val action = policy.onNoMeasurement(SystemClock.elapsedRealtime())
-            Log.i(TAG, "no measurement after ${FALLBACK_MS}ms; fallback=${policy.lastFallback}")
-            if (action is BleReconnectPolicy.Action.ScanForName) startNameScan(action)
-            if (policy.state == BleReconnectPolicy.LinkState.NOT_FOUND) listener?.onLink(false)
+        if (gatt == null) {
+            trail.note("connectGatt returned null")
+            if (!autoConnect) {
+                cancelConnectWindow()
+                apply(policy.onConnectFailed(now()))
+            }
         }
-        fallbackTimer = r
-        main.postDelayed(r, FALLBACK_MS)
     }
 
-    private fun cancelFallback() {
-        fallbackTimer?.let { main.removeCallbacks(it) }
-        fallbackTimer = null
+    /** No first measurement [CONNECT_WINDOW_MS] after a direct connect (or a passive link coming up): hunt again. */
+    private fun armConnectWindow() {
+        cancelConnectWindow()
+        val r = Runnable {
+            connectWindow = null
+            if (connected) return@Runnable
+            trail.note("no measurement within ${CONNECT_WINDOW_MS}ms; state=${policy.state}")
+            closeGatt()
+            setConnected(false)
+            apply(policy.onConnectFailed(now()))
+        }
+        connectWindow = r
+        main.postDelayed(r, CONNECT_WINDOW_MS)
     }
 
-    /** One filtered scan for the saved name (the start was already budgeted by the policy). */
+    private fun cancelConnectWindow() {
+        connectWindow?.let { main.removeCallbacks(it) }
+        connectWindow = null
+    }
+
+    /** One filtered 0x180D scan of up to [h].scanMs plus a passive connect to the saved address. */
     @SuppressLint("MissingPermission")
-    private fun startNameScan(action: BleReconnectPolicy.Action.ScanForName) {
-        val scanner = adapter?.takeIf { it.isEnabled && hasPermissions() }?.bluetoothLeScanner
+    private fun startHunt(h: BleReconnectPolicy.Action.Hunt) {
+        val a = adapter
+        val scanner = a?.takeIf { it.isEnabled && hasPermissions() }?.bluetoothLeScanner
         if (scanner == null) {
-            finishNameScan(emptyList())
+            trail.note("hunt cannot scan: adapter=${a?.isEnabled} perms=${hasPermissions()}")
+            apply(policy.onScanEnded(now(), failed = true))
             return
         }
-        val found = LinkedHashMap<String, BleReconnectPolicy.Candidate>()
+        huntDevices.clear()
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val d = result.device ?: return
                 val name = result.scanRecord?.deviceName ?: safeName(d)
-                found[d.address] = BleReconnectPolicy.Candidate(d.address, name, result.rssi)
+                val rssi = result.rssi
+                main.post {
+                    if (huntCb !== this) return@post
+                    if (!huntDevices.containsKey(d.address)) trail.note("hunt saw ${addr(d.address)} name=${name ?: "-"} rssi=$rssi")
+                    huntDevices[d.address] = d
+                    val action = policy.onScanResult(BleReconnectPolicy.Candidate(d.address, name, rssi), now())
+                    if (action is BleReconnectPolicy.Action.Connect) trail.note("hunt matched ${addr(action.address)} by ${policy.lastMatch}")
+                    apply(action)
+                }
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "name scan failed $errorCode")
                 main.post {
-                    if (nameScanCb === this) {
-                        stopNameScan()
-                        finishNameScan(found.values.toList())
-                    }
+                    if (huntCb !== this) return@post
+                    trail.note("hunt scan failed code=$errorCode")
+                    stopHunt()
+                    apply(policy.onScanEnded(now(), failed = true))
                 }
             }
         }
         val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(HR_SERVICE)).build())
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
+        val mode = if (h.lowLatency) ScanSettings.SCAN_MODE_LOW_LATENCY else ScanSettings.SCAN_MODE_BALANCED
+        val settings = ScanSettings.Builder().setScanMode(mode).build()
         try {
             scanner.startScan(filters, settings, cb)
         } catch (e: Exception) {
-            Log.w(TAG, "name scan start threw: $e")
-            finishNameScan(emptyList())
+            trail.note("hunt scan start threw: $e")
+            apply(policy.onScanEnded(now(), failed = true))
             return
         }
-        nameScanCb = cb
-        main.postDelayed({
-            if (nameScanCb !== cb) return@postDelayed // cancelled
-            stopNameScan()
-            finishNameScan(found.values.toList())
-        }, action.timeoutMs)
+        huntCb = cb
+        trail.note("hunt start scanMs=${h.scanMs} lowLatency=${h.lowLatency} passive=${addr(h.passiveAddress)} name=${policy.savedName ?: "-"}")
+        val end = Runnable {
+            huntEnd = null
+            if (huntCb !== cb) return@Runnable
+            trail.note("hunt scan ended, ${huntDevices.size} HR device(s) seen, no match")
+            stopHunt()
+            apply(policy.onScanEnded(now(), failed = false))
+        }
+        huntEnd = end
+        main.postDelayed(end, h.scanMs)
+        val tick = object : Runnable {
+            override fun run() {
+                if (huntCb !== cb) return
+                apply(policy.onHuntTick(now()))
+                if (huntCb === cb) main.postDelayed(this, HUNT_TICK_MS)
+            }
+        }
+        huntTick = tick
+        main.postDelayed(tick, HUNT_TICK_MS)
+        // A strap with a fixed address comes back on its own; the scan covers one that rotates.
+        connect(h.passiveAddress, autoConnect = true)
     }
 
     @SuppressLint("MissingPermission")
-    private fun stopNameScan() {
-        val cb = nameScanCb ?: return
-        nameScanCb = null
+    private fun stopHunt() {
+        huntEnd?.let { main.removeCallbacks(it) }
+        huntEnd = null
+        huntTick?.let { main.removeCallbacks(it) }
+        huntTick = null
+        val cb = huntCb ?: return
+        huntCb = null
         try {
             adapter?.bluetoothLeScanner?.stopScan(cb)
         } catch (_: Exception) {
         }
     }
 
-    private fun finishNameScan(found: List<BleReconnectPolicy.Candidate>) {
-        val before = policy.savedAddress
-        if (connected) return // the link came up while the scan ran
-        val action = policy.onScanResult(found, SystemClock.elapsedRealtime())
-        if (action is BleReconnectPolicy.Action.Reconnect) {
-            Log.i(TAG, "name scan matched; address ${if (action.address == before) "unchanged" else "updated"} type=${addressType(action.address)}")
-            prefs.edit().putString(KEY_ADDRESS, action.address).apply()
-            apply(action)
-        } else {
-            Log.i(TAG, "name scan found no match among ${found.size} HR device(s); strap stays paired")
-            listener?.onLink(false)
-        }
-    }
+    /** Last two octets only: enough to tell addresses apart in the trail. */
+    private fun addr(address: String): String = "…" + address.takeLast(5) + "/" + addressType(address).substringBefore('-')
 
     /** Top two address bits (meaningful only if the address is random; a public one looks random): 11 static, 01 resolvable private, 00 non-resolvable private. */
     private fun addressType(address: String): String {
@@ -370,8 +461,8 @@ class BleHrClient(context: Context) {
             notificationsOn = false
             cancelWatchdog()
         } else {
-            cancelFallback()
-            stopNameScan() // a late scan result must not tear down the working link
+            cancelConnectWindow()
+            stopHunt() // a late scan result must not tear down the working link
         }
         if (connected == v) return
         connected = v
@@ -400,13 +491,14 @@ class BleHrClient(context: Context) {
     private fun setupFailed(g: BluetoothGatt, what: String) {
         if (g !== gatt) return
         Log.w(TAG, "$what failed")
+        trail.note("setup failed: $what retried=$setupRetried")
         if (!setupRetried) {
             setupRetried = true
             main.postDelayed({ if (g === gatt) g.discoverServices() }, 500)
         } else {
             closeGatt()
             setConnected(false)
-            apply(policy.onDisconnected(SystemClock.elapsedRealtime()))
+            apply(policy.onDisconnected(now()))
         }
     }
 
@@ -438,12 +530,22 @@ class BleHrClient(context: Context) {
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     Log.i(TAG, "link up, discovering")
+                    trail.note("link up status=$status state=${policy.state}")
+                    if (policy.state == BleReconnectPolicy.LinkState.HUNTING) {
+                        // The hunt's passive connect to the saved address came up: stop scanning, set it up.
+                        policy.onLinkUp()
+                        stopHunt()
+                        armConnectWindow()
+                    }
                     if (!g.discoverServices()) setupFailed(g, "discoverServices")
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.i(TAG, "disconnected status=$status")
+                    trail.note("link down status=$status state=${policy.state} wasConnected=$connected")
+                    val hunting = policy.state == BleReconnectPolicy.LinkState.HUNTING
+                    if (hunting) closeGatt() // only the passive connect gave up; the hunt's scan carries on
                     setConnected(false)
                     listener?.onNoContact()
-                    apply(policy.onDisconnected(SystemClock.elapsedRealtime()))
+                    if (!hunting) apply(policy.onDisconnected(now()))
                 }
             }
         }
@@ -491,9 +593,11 @@ class BleHrClient(context: Context) {
             if (g !== gatt) return@post
             if (notificationsOn && !connected) {
                 cancelWatchdog()
-                policy.onConnected(SystemClock.elapsedRealtime())
+                policy.onConnected(now())
+                persistIdentity()
                 setConnected(true)
                 Log.i(TAG, "first measurement received; strap connected")
+                trail.note("connected: first measurement bpm=${parsed.bpm ?: "no-contact"} match=${policy.lastMatch}")
             }
             val bpm = parsed.bpm
             lastHr = bpm
@@ -514,7 +618,13 @@ class BleHrClient(context: Context) {
         private const val KEY_NAME = "name"
         private const val MAX_SEEN_NAMES = 32
         private const val SILENT_LINK_MS = 15_000L
-        private const val FALLBACK_MS = 12_000L
+        private const val CONNECT_WINDOW_MS = 10_000L
+        private const val HUNT_TICK_MS = 1_000L
+        private const val LINGER_MS = 5_000L
+        private const val PAIR_HOLD_MS = 120_000L
+        const val OWNER_START = "start"
+        const val OWNER_RUN = "run"
+        const val OWNER_PAIR = "pair"
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         val HR_MEASUREMENT: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
