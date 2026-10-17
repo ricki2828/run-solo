@@ -84,7 +84,7 @@ final class RecorderHostTests: XCTestCase {
   func testLiveLapsRunLifecycleWithoutHeartRate() throws {
     let clock = Clock()
     var events: [RecorderEvent] = []
-    let host = RecorderHost(root: scratchDir(), clock: clock.recorderClock) { events.append($0) }
+    let host = RecorderHost(root: scratchDir(), clock: clock.recorderClock, send: { events.append($0) })
     try host.start(runId: "live-1", mode: .laps, units: .km, tz: "Australia/Sydney")
     XCTAssertThrowsError(try host.start(runId: "live-2", mode: .free, units: .km))
     XCTAssertEqual(host.status().state, .recording)

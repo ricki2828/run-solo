@@ -209,6 +209,7 @@ final class RecorderHost {
 
   private func stopLocked(t: Int64, w: Int64) throws -> String? {
     stopTimer()
+    guard kotlin.active else { return nil }
     let id = kotlin.runId
     let path = try kotlin.stop(t: t, w: w)
     trace("recorder stop run=\(id ?? "-") file=\(path ?? "none")")
