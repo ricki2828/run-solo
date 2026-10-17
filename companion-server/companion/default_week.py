@@ -63,7 +63,10 @@ class Quality:
 
 def quality_session(recent: Sequence[Mapping[str, Any]]) -> Quality:
     """The quality day's session, from the runner's own recent runs (newest first). Never a guessed pace."""
-    tempos = [r for r in recent if r.get("type") == "tempo" and not is_goal_run(r)]  # a goal effort is not a tempo
+    # Real tempo efforts only: not trail runs (typed by effort, pace is grade-dependent), not goal efforts and not
+    # ones the runner tapped Easy/Right on.
+    tempos = [r for r in recent if r.get("type") == "tempo" and r.get("app_type") != "trail" and not is_goal_run(r)
+              and is_hard_run(r)]
     paces = [r.get("true_pace_s_per_km") or r.get("pace_s_per_km") for r in tempos]
     paces = [p for p in paces if p]
     if paces:
