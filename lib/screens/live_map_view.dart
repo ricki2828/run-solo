@@ -197,6 +197,7 @@ class LiveMapView extends StatefulWidget {
     this.retrace,
     this.mapBoxKey,
     this.numbers,
+    this.hideMap = false,
   });
 
   /// Keys the map's box (tests and layout checks find it by this).
@@ -205,6 +206,11 @@ class LiveMapView extends StatefulWidget {
   /// The run numbers (distance, time, pace) above the map, big. They take the
   /// room the map does not: the map is capped at [mapFraction] of the height.
   final Widget? numbers;
+
+  /// No map at all, the numbers take the room. Decided by the caller from
+  /// screen height and run type (stable for the run), never from live layout,
+  /// so the platform view is not torn down and rebuilt mid-run.
+  final bool hideMap;
 
   /// The most of the page's height the map may take when [numbers] is set.
   static const double mapFraction = 0.4;
@@ -291,6 +297,19 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
         ],
         if (numbers == null)
           Expanded(child: _mapBox(context))
+        else if (widget.hideMap)
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) => Align(
+                alignment: Alignment.centerLeft,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(width: c.maxWidth, child: numbers),
+                ),
+              ),
+            ),
+          )
         else
           Expanded(
             child: LayoutBuilder(

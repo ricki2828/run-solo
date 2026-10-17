@@ -237,6 +237,21 @@ void main() {
     );
   });
 
+  testWidgets('short phone, laps: no map on page 2, the numbers take the '
+      'room', (tester) async {
+    await open(tester);
+    tester.view.physicalSize = const Size(1080, 1920); // 360 x 640
+    await pumpTimes(tester, 4);
+    await tester.tap(find.byKey(_toggle));
+    await settleAnimations(tester);
+    expect(find.byKey(_map), findsNothing);
+    for (final k in ['map-page-distance', 'map-page-time', 'map-page-pace']) {
+      final h = tester.getRect(find.byKey(ValueKey(k))).height;
+      expect(h, greaterThanOrEqualTo(36), reason: k);
+    }
+    // Free run on the same phone keeps its map.
+  });
+
   testWidgets('the page is remembered per run type', (tester) async {
     final (_, services) = await open(tester);
     await tester.tap(find.byKey(_toggle));
