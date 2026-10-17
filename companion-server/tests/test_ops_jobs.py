@@ -141,7 +141,7 @@ def test_apply_calls_ops_send_and_reports_a_refusal(fixture_db):
     res = concierge.run(concierge.load_testers(fixture_db), NOW, None, apply=True, send=fake)
     assert calls == [["send", "--tester", "T1", "--template", "N1"], ["send", "--tester", "T2", "--template", "N2"]]
     out = {d.tester: o for d, o in res if d.action == "send"}
-    assert out["T1"].startswith("queued") and out["T2"].startswith("REFUSED/FAILED: refused: N2")
+    assert out["T1"].startswith("queued") and out["T2"].startswith("REFUSED: refused: N2")
 
 
 def test_the_concierge_dry_run_smoke(fixture_db, tmp_path, monkeypatch, capsys):
@@ -250,6 +250,7 @@ def test_the_digest_dry_run_smoke_writes_the_file_and_sends_nothing(tmp_path, mo
     monkeypatch.setenv("RS_STATE_DIR", str(state))
     monkeypatch.setenv("FAKE_SC", str(tmp_path / "sc.json"))
     monkeypatch.setenv("RS_OPS_CMD", f"{sys.executable} {tmp_path / 'fake_ops.py'}")
+    (state / "scorecard-2026-43.json").write_text(json.dumps(SC))   # dry run reads this, never writes a snapshot
     monkeypatch.setattr(digest, "gather_issues", lambda repo=None: (["#12 [P1] crash on start"], None))
     sent = []
     monkeypatch.setattr(digest, "send_telegram", lambda text: sent.append(text) or (True, ""))
@@ -276,3 +277,51 @@ def test_the_telegram_send_goes_only_to_rickis_topic():
     assert digest.send_telegram("hello", runner=fake)[0]
     assert seen["env"]["TELEGRAM_CHAT_ID"] == "-1003885786157" and seen["env"]["TELEGRAM_THREAD_ID"] == "4"
     assert "send_telegram_text.py" in seen["argv"][-2] and seen["argv"][-1] == "hello"
+
+
+TOKEN = "bot1234567890:AAH-secret_token-value123456789"
+
+
+def test_redact_removes_bot_tokens_everywhere_it_prints():
+    assert TOKEN.split("bot")[1] not in common.redact(f"HTTPError https://api.telegram.org/{TOKEN}/sendMessage 404")
+    boom = lambda *a, **k: subprocess.CompletedProcess(a, 1, "", f"Traceback ... https://api.telegram.org/{TOKEN}/sendMessage")  # noqa: E731
+    ok, msg = digest.send_telegram("x", runner=boom)
+    assert not ok and "AAH" not in msg and "1234567890" not in msg
+    ghbad = lambda *a, **k: subprocess.CompletedProcess(a, 1, "", f"auth failed token=ghp_abcdefghijk")  # noqa: E731
+    assert "ghp_" not in digest.gather_issues("x/y", runner=ghbad)[1]
+
+
+def test_ops_call_reaches_the_user_bus_from_cron(monkeypatch):
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.delenv("DBUS_SESSION_BUS_ADDRESS", raising=False)
+    env = common.ops_env()
+    assert env["XDG_RUNTIME_DIR"].startswith("/run/user/") and env["DBUS_SESSION_BUS_ADDRESS"].startswith("unix:path=/run/user/")
+
+
+def test_digest_refuses_to_send_when_ops_or_the_snapshot_failed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("RS_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("RS_OPS_CMD", "false")
+    monkeypatch.setattr(digest, "gather_issues", lambda repo=None: ([], None))
+    sent = []
+    monkeypatch.setattr(digest, "send_telegram", lambda text: sent.append(text) or (True, ""))
+    assert digest.main(["--no-narrative", "--week", "2026-44"]) == 3
+    assert sent == [] and "NOT SENT" in capsys.readouterr().err
+    assert digest.ops_failures(SC, ["ops sends failed (exit 127)"]) and digest.ops_failures(SC, ["fine"]) is None
+
+
+def test_concierge_exits_non_zero_when_ops_cannot_run(fixture_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("RS_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("RS_OPS_CMD", "false")
+    assert concierge.main(["--db", fixture_db, "--now", common.iso(NOW), "--apply", "--no-log"]) == 3
+
+
+def test_n3_is_week_3_only():
+    ran = NOW - timedelta(days=1)
+    assert ("send", "N3") in acts(T(days=20, first_run=ran, last_activity=ran), "https://x")
+    assert ("send", "N3") not in acts(T(days=21, first_run=ran, last_activity=ran), "https://x")
+
+
+def test_the_model_pass_has_no_tools():
+    seen = {}
+    digest.claude_narrative("{}", runner=lambda argv, **k: seen.update(s=argv[-1]) or subprocess.CompletedProcess(argv, 1, "", ""))
+    assert '--tools ""' in seen["s"]

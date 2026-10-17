@@ -40,6 +40,17 @@ def week_label(now: datetime) -> str:
 
 
 # ------------------------------------------------------------------ gather
+def latest_snapshot() -> tuple[dict | None, str]:
+    """For --dry-run: read the newest snapshot already on disk instead of writing one."""
+    files = sorted(common.state_dir().glob("scorecard-*.json"))
+    if not files:
+        return None, "dry run: no earlier scorecard snapshot on disk, none written"
+    try:
+        return json.loads(files[-1].read_text()), f"{files[-1]} (dry run: read, not rewritten)"
+    except (OSError, ValueError) as e:
+        return None, f"could not read {files[-1]}: {type(e).__name__}"
+
+
 def gather_snapshot(run_ops=common.run_ops) -> tuple[dict | None, str]:
     code, out = run_ops(["scorecard-snapshot"])
     path = out.splitlines()[-1].strip() if out else ""
@@ -92,7 +103,7 @@ def gather_issues(repo: str = REPO, runner=subprocess.run) -> tuple[list[str], s
         except (OSError, subprocess.TimeoutExpired) as e:
             return [], f"gh failed: {type(e).__name__}"
         if r.returncode != 0:
-            return [], f"gh exited {r.returncode}: {(r.stderr or '').strip()[:150]}"
+            return [], f"gh exited {r.returncode}: {common.redact((r.stderr or '').strip())[:150]}"
         try:
             for i in json.loads(r.stdout or "[]"):
                 found[i["number"]] = f"#{i['number']} [{label}] {i['title']}"
@@ -164,7 +175,7 @@ JSON:
 
 def claude_narrative(data: str, runner=subprocess.run) -> tuple[str | None, str]:
     """-> (text or None, note). Max login: the API key is stripped by assistant_env. The prompt goes in on stdin."""
-    script = f'source "{ASSISTANT_ENV}" && strip_claude_env && cd "$(mktemp -d)" && exec claude -p --model sonnet'
+    script = f'source "{ASSISTANT_ENV}" && strip_claude_env && cd "$(mktemp -d)" && exec claude -p --model sonnet --tools ""'
     try:
         r = runner(["bash", "-c", script], input=PROMPT + data, capture_output=True, text=True, timeout=240)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -215,7 +226,15 @@ def send_telegram(text: str, runner=subprocess.run) -> tuple[bool, str]:
         r = runner(["bash", "-c", script, "_", str(TG_TOOL), text], capture_output=True, text=True, timeout=60, env=env)
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, f"telegram send failed: {type(e).__name__}"
-    return r.returncode == 0, (r.stderr or r.stdout or "").strip()[:200]
+    return r.returncode == 0, common.redact((r.stderr or r.stdout or "").strip())[:200]
+
+
+def ops_failures(sc: dict | None, *groups: list[str]) -> str | None:
+    """Why a summary built from these would be wrong, or None. A failed ops call must not read as 'no activity'."""
+    bad = [ln for g in groups for ln in g if re.match(r"^ops \w+ failed", ln)]
+    if sc is None:
+        bad.append("no scorecard")
+    return "; ".join(bad) or None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -227,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     now = common.utcnow()
     week = a.week or week_label(now)
-    sc, snap_note = gather_snapshot()
+    sc, snap_note = latest_snapshot() if a.dry_run else gather_snapshot()
     prev = None
     if sc:
         y, w = int(week[:4]), int(week[5:])
@@ -249,6 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.dry_run:
         print(f"DRY RUN: digest written to {path}; nothing sent. The Telegram summary would be:\n{summary}")
         return 0
+    broken = ops_failures(sc, sends, feedback, status)
+    if broken:
+        print(f"NOT SENT: {broken}. The digest file at {path} is incomplete.", file=sys.stderr)
+        return 3
     ok, msg = send_telegram(summary)
     print(summary)
     if not ok:

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ops_jobs import common  # noqa: E402
 
 N1_DAY, N2_SILENT_DAYS = 3, 7
-N3_FROM_DAY, N3_TO_DAY = 14, 27
+N3_FROM_DAY, N3_TO_DAY = 14, 20      # week 3 only
 SPACING_DAYS = 7             # ops send's own rule (ops_send.SPACING_DAYS); checked here only to say "waiting" instead of "refused"
 CONSENT_REQUIRED = int(os.environ.get("RS_CONSENT_REQUIRED") or 2)
 STUCK_NO_CONSENT_DAYS = 2    # joined but never agreed to the companion terms
@@ -159,7 +159,9 @@ def run(testers: list[Tester], now: datetime, link: str | None, apply: bool, sen
                     if dec.template == "N3":
                         args += ["--link", link]
                     code, text = send(args)
-                    outcome = f"{'queued' if code == 0 else 'REFUSED/FAILED'}: {text.splitlines()[0] if text else code}"
+                    text = common.redact(text)
+                    kind = "queued" if code == 0 else ("OPS UNREACHABLE" if common.unreachable(code, text) else "REFUSED")
+                    outcome = f"{kind}: {text.splitlines()[0] if text else code}"
             results.append((dec, outcome))
     return results
 
@@ -190,12 +192,17 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     now = common.parse(a.now) if a.now else common.utcnow()
     testers = load_testers(a.db or common.db_path())
-    text = render(run(testers, now, a.link, a.apply), now, a.apply)
+    results = run(testers, now, a.link, a.apply)
+    text = render(results, now, a.apply)
     print(text, end="")
     if not a.no_log:
         d = common.state_dir()
         d.mkdir(parents=True, exist_ok=True)
         (d / f"concierge-{now.strftime('%Y-%m-%d')}{'' if a.apply else '-dryrun'}.md").write_text(text)
+    broken = [d.tester for d, o in results if o.startswith("OPS UNREACHABLE")]
+    if broken:
+        print(f"ops command could not run for {', '.join(broken)}", file=sys.stderr)
+        return 3
     return 0
 
 

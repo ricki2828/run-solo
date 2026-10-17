@@ -7,6 +7,7 @@ approval) stays where it is. Testers are T-numbers everywhere here: no name, cha
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sqlite3
 import subprocess
@@ -57,10 +58,32 @@ def ops_argv() -> list[str]:
     return shlex.split(os.environ.get("RS_OPS_CMD") or DEFAULT_OPS) + ["ops"]
 
 
+_SECRET = re.compile(r"(bot\d+:[\w-]+|\b\d{6,}:[A-Za-z0-9_-]{20,}|(?i:token|secret|password|api[_-]?key)\S*[=: ]+\S+)")
+
+
+def redact(text: str) -> str:
+    """Strip anything that looks like a bot token or credential before text is printed, logged or filed."""
+    return _SECRET.sub("[redacted]", text or "")
+
+
+def ops_env() -> dict[str, str]:
+    """cron has no user bus: `systemd-run --user` needs these two."""
+    env = dict(os.environ)
+    uid = os.getuid()
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+    return env
+
+
+def unreachable(code: int, text: str) -> bool:
+    """True when the ops command itself did not run (as opposed to `ops send` legitimately refusing: exit 1 or 2 with a message)."""
+    return code >= 3 or not (text or "").strip() or "Failed to connect" in (text or "") or "Traceback" in (text or "")
+
+
 def run_ops(args: list[str], timeout: int = 120) -> tuple[int, str]:
     """Run `companion.cli ops <args>`. -> (exit code, combined output). Never raises on a failing command."""
     try:
-        r = subprocess.run(ops_argv() + args, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(ops_argv() + args, capture_output=True, text=True, timeout=timeout, env=ops_env())
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, f"could not run the ops command: {type(e).__name__}"
-    return r.returncode, ((r.stdout or "") + (r.stderr or "")).strip()
+    return r.returncode, redact(((r.stdout or "") + (r.stderr or "")).strip())
