@@ -29,6 +29,14 @@ TRUST_WINDOW_DAYS = 6          # the recap goes out Sunday; the question may fol
 SURVEY_START_MIN, SURVEY_END_MIN = 19 * 60 + 30, 21 * 60   # evening: a morning or post-run check-in that day has already taken the question
 TRUST_THANKS = "Thanks, that helps."
 
+# "Not really" gets one follow-up card in the same chat: what was off. Fixed options, kept like the trust answer.
+WHY_OFF_ACTION = "whyoff"        # whyoff:generic | numbers | timing | other
+WHY_OFF_OPTIONS = (("generic", "Too generic"), ("numbers", "Wrong numbers"), ("timing", "Bad timing"), ("other", "Something else"))
+WHY_OFF_HEAD = "What was off?"
+WHY_OFF_LINE = "One tap and I'll pass it on."
+WHY_OFF_THANKS = "Thanks, passed on."
+WHY_OFF_OTHER = "Tell me what was off, in your own words."
+
 ELLIS_ACTION = "ellis"           # ellis:very | ellis:somewhat | ellis:not | ellis:stopped
 ELLIS_OPTIONS = (("very", "Very disappointed"), ("somewhat", "Somewhat"), ("not", "Not disappointed"),
                  ("stopped", "I've stopped using it"))
@@ -119,6 +127,43 @@ class MeasureMixin:
                       (card_id, uid, recap_run_id, "trust", TRUST_HEAD, TRUST_LINE, json.dumps(buttons), "template", iso(now)))
             self._convo_write(c, uid, now, card_id, "trust", cv_engine.MediaPlan("none", False, "trust"), "", [], None)
         return card_id
+
+    def _trust_not_followup(self, c, user: dict, recap_run_id: str, now: datetime) -> None:
+        """A "Not really" answer (inside the tap's transaction): queue the one-tap "what was off?" card and tell the ops
+        digest. The card is a direct reply to the runner's own tap, so it takes no slot from the daily question cap."""
+        from .rails import add_alert, tag
+        c.execute("INSERT OR IGNORE INTO outbox (user_id, kind, due_at, dedupe_key, ref) VALUES (?,?,?,?,?)",
+                  (user["id"], "trust_why", iso(now), f"trustwhy:{user['id']}:{recap_run_id}", recap_run_id))
+        add_alert(c, f"trust-not:{user['id']}:{recap_run_id}", f"Run Supreme coach: {tag(user.get('tester_no'))} said coaching was not right",
+                  "Answered Not really to the weekly trust question. A what-was-off card has been sent.", now)
+
+    def _build_trust_why_card(self, uid: str, recap_run_id: str, now: datetime) -> str | None:
+        with db.ro(self.s.db_path) as c:
+            ex = c.execute("SELECT card_id FROM cards WHERE user_id=? AND run_id=? AND kind='trust_why'", (uid, recap_run_id)).fetchone()
+            if ex:
+                return ex["card_id"]
+        with db.tx(self.s.db_path) as c:
+            if not self._ci_consented(c, uid):
+                return None
+            card_id = secrets.token_hex(16)
+            buttons = [{"label": l, "action": f"{WHY_OFF_ACTION}:{v}", "row": i // 2} for i, (v, l) in enumerate(WHY_OFF_OPTIONS)]
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
+                      "VALUES (?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, recap_run_id, "trust_why", WHY_OFF_HEAD, WHY_OFF_LINE, json.dumps(buttons), "template", iso(now)))
+            self._convo_write(c, uid, now, card_id, "trust_why", cv_engine.MediaPlan("none", False, "trust_why"), "", [], None)
+        return card_id
+
+    def _why_off_answer(self, c, user: dict, card: dict, value: str, now: datetime) -> bool:
+        from .rails import add_alert, tag
+        if card["kind"] != "trust_why" or value not in {v for v, _ in WHY_OFF_OPTIONS} or not self._ci_consented(c, user["id"]):
+            return False
+        c.execute("INSERT INTO survey_answers (user_id, kind, ref, value, created_at) VALUES (?,?,?,?,?) "
+                  "ON CONFLICT(user_id, kind, ref) DO UPDATE SET value=excluded.value, created_at=excluded.created_at",
+                  (user["id"], "trust_why", card["run_id"], value, iso(now)))
+        label = dict(WHY_OFF_OPTIONS)[value]
+        add_alert(c, f"trust-why:{user['id']}:{card['run_id']}", f"Run Supreme coach: {tag(user.get('tester_no'))} says what was off",
+                  f"{label}.", now)
+        return True
 
     # ------------------------------------------------------------------ Sean Ellis (once, days 21-27)
     def plan_ellis(self, now: datetime | None = None, only_user: str | None = None) -> int:

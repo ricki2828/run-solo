@@ -73,6 +73,7 @@ class Planned:
     session_id: str | None = None      # the app's template id for it (a hint)
     pace_lo_s: float | None = None     # the work pace the app targets for it (True Pace, s/km), when it sent one
     pace_hi_s: float | None = None
+    derived: bool = False              # True: the coach's default week (no 4-week plan), not the app's plan
 
 
 @dataclass(frozen=True)

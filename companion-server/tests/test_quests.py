@@ -519,3 +519,23 @@ def test_the_apps_exact_quest_payloads_are_accepted_inside_a_full_run_upload(cli
     # 5. "Not this month" on its own: just the offer month
     post(client, t, "a5", minutes_ago=60, quest={"month_skipped": "2026-12"})
     assert client.get("/v1/me/next-session", headers=auth(t)).json()["quest"] is None
+
+
+# ---------------------------------------------------------------- no trail quests off the trail
+def test_trail_offers_are_not_put_on_a_card_when_the_newest_run_was_not_a_trail_run(client, fakes):
+    t = enrol(client)
+    post(client, t, quest={"offers": three_offers()})
+    c = db_(client)
+    c.execute("UPDATE runs SET app_type='intervals'")
+    c.commit()
+    uid = uid_of(client)
+    c2 = db_(client)
+    month = rows(client)[0]["month"]
+    got = [r["kind"] for r in cq.suggestable(c2, uid, cq.offered_rows(c2, uid, month))]
+    assert got == ["climb_month", "distance_month"]
+    c2.execute("UPDATE runs SET app_type='trail'")
+    c2.commit()
+    assert [r["kind"] for r in cq.suggestable(c2, uid, cq.offered_rows(c2, uid, month))][0] == "trail_visits"
+    c2.execute("UPDATE runs SET app_type=NULL")   # the app did not say: do not guess
+    c2.commit()
+    assert len(cq.suggestable(c2, uid, cq.offered_rows(c2, uid, month))) == 3

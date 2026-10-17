@@ -331,7 +331,12 @@ def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, s
     nxt, day = run.get("plan_next_type"), run.get("plan_next_day")
     if nxt in ("easy", "long", "quality") and day:
         word = {"easy": "easy", "long": "long run", "quality": "quality session"}[nxt]
-        km = f" {fmt_km(run['plan_next_m'])} km" if run.get("plan_next_m") else ""
+        if nxt != "easy" and run.get("plan_next_session_name"):
+            word = run["plan_next_session_name"]   # the session's own name where the plan has one
+        km = (f" {int(run['plan_next_m']) // 1000} km" if run["plan_next_m"] % 1000 == 0 else f" {fmt_km(run['plan_next_m'])} km") if run.get("plan_next_m") else ""
+        lo, hi = run.get("plan_next_pace_lo"), run.get("plan_next_pace_hi")
+        if nxt == "quality" and lo and hi:   # every card shows the work pace where there is one
+            km += f" at {fmt_pace(lo)}-{fmt_pace(hi)}/km"
         local = to_local(when, run.get("zone_id") or "UTC")
         try:
             gap = (datetime.fromisoformat(day).date() - local.date()).days
