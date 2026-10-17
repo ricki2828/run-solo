@@ -436,6 +436,21 @@ class TelegramChannel:
             if not e.not_modified:
                 raise
 
+    def edit_card_body(self, ref: str, message_id: str, card: OutCard, is_photo: bool) -> None:
+        """Rewrite a sent card's text (the caption on a media message), keeping its buttons as `card` lists them and its
+        picture as it is. "Not modified" is success; anything else raises ChannelError."""
+        text = caption_text(card) if is_photo else f"{card.headline}\n{card.body}"
+        if is_photo and utf16_len(text) > CAPTION_MAX:
+            raise ChannelError("telegram editMessageCaption: too long", status=400, description="caption too long")
+        payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id),
+                                   "reply_markup": {"inline_keyboard": self._keyboard(card, media=is_photo)}}
+        payload["caption" if is_photo else "text"] = text
+        try:
+            self._call("editMessageCaption" if is_photo else "editMessageText", payload)
+        except ChannelError as e:
+            if not e.not_modified:
+                raise
+
     def clear_keyboard(self, ref: str, message_id: str) -> None:
         try:
             self._call("editMessageReplyMarkup", {"chat_id": int(ref), "message_id": int(message_id),
