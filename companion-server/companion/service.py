@@ -1368,7 +1368,7 @@ class Service(CheckinMixin, MeasureMixin):
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None, user_id=uid)
         body = w.body
-        nline = next_line(run, full, soften=soft)   # fixed text: what next and when, never the model's
+        nline = next_line(self._with_default_plan(uid, run, now), full, soften=soft)   # fixed text: what next and when, never the model's
         body += f"\n{nline}"
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
@@ -1598,6 +1598,22 @@ class Service(CheckinMixin, MeasureMixin):
                 c.execute("INSERT INTO convo_log (user_id, kind, key, ts) VALUES (?,?,?,?)",
                           (uid, "recap_empty", week_ref, iso(now)))
         return card_id
+
+    def _with_default_plan(self, uid: str, run: dict, now: datetime) -> dict:
+        """The run row with the coach's default week in its plan_next_* fields when the app sent no plan, resolved with the
+        runner's check-in answers: the card's Next line then reads the same session as the evening card, the morning card
+        and Home. A real plan on the run is left alone."""
+        if run.get("plan_next_type"):
+            return run
+        with db.ro(self.s.db_path) as c:
+            u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+            if u is None or not self._ci_consented(c, uid):
+                return run
+            _ans, planned, _usual, _today, res = self._ci_state(c, dict(u), now)
+        if res is None or planned is None or not planned.derived:
+            return run
+        return dict(run, plan_next_type=res.type, plan_next_day=res.day.isoformat(),
+                    plan_next_m=None if res.easier else planned.distance_m)
 
     def _recap_shape_line(self, c, uid: str, zone_id: str, now: datetime) -> str | None:
         """One line on what next week looks like, from the default coach week. Not when the runner has a 4-week plan on

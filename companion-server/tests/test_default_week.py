@@ -140,3 +140,23 @@ def test_an_unchanged_shape_is_not_repeated_the_next_sunday(client, fakes):
     second = e.svc._build_recap_card(e.uid, "2026-W43", at(2026, 10, 25, 19, 0))
     assert "Next week:" in e.q("SELECT body FROM cards WHERE card_id=?", first)[0]["body"]
     assert "Next week:" not in e.q("SELECT body FROM cards WHERE card_id=?", second)[0]["body"]
+
+
+def test_the_run_card_next_line_agrees_with_the_evening_card_and_home(client, fakes):
+    """Ricki's fixture, no plan: the card after Saturday's run, the Tuesday evening card and Home name the same session."""
+    e = _env(client, fakes)
+    _seed(e)
+    e.svc.run_outbox(at(2026, 10, 18, 9, 0))
+    with db.tx(e.path) as c:
+        c.execute("DELETE FROM cards WHERE kind='run'")
+    cid = e.svc._build_run_card(e.uid, "r10", at(2026, 10, 17, 8, 0))
+    body = e.q("SELECT body FROM cards WHERE card_id=?", cid)[0]["body"] if cid else ""
+    home = e.svc.next_session(e.uid, at(2026, 10, 17, 8, 0))["next_session"]
+    assert home["label"] == "Easy run, 5 km" and home["date"] == "2026-10-19"
+    assert "Next: easy 5 km on Monday" in body
+    from companion.convo.questions import ORDER
+    with db.tx(e.path) as c:   # every weekly question answered, so the day's one question slot is free for the check-in
+        for k in ORDER:
+            c.execute("INSERT OR IGNORE INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (e.uid, k, "x", "2026-10-01T00:00:00Z"))
+    e.step(at(2026, 10, 20, 20, 5))
+    assert e.sends()[-1]["text"].startswith("Quality session, 5 km tomorrow")
