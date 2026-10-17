@@ -148,7 +148,9 @@ def install(app: FastAPI, settings: Settings, svc) -> None:
                           (str(who["user_id"]),)).fetchone()
             if not u:  # no row, or enrolment never confirmed in the app (consent_at is set at confirm)
                 raise HTTPException(403, "not linked")
-            return build_view(c, u["id"], u["zone_id"], now)
+            view = build_view(c, u["id"], u["zone_id"], now)
+        svc.log_miniapp_open(u["id"], now)   # a kind and a time for the scorecard, nothing else
+        return view
 
     @app.get("/miniapp/fonts/{name}")
     def miniapp_font(name: str):

@@ -311,3 +311,5 @@ Notes:
 5. Taps are recorded by the live webhook as usual and dated on the card's own virtual clock. Media follows `COMPANION_MEDIA`, as live: run and recap cards go through the render worker, text on any failure, with the "Replay" line in the caption.
 6. Health: `/healthz` also reports `replay_held`. `overdue_outbox` counts a held user's overdue items unless the replay has a heartbeat under 5 minutes old, so a stalled or forgotten replay trips the existing sentinel.
 7. Run `--dry-run` first: the whole schedule on a scratch copy of the database (template phrasing, no taps), nothing sent.
+
+Measurement (Phase A): `python -m companion.cli ops scorecard-snapshot [dir]` writes `scorecard-YYYY-WW.json` (T-numbers only; default `~/ai/state/run-supreme-testers`). Run it weekly from the host cron, because cards purge at 30 days. `python -m companion.scorecard --db PATH` prints the gate with n/N per signal (a percentage only from 8 answers). Survey answers (`survey_answers`) are kept until the test ends: delete them by hand afterwards.

@@ -10,9 +10,10 @@ Definitions (weeks are Monday 00:00 UTC to Monday, the last one being the curren
   taps      cards with any button answered (cards.answered_at)
   feel      runs carrying a feel tap (easy/right/hard), by upload week
   notes     run notes typed
-  engaged   a calendar week with at least one run or note. Opens are not logged, and inbound_seen / msglog cannot separate
-            a free-text reply from a button tap, /start, STOP or a note (msglog holds outbound only), so there is no
-            replies column.
+  engaged   a calendar week with any activity: a run, a note, a card tap, or any inbound_events row (tap, note, feedback,
+            command, text, miniapp_open; a kind and a time, never content). Telegram gives bots no read receipts, so opens
+            of a card are not known.
+  replies   taps + notes + feedback messages from inbound_events, by week; the other kinds are listed under `events`
   w4        week-4 retention: engaged in days 21..27 after sign-up; None until that week has fully passed
 Retention: purge() deletes cards (and msglog) older than 30 days. cards and taps for weeks that start before the 30-day
 window are partial and are marked "~". Engagement and w4 use runs and run_notes only, which are not purged, so they
@@ -33,6 +34,11 @@ from datetime import datetime, timedelta, timezone
 
 UTC = timezone.utc
 _KEY = {"run": "runs", "card": "cards", "tap": "taps", "feel": "feel", "note": "notes"}
+# inbound_events kinds (companion.measure.EVENT_KINDS). replies = what the gate counts: a button tap, a note or a feedback message.
+EVENT_KINDS = ("tap", "note", "feedback", "command", "text", "miniapp_open")
+REPLY_KINDS = ("tap", "note", "feedback")
+ENGAGED_KINDS = ("tap", "note", "feedback", "miniapp_open")   # a command or a bare text is not engagement
+MIN_N = 8   # a percentage is shown only when at least this many answered
 
 
 def _iso(dt: datetime) -> str:
@@ -62,7 +68,7 @@ RETENTION_DAYS = 30  # service.RETENTION_LOG_DAYS
 
 
 def _blank() -> dict:
-    return dict(runs=0, cards=0, taps=0, feel=0, notes=0)
+    return dict(runs=0, cards=0, taps=0, feel=0, notes=0, replies=0, events={k: 0 for k in EVENT_KINDS})
 
 
 def open_ro(path: str) -> sqlite3.Connection:
@@ -116,7 +122,13 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
     for uid, ts in _rows(c, "SELECT user_id, created_at FROM run_notes"):
         ev.append((uid, "note", _parse(ts)))
 
-    engaging = {"run", "note"}
+    # Engaged (and week 4) counts a run, a note, a card tap, or an inbound_events row of kind tap, note, feedback or miniapp_open.
+    # Commands and free text are shown under `events` but do not make a week engaged.
+    engaging = {"run", "note", "tap"}
+    inbound: list[tuple[str, str, datetime]] = []
+    if _has(c, "inbound_events"):
+        inbound = [(uid, kind, _parse(ts)) for uid, kind, ts in _rows(c, "SELECT user_id, kind, ts FROM inbound_events")
+                   if kind in EVENT_KINDS]
     per_week: dict[str, list[dict]] = {}
     engaged_days: dict[str, set[int]] = {}
     engaged_weeks: dict[str, set[datetime]] = {}
@@ -130,6 +142,22 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
             continue
         wi = (_week_start(ts) - starts[0]).days // 7
         per_week.setdefault(uid, [_blank() for _ in starts])[wi][_KEY[kind]] += 1
+    for uid, kind, ts in inbound:
+        if uid not in alias:
+            continue
+        if kind in ENGAGED_KINDS:
+            engaged_days.setdefault(uid, set()).add((ts - signup[uid]).days)
+            engaged_weeks.setdefault(uid, set()).add(_week_start(ts))
+        if ts < starts[0] or ts >= end:
+            continue
+        wk_ = per_week.setdefault(uid, [_blank() for _ in starts])[(_week_start(ts) - starts[0]).days // 7]
+        wk_["events"][kind] += 1
+        if kind in REPLY_KINDS:
+            wk_["replies"] += 1
+
+    # replies are only counted from the week events started being logged (the first row anywhere) or the runner's first consent
+    deploy = min((ts for _, _, ts in inbound), default=None)
+    consent_at = {uid: _parse(ts) for uid, ts in _rows(c, "SELECT id, consent_at FROM users WHERE consent_at IS NOT NULL")}
 
     cost = [0.0] * weeks              # every call, attributed or not
     user_cost: dict[str, list[float]] = {}   # calls that carry a user_id, by user and week
@@ -158,7 +186,9 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
             "id": alias[uid], "signed_up": signup[uid].strftime("%Y-%m-%d"), "weeks_since_signup": (cur_start - sw).days // 7,
             "active_weeks": len({w for w in engaged_weeks.get(uid, ()) if w >= sw}),
             "week4_retained": any(21 <= d < 28 for d in days) if age_days >= 28 else None,
-            "weeks": wk,
+            "weeks": wk, "week_starts_iso": [st.strftime("%Y-%m-%d") for st in starts],
+            "replies_from": (_week_start(max(x for x in (deploy, consent_at.get(uid)) if x)).strftime("%Y-%m-%d")
+                             if deploy and consent_at.get(uid) else None),
         })
 
     sent_users = [sum(1 for t in testers if t["weeks"][i]["cards"] > 0) for i in range(weeks)]
@@ -171,13 +201,110 @@ def _compute(c: sqlite3.Connection, now: datetime | None, weeks: int) -> dict:
                                                    if sent_users[i] and t["weeks"][i]["cards"] else 0.0), 4)
                                    for i in range(weeks)]
     eligible = [t for t in testers if t["week4_retained"] is not None]
+    run_users = {uid for uid, kind, _ in ev if kind == "run"}
+    for t in testers:
+        t["has_run"] = by_alias[t["id"]] in run_users
+    surveys = _surveys(c, alias)
+    optouts = {"deleted": dict(_rows(c, "SELECT week, n FROM deleted_tombstones ORDER BY week")) if _has(c, "deleted_tombstones") else {},
+               "stopped": dict(_rows(c, "SELECT week, n FROM stop_counts ORDER BY week")) if _has(c, "stop_counts") else {}}
     return {
         "generated": _iso(now), "week_starts": [s.strftime("%Y-%m-%d") for s in starts], "testers": testers,
         "llm_cost_usd_total": [round(x, 4) for x in cost],
         "llm_cost_note": "per-tester cost is that runner's own calls (llm_calls.user_id); calls with no runner id are split evenly across testers sent a card that week",
         "enrol_refused_by_day": (dict(_rows(c, "SELECT day, n FROM enrol_refused ORDER BY day")) if _has(c, "enrol_refused") else {}),
         "week4": {"retained": sum(1 for t in eligible if t["week4_retained"]), "eligible": len(eligible)},
+        "surveys": surveys, "optouts": optouts,
+        "gate": _gate(testers, surveys, optouts, weeks),
     }
+
+
+def _surveys(c: sqlite3.Connection, alias: dict) -> dict:
+    """Trust and Sean Ellis answers as counts by option, plus who answered (T-numbers only)."""
+    out = {"trust": {"spot": 0, "mostly": 0, "not": 0}, "ellis": {"very": 0, "somewhat": 0, "not": 0, "stopped": 0}}
+    answered: dict[str, set[str]] = {"trust": set(), "ellis": set()}
+    if _has(c, "survey_answers"):
+        for uid, kind, value in _rows(c, "SELECT user_id, kind, value FROM survey_answers"):
+            if uid in alias and kind in out and value in out[kind]:
+                out[kind][value] += 1
+                answered[kind].add(alias[uid])
+    out["trust_answered_by"] = sorted(answered["trust"])
+    out["ellis_answered_by"] = sorted(answered["ellis"])
+    return out
+
+
+def _median(xs: list[float]) -> float | None:
+    xs = sorted(xs)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return float(xs[m]) if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+
+
+def _row(signal: str, threshold: str, n: int | None, N: int, **extra) -> dict:
+    """n of N against a threshold. The percentage (and the verdict) exist only when N >= MIN_N; below that it is counts only."""
+    shown = N >= MIN_N and n is not None
+    pct = round(100.0 * n / N, 1) if shown else None
+    return {"signal": signal, "threshold": threshold, "n": n, "N": N, "pct": pct, **extra}
+
+
+def _gate(testers: list[dict], surveys: dict, optouts: dict, weeks: int) -> list[dict]:
+    rows: list[dict] = []
+    active = [t for t in testers if t["has_run"]]
+    rows.append({"signal": "Coach-enrolled, active testers", "threshold": "12 or more", "n": len(active), "N": len(testers),
+                 "pct": None, "met": len(active) >= 12, "note": "enrolled with at least 1 real run"})
+    eligible = [t for t in testers if t["week4_retained"] is not None]
+    r = _row("Return: week-4 engaged", "50% or more", sum(1 for t in eligible if t["week4_retained"]), len(eligible))
+    r["met"] = r["pct"] >= 50 if r["pct"] is not None else None
+    rows.append(r)
+    tr = surveys["trust"]
+    n_tr = sum(tr.values())
+    r = _row("Trust: recap says got me right (Spot on)", "70% or more of answers", tr["spot"], n_tr)
+    r["met"] = r["pct"] >= 70 if r["pct"] is not None else None
+    rows.append(r)
+    rows.append({"signal": "Trust: misreads reported (Not really)", "threshold": "count, each reviewed", "n": tr["not"], "N": n_tr,
+                 "pct": None, "met": None,
+                 "note": "feedback tagged misread is not recorded: read `ops feedback`"})
+    r = _row("Cards useful (Spot on + Mostly)", "60% or more", tr["spot"] + tr["mostly"], n_tr)
+    r["met"] = r["pct"] >= 60 if r["pct"] is not None else None
+    rows.append(r)
+    # replies per week: each active tester's median over their own full weeks since sign-up (the current week is partial)
+    per = []
+    for t in active:
+        rf = t.get("replies_from")
+        w = [x["replies"] for x, st in zip(t["weeks"][:-1], t["week_starts_iso"]) if rf and st >= rf] if rf else []
+        if w:
+            per.append(_median(w))
+    med = _median(per)
+    rows.append({"signal": "Replies per week (taps + notes + feedback)", "threshold": "median 2 or more per active tester",
+                 "n": med, "N": len(per), "pct": None, "met": (med >= 2) if med is not None and len(per) >= MIN_N else None,
+                 "note": "median of each tester's weekly median; a verdict needs 8 or more testers with a full week"})
+    el = surveys["ellis"]
+    n_el = sum(v for k, v in el.items() if k != "stopped")   # someone who has stopped using it cannot say how they would feel
+    stopped = el["stopped"]
+    r = _row("Sean Ellis: very disappointed", "40% or more", el["very"], n_el, stopped=stopped)
+    r["note"] = f"{stopped} answered 'I've stopped using it' and are left out of N" if stopped else "'I've stopped using it' answers are left out of N and reported here"
+    r["met"] = r["pct"] >= 40 if r["pct"] is not None else None
+    rows.append(r)
+    rows.append({"signal": "Interviews", "threshold": "5 or more done", "n": None, "N": 0, "pct": None, "met": None,
+                 "note": "outside the database: interviews.md"})
+    rows.append({"signal": "Guard: opt-outs", "threshold": "reported", "n": None, "N": 0, "pct": None, "met": None,
+                 "deleted_total": sum(optouts["deleted"].values()), "stopped_total": sum(optouts["stopped"].values()),
+                 "note": "DELETE and STOP counted by week with no id; a STOP that was later resumed still counts"})
+    # cost: a tester's own cost over the weeks shown, scaled to 30 days; the guard is under $0.30 per user per month
+    # each tester's cost is spread over their own weeks since sign-up (inside the weeks shown), not the whole window
+    monthly = []
+    for t in testers:
+        # the current week is partial, so it is left out of the average
+        own = [a for a, w in zip(t["llm_cost_usd_alloc"][:-1], t["weeks"][:-1]) if not w["pre_signup"]]
+        if own and any(w["cards"] for w in t["weeks"]):
+            monthly.append(sum(own) / len(own) * 30.0 / 7)
+    r = _row("Guard: cost under $0.30 per user per month", "under $0.30", sum(1 for m in monthly if m < 0.30), len(monthly))
+    r["met"] = (max(monthly) < 0.30) if len(monthly) >= MIN_N else None
+    r["note"] = "per tester, average full week since sign-up (last %d weeks at most, the current partial week left out) scaled to 30 days; the worst is %s" % (weeks, f"${max(monthly):.2f}" if monthly else "n/a")
+    rows.append(r)
+    rows.append({"signal": "Guard: quality", "threshold": "0 open P0/P1, crash-free 99% or more", "n": None, "N": 0, "pct": None,
+                 "met": None, "note": "outside the database: GitHub issues and Play vitals"})
+    return rows
 
 
 def format_text(sc: dict) -> str:
@@ -185,8 +312,8 @@ def format_text(sc: dict) -> str:
     n = len(ws)
     out = [f"Run Supreme Phase A scorecard ({sc['generated'][:10]})",
            f"Weeks from {ws[0]} (Mon, UTC). Per week: runs/cards/taps/notes + f=feel taps",
-           "act = calendar weeks with a run or note / weeks since sign-up (incl. current); - = before sign-up;",
-           "~ = cards/taps incomplete (older than 30-day purge); w4 uses runs+notes only", ""]
+           "act = calendar weeks with any activity (a run, note, tap or message) / weeks since sign-up (incl. current); - = before sign-up;",
+           "~ = cards/taps incomplete (older than 30-day purge); w4 uses all activity", ""]
     for t in sc["testers"]:
         w4 = {None: "n/a", True: "yes", False: "NO"}[t["week4_retained"]]
         cells = " ".join("-" if w["pre_signup"] else
@@ -203,6 +330,15 @@ def format_text(sc: dict) -> str:
     out.append("LLM cost/user/wk (even split, not measured per user): " + " ".join(per))
     w4 = sc["week4"]
     out.append(f"Week-4 retention: {w4['retained']}/{w4['eligible']} eligible")
+    out.append("")
+    out.append("Gate (n/N; a percentage only when N is at least %d)" % MIN_N)
+    for g in sc.get("gate", []):
+        n = "-" if g["n"] is None else (f"{g['n']:g}" if isinstance(g["n"], float) else str(g["n"]))
+        pct = f" {g['pct']:g}%" if g["pct"] is not None else ""
+        met = {True: " MET", False: " NOT MET", None: ""}[g.get("met")]
+        out.append(f"- {g['signal']}: {n}/{g['N']}{pct} (needs {g['threshold']}){met}" + (f" [{g['note']}]" if g.get("note") else ""))
+    o = sc.get("optouts", {})
+    out.append(f"Opt-outs by week: deleted {o.get('deleted', {})} stopped {o.get('stopped', {})}")
     return "\n".join(out)
 
 
