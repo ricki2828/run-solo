@@ -348,6 +348,22 @@ void main() {
       return companionSummary(d, zones: engine.HrZones.percentMax(190))!;
     }
 
+    test('a goal run stopped short is told as a free run', () async {
+      final free = freeRunFile(n: 2, start: start, seconds: 1200);
+      final goal = free.copyWith(
+        mode: engine.RunMode.intervals,
+        session: engine.SessionSpec.goalDistance(10000, '10K'),
+      );
+      final s = MemoryRunStore(files: [goal], now: now);
+      final d = (await s.load(goal.id))!;
+      // The app keeps its goal result ("stopped at X of 10K").
+      expect(d.summary.mode.name, 'intervals');
+      expect(d.analysis.goal?.reached, isFalse);
+      final j = companionSummary(d, zones: engine.HrZones.percentMax(190))!;
+      expect(j['type'], 'free');
+      expect(j.containsKey('reps_done'), isFalse);
+    });
+
     test('compact fields, no route points, no street', () async {
       await store.setPlace(run.id, 'Albert Park');
       await store.setStreet(run.id, 'Beaconsfield Parade');

@@ -2045,7 +2045,7 @@ Map<String, Object?>? companionSummary(
 /// (engine `coachIntervalFacts`). A goal run or parkrun sends none, and
 /// neither does a run without a work pace.
 Map<String, Object?> companionIntervalFacts(RunSummary s) {
-  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals || s.endedBeforeWork) {
+  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals || s.uploadsAsFree) {
     return const {};
   }
   return engine.coachIntervalFacts(
