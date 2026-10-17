@@ -1,5 +1,6 @@
 package app.runsolo.platform
 
+import app.runsolo.ble.BleHolder
 import app.runsolo.core.live.CheckInMetric
 import app.runsolo.core.live.CheckInPlan
 import app.runsolo.core.live.VoiceLevel
@@ -57,9 +58,16 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         )
     }
 
-    override fun startGpsProbe() = probe.start()
+    /** The probe runs while Start/Ready is on screen: that is also when the saved HR strap is wanted, so GO finds it connected. */
+    override fun startGpsProbe() {
+        probe.start()
+        BleHolder.client(context).startScreenWants()
+    }
 
-    override fun stopGpsProbe() = probe.stop()
+    override fun stopGpsProbe() {
+        probe.stop()
+        BleHolder.client(context).startScreenReleases()
+    }
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
