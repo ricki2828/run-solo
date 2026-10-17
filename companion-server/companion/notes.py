@@ -17,9 +17,11 @@ SOFTEN_DAYS = 7             # a flagged note softens suggestions for this long a
 QUOTE_MAX_CHARS = 200       # the recap shows at most this much of a note
 
 # Stems, matched at the start of a word: niggle(s), sore(ness), injury/injured, tired, sick(ness), and the conditions
-# that make a slow run expected: flight, jet lag, haze, smoke, heat, hills, travel. Deliberately blunt: "not sore
+# that make a slow run expected: flight, jet lag, haze, smoke (not "smoked it"), heat, hills that hurt, travel. "not sore
 # today" still softens. A gentler suggestion is the safe error.
-FLAG_RE = re.compile(r"\b(niggl|sore|injur|tired|sick|flight|jet\s?lag|haz[ey]|smok|heat|hill|travel)", re.I)
+FLAG_RE = re.compile(
+    r"\b(?:niggl|sore|injur|tired|sick|flight|jet\s?lag|travel|haz[ey]|smok(?:e|y|ing)\b|heat\b|steep hills?|"
+    r"hills? (?:killed|destroyed|hurt|wrecked|ruined|cooked|were (?:brutal|tough|hard)|was (?:brutal|tough|hard)))", re.I)
 
 
 def clean(text: str) -> str:
