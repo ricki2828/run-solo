@@ -1404,9 +1404,7 @@ class Service(CheckinMixin, MeasureMixin):
         body = w.body
         # Fixed text: what next and when, never the model's. It names the coach's session and nothing else, so a runner with
         # no coach week (too few runs, a first run, a comeback) has none: Home has nothing to show either.
-        planned_run = self._with_default_plan(uid, run, now)
-        nline = next_line(planned_run, full, soften=soft, usual=ci_usual_weekdays(mem.get("usual_days"))) \
-            if self._coach_names_next(planned_run) else None
+        nline = self._run_next_line(uid, run, full, soft, mem, now)
         if nline:
             body += f"\n{nline}"
         if v.touch_line:
@@ -1669,6 +1667,13 @@ class Service(CheckinMixin, MeasureMixin):
                     plan_next_session_name=planned.session_name if same else None,
                     plan_next_pace_lo=planned.pace_lo_s if same else None, plan_next_pace_hi=planned.pace_hi_s if same else None)
 
+    def _run_next_line(self, uid: str, run: dict, full: list[dict], soften: bool, mem: dict, now: datetime) -> str | None:
+        """The run card's fixed Next line, or None when the coach has no session to name (Home shows none either)."""
+        planned_run = self._with_default_plan(uid, run, now)
+        if not self._coach_names_next(planned_run):
+            return None
+        return next_line(planned_run, full, soften=soften, usual=ci_usual_weekdays(mem.get("usual_days")))
+
     @staticmethod
     def _coach_names_next(run: dict) -> bool:
         """Does the run row (after `_with_default_plan`) carry a session still to come? That is what Home shows too."""
@@ -1815,7 +1820,8 @@ class Service(CheckinMixin, MeasureMixin):
                 label = cv_notes.flag_label(note["note"]) if flagged else None
                 full = self._full_history(c, user["id"], run["start_utc"])
                 soft = self._soften(c, user["id"], now)
-            nline = next_line(self._with_default_plan(user["id"], run, now), full, soften=soft)
+                mem = self._memory_get(c, user["id"], now)
+            nline = self._run_next_line(user["id"], run, full, soft, mem, now) or row["next_line"]
             old = row["next_line"]
             if nline == old and not flagged:
                 return

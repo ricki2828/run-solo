@@ -115,10 +115,12 @@ def test_a_hard_tap_that_turns_the_promised_tempo_easy_says_so_once():
     says so, once, rather than the plan changing silently (17-Oct sim #5)."""
     from datetime import date
 
+    steady_tempo = {"z1": 2.0, "z2": 6.0, "z3": 18.0, "z4": 2.0}   # a tempo whose zones alone do not make it hard
+
     def feel(p, f):
         r = list(p["plan"][0])
-        r[-1] = f
-        p["plan"][0] = tuple(r)
+        r[3], r[7], r[8] = "tempo", steady_tempo, f
+        p["plan"][0] = tuple(r[:9]) + ({"verdict": "holding"},)   # a verdict gives the card something to say
 
     hard = simulate("trail", until=date(2026, 10, 20), tweak=lambda p: feel(p, "hard"))
     right = simulate("trail", until=date(2026, 10, 20), tweak=lambda p: feel(p, "right"))

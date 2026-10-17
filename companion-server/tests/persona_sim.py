@@ -88,6 +88,13 @@ def persona_lapsed(rng: random.Random) -> dict:
                 consent_day=-70, taps=False)
 
 
+class Weather(FakeWeather):
+    """The month sim's fake weather has no heat reading (added to the morning card later): none means no heat line."""
+
+    def heat_at(self, *a, **kw):
+        return None
+
+
 @dataclass
 class Sent:
     at: datetime            # UTC
@@ -120,7 +127,7 @@ class Sim:
                      telegram_token="1:FAKE", telegram_bot="RSBot", telegram_webhook_secret="x" * 16,
                      openrouter_key=None, default_quiet=QUIET, weather_enabled=True, checkins_enabled=True)
         self.svc = Service(s, httpx.Client(transport=httpx.MockTransport(handler)))
-        self.svc.weather = FakeWeather()
+        self.svc.weather = Weather()
         t0 = hm(START + timedelta(days=self.persona["consent_day"]), "12:00", SG).astimezone(UTC)
         with db.tx(s.db_path) as c:
             c.execute("INSERT INTO users (id, channel, chat_ref, created_at, consent_version, consent_at, zone_id, "
@@ -198,8 +205,8 @@ class Sim:
     def go(self, until: date | None = None) -> "Sim":
         """Run the four weeks, or only the days before `until`."""
         feels, events = {}, []
-        for (rid, d, t, typ, km, pace, tp, z, feel) in self.persona["plan"]:
-            r = runin(rid, d, t, typ, km, pace, tp, z)
+        for (rid, d, t, typ, km, pace, tp, z, feel, *extra) in self.persona["plan"]:   # extra: one dict of RunIn fields
+            r = runin(rid, d, t, typ, km, pace, tp, z, **(extra[0] if extra else {}))
             events.append((r.start_utc + timedelta(seconds=r.duration_s + 5), "run", r))
             feels[rid] = feel
         for k in range(DAYS):
