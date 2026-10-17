@@ -95,6 +95,36 @@ void main() {
     });
   }
 
+  // Page 1 of a laps run with maps on: no overflow, and on the short phone
+  // no MAP button (the dots and the swipe still reach the map).
+  for (final h in [800, 640]) {
+    testWidgets('record: laps page 1 with maps on at 360 x $h', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+      final services = fakeServices(
+        recorder: fake,
+        maps: const FakeMapSurfaceFactory(available: true),
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(RecordMode.laps, null, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      for (var i = 0; i < 95; i++) {
+        fake.advance(const Duration(seconds: 1));
+        await tester.pump();
+      }
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey('page-map-button')),
+        h == 640 ? findsNothing : findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('page-dots')), findsOneWidget);
+      await golden(tester, 'record_laps_map_on_360x$h');
+    });
+  }
+
   testWidgets('record: free map view at 360 x 800', (tester) async {
     final fake = FakeRecorderGateway(now: now)..emitRoute = true;
     final services = fakeServices(

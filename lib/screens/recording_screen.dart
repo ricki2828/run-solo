@@ -813,8 +813,9 @@ class _RecordingScreenState extends State<RecordingScreen>
             ],
             // Page 1's way to the map, matching NUMBERS on page 2. Not in a
             // structured session: its 4x4 layout has no 60 dp to spare (the
-            // dots and the swipe still work there).
-            if (canMap && !s.isPreset) ...[
+            // dots and the swipe still work there). Nor on a short phone with
+            // the big LAP button: the 60 dp overflowed page 1 by ~30 px.
+            if (canMap && !s.isPreset && !(compact && s.lapsEnabled)) ...[
               SizedBox(height: compact ? Space.x4 : Space.x8),
               PageSwitchButton.map(onTap: () => _goPage(1)),
             ],
