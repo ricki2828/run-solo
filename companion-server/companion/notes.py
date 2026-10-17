@@ -17,11 +17,15 @@ SOFTEN_DAYS = 7             # a flagged note softens suggestions for this long a
 QUOTE_MAX_CHARS = 200       # the recap shows at most this much of a note
 
 # Stems, matched at the start of a word: niggle(s), sore(ness), injury/injured, tired, sick(ness), and the conditions
-# that make a slow run expected: flight, jet lag, haze, smoke (not "smoked it"), heat, hills that hurt, travel. "not sore
-# today" still softens. A gentler suggestion is the safe error.
+# that make a slow run expected: flight, jet lag, travel, haze, smoke (not "smoked it"), heat and humidity, and hills or
+# climbs named with a struggle word either side ("hills were a grind", "legs dead on the climbs"; not "hill reps felt
+# strong"). Deliberately blunt otherwise: "not sore today" still softens. A gentler suggestion is the safe error.
+_HILL = r"(?:hills?|hilly|climbs?|climbing)"
+_STRUGGLE = r"(?:grind\w*|kill\w*|destroy\w*|hurt\w*|wreck\w*|ruin\w*|cooked|brutal|tough|dead|slow\w*|struggl\w*|crawl\w*|walk\w*)"
 FLAG_RE = re.compile(
-    r"\b(?:niggl|sore|injur|tired|sick|flight|jet\s?lag|travel|haz[ey]|smok(?:e|y|ing)\b|heat\b|steep hills?|"
-    r"hills? (?:killed|destroyed|hurt|wrecked|ruined|cooked|were (?:brutal|tough|hard)|was (?:brutal|tough|hard)))", re.I)
+    r"\b(?:niggl|sore|injur|tired|sick|flight|jet\s?lag|travel|haz[ey]|smok(?:e|y|ing)\b|heat(?:wave)?\b|humid|swelter|"
+    r"(?:so|too|very|really|super|was|stinking) hot\b|hot and\b|steep hills?|"
+    rf"{_HILL}\b[^.!?\n]{{0,30}}\b{_STRUGGLE}|{_STRUGGLE}[^.!?\n]{{0,30}}\b{_HILL}\b)", re.I)
 
 
 def clean(text: str) -> str:

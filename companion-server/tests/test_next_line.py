@@ -147,5 +147,15 @@ def test_real_advice_is_still_rejected():
 def test_note_flags_are_less_blunt():
     for text in ("hill reps felt strong", "smoked it", "heated up nicely", "hills felt easier"):
         assert not notes.flagged(text), text
-    for text in ("hills killed me", "heat was brutal", "smoke and haze", "hazy", "steep hills", "long flight"):
+    for text in ("hills killed me", "heat was brutal", "smoke and haze", "hazy", "steep hills", "long flight",
+                 "hills were a grind", "so hot", "humid", "jet lagged", "legs dead on the climbs", "heatwave",
+                 "struggled up the hills", "hot and sticky"):
         assert notes.flagged(text), text
+
+
+def test_every_run_card_style_exemplar_passes_the_advice_guard():
+    from companion.convo.voice import SITUATIONS
+    from companion.writer import ADVICE_RE
+    recap_only = {"missed_week"}   # weekly recap lines never go through the card writer
+    hits = [(k, b) for k, vs in SITUATIONS.items() if k not in recap_only for h, b in vs if ADVICE_RE.search(h + " " + b)]
+    assert hits == []
