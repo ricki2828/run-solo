@@ -26,10 +26,8 @@ Future<(FakeRecorderGateway, AppServices)> open(
   AppSettings settings = const AppSettings(onboardingDone: true),
   bool intervals = false,
   bool emitRoute = true,
-  Size? logicalSize,
 }) async {
   phoneViewport(tester);
-  if (logicalSize != null) tester.view.physicalSize = logicalSize * 3;
   final fake = FakeRecorderGateway(now: now)..emitRoute = emitRoute;
   final services = fakeServices(recorder: fake, settings: settings, maps: maps);
   await services.recording.start(
@@ -244,9 +242,12 @@ void main() {
     // Opens on the map page (remembered) so page 1 is never built.
     await open(
       tester,
-      logicalSize: const Size(360, 640),
       settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
     );
+    // pumpApp resets the viewport, so shrink it after opening.
+    tester.view.physicalSize = const Size(1080, 1920); // 360 x 640
+    await pumpTimes(tester, 4);
+    await settleAnimations(tester);
     expect(find.byKey(_map), findsNothing);
     for (final k in ['map-page-distance', 'map-page-time', 'map-page-pace']) {
       final h = tester.getRect(find.byKey(ValueKey(k))).height;
