@@ -17,10 +17,18 @@ def infer(app, km=7.0, mins=40, zones=None, pb=None, hist=EASY7, **kw):
 
 
 def test_app_types_map_straight():
-    assert infer("intervals") == "interval"
+    assert infer("intervals", reps_done=4) == "interval"
+    assert infer("intervals", work_pace=300.0) == "interval"
     assert infer("cooper", km=2.8, mins=12) == "race"
     assert infer("laps") == "easy"
     assert infer("laps", has_reps=True) == "interval"
+
+
+def test_intervals_stopped_before_any_rep_is_a_free_run():
+    assert infer("intervals") == "easy"
+    assert infer("intervals", reps_done=0) == "easy"
+    assert infer("intervals", km=15, mins=80) == "long"
+    assert infer("intervals", pb="5k") == "race"
 
 
 @pytest.mark.parametrize("app", ["free", "trail"])
@@ -77,6 +85,19 @@ def test_upload_stores_the_coach_type_keeps_the_apps_and_exports_it(client, fake
     me = client.get("/v1/me", headers=auth(t)).json()
     by_id = {x["run_id"]: x for x in me["runs_received"]}
     assert (by_id["a1"]["type"], by_id["a1"]["app_type"]) == ("easy", "trail")
+
+
+def test_bailed_interval_upload_is_stored_and_worded_as_a_free_run(client, fakes):
+    t = enrol(client)
+    client.post("/v1/runs", json=run_payload("b1", type="intervals", distance_m=3200, duration_s=1200), headers=auth(t))
+    client.svc.run_outbox(datetime.now(timezone.utc) + timedelta(seconds=1))
+    assert "interval" not in fakes.tg_texts()[-1].lower()
+    client.post("/v1/runs", json=run_payload("b2", type="intervals", minutes_ago=5, reps_done=4, work_pace_s_per_km=257.0,
+                                              session_name="Norwegian 4x4"), headers=auth(t))
+    con = sqlite3.connect(client.svc.s.db_path)
+    rows = {r: (a, b) for r, a, b in con.execute("SELECT run_id, type, app_type FROM runs")}
+    assert rows["b1"] == ("easy", "free")
+    assert rows["b2"] == ("interval", "intervals")
 
 
 def test_a_trail_run_stays_a_trail_run_in_the_copy(client, fakes):

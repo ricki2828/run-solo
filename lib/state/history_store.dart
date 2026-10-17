@@ -391,6 +391,17 @@ class RunSummary {
       row?.eligibleAsPrior ?? analysis?.eligibleAsPrior ?? false;
   bool get hasIntervals => detectedReps != null;
 
+  /// Told to the companion server as a free run: a goal run (one continuous
+  /// effort, reached or not) or an interval session stopped before any work
+  /// rep. The app keeps its own mode and goal result.
+  bool get uploadsAsFree =>
+      mode == RecordMode.intervals &&
+      !isParkrun &&
+      (spec?.isGoal == true || detectedReps == 0);
+
+  /// The mode the companion server is told; see [uploadsAsFree].
+  RecordMode get uploadMode => uploadsAsFree ? RecordMode.free : mode;
+
   /// K1: course and official time from the sidecar; null when neither.
   final engine.ParkrunInfo? parkrun;
 
