@@ -203,6 +203,27 @@ def lighter_windows(a: Answers) -> list[tuple[date, date, str]]:
     return out
 
 
+def care_windows(a: Answers) -> list[tuple[date, date]]:
+    """(first day, last day) of every window in which the runner said they are ill or sore: the app pauses the streak
+    through these weeks. Never says which of the two, or why a skip was made."""
+    out: list[tuple[date, date]] = []
+    for d, v in a.by["today"].items():
+        if v == "skip" and a.get("why", d) in ("ill", "sore"):
+            out.append((d, d + timedelta(days=lighter_days(a.get("why", d)))))
+    for d, v in a.by["ready"].items():
+        if v == "sore":
+            out.append((d, d + timedelta(days=LIGHTER_DAYS)))
+    return out
+
+
+def care_weeks(a: Answers, today: date, weeks: int = 8) -> list[date]:
+    """The Mondays of the last `weeks` weeks (this one included) that overlap a care window, oldest first."""
+    this = today - timedelta(days=today.weekday())
+    mondays = [this - timedelta(days=7 * i) for i in range(weeks - 1, -1, -1)]
+    wins = care_windows(a)
+    return [m for m in mondays if any(s <= m + timedelta(days=6) and m <= e for s, e in wins)]
+
+
 def lighter_until(a: Answers, today: date) -> date | None:
     """The last day the coach keeps things light, or None when no window reaches today or later."""
     live = [e for _s, e, _k in lighter_windows(a) if e >= today]

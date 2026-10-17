@@ -52,6 +52,10 @@ def populate(client, fakes):
                   "'sent', ? FROM users", (iso(now_utc()),))
         w.execute("INSERT INTO question_cap (user_id, local_date, slot, claimed_at) SELECT id, '2099-01-02', 'today', ? "
                   "FROM users", (iso(now_utc()),))
+        # a quest the runner took (the app's own, with a place name)
+        w.execute("INSERT INTO quests (user_id, quest_id, month, kind, target, unit, trail_name, state, value, ends_on, pos, "
+                  "created_at, updated_at) SELECT id, 'q_sentinel', '2099-01', 'trail_visits', 5, 'runs', 'Privacy Sentinel Trail', "
+                  "'accepted', 2, '2099-02-01', 0, ?, ? FROM users", (iso(now_utc()), iso(now_utc())))
     return t
 
 
@@ -74,7 +78,7 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
         f"SELECT COUNT(*) FROM {n} WHERE " + ("id" if n == "users" else "user_id") + "=?", (uid,)).fetchone()[0]}
     assert {"users", "devices", "runs", "memory", "cards", "outbox", "quota", "outcomes", "msglog", "inbound_seen", "enrolments",
             "convo_log", "convo_cards", "convo_area", "run_notes", "note_mode", "run_shape", "checkin_answers", "checkin_slots",
-            "question_cap"} <= populated, populated
+            "question_cap", "quests"} <= populated, populated
 
     assert client.delete("/v1/me", headers=auth(t)).json() == {"status": "deleted"}
 
@@ -87,6 +91,7 @@ def test_delete_leaves_zero_rows_in_every_table_with_user_data(client, fakes):
     raw = b"".join(open(p, "rb").read() for p in (path, path + "-wal") if os.path.exists(p))
     assert OWNER.encode() not in raw
     assert b"privacy sentinel" not in raw   # the note text is scrubbed from the file too
+    assert b"Privacy Sentinel Trail" not in raw   # a quest's place name is scrubbed from the file too
 
 
 def test_delete_only_touches_that_user(tmp_path, fakes):
