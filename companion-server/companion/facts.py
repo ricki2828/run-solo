@@ -44,6 +44,20 @@ def is_steady_trail(run: Mapping[str, Any]) -> bool:
     return bool(total) and z.get(3, 0) / total > 0.5
 
 
+ROAD_STEADY_Z3_SHARE = 0.5   # a road run is steady when more than half of it is Z3 ...
+ROAD_STEADY_Z45_MAX = 0.15   # ... and under this share is Z4+Z5 (more than that is tempo territory, not steady)
+
+
+def is_steady_road(run: Mapping[str, Any]) -> bool:
+    """An easy-typed road run (a free run) with more than half its zone time in Z3 and under 15% in Z4+Z5 is steady, not
+    easy: the same split as the steady trail run, so the card never calls a Z3 run easy."""
+    if run.get("app_type") not in (None, "", "free") or run.get("type") != "easy":
+        return False
+    z = _zones(run)
+    total = sum(z.values())
+    return bool(total) and z.get(3, 0) / total > ROAD_STEADY_Z3_SHARE and (z.get(4, 0) + z.get(5, 0)) / total < ROAD_STEADY_Z45_MAX
+
+
 def _zones(run: Mapping[str, Any]) -> dict[int, float]:
     raw = run.get("zone_min")
     if isinstance(raw, str):
@@ -216,6 +230,8 @@ def run_label(run: Mapping[str, Any]) -> str:
         if is_steady_trail(run):
             return "steady trail run"
         return TRAIL_SESSION_LABEL.get(run.get("type") or "", "trail run")
+    if is_steady_road(run):
+        return "steady run"
     return APP_TYPE_LABEL.get(app) or TYPE_LABEL.get(run.get("type"), "run")
 
 VERDICT_TEXT = {  # app wire name (VerdictHeadline.name) -> the verdict copy; noVerdict is silent

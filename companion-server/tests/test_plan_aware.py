@@ -15,7 +15,7 @@ from companion.convo import suggest, touches as T, voice
 from companion.convo.weather import Forecast
 from companion.service import RunIn
 from companion.timeutil import now_utc, to_local
-from conftest import auth, enrol, make_settings, run_payload
+from conftest import coach_week, auth, enrol, make_settings, run_payload
 
 U = timezone.utc
 SG = "Asia/Singapore"
@@ -326,5 +326,8 @@ def test_end_to_end_without_a_plan_the_old_logic_is_untouched(client, fakes):
         client.post("/v1/runs", json=run_payload(f"h{i}", minutes_ago=days * 1440, type="tempo" if i == 0 else "easy"),
                     headers=auth(t))
     client.post("/v1/runs", json=run_payload("fresh", minutes_ago=60 * 20), headers=auth(t))
+    coach_week(client.svc, "easy")   # no app plan: the coach's default week names tomorrow, and the card follows it
     card = _evening(client, "2099-01-01")
-    assert card and _q(client, "SELECT situation FROM convo_cards WHERE card_id=?", card)[0]["situation"] == "sugg_gap"
+    assert card and _q(client, "SELECT situation FROM convo_cards WHERE card_id=?", card)[0]["situation"] == "sugg_plan_session"
+    coach_week(client.svc, rest=True)   # a rest day in the coach week: nothing to suggest, however long the gap since a hard run
+    assert _evening(client, "2099-01-02") is None

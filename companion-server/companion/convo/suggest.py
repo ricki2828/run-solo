@@ -188,6 +188,14 @@ def session_for(kind: str, history: Sequence[Mapping[str, Any]], now: datetime |
 # The suggestion picture: the session word -> (card type, label). The label is the session word the text uses.
 _CARD_SESSION = {"easy": ("easy", "Easy run"), "tempo": ("tempo", "Tempo"), "steady": ("easy", "Steady run"),
                  "long run": ("long", "Long run")}
+_PLAN_CARD_TYPE = {"easy": "easy", "long": "long", "quality": "tempo"}   # a planned session the table above does not name
+
+
+def plan_parts(session: str) -> tuple[str, str] | None:
+    """(word, whole km) of a planned session's text ("tempo 7 km", "Norwegian 4x4 8 km"); None when it names no km."""
+    head, _, unit = session.rpartition(" ")
+    word, _, km = head.rpartition(" ")
+    return (word, km) if unit == "km" and word else None
 
 
 def card_reason(kind: str, slots: Mapping[str, str]) -> str:
@@ -203,6 +211,7 @@ def card_reason(kind: str, slots: Mapping[str, str]) -> str:
         "plan_long": f"Race is {s.get('weeks_txt', '')} away and your last long run was {s.get('gap_txt', '')} ago.",
         "good": f"{s.get('temp', '')} degrees, {s.get('rain', '')}% rain, and {s.get('gap_txt', '')} since your last hard run.",
         "gap": f"It has been {s.get('gap_txt', '')} since your last hard session.",
+        "plan_session": f"Part of {s.get('why', 'your plan')}.",
         "soft": "Nothing hard for now. Keep it gentle.",
     }[kind]
 
@@ -308,9 +317,10 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
           "plan_session": PLAN_SUGG_KIND[planned["plan_next_type"]] if planned else "easy_next", "plan_long": "long_run",
           "good": "quality", "gap": "quality", "feel": "easy_next", "soft": "easy_next"}[kind]
     facts = None
-    parts = session_parts(kind, history, now)
-    if parts and parts[0] in _CARD_SESSION and parts[1].isdigit():
-        ctype, label = _CARD_SESSION[parts[0]]
+    named = planned_text is not None and (kind == "plan_session" or use_plan_session)
+    parts = plan_parts(session) if named else session_parts(kind, history, now)
+    if parts and parts[1].isdigit() and (parts[0] in _CARD_SESSION or named):
+        ctype, label = _CARD_SESSION.get(parts[0]) or (_PLAN_CARD_TYPE[planned["plan_next_type"]], parts[0][:1].upper() + parts[0][1:])
         tomorrow = to_local(now, zone_id).date() + timedelta(days=1)
         facts = {"type": ctype, "session": label, "distance_km": int(parts[1]), "date_local": tomorrow.isoformat(),
                  "reason": card_reason(kind, slots)}

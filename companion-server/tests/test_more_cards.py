@@ -18,7 +18,7 @@ from companion.media import MediaError, MediaRenderer, month_facts
 from companion.render_client import RenderClient, RenderError
 from companion.service import RunIn, Service
 from companion.timeutil import iso
-from conftest import Fakes, OWNER, make_settings
+from conftest import coach_week, Fakes, OWNER, make_settings
 from render import protocol as P
 from render.worker import Worker
 
@@ -111,6 +111,7 @@ def seed_for_suggestion(e: Env):
     e.run(4, datetime(2026, 10, 11, 7, 0, tzinfo=UTC))
     e.run(5, datetime(2026, 9, 20, 7, 0, tzinfo=UTC))   # a runner under two weeks in gets no quality push (M6)
     e.quiet_outbox()
+    coach_week(e.svc, none=True)   # no coach week to follow: these tests are about the gap reason
 
 
 # ---------------------------------------------------------------- suggestion
@@ -142,6 +143,19 @@ def test_every_number_on_the_suggestion_picture_is_in_the_text(env):
     f = json.loads(env.q("SELECT media_json FROM convo_cards")[0]["media_json"])["facts"]
     assert str(f["distance_km"]) in body and "9 days" in body
     assert set(f) <= P.KIND_FACT_KEYS["suggestion"]
+
+
+@pytest.mark.parametrize("name,label", [("Tempo", "Tempo"), (None, "Quality session")])
+def test_a_coach_week_session_tomorrow_keeps_its_picture(env, name, label):
+    """The evening card that follows the coach week names the planned session, and its picture shows that session."""
+    seed_for_suggestion(env)
+    coach_week(env.svc, "quality", distance_m=7000, name=name)
+    cid = env.svc._build_evening_card(UID, "2026-10-13", NOW)
+    assert env.q("SELECT situation FROM convo_cards WHERE card_id=?", cid)[0]["situation"] == "sugg_plan_session"
+    f = json.loads(env.q("SELECT media_json FROM convo_cards WHERE card_id=?", cid)[0]["media_json"])["facts"]
+    assert f == {"type": "tempo", "session": label, "distance_km": 7, "date_local": "2026-10-14", "reason": "Part of your plan."}
+    assert "7 km" in env.q("SELECT body FROM cards WHERE card_id=?", cid)[0]["body"]
+    assert env.svc._send_card(env.user(), cid, NOW) and env.rec.kinds() == ["suggestion"]
 
 
 def test_suggestion_falls_back_to_text_when_the_worker_fails(tmp_path):

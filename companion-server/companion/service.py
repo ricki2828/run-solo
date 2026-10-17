@@ -1557,8 +1557,9 @@ class Service(CheckinMixin, MeasureMixin):
             lighter = self._ci_lighter(c, uid, now, tomorrow_d)
             hold = self._ci_evening_held(c, uid, tomorrow_d, now)
             coach_plan = coach = None
-            if self._ci_consented(c, uid):   # the coach week speaks for runners in the check-ins; the rest keep the rules below
-                _a, coach_plan, _u, _t, coach = self._ci_state(c, {"id": uid, "zone_id": zone_id}, now)
+            # the coach week speaks for every runner, as Home and Next do; only the check-in answers need consent
+            _a, coach_plan, _u, _t, coach = self._ci_state(c, {"id": uid, "zone_id": zone_id}, now,
+                                                           answers=self._ci_consented(c, uid))
         if hold:   # ill or away: no suggestion at all; or a readiness question is due in this window and wins the day's cap
             return None
         if hist and coach_plan is not None and coach is not None and coach.day == tomorrow_d:
