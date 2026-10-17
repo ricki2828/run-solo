@@ -109,6 +109,7 @@ jobs:
           set -o pipefail
           ruby -e "require 'xcodeproj'" 2>/dev/null || gem install xcodeproj --user-install
           ruby ios/tools/add_targets.rb 2>&1 | tee build/ios-logs/2-add-targets.log
+          grep -n "RunCore" ios/Runner.xcodeproj/project.pbxproj | tee -a build/ios-logs/2-add-targets.log
       - name: pod install
         working-directory: ios
         run: |
@@ -117,7 +118,7 @@ jobs:
       - name: flutter build ios --simulator
         run: |
           set -o pipefail
-          flutter build ios --simulator --debug 2>&1 | tee build/ios-logs/4-build.log
+          flutter build ios --simulator --debug -v 2>&1 | tee build/ios-logs/4-build.log
       - name: XCTest (RunnerTests drive the Kotlin core through the facade)
         # Hosted in Runner on the newest iPhone simulator. The tests compare each replay run file
         # with the Kotlin contract fixtures (parsed JSON equality).
