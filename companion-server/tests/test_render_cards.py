@@ -162,6 +162,88 @@ def test_share_card_shows_only_what_was_opted_in():
     assert "Milos" in html and "stroke-linecap" in html and "RICKI" in html.upper() and "CLIMB" in html
 
 
+def _share(facts, route=False, no_route=False, **opts):
+    facts = dict(facts)
+    if no_route:
+        facts.pop("route", None)
+    facts["share"] = {"route": route, **opts}
+    return facts
+
+
+def _easy_5k():
+    return F.slow_hot_day() | {"distance_km": 5.0, "duration_s": 1800, "pace_s_per_km": 360, "place_note": "", "title": "Easy run"}
+
+
+def test_share_style_chooser():
+    easy = _share(_easy_5k(), route=True)
+    assert share_mod.choose_style(easy) == "route"
+    assert share_mod.choose_style(_share(F.pb_5k(), route=True)) == "flood"            # PB
+    assert share_mod.choose_style(_share(F.singapore_intervals(), route=True)) == "flood"   # intervals with reps
+    assert share_mod.choose_style(_share(_easy_5k() | {"type": "race"}, route=True)) == "flood"   # race
+    # big days only: a tempo, a Z4/Z5-heavy run or intervals without reps keep the poster when the route draws
+    assert share_mod.choose_style(_share(F.milos_trail() | {"type": "tempo"}, route=True)) == "route"
+    assert share_mod.choose_style(_share(_easy_5k() | {"zone_s": [0, 60, 120, 900, 720]}, route=True)) == "route"
+    assert share_mod.choose_style(_share(_easy_5k() | {"type": "interval"}, route=True)) == "route"
+    assert share_mod.choose_style(_share(F.milos_trail() | {"type": "tempo"}, route=False)) == "flood"
+    assert share_mod.choose_style(_share(_easy_5k(), route=True, no_route=True)) == "flood"  # nothing to draw
+
+
+def test_share_route_needs_the_opt_in():
+    easy = _share(_easy_5k(), route=False)
+    assert share_mod.choose_style(easy) == "flood"
+    html = _body(share_mod.build_share_html(easy, MEMORY))
+    assert "stroke-linecap" not in html
+    on = _body(share_mod.build_share_html(_share(_easy_5k(), route=True), MEMORY))
+    assert "stroke-linecap" in on and "feGaussianBlur" in on
+
+
+def test_share_degenerate_route_falls_back():
+    line = [[1.30 + i * 0.0002, 103.85] for i in range(20)]
+    flat = _share(_easy_5k() | {"route": line}, route=True)
+    assert share_mod.choose_style(flat) == "flood"
+    assert share_mod.choose_style(_share(F.pb_5k() | {"pb": None, "type": "easy", "zone_s": [10, 60, 30, 0, 0]}, route=True)) == "flood"  # out-and-back collapses to a line
+    tiny = _share(_easy_5k() | {"route": [[1.3, 103.85]] * 4}, route=True)
+    assert share_mod.choose_style(tiny) == "flood"
+
+
+def test_share_route_xy_is_used_and_stays_a_shape():
+    shape = [[int(128 + 100 * __import__("math").cos(a / 10)), int(128 + 100 * __import__("math").sin(a / 10))] for a in range(63)]
+    facts = _share({k: v for k, v in _easy_5k().items() if k != "route"} | {"route_xy": shape}, route=True)
+    assert share_mod.choose_style(facts) == "route"
+    # the shape never reaches the page without the opt-in
+    off = _share({k: v for k, v in _easy_5k().items() if k != "route"} | {"route_xy": shape}, route=False)
+    assert "stroke-linecap" not in _body(share_mod.build_share_html(off, MEMORY))
+
+
+@pytest.mark.parametrize("text", ["1:28:50", "21:48", "5.0", "12.4", "42.2", "0:59", "100.0"])
+@pytest.mark.parametrize("max_size", [330, 820])
+def test_share_hero_fits_the_margins(text, max_size):
+    _need("PIL")
+    size = share_mod.fit_size(text, max_size)
+    assert share_mod.text_width(text, size) <= share_mod.BOX_W
+    # a short number still uses the full size, a long one shrinks instead of clipping
+    if text in ("5.0", "12.4", "42.2"):
+        assert size > 0.6 * max_size
+
+
+def test_share_hero_html_carries_the_fitted_size():
+    import re
+    facts = _share(F.pb_5k() | {"duration_s": 5330}, route=False, time=True)
+    html = _body(share_mod.build_share_html(facts, MEMORY))
+    assert "1:28:50" in html
+    size = int(re.search(r"font-size:(\d+)px;color:#19E6FF", html).group(1))
+    assert share_mod.text_width("1:28:50", size) <= share_mod.BOX_W
+
+
+def test_share_pb_shows_time_only_with_time_opt_in():
+    hidden = _body(share_mod.build_share_html(_share(F.pb_5k(), route=False), MEMORY))
+    assert "21:41" not in hidden and "5.0" in hidden
+    shown = _body(share_mod.build_share_html(_share(F.pb_5k(), route=False, time=True), MEMORY))
+    assert "21:41" in shown
+    for kind in ("longest", "fastest_km"):   # the run's time is not what these PBs are about
+        assert share_mod.hero(F.pb_5k() | {"pb": kind}, {"time": True}) == ("5.0", "KM")
+
+
 # --- goldens ---------------------------------------------------------------------------
 
 def _noroute(facts):
@@ -237,6 +319,11 @@ GOLDENS = {
     "monthly_poster_noroute": ("render_monthly_poster", F.monthly_poster_noroute),
     "share_private": ("render_share_card", F.share_private),
     "share_opted_in": ("render_share_card", F.share_opted_in),
+    "share_pb": ("render_share_card", lambda: _share(F.pb_5k(), route=True, time=True)),
+    "share_easy_route": ("render_share_card", lambda: _share(_easy_5k(), route=True)),
+    "share_intervals_route": ("render_share_card", lambda: _share(F.singapore_intervals(), route=True, reps=True)),
+    "share_no_route": ("render_share_card", lambda: _share(_easy_5k(), route=True, no_route=True)),
+    "share_tempo_trail": ("render_share_card", lambda: _share(F.milos_trail() | {"type": "tempo", "pb": None}, route=True)),
     "today_4x4": ("render_today", F.today_4x4),
     "today_easy_no_target": ("render_today", F.today_easy_no_target),
     "today_long_name": ("render_today", F.today_long_name),
@@ -345,8 +432,9 @@ def test_poster_size(cards):
 
     from PIL import Image
     assert Image.open(BytesIO(cards.render_monthly_poster(F.monthly_poster(), MEMORY))).size == (1080, 1920)
-    for fn, make in ((cards.render_milestone, F.milestone_1000km), (cards.render_pb, F.pb_5k), (cards.render_share_card, F.share_private)):
+    for fn, make in ((cards.render_milestone, F.milestone_1000km), (cards.render_pb, F.pb_5k)):
         assert Image.open(BytesIO(fn(make(), MEMORY))).size == (1080, 1350)
+    assert Image.open(BytesIO(cards.render_share_card(F.share_private(), MEMORY))).size == (1080, 1920)
     assert Image.open(BytesIO(cards.render_race_countdown(F.race_countdown(), MEMORY))).size == (1080, 1350)
 
 

@@ -104,6 +104,15 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     return facts
 
 
+SHARE_PICTURE_KINDS = ("light", "flood", "pb")   # the run cards whose picture is the share image
+
+
+def share_optins(facts: Mapping[str, Any]) -> dict[str, bool]:
+    """What the share image may show for a run card. The picture goes to the runner's own chat, so their own numbers are
+    fine; place names stay off (no place switch here) and the route follows its switch via the shape's presence."""
+    return {"route": bool(facts.get("route_xy")), "time": True, "climb": True, "reps": True, "pace": True}
+
+
 def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
     """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape, no splits, or a
     verdict the video has no word for). A PB run uses its ordinary verdict: the server never holds the old best time
@@ -187,7 +196,7 @@ def month_facts(month_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, 
 
 
 # Cards the worker can draw from stored rows (run, week, month) or from facts persisted in the plan (suggestion).
-CARD_KINDS = ("light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
+CARD_KINDS = ("light", "flood", "pb", "share", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
               "trail_board", "trail_record", "trail_heart")
 # Coach check-in cards (stream S2): drawn from facts the caller builds, never from stored rows.
 CHECKIN_KINDS = ("today", "today_verdict", "moved", "pinned_week")
@@ -329,7 +338,11 @@ class MediaRenderer:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])
                 vkind, vfacts = "run", video_facts(facts)
-            photo = self.cards[kind](facts, memory or {})
+            photo = None
+            if kind in SHARE_PICTURE_KINDS:
+                photo = self._share_picture(facts)
+            if photo is None:
+                photo = self.cards[kind](facts, memory or {})
         except Exception as e:
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
@@ -337,6 +350,16 @@ class MediaRenderer:
         video = self._video(vkind, vfacts) if plan.get("video") and vfacts is not None else None
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
 
+
+    def _share_picture(self, facts: Mapping[str, Any]) -> bytes | None:
+        """The 9:16 share image sent with a run's post-run message. None on any failure (or an oversized file): the caller
+        then draws the older card. The route is drawn only when the app sent its shape, which its "Show route shape on
+        cards" switch controls (switching it off forgets every stored shape), so the opt-in is the shape's presence."""
+        try:
+            photo = self.cards["share"]({**facts, "share": share_optins(facts)}, {})
+        except Exception:
+            return None
+        return photo if photo and len(photo) <= PHOTO_MAX_BYTES else None
 
     def _still(self, kind: str, facts: Mapping[str, Any], memory: Mapping[str, Any] | None) -> Media:
         try:

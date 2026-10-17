@@ -203,12 +203,12 @@ def ten_runs(e: Env):
 def test_the_tenth_run_sends_a_milestone_picture_after_the_run_card(env):
     ten_runs(env)
     env.svc.run_outbox(NOW + timedelta(seconds=1))
-    assert env.rec.kinds() == ["light"]
+    assert env.rec.kinds() == ["share"]
     plan = json.loads(env.q("SELECT media_json FROM convo_cards")[0]["media_json"])
     assert plan["touch_card"] == "milestone"
     assert plan["touch_facts"] == {"kind": "runs", "value": 10, "line": "Double digits."}
     env.svc.run_outbox(NOW + timedelta(seconds=2))
-    assert env.rec.kinds() == ["light", "milestone"]
+    assert env.rec.kinds() == ["share", "milestone"]
     first, second = env.photos()
     assert first["caption"] and "caption" not in second and "reply_markup" not in second   # media only, no buttons
     assert second["_files"]["photo"][1] == PNG

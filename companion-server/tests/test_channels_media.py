@@ -412,7 +412,7 @@ def test_sending_media_stores_no_bytes_and_leaves_the_export_unchanged(tmp_path,
 
 # --- real renderers, end to end (Chromium and ffmpeg are required: a missing one fails, never skips) ----------
 
-def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, fakes, render_socket):
+def test_real_run_card_renders_through_the_service_as_a_1080x1920_share_png(tmp_path, fakes, render_socket):
     import io
     from PIL import Image
     s = make_settings(tmp_path, media_enabled=True, render_socket=render_socket)
@@ -423,7 +423,7 @@ def test_real_run_card_renders_through_the_service_as_a_1080x1350_png(tmp_path, 
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
     photo = [b for m, b in fakes.tg if m == "sendPhoto"][0]["_files"]["photo"][1]
     im = Image.open(io.BytesIO(photo))
-    assert im.format == "PNG" and im.size == (1080, 1350) and len(photo) < 10 * 1024 * 1024
+    assert im.format == "PNG" and im.size == (1080, 1920) and len(photo) < 10 * 1024 * 1024
 
 
 def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fakes, render_socket):
@@ -449,3 +449,29 @@ def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fa
     assert [x["codec_type"] for x in streams] == ["video"]
     assert streams[0]["codec_name"] == "h264" and (streams[0]["width"], streams[0]["height"]) == (1080, 1350)
     assert streams[0]["pix_fmt"] == "yuv420p"
+
+
+def _send_run(c, fakes):
+    t = enrol(c)
+    c.post("/v1/runs", json=run_payload("r1"), headers=auth(t))
+    c.svc.run_outbox(now_utc() + timedelta(seconds=1))
+    return [b for m, b in fakes.tg if m == "sendPhoto"][-1]["_files"]["photo"][1]
+
+
+def test_run_card_picture_is_the_share_image_and_falls_back_to_the_old_card(tmp_path, fakes):
+    from companion.media import share_optins
+    seen = []
+    def share(f, m):
+        seen.append(f["share"]); return PNG
+    def old(f, m):
+        return PNG + b"old"
+    cards = {"light": old, "flood": old, "pb": old, "share": share}
+    with media_client(tmp_path, fakes, card_fns=cards) as c:
+        _send_run(c, fakes)
+    assert seen and seen[0]["time"] is True
+    assert share_optins({}) ["route"] is False and share_optins({"route_xy": [[1, 2]]})["route"] is True
+    def boom(f, m):
+        raise RuntimeError("render down")
+    with media_client(tmp_path / "b", fakes, card_fns={**cards, "share": boom}) as c:
+        photo = _send_run(c, fakes)
+    assert photo.endswith(b"old")

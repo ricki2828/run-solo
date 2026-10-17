@@ -23,7 +23,7 @@ PHOTO_MAX_BYTES = 10 * 1024 * 1024     # Telegram sendPhoto
 VIDEO_MAX_BYTES = 50 * 1024 * 1024     # Telegram bot upload ceiling
 OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
-    "card": frozenset({"light", "flood", "pb", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
+    "card": frozenset({"light", "flood", "pb", "share", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
                        "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record", "trail_heart"}),
     "video": frozenset({"run", "weekly", "ghostclip"}),
 }
@@ -39,7 +39,7 @@ ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
 ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
-    "title", "route_xy", "splits", "reps", "work_pace_s_per_km",
+    "title", "route_xy", "splits", "reps", "work_pace_s_per_km", "share",
     "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
@@ -120,7 +120,7 @@ WEEK_DAY_KEYS = frozenset({"type", "planned_km", "done_km"})
 COACH_REQUIRED = {"today": {"type", "session"}, "today_verdict": {"type", "session"}, "moved": {"type", "session", "to_day"},
                   "pinned_week": {"days"}}
 KIND_FACT_KEYS = {
-    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "weekly_recap": WEEK_KEYS,
+    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "share": RUN_KEYS | {"share"}, "weekly_recap": WEEK_KEYS,
     "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
     "suggestion": frozenset({"type", "session", "distance_km", "date_local", "reason"}),
     "milestone": frozenset({"kind", "value", "line"}),
@@ -162,12 +162,22 @@ def check_request(req: Any) -> tuple[str, str, dict]:
             raise ProtocolError("bad_request")
         if (kind in TRAIL_KINDS or kind == HEART_KIND) and not _trail_values_ok(facts):
             raise ProtocolError("bad_request")
+        if kind == "share" and not _share_ok(facts.get("share")):
+            raise ProtocolError("bad_request")
         if kind == HEART_KIND and not _heart_ok(facts):
             raise ProtocolError("bad_request")
         if kind == "ghostclip" and not (isinstance(facts.get("elev_profile"), list) and len(facts["elev_profile"]) >= 8
                                         and "ghost_gap" in facts and len(facts["trail_board"]) >= 2):
             raise ProtocolError("bad_request")   # a race needs a hill to run along and a ghost to run against
     return op, kind, facts
+
+
+SHARE_FLAGS = frozenset({"route", "place", "time", "climb", "hr", "reps", "pace", "name", "date"})
+
+
+def _share_ok(v: Any) -> bool:
+    """The share image's opt-ins: a small dict of known flags, each a bool. Free text (a headline) is not accepted."""
+    return v is None or (isinstance(v, dict) and set(v) <= SHARE_FLAGS and all(isinstance(x, bool) for x in v.values()))
 
 
 def _int_in(v: Any, lo: int, hi: int) -> bool:
