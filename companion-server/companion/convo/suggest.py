@@ -103,6 +103,9 @@ def plan_session(h: Mapping[str, Any], history: Sequence[Mapping[str, Any]], now
     distance, exactly as an unplanned suggestion would. A quality session needs no number."""
     typ = h["plan_next_type"]
     word = PLAN_KIND_WORD[typ]
+    name = h.get("plan_next_session_name")
+    if typ == "quality" and name:   # the coach week names its quality session ("tempo"), the same word its other messages use
+        word = "tempo" if name == "Tempo" else name
     text: str | None
     if h.get("plan_next_m"):
         text = f"{word} {whole_km(h['plan_next_m'])} km"

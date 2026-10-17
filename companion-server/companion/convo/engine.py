@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from ..facts import (FLOOD_SHARE, comparable, fmt_km, fmt_pace, is_hard_run, is_session_run, pace_basis, pace_pair,
+from ..facts import (FLOOD_SHARE, comparable, fmt_km, fmt_pace, is_hard_run, is_session_run, is_steady_trail, pace_basis, pace_pair,
                      session_label, verdict_delta)
 from ..timeutil import parse_iso
 from . import touches as T
@@ -151,6 +151,8 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
             return "slower_load", slots
         return "slower", slots
     if run.get("app_type") == "trail":  # "trail" stays the place; the session the coach knows is named inside it
+        if is_steady_trail(run):
+            return "trail_steady", slots   # mostly Z3 is not an easy effort, whatever the climbs did to the type
         return {"easy": "trail_easy", "tempo": "trail_tempo", "long": "trail_long"}.get(typ, "trail"), slots
     if typ == "interval" or (typ == "race"):
         return "intervals", slots

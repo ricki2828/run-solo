@@ -75,12 +75,18 @@ def best_moment(week: Sequence[Mapping[str, Any]], zone_id: str) -> str:
         return f"Best moment: {climby['climb_m']} m of climb on {day(climby)}."
     paced = [r for r in week if r.get("pace_s_per_km")]
     if len(paced) >= 2:
+        # One basis, said out loud: the coach's session paces are True Pace, so when every run this week has one the
+        # quickest is judged on it and labelled (a mix of the two bases is never compared)
+        if all(r.get("true_pace_s_per_km") for r in paced):
+            q = min(paced, key=lambda r: r["true_pace_s_per_km"])
+            return f"Quickest was {fmt_pace(q['true_pace_s_per_km'])}/km true pace on {day(q)}."
         q = min(paced, key=lambda r: r["pace_s_per_km"])
         return f"Quickest was {fmt_pace(q['pace_s_per_km'])}/km on {day(q)}."
     return ""
 
 
 MONTHLY_DAY = 1               # the 1st of the month, for the month just ended
+MONTHLY_DAYS = 3              # ... which may wait until the 2nd or 3rd when the 1st is the recap's day or already full
 MONTHLY_START_MIN = 9 * 60    # plan from 09:00 local ...
 MONTHLY_END_MIN = 12 * 60     # ... until noon: room to wait out MONTHLY_MIN_GAP_H after another card
 MONTHLY_MIN_GAP_H = 3         # never within this long of another card

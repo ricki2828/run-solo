@@ -52,6 +52,7 @@ class CheckinMixin:
     s: Any
     channels: dict[str, Any]
     media: Any
+    _memory_set: Any   # Service's
 
     # ------------------------------------------------------------------ reading
     @staticmethod
@@ -78,10 +79,11 @@ class CheckinMixin:
         memory = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM memory WHERE user_id=?", (uid,))}
         return dw.next_planned(hist, memory=memory, zone_id=user["zone_id"], today=today, now=now)
 
-    def _ci_state(self, c, user: dict, now: datetime):
-        """-> (answers, planned, usual weekdays, runner's local today, resolved next session)."""
+    def _ci_state(self, c, user: dict, now: datetime, *, answers: bool = True):
+        """-> (answers, planned, usual weekdays, runner's local today, resolved next session). `answers=False` leaves the
+        check-in answers out (a runner who has not agreed to that data): the plan and the default week still resolve."""
         uid = user["id"]
-        ans = self._ci_answers(c, uid, now)
+        ans = self._ci_answers(c, uid, now) if answers else ci.Answers()
         planned = ci.planned_from_run(self._ci_latest_run(c, uid))
         usual = self._ci_usual(c, uid)
         today = to_local(now, user["zone_id"]).date()
@@ -280,7 +282,9 @@ class CheckinMixin:
             return (res is not None and res.day == for_date == today and not ran_today
                     and ans.get("today", for_date) is None and ci.worth_asking("today", planned, ans, for_date, today, usual))
         if slot == "shape":
-            return (to_local(now, u["zone_id"]).weekday() == 6 and for_date == today + timedelta(days=1)
+            # "how many runs": once the runner has said a number (here, or on the weekly question) it is not asked again
+            known = c.execute("SELECT 1 FROM memory WHERE user_id=? AND key='runs_per_week'", (u["id"],)).fetchone()
+            return (to_local(now, u["zone_id"]).weekday() == 6 and for_date == today + timedelta(days=1) and not known
                     and ans.get("shape", for_date) is None and ci.worth_asking("shape", planned, ans, for_date, today, usual))
         if slot == "postrun":
             run = self._ci_latest_run(c, u["id"])
@@ -449,10 +453,13 @@ class CheckinMixin:
         if parsed[0] in ("today", "why", "undo", "ready", "shape"):   # only answers that move or soften a session redraw the week
             self._ci_week_enqueue(user, now)
 
-    @staticmethod
-    def _ci_apply(c, uid: str, kind: str, value: str, for_date: date, now: datetime) -> None:
-        """Record the answer (last write wins). The next session is re-resolved on read, so nothing else is stored."""
+    def _ci_apply(self, c, uid: str, kind: str, value: str, for_date: date, now: datetime) -> None:
+        """Record the answer (last write wins). The next session is re-resolved on read, so nothing else is stored,
+        except that a number of runs is the runner's answer to the weekly question too: the coach week sizes itself from
+        it and neither question comes round again."""
         d = for_date.isoformat()
+        if kind == "shape" and value in ("3", "4", "5"):
+            self._memory_set(c, uid, "runs_per_week", value, now)
         if kind == "undo":
             c.execute("DELETE FROM checkin_answers WHERE user_id=? AND kind IN ('today','why') AND local_date=?", (uid, d))
         elif value == "":

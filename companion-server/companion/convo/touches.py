@@ -221,16 +221,22 @@ def best_month(c: Ctx) -> Touch | None:
 
 
 def year_best(c: Ctx) -> Touch | None:
-    d, p = c.run.get("distance_m") or 0, _pace(c.run)
-    if not d or p is None or c.run.get("pb") or c.run.get("work_pace_s_per_km"):  # an interval run's whole-run pace is no yardstick
+    d = c.run.get("distance_m") or 0
+    if not d or c.run.get("pb") or c.run.get("work_pace_s_per_km"):  # an interval run's whole-run pace is no yardstick
+        return None
+    # one basis, said out loud: True Pace when the run has one (and then only runs with one are compared), else the average
+    key = "true_pace_s_per_km" if c.run.get("true_pace_s_per_km") else "pace_s_per_km"
+    p = c.run.get(key)
+    if p is None:
         return None
     year = c.local(c.run).year
     same = [h for h in c.history
-            if h.get("distance_m") and 0.8 <= h["distance_m"] / d <= 1.25 and _pace(h) is not None
+            if h.get("distance_m") and 0.8 <= h["distance_m"] / d <= 1.25 and h.get(key) is not None
             and c.local(h).year == year]
-    if len(same) < 4 or p >= min(_pace(h) for h in same):
+    if len(same) < 4 or p >= min(h[key] for h in same):
         return None
-    return Touch("year_best", f"year_best:{round(d / 1000)}", {"pace": fmt_pace(p), "cnt": str(len(same) + 1)})
+    basis = " true pace" if key == "true_pace_s_per_km" else ""
+    return Touch("year_best", f"year_best:{round(d / 1000)}", {"pace": fmt_pace(p), "cnt": str(len(same) + 1), "basis": basis})
 
 
 def last_year(c: Ctx) -> Touch | None:

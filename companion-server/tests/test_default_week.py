@@ -40,7 +40,7 @@ def test_rickis_week_is_three_weekday_runs_easy_quality_long_sized_from_his_own_
     assert got == [("Mon 19", "easy", 5000), ("Wed 21", "quality", 5000), ("Fri 23", "long", 6000)]
     q = week()[1]   # the quality day names the session and its pace, from his own tempo runs
     assert (q.name, q.pace_lo_s, q.pace_hi_s) == ("Tempo", 325, 335)
-    assert dw.shape_line(week(), date(2026, 10, 19)) == "Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km."
+    assert dw.shape_line(week(), date(2026, 10, 19)) == "Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km true pace, Fri long 6 km."
 
 
 def test_a_built_in_interval_session_with_its_work_pace_is_named_when_there_are_no_tempos():
@@ -153,7 +153,7 @@ def test_the_recap_ends_with_one_shape_of_next_week_line(client, fakes):
     now = at(2026, 10, 18, 19, 0)   # Sunday evening, after the week's last run
     cid = e.svc._build_recap_card(e.uid, "2026-W42", now)
     body = e.q("SELECT body FROM cards WHERE card_id=?", cid)[0]["body"]
-    assert body.endswith("Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km, Fri long 6 km.")
+    assert body.endswith("Next week: Mon easy 5 km, Wed tempo 5 km at 5:25-5:35/km true pace, Fri long 6 km.")
     assert "—" not in body
 
 
@@ -211,3 +211,44 @@ def test_quality_falls_back_to_the_named_session_when_all_tempos_were_trail():
             {"type": "interval", "session_name": "Norwegian 4x4", "work_pace_s_per_km": 290, "distance_m": 6000}]
     q = dw.quality_session(runs)
     assert q.name == "Norwegian 4x4" and q.pace_lo_s == 285
+
+
+def test_a_count_that_rounds_up_never_reaches_into_a_day_the_runner_does_not_run():
+    """14 runs in 4 weeks is 3.5 a week, which rounds to 4: Mon/Wed/Fri plus two stray Saturdays must stay a three-run week,
+    not hand the runner an arbitrary Saturday long run (17-Oct sim #7). No usual days were stated."""
+    days = [date(2026, 9, 28) + timedelta(days=7 * w + o) for w in range(4) for o in (0, 2, 4)]   # Mon/Wed/Fri x 4 weeks
+    days += [date(2026, 10, 10), date(2026, 10, 17)]                                              # two stray Saturdays
+    rows = sorted([((d.month, d.day, 17, 0), 4700, "easy") for d in days])   # oldest first, as RICKI
+    now = sgt(2026, 10, 24, 9, 0)
+    h = history(rows)
+    assert len(h) == 14 and dw.runs_per_week(None, h) == 4
+    w = dw.build_week(h, memory={"goal_type": "fitness"}, zone_id="Asia/Singapore", today=date(2026, 10, 26), now=now)
+    assert {s.day.weekday() for s in w} == {0, 2, 4}
+    assert [s.type for s in w[:3]] == ["easy", "quality", "long"]
+
+
+def test_a_quickest_this_week_is_judged_on_true_pace_and_says_so_when_every_run_has_one():
+    from companion.convo.recap import best_moment
+    wk = [{"start_utc": "2026-10-19T10:00:00Z", "zone_id": "Asia/Singapore", "distance_m": 5000, "pace_s_per_km": 362.0,
+           "true_pace_s_per_km": 330.0},
+          {"start_utc": "2026-10-21T10:00:00Z", "zone_id": "Asia/Singapore", "distance_m": 5000, "pace_s_per_km": 350.0,
+           "true_pace_s_per_km": 335.0}]
+    assert best_moment(wk, "Asia/Singapore") == "Quickest was 5:30/km true pace on Monday."
+    wk[1].pop("true_pace_s_per_km")   # a mix of bases is never compared: the average pace, as the run cards quote it
+    assert best_moment(wk, "Asia/Singapore") == "Quickest was 5:50/km on Wednesday."
+
+
+def test_the_day_cap_keeps_a_place_for_the_sunday_recap_and_never_drops_it(client, fakes):
+    """A weekend runner's Sunday: a morning check-in and a post-run question would fill the day's two before the 19:00
+    recap. The recap is never the one dropped: on its day everything else leaves it a place until it has gone."""
+    e = _env(client, fakes)
+    _seed(e)
+    sun = at(2026, 10, 18, 8, 0)
+    with db.tx(e.path) as c:
+        c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, sent_at) "
+                  "VALUES ('ci1', ?, 'ci:today', 'ci_today', 'h', 'b', '[]', 'template', ?, ?)", (e.uid, iso(sun), iso(sun)))
+    user = {"id": e.uid, "zone_id": "Europe/Rome"}
+    later = sun + timedelta(hours=3)
+    assert e.svc._day_cap(user, "question", later) == ("skipped", None)   # the second place is the recap's
+    assert e.svc._day_cap(user, "recap", later) is None
+    assert e.svc._day_cap(user, "question", at(2026, 10, 19, 11, 0)) is None   # Monday: two places again
