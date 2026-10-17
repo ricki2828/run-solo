@@ -99,7 +99,8 @@ def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zon
         if total > 0 and (zm.get("z4", 0) + zm.get("z5", 0)) / total >= TRAIL_TEMPO_Z45_SHARE and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
             return "tempo"
         return "easy"
-    if total > 0 and (zm.get("z3", 0) + zm.get("z4", 0)) / total > 0.5 and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
+    if total > 0 and (zm.get("z3", 0) + zm.get("z4", 0)) / total > 0.5 and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S \
+            and (zm.get("z4", 0) + zm.get("z5", 0)) / total >= TEMPO_LIGHT_SHARE:   # mostly Z3 with no real Z4+Z5 is steady, not tempo
         return "tempo"
     return "easy"
 
@@ -327,9 +328,14 @@ def verdict_delta(run: Mapping[str, Any], delta: int) -> int | None:
     return delta
 
 
+def counts_as_hard(run: Mapping[str, Any]) -> bool:
+    """For spacing hard days: a run is hard if the card calls it hard or the runner tapped Hard, whatever its type."""
+    return is_hard_run(run) or run.get("feel") == "hard"
+
+
 def days_since_hard(history: Sequence[Mapping[str, Any]], now: datetime) -> int | None:
     for h in history:
-        if is_hard_run(h):
+        if counts_as_hard(h):
             return (now - _when(h)).days
     return None
 

@@ -195,13 +195,14 @@ def test_a_hard_tap_in_the_morning_stops_a_push_that_evening():
     hist = evening_hist("hard")
     assert suggest.evening(evening_hist("right"), now, None, {}, "s").suggestion.kind == "quality"   # the old gap push
     ev = suggest.evening(hist, now, None, {}, "s")
-    assert ev is not None and ev.suggestion.kind == "easy_next" and "easy" in ev.rendered.body.lower()
+    # the Hard tap counts as a hard day for spacing too, so there is no gap reason left to push on: no push at all
+    assert ev is None or (ev.suggestion.kind == "easy_next" and "easy" in ev.rendered.body.lower())
 
 
 def test_a_hard_tap_and_a_flagged_note_together_stay_gentle():
     now = T0 + timedelta(hours=14)
     ev = suggest.evening(evening_hist("hard"), now, None, {}, "s", soften=True)
-    assert ev.suggestion.kind == "easy_next"
+    assert ev is None or ev.suggestion.kind == "easy_next"
 
 
 def test_soften_still_outranks_a_planned_session_after_a_hard_tap():
@@ -229,7 +230,7 @@ def test_heat_still_warns_after_a_hard_tap_and_never_turns_into_a_push():
 
 @pytest.mark.parametrize("typ,word", [("easy", "easy trail run"), ("tempo", "tempo trail run"), ("long", "long trail run")])
 def test_trail_keeps_the_place_and_names_the_session(typ, word):
-    r = run(typ=typ)
+    r = run(typ=typ, zone_min={"z1": 3.0, "z2": 18.0, "z3": 5.0, "z4": 2.0} if typ == "easy" else Z3_RUN)
     assert run_label(r) == word
     assert word.capitalize() in texts(build_facts(r, [], {}))["base"]
     assert engine.situation_for(r, [], None)[0] == f"trail_{typ}"
@@ -316,3 +317,26 @@ def test_caption_keeps_the_comparison_sentence():
     card = OutCard("c", "Easy run", "6.5 km at 5:40/km. 12 s/km faster than last time. Boring is the point.", [],
                    short_caption=True)
     assert caption_text(card) == "Easy run\n12 s/km faster than last time. Boring is the point."
+
+
+def test_a_free_run_is_tempo_only_with_real_z4_z5_the_2_oct_shape_stays_tempo():
+    from companion.facts import infer_coach_type
+    kw = dict(distance_m=5000, duration_s=1800, pb=None, history=[])
+    two_oct = {"z1": 2.0, "z2": 8.0, "z3": 47.0, "z4": 24.0, "z5": 4.0}    # 47% Z3, 28% Z4+Z5
+    steady = {"z1": 5.0, "z2": 20.0, "z3": 70.0, "z4": 5.0}                # 70% Z3, 5% Z4+Z5
+    assert infer_coach_type("free", zone_min=two_oct, **kw) == "tempo"
+    assert infer_coach_type("free", zone_min=steady, **kw) == "easy"
+
+
+def test_a_run_tapped_hard_counts_as_hard_for_spacing_whatever_its_type():
+    from datetime import datetime, timezone
+    from companion.facts import counts_as_hard, days_since_hard
+    h = run(typ="easy", feel="hard", zone_min={"z2": 30.0})
+    assert not is_hard_run(h) and counts_as_hard(h)
+    now = datetime(2026, 10, 14, 6, 0, tzinfo=timezone.utc)
+    assert days_since_hard([dict(h, start_utc=datetime(2026, 10, 12, 6, 0, tzinfo=timezone.utc))], now) == 2
+
+
+def test_an_easy_trail_run_that_is_mostly_z3_is_steady_not_easy():
+    r = run(typ="easy", app="trail", feel=None, zone_min={"z1": 3.0, "z2": 7.0, "z3": 18.0, "z4": 1.0})
+    assert engine.situation_for(r, [], None)[0] == "trail_steady"

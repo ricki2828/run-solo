@@ -30,7 +30,7 @@ from statistics import median
 from typing import Any, Mapping, Sequence
 
 from .checkins import Planned, at_local, usual_weekdays
-from .facts import fmt_pace, is_goal_run, is_hard_run, known_session
+from .facts import counts_as_hard, fmt_pace, is_goal_run, is_hard_run, known_session
 from .timeutil import parse_iso, to_local
 
 WINDOW_DAYS = 28
@@ -151,7 +151,7 @@ def build_week(history: Sequence[Mapping[str, Any]], *, memory: Mapping[str, str
     tmpl = week_template(recent, n, usual, allow_quality)
     q = quality_session(recent) if allow_quality else None
     ran_days = {_local_day(r, zone_id) for r in history}
-    hards = [parse_iso(r["start_utc"]) for r in history if is_hard_run(r)]
+    hards = [parse_iso(r["start_utc"]) for r in history if counts_as_hard(r)]
     monday = today - timedelta(days=today.weekday())
     done_this_week = sum(1 for d in ran_days if monday <= d <= monday + timedelta(days=6))
     out: list[DaySession] = []

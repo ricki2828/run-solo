@@ -113,7 +113,7 @@ def test_trail_run_is_not_a_tempo_because_climbs_lift_hr_into_z3():
     # Ricki's 14 Oct trail run: 4.7 km in 28 min, 17 of 28 min in Z3, 2.7 in Z4 -> was "tempo", is an easy trail run.
     z = {"z1": 0.7, "z2": 8.6, "z3": 16.3, "z4": 2.7, "z5": 0.0}
     assert infer("trail", km=4.7, mins=28.5, zones=z) == "easy"
-    assert infer("free", km=4.7, mins=28.5, zones=z) == "tempo"  # a road/free run keeps the Z3-Z4 rule
+    assert infer("free", km=4.7, mins=28.5, zones=z) == "easy"   # a free run needs real Z4+Z5 (>= 15%) too: 2.7 of 28 is 10%
 
 
 def test_trail_run_is_a_tempo_only_when_mostly_z4_z5():
