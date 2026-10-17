@@ -150,26 +150,18 @@ class BleTest {
     }
 
     @Test
-    fun `hunt - a lone strap of the same family is accepted only after a wait`() {
+    fun `hunt - a strap of the same brand from another runner is never taken - even alone`() {
+        // Parkrun start: ours is not broadcasting yet, a stranger's WHOOP is.
         val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
         p.onStart(0)
-        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(cand("NEW", "WHOOP 4C1111"), 1_000))
-        assertIs<BleReconnectPolicy.Action.Nothing>(p.onHuntTick(BleReconnectPolicy.FAMILY_WAIT_MS - 1))
-        assertEquals(BleReconnectPolicy.Action.Connect("NEW", delayMs = 0), p.onHuntTick(BleReconnectPolicy.FAMILY_WAIT_MS))
-        assertEquals(BleReconnectPolicy.Match.FAMILY, p.lastMatch)
-        assertEquals("WHOOP 4C1111", p.savedName, "the new name is remembered")
-        assertEquals("NEW", p.savedAddress)
-    }
-
-    @Test
-    fun `hunt - two straps of the same family are never guessed between`() {
-        val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
-        p.onStart(0)
-        p.onScanResult(cand("N1", "WHOOP 4C1111"), 500)
-        p.onScanResult(cand("N2", "WHOOP 4D2222"), 600)
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(cand("N1", "WHOOP 4C1111", -40), 500))
         assertIs<BleReconnectPolicy.Action.Nothing>(p.onHuntTick(60_000))
+        assertIs<BleReconnectPolicy.Action.Nothing>(p.onScanResult(cand("N2", "WHOOP 4D2222"), 61_000))
         assertEquals(BleReconnectPolicy.LinkState.HUNTING, p.state)
         assertEquals("OLD", p.savedAddress)
+        assertEquals("WHOOP 4A0934", p.savedName)
+        // Ours turns up later in the same hunt: it is taken, not the stronger stranger.
+        assertEquals(BleReconnectPolicy.Action.Connect("NEW", delayMs = 0), p.onScanResult(cand("NEW", "WHOOP 4A0934", -80), 62_000))
     }
 
     @Test
@@ -230,13 +222,5 @@ class BleTest {
         assertEquals(1_000L + BleReconnectPolicy.SCAN_WINDOW_MS - 10_000, h.delayMs)
         assertFalse(p.canStartScan(10_000), "the planned hunt holds a slot too")
         assertTrue(p.canStartScan(80_000))
-    }
-
-    @Test
-    fun `family - first word of the name`() {
-        assertEquals("WHOOP", BleReconnectPolicy.family("WHOOP 4A0934"))
-        assertEquals("POLAR", BleReconnectPolicy.family(" polar H10 1234"))
-        assertNull(BleReconnectPolicy.family("H7 123"))
-        assertNull(BleReconnectPolicy.family("123 45"))
     }
 }

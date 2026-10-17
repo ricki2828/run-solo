@@ -279,7 +279,7 @@ class BleHrClient(context: Context) {
         pending = null
     }
 
-    /** The policy re-points the saved address (and, for a family match, the name) to the strap a scan found. */
+    /** The policy re-points the saved address to the strap a scan found by address or name. */
     private fun persistIdentity() {
         val a = policy.savedAddress
         val n = policy.savedName

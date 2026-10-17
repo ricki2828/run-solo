@@ -24,9 +24,10 @@ package app.runsolo.core.ble
  *    would exceed it is delayed until a start frees up, never dropped.
  *
  * Matching (never another runner's strap): the saved address, else the saved name
- * (case-insensitive), else — only after [FAMILY_WAIT_MS] of hunting, and only if exactly one is in
- * range — a strap of the same family (first word of the saved name, e.g. "WHOOP") in case the
- * advertised name changed.
+ * (case-insensitive). Nothing looser: a lone same-brand strap at a parkrun start is as likely to be
+ * a stranger's (with ours not broadcasting yet) as ours with a changed name, and taking it would
+ * record their HR and re-point the saved strap to them. WHOOP's advertised name carries its serial;
+ * if a phone ever shows it changing, the trail's `hunt saw … name=` lines will say so.
  */
 class BleReconnectPolicy(
     address: String?,
@@ -57,7 +58,7 @@ class BleReconnectPolicy(
     data class Candidate(val address: String, val name: String?, val rssi: Int = 0)
 
     /** How a scan result was matched to the saved strap; for logs. */
-    enum class Match { ADDRESS, NAME, FAMILY }
+    enum class Match { ADDRESS, NAME }
 
     var savedAddress: String? = address
         private set
@@ -74,7 +75,6 @@ class BleReconnectPolicy(
     private val scanStarts = ArrayList<Long>() // may hold one planned (future) hunt start
     private var nextDelay = initialDelayMs
     private var connectedAt: Long? = null
-    private var huntFrom = 0L
     private val seen = LinkedHashMap<String, Candidate>() // this hunt's HR peripherals by address
     private var huntsThisEpisode = 0
 
@@ -160,7 +160,6 @@ class BleReconnectPolicy(
             at = maxOf(at, freeAt)
         }
         scanStarts.add(at)
-        huntFrom = at
         seen.clear()
         state = LinkState.HUNTING
         val fast = huntsThisEpisode < FAST_HUNTS
@@ -172,34 +171,29 @@ class BleReconnectPolicy(
     fun onScanResult(c: Candidate, nowMs: Long): Action {
         if (state != LinkState.HUNTING || savedAddress == null) return Action.Nothing
         seen[c.address] = c
-        return evaluate(nowMs)
+        return evaluate()
     }
 
-    /** Periodic re-check while hunting, so the family rule fires even if results stop repeating. */
+    /** Periodic re-check while hunting (a no-op today: every match is made on a scan result). */
     fun onHuntTick(nowMs: Long): Action {
         if (state != LinkState.HUNTING || savedAddress == null) return Action.Nothing
-        return evaluate(nowMs)
+        return evaluate()
     }
 
-    private fun evaluate(nowMs: Long): Action {
-        val (c, how) = pick(nowMs) ?: return Action.Nothing
+    private fun evaluate(): Action {
+        val (c, how) = pick() ?: return Action.Nothing
         savedAddress = c.address
-        if (how == Match.FAMILY && !c.name.isNullOrBlank()) savedName = c.name
         lastMatch = how
         state = LinkState.CONNECTING
         return Action.Connect(c.address, delayMs = 0)
     }
 
-    private fun pick(nowMs: Long): Pair<Candidate, Match>? {
+    private fun pick(): Pair<Candidate, Match>? {
         val all = seen.values
         all.firstOrNull { it.address == savedAddress }?.let { return it to Match.ADDRESS }
         val n = savedName?.trim()
         if (n.isNullOrEmpty()) return null
-        all.filter { it.name?.trim().equals(n, ignoreCase = true) }.maxByOrNull { it.rssi }?.let { return it to Match.NAME }
-        val fam = family(n) ?: return null
-        if (nowMs - huntFrom < FAMILY_WAIT_MS) return null
-        val same = all.filter { c -> c.name?.let { family(it) } == fam }
-        return if (same.size == 1) same[0] to Match.FAMILY else null
+        return all.filter { it.name?.trim().equals(n, ignoreCase = true) }.maxByOrNull { it.rssi }?.let { it to Match.NAME }
     }
 
     /**
@@ -247,14 +241,5 @@ class BleReconnectPolicy(
         /** Low-latency hunts per episode, and their length: a broadcasting strap is seen in a second or two. */
         const val FAST_HUNTS = 2
         const val FAST_SCAN_MS = 60_000L
-
-        /** How long a hunt waits for an exact address/name before it accepts a lone same-family strap. */
-        const val FAMILY_WAIT_MS = 4_000L
-
-        /** "WHOOP 4A0934" → "WHOOP"; null when the first word is too short to mean anything. */
-        fun family(name: String): String? {
-            val w = name.trim().substringBefore(' ').uppercase()
-            return if (w.length >= 3 && w.any { it.isLetter() }) w else null
-        }
     }
 }
