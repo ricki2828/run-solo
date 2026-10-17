@@ -89,7 +89,10 @@ CREATE TABLE IF NOT EXISTS cards (
   buttons_json TEXT NOT NULL,
   source TEXT NOT NULL,
   created_at TEXT NOT NULL, sent_at TEXT, answered_at TEXT,
-  quote_run_id TEXT  -- a recap that quotes this run's note: the quote is looked up at send time, never stored in body
+  quote_run_id TEXT,  -- a recap that quotes this run's note: the quote is looked up at send time, never stored in body
+  tg_message_id TEXT, tg_is_photo INTEGER,  -- the Telegram message carrying a run card's text + buttons; 0 text, 1 short caption, 2 full caption (morning edit)
+  next_line TEXT,                           -- a run card's fixed "Next: ..." line, as sent
+  note_edit_at TEXT                         -- set once when a late note or feel edited the card in place: at most one edit
 );
 CREATE UNIQUE INDEX IF NOT EXISTS cards_once ON cards (user_id, run_id, kind) WHERE run_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS ops_sends (   -- the audit of `ops send`: which fixed template went to which tester, never the text
@@ -434,6 +437,14 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
+        card_cols = {r["name"] for r in c.execute("PRAGMA table_info(cards)")}
+        for col, typ in (("tg_message_id", "TEXT"), ("tg_is_photo", "INTEGER"), ("next_line", "TEXT"), ("note_edit_at", "TEXT")):
+            if col not in card_cols:  # databases created before the late-note edit
+                try:
+                    c.execute(f"ALTER TABLE cards ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
         c.commit()
     finally:
         c.close()

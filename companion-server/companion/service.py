@@ -579,6 +579,7 @@ class Service(CheckinMixin, MeasureMixin):
         word = text.lstrip("/").upper()
         m = START_RE.match(text)
         reply: str
+        noted: list[str] = []   # the run a note was just saved for
         note_open = bool(user) and word in NOTE_BARE_WORDS and self._note_mode_open(user["id"], now)
         fb_open = bool(user) and word in NOTE_BARE_WORDS and not note_open and self._feedback_mode_open(user["id"], now)
         if note_open or fb_open:
@@ -624,11 +625,13 @@ class Service(CheckinMixin, MeasureMixin):
         else:
             # Free text is only ever a note (after "Add a note") or feedback (after "Tell Ricki"). Everything else gets
             # the fixed canned reply, and no free text ever reaches a model.
-            reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now) or UNKNOWN
+            reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now, noted) or UNKNOWN
             event = {FEEDBACK_SAVED: "feedback", NOTE_SAVED: "note"}.get(reply, "text")
         if event:
             self._log_event(user, event, now)
         self._reply(ch, inb.ref, reply)
+        if noted:   # a note just saved: the run card it belongs to may update, once
+            self._late_edit(ch, user, noted[0], now)
 
     def _redelivered(self, inb: Inbound) -> bool:
         with db.ro(self.s.db_path) as c:
@@ -719,7 +722,7 @@ class Service(CheckinMixin, MeasureMixin):
             c.execute("INSERT INTO feedback (user_id, ts, text) VALUES (?,?,?)", (user["id"], iso(now), text))
         return FEEDBACK_SAVED
 
-    def _note_reply(self, user: dict | None, raw: str, now: datetime) -> str | None:
+    def _note_reply(self, user: dict | None, raw: str, now: datetime, saved: list[str] | None = None) -> str | None:
         """The reply when this free text is (or was meant to be) a note; None when the user is not in note mode."""
         if not user:
             return None
@@ -748,6 +751,8 @@ class Service(CheckinMixin, MeasureMixin):
             c.execute("INSERT INTO run_notes (user_id, run_id, note, created_at) VALUES (?,?,?,?) "
                       "ON CONFLICT(user_id, run_id) DO UPDATE SET note=excluded.note, created_at=excluded.created_at",
                       (user["id"], mode["run_id"], text, iso(now)))
+        if saved is not None:
+            saved.append(mode["run_id"])
         return NOTE_SAVED
 
     def _reply(self, ch: Any, ref: str, text: str) -> None:
@@ -852,6 +857,8 @@ class Service(CheckinMixin, MeasureMixin):
             ch.ack_callback(inb, msg, keep=keep)
         else:
             ch.ack_callback(inb, msg)
+        if kind == "feel" and not replay_card and card["run_id"] and rest in ("easy", "right", "hard"):
+            self._late_edit(ch, user, card["run_id"], real_now)
 
     def _tap_time(self, card_id: str, now: datetime) -> tuple[datetime, bool]:
         """(when a tap happened on the card's own clock, whether the card is a replayed one). A replayed card lives at
@@ -1386,9 +1393,9 @@ class Service(CheckinMixin, MeasureMixin):
         quiet_card = (v.media.reason in ("pb", "trail_pb", "big_session", "long_run") or v.situation == "back_after_break"
                       or (v.touch is not None and v.touch.kind == "comeback"))
         with db.tx(self.s.db_path) as c:
-            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at) "
-                      "VALUES (?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, run_id, "run", w.headline, body, json.dumps(buttons), w.source, iso(now)))
+            c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, "
+                      "next_line) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                      (card_id, uid, run_id, "run", w.headline, body, json.dumps(buttons), w.source, iso(now), nline))
             self._convo_write(c, uid, now, card_id, v.situation, v.media, allowed, used, v.touch)
             if not quiet_card and self._question_for(c, uid, full, mem, now) is not None:
                 # the weekly question goes as its own short message about 30 minutes later, never on a big moment
@@ -1677,13 +1684,16 @@ class Service(CheckinMixin, MeasureMixin):
             return False
         media = self._render_media(user, card, now) if telegram and self.s.media_enabled else None
         followups: list[str] = []
+        mid: str | None = None
+        carries_text = False   # the delivered message holds the card's whole text and its buttons
         if media is not None:
             out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
                           short_caption=card["kind"] == "run",
                           neutral_caption=self._spoiler_caption(user["id"], card) if media.spoiler else "")
             try:
-                self._deliver(ch, user, card, out)
+                mid = self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
+                carries_text = not media.spoiler and not {"caption", "coach_line"} & set(followups)
                 if media.sent.get("file_id"):
                     with db.tx(self.s.db_path) as c:   # the clip's Telegram id; a run that was deleted meanwhile just fails the FK
                         try:
@@ -1697,8 +1707,11 @@ class Service(CheckinMixin, MeasureMixin):
                 log.warning("media refused, sending text: %s", e)
                 media = None
         if media is None:
-            self._deliver(ch, user, card, OutCard(card_id, card["headline"], card["body"], buttons, None, links),
-                          in_window=in_window)
+            mid = self._deliver(ch, user, card, OutCard(card_id, card["headline"], card["body"], buttons, None, links),
+                                in_window=in_window)
+            carries_text = True
+        if telegram and carries_text and mid and card["kind"] == "run":
+            self._remember_card_message(user["id"], card_id, str(mid), media is not None and bool(media.has_content))
         if telegram and self.s.media_enabled:
             plan = self._plan(card_id)
             if plan.get("touch_card") and plan.get("touch_facts"):
@@ -1713,6 +1726,73 @@ class Service(CheckinMixin, MeasureMixin):
         if card["kind"] == "run":
             self._ci_week_enqueue(user, now)   # the pinned week card follows each run
         return True
+
+    def _remember_card_message(self, uid: str, card_id: str, mid: str, is_photo: bool) -> None:
+        """Keep which Telegram message carries a run card, so a late note or feel can edit it in place. A card that
+        became the morning message reports that message's own kind (photo or text)."""
+        with db.tx(self.s.db_path) as c:
+            slot = c.execute("SELECT is_photo FROM checkin_slots WHERE user_id=? AND slot='today' AND state='consumed' "
+                             "AND message_id=?", (uid, mid)).fetchone()
+            photo = int(is_photo)   # 1: a picture whose caption is the short one (caption_text)
+            if slot is not None:     # the morning edit puts the whole text in the caption: 2
+                photo = 2 if slot["is_photo"] else 0
+            c.execute("UPDATE cards SET tg_message_id=?, tg_is_photo=? WHERE card_id=?", (mid, photo, card_id))
+
+    LATE_NOTE_MIN = 15   # a note or feel landing this soon after the card went out may update that card, once
+
+    def _late_edit(self, ch: Any, user: dict | None, run_id: str | None, now: datetime) -> None:
+        """A note or feel tap landed after the run card went out. Re-run its fixed Next line with that answer (a flagged
+        note or a hard feel eases the next session) and, when the line changes or the note carries a flag, edit the card
+        in place with one "Noted: ..." line. Telegram only, within LATE_NOTE_MIN minutes, at most one edit per card,
+        never a new message. The note's own words stay off the card: only a plain label for what it mentions."""
+        if not user or not run_id or user["paused"] or user["channel"] != "telegram" or not hasattr(ch, "edit_card_body"):
+            return
+        try:
+            with db.ro(self.s.db_path) as c:
+                row = c.execute("SELECT * FROM cards WHERE user_id=? AND run_id=? AND kind='run'", (user["id"], run_id)).fetchone()
+                if row is None or not (row["sent_at"] and row["tg_message_id"] and row["next_line"]) or row["note_edit_at"]:
+                    return
+                age = now - parse_iso(row["sent_at"])
+                if not timedelta(0) <= age <= timedelta(minutes=self.LATE_NOTE_MIN):
+                    return
+                run_r = c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?", (user["id"], run_id)).fetchone()
+                if run_r is None:
+                    return
+                run = dict(run_r)
+                note = c.execute("SELECT note FROM run_notes WHERE user_id=? AND run_id=?", (user["id"], run_id)).fetchone()
+                label = cv_notes.flag_label(note["note"]) if note else None
+                full = self._full_history(c, user["id"], run["start_utc"])
+                soft = self._soften(c, user["id"], now)
+            nline = next_line(self._with_default_plan(user["id"], run, now), full, soften=soft)
+            old = row["next_line"]
+            if nline == old and not label:
+                return
+            what = label or ("that it felt hard" if run["feel"] == "hard" else None)
+            if what is None or old not in row["body"]:
+                return
+            ack = f"Noted: {what}. {nline}" if nline != old else f"Noted: {what}. {old}"
+            with db.tx(self.s.db_path) as c:   # the claim: whoever sets it owns the one edit
+                if c.execute("UPDATE cards SET note_edit_at=? WHERE card_id=? AND note_edit_at IS NULL",
+                             (iso(now), row["card_id"])).rowcount != 1:
+                    return
+            card = dict(row, body=row["body"].replace(old, ack, 1))
+            with db.ro(self.s.db_path) as c:
+                card = self._ci_line(c, self._quoted(c, card), now)
+            # The keyboard as it is on screen, by the stored indices (the callback data): a feel tap left "Add a note" alone
+            buttons = json.loads(row["buttons_json"])
+            felt = run["feel"] is not None and any(b["action"].startswith("feel:") for b in buttons)
+            if felt:
+                buttons = [b if b["action"] == NOTE_ACTION else dict(b, hidden=True) for b in buttons]
+            out = OutCard(row["card_id"], card["headline"], card["body"], buttons, None, () if felt else self._links(card),
+                          short_caption=row["tg_is_photo"] == 1)
+            try:
+                ch.edit_card_body(user["chat_ref"], row["tg_message_id"], out, bool(row["tg_is_photo"]))
+            except ChannelError as e:
+                with db.tx(self.s.db_path) as c:   # nothing changed on screen: let a later answer try once more
+                    c.execute("UPDATE cards SET note_edit_at=NULL WHERE card_id=?", (row["card_id"],))
+                log.warning("late note edit failed: %s", "429" if e.rate_limited else "error")
+        except Exception:   # cosmetic: the answer is already saved, the card just stays as it was
+            log.exception("late note edit skipped")
 
     @staticmethod
     def _quoted(c, card: dict) -> dict:

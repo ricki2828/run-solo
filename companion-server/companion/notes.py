@@ -2,7 +2,8 @@
 
 A note is used in exactly two deterministic ways, and in no others:
   1. the weekly recap quotes it back ("You said: ...");
-  2. a few plain keywords soften the next suggestion and the touches (see `soften`).
+  2. a few plain keywords soften the next suggestion and the touches (see `soften`), and name a fixed label on the
+     run card's "Noted: ..." line (see `flag_label`; the note's own words never go on a card).
 It is NEVER put in a prompt, a render request, a log line or a card the writer sees. The text lives in its own table
 (`run_notes`) rather than a `runs` column, so no `SELECT * FROM runs` can carry it anywhere by accident.
 """
@@ -47,3 +48,24 @@ def soften(notes: list[tuple[str, datetime]], now: datetime) -> bool:
 def quote(note: str) -> str:
     n = note if len(note) <= QUOTE_MAX_CHARS else note[:QUOTE_MAX_CHARS - 1].rstrip() + "..."
     return f"You said: “{n}”"
+
+
+# What a flagged note is called on the card's "Noted: ..." line. The note's own words never go on a card.
+_LABELS = (
+    (r"flight|jet\s?lag|travel", "the travel"),
+    (r"haz[ey]|smok", "the haze"),
+    (r"heat|humid|swelter|\bhot\b", "the heat"),
+    (r"hill|climb", "the hills"),
+    (r"niggl|sore|injur", "the niggle"),
+    (r"tired|sick", "feeling flat"),
+)
+
+
+def flag_label(note: str) -> str | None:
+    """A short plain label for what a flagged note mentions, or None when it carries no flag."""
+    if not flagged(note):
+        return None
+    for pat, label in _LABELS:
+        if re.search(pat, note, re.I):
+            return label
+    return "that"
