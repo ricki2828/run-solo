@@ -298,9 +298,11 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    child: Center(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
                         child: SizedBox(width: c.maxWidth, child: numbers),
                       ),
                     ),
