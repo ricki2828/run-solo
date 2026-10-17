@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import db
 from .config import Settings
-from .facts import Fact, FactsResult
+from .facts import GOAL_NAME_IN_TEXT_RE, Fact, FactsResult
 from .rails import add_alert, tag
 from .timeutil import iso, now_utc
 
@@ -179,7 +179,9 @@ def clean(out: CardText, facts: Sequence[Fact] = ()) -> str | None:
         return "unbacked_advice"
     if PIPE_RE.search(text) or out.headline.rstrip().endswith("."):
         return "format"
-    if MEASURE_RE.search(out.headline):
+    # A goal's own name ("30 min goal", "12.3 km goal") is the session, not the picture's numbers, when the facts give it.
+    headline = GOAL_NAME_IN_TEXT_RE.sub(lambda m: "" if m.group(0).lower() in fact_low else m.group(0), out.headline)
+    if MEASURE_RE.search(headline):
         return "headline_repeats_picture"
     direction = stated_direction(facts)
     if direction is not None and any(r.search(text) for r in FORBIDDEN_DIRECTION[direction]):

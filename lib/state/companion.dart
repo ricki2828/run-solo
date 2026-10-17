@@ -2070,9 +2070,10 @@ Map<String, Object?> companionIntervalFacts(RunSummary s) {
   return facts.isEmpty ? {'session_name': engine.coachSessionName(name)} : facts;
 }
 
-/// The goal names the server accepts ("10K goal", "Half goal", "30 min goal").
+/// The goal names the server accepts (`GoalCatalogue.nameFor` and
+/// `Settings.goalName` plus " goal": "10K goal", "12.3 km goal", "1 hour goal").
 final RegExp _goalName = RegExp(
-  r'^(\d{1,2}(\.\d)?K|Half|Marathon|\d{1,3} min) goal$',
+  r'^(\d{1,2}K|Half|Marathon|\d{1,3}\.\d (km|mi)|\d{1,2} min|1 hour|\d{1,2} h( \d{1,2} min)?) goal$',
 );
 
 // ------------------------------------------------------------------- target

@@ -28,7 +28,7 @@ from statistics import median
 from typing import Any, Mapping, Sequence
 
 from .checkins import Planned, at_local, usual_weekdays
-from .facts import fmt_pace, is_hard_run, known_session
+from .facts import fmt_pace, is_goal_run, is_hard_run, known_session
 from .timeutil import parse_iso, to_local
 
 WINDOW_DAYS = 28
@@ -63,7 +63,7 @@ class Quality:
 
 def quality_session(recent: Sequence[Mapping[str, Any]]) -> Quality:
     """The quality day's session, from the runner's own recent runs (newest first). Never a guessed pace."""
-    tempos = [r for r in recent if r.get("type") == "tempo"]
+    tempos = [r for r in recent if r.get("type") == "tempo" and not is_goal_run(r)]  # a goal effort is not a tempo
     paces = [r.get("true_pace_s_per_km") or r.get("pace_s_per_km") for r in tempos]
     paces = [p for p in paces if p]
     if paces:

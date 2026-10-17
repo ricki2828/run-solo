@@ -111,8 +111,11 @@ SESSION_PURPOSE = {
 }
 _REPS_400_RE = re.compile(r"^\d{1,2} × 400 m$")  # "8 × 400 m": the 400s session names its rep count
 # A goal run (one continuous effort at a distance or time, e.g. "10K goal"): the app names it from its own goal, never
-# from typed text, so only this shape is accepted.
-_GOAL_RE = re.compile(r"^(\d{1,2}(\.\d)?K|Half|Marathon|\d{1,3} min) goal$")
+# from typed text, so only this shape is accepted (GoalCatalogue.nameFor / Settings.goalName: "5K", "Half", "12.3 km",
+# "7.5 mi", "45 min", "1 hour", "1 h 15 min").
+_GOAL_NAME = r"(?:\d{1,2}K|Half|Marathon|\d{1,3}\.\d (?:km|mi)|\d{1,2} min|1 hour|\d{1,2} h(?: \d{1,2} min)?) goal"
+_GOAL_RE = re.compile(f"^{_GOAL_NAME}$")
+GOAL_NAME_IN_TEXT_RE = re.compile(rf"\b{_GOAL_NAME}\b", re.I)  # a goal name inside a headline (writer.clean)
 GOAL_PURPOSE = "goal effort"
 GENERIC_SESSION = "interval session"
 REP_BAND_S = 10  # the app's rep band: reps this close count as "within"

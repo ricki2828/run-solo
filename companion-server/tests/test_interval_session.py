@@ -293,7 +293,9 @@ def test_named_session_without_work_pace_still_names_the_session():
 
 
 @pytest.mark.parametrize("name,kept", [("10K goal", True), ("Half goal", True), ("30 min goal", True),
-                                       ("Sarah's goal", False), ("10K goal http://x.io", False)])
+                                       ("1 hour goal", True), ("1 h 15 min goal", True), ("12.3 km goal", True),
+                                       ("7.5 mi goal", True), ("Sarah's goal", False), ("10K goal http://x.io", False),
+                                       ("10 km goal", False), ("1 hour goal!", False)])
 def test_only_the_apps_own_goal_names_are_kept(name, kept):
     m = RunIn.model_validate({**run_payload("g1", type="free"), "session_name": name})
     assert (m.session_name is not None) == kept
@@ -312,3 +314,18 @@ def test_default_week_quality_names_a_session_without_a_work_pace():
     from companion.default_week import quality_session
     q = quality_session([run(session_name="Norwegian 4x4")])
     assert q.name == "Norwegian 4x4" and q.pace_lo_s is None
+
+
+def test_default_week_tempo_pace_ignores_goal_efforts():
+    from companion.default_week import quality_session
+    q = quality_session([run(type="tempo", session_name="10K goal", goal_reached=1, true_pace_s_per_km=290.0)])
+    assert q.pace_lo_s is None
+
+
+@pytest.mark.parametrize("goal", ["30 min goal", "12.3 km goal", "1 h 15 min goal", "10K goal"])
+def test_a_goal_name_in_the_headline_is_not_the_picture_repeated(goal):
+    from companion.writer import CardText, clean
+    facts = build_facts(run(type="tempo", session_name=goal, goal_reached=1), [], {}).facts
+    assert clean(CardText(headline=f"{goal} reached", body="You held it to the end."), facts) is None
+    assert clean(CardText(headline=f"{goal} reached in 27 min", body="You held it to the end."), facts) \
+        == "headline_repeats_picture"
