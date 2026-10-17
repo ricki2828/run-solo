@@ -4,9 +4,9 @@ No location of any kind (route shape, place, date and time of day) unless the ru
 
 Two looks, picked by `choose_style`:
   route  the route poster: dark ground, the route glowing in the zone colour of each stretch, one hero number, small stats.
-  flood  the zone flood: full-bleed zone colour and a giant number. Used for PBs, races and hard sessions (the same rule as
-         the post-run card, `_parts.effort_mode`) and as the fallback whenever the route poster would have nothing to show:
-         no route, route not opted in, or a route that is a straight line.
+  flood  the zone flood: full-bleed zone colour and a giant number. Used for big days (PB, race, an interval session with
+         reps; `big_day`) and as the fallback whenever the route poster would have nothing to show: no route, route not
+         opted in, or a route that is a straight line. Tempo and Z4/Z5-heavy runs get the poster.
 """
 from __future__ import annotations
 
@@ -79,9 +79,14 @@ def route_usable(facts: Mapping[str, Any]) -> bool:
     return bool(s.get("route")) and bool(_route_points(facts, 1000, 1000, 0))
 
 
+def big_day(facts: Mapping[str, Any]) -> bool:
+    """PB, race, or an interval session with its reps found. A tempo or a hard trail run is not one: it gets the poster."""
+    return bool(facts.get("pb")) or facts.get("type") == "race" or (facts.get("type") == "interval" and bool(facts.get("reps")))
+
+
 def choose_style(facts: Mapping[str, Any]) -> str:
-    """'route' for an everyday run with a drawable, opted-in route; 'flood' for PB, race, hard sessions and anything without a route."""
-    if P.effort_mode(facts)[0] == "flood":
+    """'flood' for a big day and for anything without a drawable, opted-in route; 'route' otherwise."""
+    if big_day(facts):
         return "flood"
     return "route" if route_usable(facts) else "flood"
 

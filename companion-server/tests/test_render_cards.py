@@ -178,7 +178,13 @@ def test_share_style_chooser():
     easy = _share(_easy_5k(), route=True)
     assert share_mod.choose_style(easy) == "route"
     assert share_mod.choose_style(_share(F.pb_5k(), route=True)) == "flood"            # PB
-    assert share_mod.choose_style(_share(F.singapore_intervals(), route=True)) == "flood"   # hard session
+    assert share_mod.choose_style(_share(F.singapore_intervals(), route=True)) == "flood"   # intervals with reps
+    assert share_mod.choose_style(_share(_easy_5k() | {"type": "race"}, route=True)) == "flood"   # race
+    # big days only: a tempo, a Z4/Z5-heavy run or intervals without reps keep the poster when the route draws
+    assert share_mod.choose_style(_share(F.milos_trail() | {"type": "tempo"}, route=True)) == "route"
+    assert share_mod.choose_style(_share(_easy_5k() | {"zone_s": [0, 60, 120, 900, 720]}, route=True)) == "route"
+    assert share_mod.choose_style(_share(_easy_5k() | {"type": "interval"}, route=True)) == "route"
+    assert share_mod.choose_style(_share(F.milos_trail() | {"type": "tempo"}, route=False)) == "flood"
     assert share_mod.choose_style(_share(_easy_5k(), route=True, no_route=True)) == "flood"  # nothing to draw
 
 
@@ -317,6 +323,7 @@ GOLDENS = {
     "share_easy_route": ("render_share_card", lambda: _share(_easy_5k(), route=True)),
     "share_intervals_route": ("render_share_card", lambda: _share(F.singapore_intervals(), route=True, reps=True)),
     "share_no_route": ("render_share_card", lambda: _share(_easy_5k(), route=True, no_route=True)),
+    "share_tempo_trail": ("render_share_card", lambda: _share(F.milos_trail() | {"type": "tempo", "pb": None}, route=True)),
     "today_4x4": ("render_today", F.today_4x4),
     "today_easy_no_target": ("render_today", F.today_easy_no_target),
     "today_long_name": ("render_today", F.today_long_name),
