@@ -94,7 +94,7 @@ class BleTest {
         BleReconnectPolicy.Action.Hunt(delayMs, BleReconnectPolicy.FAST_SCAN_MS, passive, lowLatency = true)
 
     @Test
-    fun `reconnect - pairing connects directly, every other connect starts with a hunt`() {
+    fun `reconnect - pairing connects directly - every other connect starts with a hunt`() {
         val p = BleReconnectPolicy(null)
         assertIs<BleReconnectPolicy.Action.Nothing>(p.onStart(0), "nothing paired: nothing to hunt")
         assertIs<BleReconnectPolicy.Action.Nothing>(p.onDisconnected(0))
@@ -182,7 +182,7 @@ class BleTest {
     }
 
     @Test
-    fun `hunt - a scan that ends without a match hunts again, never gives up`() {
+    fun `hunt - a scan that ends without a match hunts again - never gives up`() {
         val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
         assertEquals(fastHunt("OLD"), p.onStart(0))
         // The strap's broadcast was still off: the next scan starts straight away.
@@ -201,7 +201,7 @@ class BleTest {
     }
 
     @Test
-    fun `reconnect - drops hunt again with backoff, a stable link resets it`() {
+    fun `reconnect - drops hunt again with backoff - a stable link resets it`() {
         val p = BleReconnectPolicy("A", "WHOOP 1")
         p.onStart(0)
         p.onScanResult(cand("A", "WHOOP 1"), 1)
@@ -222,7 +222,7 @@ class BleTest {
     }
 
     @Test
-    fun `budget - a hunt over the scan-start budget is delayed, never dropped`() {
+    fun `budget - a hunt over the scan-start budget is delayed - never dropped`() {
         val p = BleReconnectPolicy("OLD", "WHOOP 4A0934")
         repeat(BleReconnectPolicy.SCAN_STARTS_PER_WINDOW) { p.noteScanStart(1_000L + it) }
         assertFalse(p.canStartScan(10_000))
