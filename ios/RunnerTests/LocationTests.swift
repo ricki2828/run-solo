@@ -162,7 +162,9 @@ final class GpsProbeTests: XCTestCase {
     let probe = makeProbe(fake: fake)
     probe.start()
     XCTAssertEqual(events.count, 1)
-    XCTAssertEqual(events[0], GpsProbeEvent(fix: false))
+    XCTAssertFalse(events[0].fix)
+    XCTAssertNil(events[0].lat)
+    XCTAssertNil(events[0].fixAgeMs)
     XCTAssertEqual(fake.startCalls, 1)
   }
 
