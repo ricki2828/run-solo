@@ -273,3 +273,42 @@ def test_a_typed_session_name_never_reaches_the_model_card_render_facts_or_logs(
                                                  **{**SESSION, "session_name": "custom:0123456789abcdef"}), headers=auth(t))
     assert r.status_code == 202
     assert c.execute("SELECT session_name FROM runs WHERE run_id='leak2'").fetchone()[0] == "custom:0123456789abcdef"
+
+
+# --- named runs without a work pace: a goal run, a session whose reps were not detected (17-Oct) -----------------
+
+def test_goal_run_is_named_in_the_base_fact_and_says_whether_it_was_reached():
+    res = build_facts(run(type="tempo", session_name="10K goal", goal_reached=1), [], {})
+    assert res.facts[0].text.startswith("10K goal run: 4.9 km in 27 min at 5:30/km, goal reached")
+    assert res.session == {"name": "10K goal", "purpose": "goal effort"}
+    res = build_facts(run(type="tempo", session_name="10K goal", goal_reached=0), [], {})
+    assert res.facts[0].text.endswith("goal not reached")
+
+
+def test_named_session_without_work_pace_still_names_the_session():
+    res = build_facts(run(session_name="Norwegian 4x4"), [], {})
+    assert res.facts[0].text.startswith("Norwegian 4x4 (VO2 max session): 4.9 km in 27 min")
+    assert res.session == {"name": "Norwegian 4x4", "purpose": "VO2 max"}
+    assert comparable(run(session_name="Norwegian 4x4"), [hist(7, **SESSION)]) is None
+
+
+@pytest.mark.parametrize("name,kept", [("10K goal", True), ("Half goal", True), ("30 min goal", True),
+                                       ("Sarah's goal", False), ("10K goal http://x.io", False)])
+def test_only_the_apps_own_goal_names_are_kept(name, kept):
+    m = RunIn.model_validate({**run_payload("g1", type="free"), "session_name": name})
+    assert (m.session_name is not None) == kept
+
+
+def test_endpoint_stores_goal_reached(client):
+    t = enrol(client)
+    r = client.post("/v1/runs", json=run_payload("g2", type="free", session_name="10K goal", goal_reached=True),
+                    headers=auth(t))
+    assert r.status_code == 202
+    row = sqlite3.connect(client.svc.s.db_path).execute("SELECT session_name, goal_reached FROM runs").fetchone()
+    assert tuple(row) == ("10K goal", 1)
+
+
+def test_default_week_quality_names_a_session_without_a_work_pace():
+    from companion.default_week import quality_session
+    q = quality_session([run(session_name="Norwegian 4x4")])
+    assert q.name == "Norwegian 4x4" and q.pace_lo_s is None

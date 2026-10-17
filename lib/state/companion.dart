@@ -2040,22 +2040,38 @@ Map<String, Object?>? companionSummary(
   };
 }
 
-/// What the coach needs to judge an interval session on its work, not the
-/// whole-run average: the session's name and the verdict's own numbers
-/// (engine `coachIntervalFacts`). A goal run or parkrun sends none, and
-/// neither does a run without a work pace.
+/// What the coach needs to name and judge a session. An interval session
+/// sends its name and the verdict's own numbers (engine `coachIntervalFacts`);
+/// one without a work pace (no reps found, stopped early) still sends the
+/// name, so the card can say which session it was. A goal run goes up as a
+/// free run named by its goal ("10K goal") with whether it was reached, never
+/// as an interval session. Parkrun sends none.
 Map<String, Object?> companionIntervalFacts(RunSummary s) {
-  if (!s.isFourByFour || s.isParkrun || !s.hasIntervals || s.uploadsAsFree) {
-    return const {};
+  if (s.isParkrun || s.mode != RecordMode.intervals) return const {};
+  if (s.spec?.isGoal == true) {
+    final g = s.goalResult;
+    final name = g == null ? null : '${g.name} goal';
+    if (name == null || !_goalName.hasMatch(name)) return const {};
+    return {'session_name': name, 'goal_reached': g!.reached};
   }
-  return engine.coachIntervalFacts(
-    sessionName: s.spec?.name ?? engine.SessionCatalogue.norwegian4x4.name,
+  final name = s.spec?.name ?? engine.SessionCatalogue.norwegian4x4.name;
+  if (s.uploadsAsFree || !s.hasIntervals) {
+    return {'session_name': engine.coachSessionName(name)};
+  }
+  final facts = engine.coachIntervalFacts(
+    sessionName: name,
     workPaceSecPerKm: s.trueWorkPaceSecPerKm ?? s.workPaceSecPerKm,
     repsDone: s.detectedReps,
     cleanRepPacesSecPerKm: s.cleanRepPacesSecPerKm.whereType<double>(),
     recoveryPaceSecPerKm: s.recoveryPaceSecPerKm,
   );
+  return facts.isEmpty ? {'session_name': engine.coachSessionName(name)} : facts;
 }
+
+/// The goal names the server accepts ("10K goal", "Half goal", "30 min goal").
+final RegExp _goalName = RegExp(
+  r'^(\d{1,2}(\.\d)?K|Half|Marathon|\d{1,3} min) goal$',
+);
 
 // ------------------------------------------------------------------- target
 

@@ -362,6 +362,10 @@ void main() {
       final j = companionSummary(d, zones: engine.HrZones.percentMax(190))!;
       expect(j['type'], 'free');
       expect(j.containsKey('reps_done'), isFalse);
+      // It names the goal and says it was not reached; no interval numbers.
+      expect(j['session_name'], '10K goal');
+      expect(j['goal_reached'], isFalse);
+      expect(j.containsKey('work_pace_s_per_km'), isFalse);
     });
 
     test('compact fields, no route points, no street', () async {
@@ -407,6 +411,7 @@ void main() {
         'reps_done',
         'rep_spread_s',
         'recovery_pace_s_per_km',
+        'goal_reached',
       };
       expect(j.keys.toSet().difference(allowed), isEmpty);
     });

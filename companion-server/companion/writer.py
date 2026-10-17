@@ -75,7 +75,7 @@ Rules:
 - If a fact starts with "Verdict:", the app has already judged the run: your text must agree with it and must not use any other word for faster, slower or level. Do not put the verdict in the headline; the app adds it.
 - Quote a pace only as its own fact gives it. Never put a pace from one fact beside a gap from another. A gap "on true pace" is compared with the true paces in that same fact.
 - The picture already shows distance, time and pace. The headline names the session in plain words with no distance, time or pace and no full stop. The body is one short sentence of judgement (a comparison, a hard minute count, a climb), not a repeat of the picture.
-- If the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
+- If the JSON has a "session" whose purpose is "goal effort", the run was that goal ("10K goal"): name it in the headline and say whether it was reached, as the facts do. Otherwise, if the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
 - Give no advice and no instructions about future runs ("next week", "tomorrow", "try to", "work the pace"). Only describe what happened, unless a fact states the advice.
 - No medical advice, no diagnosis, no links, no phone numbers, no emojis.
 - headline: at most 60 characters. body: at most 160 characters, one short sentence (two at most).

@@ -391,6 +391,9 @@ class RunSummary {
       row?.eligibleAsPrior ?? analysis?.eligibleAsPrior ?? false;
   bool get hasIntervals => detectedReps != null;
 
+  /// The goal result of a goal run (index row, else the analysis); null for any other run.
+  engine.GoalResult? get goalResult => row?.goal ?? analysis?.goal;
+
   /// Told to the companion server as a free run: a goal run (one continuous
   /// effort, reached or not) or an interval session stopped before any work
   /// rep. The app keeps its own mode and goal result.
