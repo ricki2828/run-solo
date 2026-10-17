@@ -122,9 +122,12 @@ def _route_svg(facts: Mapping[str, Any], w: int, h: int, pad: float, stroke: flo
 
 # --- what the card says ----------------------------------------------------------------
 
+TIME_PBS = ("5k", "10k", "half")   # a longest run is its distance, and the run's time is not a fastest km's time
+
+
 def hero(facts: Mapping[str, Any], s: Mapping[str, Any]) -> tuple[str, str]:
-    """(value, unit). A PB leads with its time when the runner shares time; otherwise distance."""
-    if facts.get("pb") and s.get("time") and facts.get("duration_s"):
+    """(value, unit). A distance PB leads with its time when the runner shares time; otherwise distance."""
+    if facts.get("pb") in TIME_PBS and s.get("time") and facts.get("duration_s"):
         return P.fmt_dur(float(facts["duration_s"])), f"{P.fmt_km(float(facts['distance_km']))} KM"
     return P.fmt_km(float(facts["distance_km"])), "KM"
 

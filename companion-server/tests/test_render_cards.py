@@ -234,6 +234,8 @@ def test_share_pb_shows_time_only_with_time_opt_in():
     assert "21:41" not in hidden and "5.0" in hidden
     shown = _body(share_mod.build_share_html(_share(F.pb_5k(), route=False, time=True), MEMORY))
     assert "21:41" in shown
+    for kind in ("longest", "fastest_km"):   # the run's time is not what these PBs are about
+        assert share_mod.hero(F.pb_5k() | {"pb": kind}, {"time": True}) == ("5.0", "KM")
 
 
 # --- goldens ---------------------------------------------------------------------------
