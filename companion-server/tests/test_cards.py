@@ -12,7 +12,7 @@ from companion.app import create_app
 from companion.channels import WhatsAppChannel, verify_wa_signature
 from companion.service import RunIn
 from companion.timeutil import iso, now_utc
-from conftest import (OWNER, WA_SECRET, auth, chat_code, confirm, enrol, make_settings, post_tg, run_payload, start,
+from conftest import (coach_week, OWNER, WA_SECRET, auth, chat_code, confirm, enrol, make_settings, post_tg, run_payload, start,
                       tg_callback, tg_update)
 
 
@@ -170,8 +170,10 @@ def test_question_answers_are_validated_against_enums(client, fakes):
     assert q(client, "SELECT COUNT(*) n FROM memory")[0]["n"] == 0
 
 
-def evening(client, day):
-    """Build the evening-before card for `day` the way the outbox worker would. None when nothing is suggested."""
+def evening(client, day, typ="easy"):
+    """Build the evening-before card for `day` the way the outbox worker would. None when nothing is suggested.
+    The coach week is pinned to a `typ` session tomorrow: the card follows it for every runner."""
+    coach_week(client.svc, typ)
     uid = q(client, "SELECT id FROM users")[0]["id"]
     return client.svc._build_evening_card(uid, day, now_utc())
 
@@ -289,6 +291,7 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     for i, (d, typ) in enumerate([(1, "easy"), (3, "easy"), (5, "easy"), (9, "tempo"), (30, "easy")]):
         start = now - timedelta(days=d, hours=1)
         svc.ingest_run(uid, RunIn.model_validate(run_payload(f"e{i}", type=typ, start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0)), start + timedelta(hours=2))
+    coach_week(svc, "quality")   # the card follows the coach week: tomorrow is a quality session, whatever day this runs
     con = sqlite3.connect(svc.s.db_path)
     con.execute("UPDATE users SET zone_id='UTC'")
     con.execute("UPDATE outbox SET state='done'")  # history only; no cards for the seeded runs
@@ -300,7 +303,7 @@ def test_evening_suggestion_telegram_only_in_local_window_once_a_day(client, fak
     svc.run_outbox(six_thirty + timedelta(minutes=1))
     row = q(client, "SELECT kind, buttons_json FROM cards WHERE kind='evening'")[0]
     assert any(b["action"].startswith("sugg:yes:quality") for b in json.loads(row["buttons_json"]))
-    assert "tomorrow" in fakes.tg_texts()[-1].lower()
+    assert "quality session 7 km is next on your plan" in fakes.tg_texts()[-1].lower()   # the card follows the coach week, so it says "next on your plan", not "tomorrow"
 
 
 # --- WhatsApp (stubbed adapter, complete) ---------------------------------------------------

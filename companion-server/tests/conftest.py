@@ -253,3 +253,22 @@ def shape_payload(distance_m: int = 7000, duration_s: int = 2400, reps: bool = F
         p["reps"] = [{"time_s": 84.0 - i, "zone": 5} for i in range(6)]
     p.update(over)
     return p
+
+
+def coach_week(svc, typ="easy", *, distance_m=7000, name=None, rest=False, none=False):
+    """Pin the coach week the evening card follows (it follows it for every runner now). The default week is built from the
+    runner's own weekday habit, so an unpinned test passes or fails with the day of the week it runs on. `rest` makes
+    tomorrow a rest day; otherwise tomorrow is a `typ` session (easy | long | quality)."""
+    from datetime import timedelta
+    from companion import checkins as ci
+    real = svc._ci_state
+
+    def pinned(c, user, now, *, answers=True):
+        ans, _planned, usual, today, _res = real(c, user, now, answers=answers)
+        if none:
+            return ans, None, usual, today, None
+        day = today + timedelta(days=30 if rest else 1)
+        planned = ci.Planned(typ, day, distance_m=None if rest else distance_m, session_name=name, derived=True)
+        return ans, planned, usual, today, ci.resolve(planned, ans, today, usual)
+
+    svc._ci_state = pinned

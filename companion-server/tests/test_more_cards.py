@@ -18,7 +18,7 @@ from companion.media import MediaError, MediaRenderer, month_facts
 from companion.render_client import RenderClient, RenderError
 from companion.service import RunIn, Service
 from companion.timeutil import iso
-from conftest import Fakes, OWNER, make_settings
+from conftest import coach_week, Fakes, OWNER, make_settings
 from render import protocol as P
 from render.worker import Worker
 
@@ -111,6 +111,7 @@ def seed_for_suggestion(e: Env):
     e.run(4, datetime(2026, 10, 11, 7, 0, tzinfo=UTC))
     e.run(5, datetime(2026, 9, 20, 7, 0, tzinfo=UTC))   # a runner under two weeks in gets no quality push (M6)
     e.quiet_outbox()
+    coach_week(e.svc, none=True)   # no coach week to follow: the gap reason names the tempo (a plan_session card has no picture)
 
 
 # ---------------------------------------------------------------- suggestion

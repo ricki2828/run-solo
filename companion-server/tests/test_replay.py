@@ -14,7 +14,7 @@ from companion.replay import Replayer, ReplayError, dry_run, load_facts
 from companion.service import RunIn, Service
 from companion.timeutil import in_quiet, iso, parse_iso, to_local, week_key
 
-from conftest import Fakes, OWNER, make_settings
+from conftest import coach_week, Fakes, OWNER, make_settings
 
 UTC = timezone.utc
 SGT = "Asia/Singapore"
@@ -208,10 +208,11 @@ def test_two_suggestions_a_week_at_most_and_a_recap_every_sunday(env):
 
 def test_a_tap_between_items_changes_the_next_message(tmp_path):
     """Mon 21 Sep's easy run: tap 'Hard' on its card and that evening's suggestion is about the hard feel. Left
-    alone, nothing goes out that evening. The tap lands in the database between two items, exactly as the live
+    alone, the evening follows the coach week (pinned to an easy session tomorrow) instead. The tap lands in the database between two items, exactly as the live
     webhook records it, and the next item is generated only after it."""
     def go(name: str, tap: bool) -> Env:
         e = Env(tmp_path, name)
+        coach_week(e.svc, "easy")   # the evening follows the coach week for every runner; the default week has Tuesday off
 
         def on_item(item):
             if tap and item.kind == "run":
@@ -227,8 +228,13 @@ def test_a_tap_between_items_changes_the_next_message(tmp_path):
         return [c for c in e.cards() if c["kind"] == "evening" and c["run_id"] == f"evening:{day}"]
 
     plain, tapped = go("plain", False), go("tapped", True)
-    assert evening_on(plain, "2026-09-21") == []
+    def situation(e: Env, card: dict) -> str:
+        with db.ro(e.s.db_path) as c:
+            return c.execute("SELECT situation FROM convo_cards WHERE card_id=?", (card["card_id"],)).fetchone()[0]
+
+    [before_tap] = evening_on(plain, "2026-09-21")
     [after_tap] = evening_on(tapped, "2026-09-21")
+    assert situation(plain, before_tap) == "sugg_plan_session" and situation(tapped, after_tap) == "sugg_feel"
     assert "Sounds good" in after_tap["buttons_json"]
     assert texts(plain) != texts(tapped)
     with db.ro(tapped.s.db_path) as c:

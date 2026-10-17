@@ -14,7 +14,7 @@ from companion.backup import backup
 from companion.config import Settings
 from companion.logs import redact
 from companion.timeutil import iso, now_utc
-from conftest import OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, shape_payload, tg_callback, tg_update, weather_on
+from conftest import coach_week, OWNER, TG_TOKEN, auth, enrol, post_tg, run_payload, shape_payload, tg_callback, tg_update, weather_on
 
 E164 = re.compile(r"\+?\d{9,15}")
 
@@ -31,6 +31,7 @@ def populate(client, fakes):
     # the suggestion buttons ride the evening card, not the run card
     c = sqlite3.connect(client.svc.s.db_path)
     uid = c.execute("SELECT id FROM users").fetchone()[0]
+    coach_week(client.svc, "easy")
     client.svc._build_evening_card(uid, "2099-01-01", now_utc())
     for n, (card_id, buttons) in enumerate(c.execute("SELECT card_id, buttons_json FROM cards").fetchall()):
         for i, b in enumerate(json.loads(buttons)):

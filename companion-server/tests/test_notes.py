@@ -19,7 +19,7 @@ from companion.convo import touches as T
 from companion.convo.weather import Forecast
 from companion.service import (NOTE_CANCELLED, NOTE_DELETE_FIRST, NOTE_EXPIRED, NOTE_PAUSED, NOTE_PROMPT, NOTE_SAVED, NOTE_TOO_LONG, UNKNOWN, RunIn)
 from companion.timeutil import iso, now_utc
-from conftest import OWNER, auth, enrol, make_settings, post_tg, run_payload, tg_callback, tg_update
+from conftest import coach_week, OWNER, auth, enrol, make_settings, post_tg, run_payload, tg_callback, tg_update
 from test_convo import NOW, ctx, run
 
 SENTINEL = "ZEBRA-PANTS-4417"
@@ -315,8 +315,9 @@ def test_a_note_changes_the_next_evening_card_end_to_end(client, fakes):
     for i, days in enumerate((9, 7, 5, 3)):                  # active, last hard session nine days back: a quality nudge
         send_run(client, t, f"h{i}", minutes_ago=days * 1440, type="tempo" if i == 0 else "easy")
     send_run(client, t, "fresh", minutes_ago=10)             # old runs are stored without a card; this one has the button
+    coach_week(client.svc, "quality")   # the card follows the coach week for every runner; a note softens a planned push
     plain = client.svc._build_evening_card(uid, "2099-01-01", now_utc())
-    assert plain and q(client, "SELECT situation FROM convo_cards WHERE card_id=?", plain)[0]["situation"] == "sugg_gap"
+    assert plain and q(client, "SELECT situation FROM convo_cards WHERE card_id=?", plain)[0]["situation"] == "sugg_plan_session"
     c = sqlite3.connect(client.svc.s.db_path)               # start over: no card, no weekly allowance used
     c.execute("DELETE FROM cards WHERE kind='evening'")
     c.execute("DELETE FROM quota")
