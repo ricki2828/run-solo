@@ -131,9 +131,11 @@ jobs:
           print(c[-1]['udid'])")
           xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug \
             -destination "platform=iOS Simulator,id=$udid" -only-testing:RunnerTests \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ios-logs/4b-xctest.log | grep -E "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|\*\* " || true
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ios-logs/4b-xctest.log | grep -iE "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|\*\* " || true
           xcrun simctl shutdown all || true # the smoke step boots its own
           grep -q "TEST SUCCEEDED" build/ios-logs/4b-xctest.log
+          # Xcode 26 prints "Test case '...' passed"; fail if the core tests were not compiled in.
+          grep -qE "Test case 'CoreFacadeTests\.testEveryReplayKindMatchesItsKotlinFixture\(\)' passed" build/ios-logs/4b-xctest.log
       - name: dSYMs
         # Debug builds keep DWARF in the object files; dsymutil links them while DerivedData
         # still exists. Release dSYMs come from the T4 archive.
