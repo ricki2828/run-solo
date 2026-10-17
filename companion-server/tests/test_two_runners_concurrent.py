@@ -42,6 +42,19 @@ def tokens(u):
     return {d["place"], d["route"], d["session"], f"{u}-run-", d["chat"]} | paces
 
 
+def _without_callback_data(markup):
+    """The inline keyboard with each button's callback_data removed; labels and urls stay in the check."""
+    if isinstance(markup, str):   # multipart sends carry the keyboard as a JSON string
+        try:
+            markup = json.loads(markup)
+        except ValueError:
+            return markup
+    if not isinstance(markup, dict):
+        return markup
+    rows = [[{k: v for k, v in btn.items() if k != "callback_data"} for btn in row] for row in markup.get("inline_keyboard", [])]
+    return {**markup, "inline_keyboard": rows}
+
+
 def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
     fakes = Fakes()
     s = make_settings(tmp_path, weather_enabled=False, checkins_enabled=False,
@@ -102,7 +115,8 @@ def test_two_runners_interleaved_never_leak_into_each_other(tmp_path):
         chat = str(b["chat_id"])
         mine = next(u for u, d in USERS.items() if d["chat"] == chat)
         other = "B" if mine == "A" else "A"
-        leaked = [tok for tok in tokens(other) if tok in raw]
+        scrubbed = json.dumps({k: v for k, v in b.items() if k != "reply_markup"} | {"reply_markup": _without_callback_data(b.get("reply_markup"))}, ensure_ascii=False)
+        leaked = [tok for tok in tokens(other) if tok in scrubbed]   # callback_data is random hex ("7002" can occur by chance): every other field is checked
         assert not leaked, (chat, leaked, raw)
         per_chat.setdefault(chat, []).append(raw)
     for u, d in USERS.items():

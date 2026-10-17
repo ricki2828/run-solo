@@ -28,6 +28,7 @@ from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import GHOST_CLIP_S, Media, MediaError, from_settings
 from . import feedback as cv_feedback
+from . import ops_send
 from . import notes as cv_notes
 from . import quest as cv_quest
 from . import trail as cv_trail
@@ -363,6 +364,7 @@ EXPORTED_TABLES = {
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
     "feedback": "feedback", "quests": "quests",
+    "ops_sends": "ops_messages",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -878,6 +880,8 @@ class Service(CheckinMixin):
             memory = self._memory_get(c, uid, now)
             checkins = self._ci_export(c, uid, now)
             quests = cv_quest.export_rows(c, uid)
+            ops_msgs = [{"template": r["template"], "date": r["ts"][:10]} for r in c.execute(
+                "SELECT template, ts FROM ops_sends WHERE user_id=? AND result='sent' ORDER BY id", (uid,))]   # which fixed message, never its words
             optin = bool(u["weather_optin"])
             outcomes = [dict(r) for r in c.execute("SELECT kind, outcome, ts FROM outcomes WHERE user_id=?", (uid,))]
             run_notes = [dict(r) for r in c.execute(
@@ -897,7 +901,7 @@ class Service(CheckinMixin):
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "memory": memory, "suggestion_outcomes": outcomes,
-            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests,
+            "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests, "ops_messages": ops_msgs,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
@@ -1652,6 +1656,41 @@ class Service(CheckinMixin):
         place = f" on {trail['name']}" if trail.get("name") else ""
         return f"Trail run {trail['n']}{place}. Tap to see how it went."
 
+    def _ops_mark(self, item: dict, result: str) -> None:
+        if item["kind"] == "ops":
+            with db.tx(self.s.db_path) as c:
+                c.execute("UPDATE ops_sends SET result=? WHERE card_id=?", (result, item["ref"]))
+
+    def _send_ops(self, user: dict, card_id: str, now: datetime) -> bool:
+        """An approved ops template, queued by `ops send`. Checked again here: consent v2, still approved, one a week."""
+        if ops_send.test_over(self.s, now):
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: test ended")
+            return False
+        with db.ro(self.s.db_path) as c:
+            row = c.execute("SELECT o.template, o.text_hash FROM ops_sends o WHERE o.card_id=? AND o.user_id=?",
+                            (card_id, user["id"])).fetchone()
+            card = c.execute("SELECT body FROM cards WHERE card_id=?", (card_id,)).fetchone()
+        if row is None:
+            return False
+        if card is None or ops_send.text_hash(card["body"]) != row["text_hash"]:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: text changed")
+            return False
+        if user["checkin_consent"] is None or user["checkin_consent"] < self.s.checkin_consent_required:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: no consent")
+            return False
+        if (row["template"], row["text_hash"]) not in ops_send.approved_hashes():
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: approval withdrawn")
+            return False
+        with db.ro(self.s.db_path) as c:   # the weekly cap: one ops message that actually went out in the last 7 days
+            capped = c.execute("SELECT 1 FROM ops_sends WHERE user_id=? AND result='sent' AND card_id<>? AND ts>?",
+                               (user["id"], card_id, iso(now - timedelta(days=7)))).fetchone()
+        if capped:
+            self._ops_mark({"kind": "ops", "ref": card_id}, "skipped: weekly cap")
+            return False
+        sent = self._send_card(user, card_id, now)
+        self._ops_mark({"kind": "ops", "ref": card_id}, "sent" if sent else "skipped")
+        return sent
+
     def _send_followup(self, user: dict, ref: str, now: datetime) -> bool:
         """False when dropped: unknown card or mode, or older than stale_card_hours since the media went out (a
         follow-up held back by the kill switch or quiet hours must not arrive long after its card)."""
@@ -1785,6 +1824,7 @@ class Service(CheckinMixin):
             return "skipped", None
         user = dict(r)
         if user["paused"] or user["ops_paused"]:
+            self._ops_mark(item, "skipped: paused or stopped")
             return "skipped", None
         if self._kill_switch():
             return "defer", now + timedelta(minutes=15)
@@ -1800,6 +1840,8 @@ class Service(CheckinMixin):
             return "defer", until
         if item["kind"] == "ci":
             return self._ci_process(user, item["ref"], now)
+        if item["kind"] == "ops":
+            return ("done" if self._send_ops(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "followup":
             return ("done" if self._send_followup(user, item["ref"], now) else "skipped"), None
         if item["kind"] == "run_card":
@@ -2010,6 +2052,8 @@ class Service(CheckinMixin):
                       "AND r.run_id=run_notes.run_id)")  # belt and braces: a note never outlives its run
             c.execute("DELETE FROM quota WHERE created_at < ?" + held, (iso(now - timedelta(days=60)),))
             cv_quest.purge(c, now, held)
+            if ops_send.test_over(self.s, now):   # the tester programme's audit goes when the test ends
+                c.execute("DELETE FROM ops_sends")
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))

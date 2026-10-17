@@ -1,7 +1,9 @@
 """Settings, read from the environment. Secrets never have defaults and are never logged."""
 from __future__ import annotations
 
+import logging
 import os
+from datetime import date
 from dataclasses import dataclass, field
 
 
@@ -20,6 +22,19 @@ def _url_index(v: str | None) -> int:
     except ValueError:
         return 3
     return n if 0 <= n <= 9 else 3
+
+
+DEFAULT_TEST_END = "2026-12-15"
+
+
+def _iso_date(v: str | None, default: str = DEFAULT_TEST_END) -> str:
+    """A YYYY-MM-DD date, else the default (with a warning): a bad value must never make the purge fire on every tick."""
+    try:
+        return date.fromisoformat((v or "").strip()).isoformat()
+    except ValueError:
+        if (v or "").strip():
+            logging.getLogger("companion").warning("COMPANION_TEST_END_DATE %r is not YYYY-MM-DD: using %s", v, default)
+        return default
 
 
 def _posint(v: str | None, default: int) -> int:
@@ -99,6 +114,8 @@ class Settings:
     # The app's kCompanionConsentVersion that covers check-in data (lib/state/companion.dart). A runner whose app has not
     # told the server it agreed to at least this version gets no check-in of any kind.
     checkin_consent_required: int = 2
+    # The last day of the closed test (YYYY-MM-DD). From that day the tick deletes the tester-programme audit (ops_sends).
+    test_end_date: str = DEFAULT_TEST_END
     # Telegram Mini App (read-only week, latest run and lanes), served under /miniapp/. Off by default.
     miniapp_enabled: bool = False
     miniapp_url: str = "https://companion.taiaroa.xyz/miniapp/"  # what the web_app buttons open
@@ -168,5 +185,6 @@ class Settings:
             rate_per_min=_posint(e.get("COMPANION_RATE_PER_MIN"), 20),
             rate_per_day=_posint(e.get("COMPANION_RATE_PER_DAY"), 200),
             rate_strikes_to_pause=_posint(e.get("COMPANION_RATE_STRIKES"), 3),
+            test_end_date=_iso_date(e.get("COMPANION_TEST_END_DATE")),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
         )

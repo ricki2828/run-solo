@@ -268,6 +268,25 @@ dashboard; if a name differs, look for the key's "credit limit".
 7. Check it: reopen the key and read the limit back. Tell the agent "key limit set" so the digest records it.
 If the key is ever refused (HTTP 402), the coach already falls back to template text; no action is needed beyond raising the limit.
 
+## 7c. `ops send` (approved tester messages)
+
+`python -m companion.cli ops send --tester T3 --template N1|N2|N3|INVITE [--dry-run]`, `ops sends`, `ops templates [--link URL]`.
+It queues one message; the tick sends it through the normal rails (consent v2, quiet hours, kill switches, STOP, one ops
+message per tester per 7 days, 10 a day). Nothing is approved until Ricki approves it.
+
+- Texts: `~/ai/state/run-supreme-testers/templates-draft.md` (the `> ` lines). Approval: `templates-approved.json`
+  (`{"approved": [{"id": "N1", "sha256": "..."}]}`; INVITE and N3 also carry `"link": "https://calendar.app.google/..."`, and
+  the hash covers the message with that link in it). Get the hash from `ops templates` (`--link URL` for the link ones).
+  Links must be https on `calendar.app.google` or `calendar.google.com`.
+- **Unit must be reinstalled** for the server to see that folder: `deploy/companion.service` now binds it read-only and sets
+  `COMPANION_OPS_STATE_DIR`. Until Ricki/main copies the unit and runs `systemctl --user daemon-reload` and a restart, every
+  queued ops message is skipped as "approval withdrawn". Do not run sudo for this; it is a user unit.
+- **What the gate is, and is not.** The draft and approval files are writable by `ricki28`, the same user the agents run as. The
+  hash check stops accidents (an edited draft, a stale approval, a wrong link). It does not stop a determined agent running as
+  ricki28 from editing both files. Ricki decides whether to make the approval file root-owned or `chattr +i` it between edits.
+- The audit (`ops_sends`: tester, template, hash, time, result) is deleted with the user, appears in the runner's own export as
+  template and date only, and is purged on `COMPANION_TEST_END_DATE` (default 2026-12-15).
+
 ## 8. Rollback
 
 `systemctl --user disable --now companion.service`, remove the tunnel ingress block, and (if needed)

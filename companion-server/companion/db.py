@@ -91,6 +91,12 @@ CREATE TABLE IF NOT EXISTS cards (
   quote_run_id TEXT  -- a recap that quotes this run's note: the quote is looked up at send time, never stored in body
 );
 CREATE UNIQUE INDEX IF NOT EXISTS cards_once ON cards (user_id, run_id, kind) WHERE run_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS ops_sends (   -- the audit of `ops send`: which fixed template went to which tester, never the text
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  template TEXT NOT NULL, text_hash TEXT NOT NULL, ts TEXT NOT NULL, result TEXT NOT NULL, card_id TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ops_sent_once ON ops_sends (user_id, template) WHERE result='sent';   -- a skipped row may be retried
 CREATE TABLE IF NOT EXISTS outbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
