@@ -192,3 +192,22 @@ def test_the_run_card_next_line_agrees_with_the_evening_card_and_home(client, fa
             c.execute("INSERT OR IGNORE INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", (e.uid, k, "x", "2026-10-01T00:00:00Z"))
     e.step(at(2026, 10, 20, 20, 5))
     assert e.sends()[-1]["text"].startswith("Tempo, 5 km tomorrow · 5:30/km work pace")
+
+
+def test_quality_pace_ignores_trail_runs_and_easy_tapped_tempos():
+    runs = [
+        {"type": "tempo", "app_type": "trail", "true_pace_s_per_km": 330, "distance_m": 4700, "feel": "hard"},
+        {"type": "tempo", "app_type": "free", "true_pace_s_per_km": 340, "distance_m": 4700, "feel": "right"},
+    ]
+    q = dw.quality_session(runs)
+    assert (q.pace_lo_s, q.pace_hi_s) == (None, None)
+    real = runs + [{"type": "tempo", "app_type": "free", "true_pace_s_per_km": 300, "distance_m": 5000, "feel": "hard"}]
+    q = dw.quality_session(real)
+    assert (q.pace_lo_s, q.pace_hi_s) == (295, 305)
+
+
+def test_quality_falls_back_to_the_named_session_when_all_tempos_were_trail():
+    runs = [{"type": "tempo", "app_type": "trail", "true_pace_s_per_km": 330, "distance_m": 4700},
+            {"type": "interval", "session_name": "Norwegian 4x4", "work_pace_s_per_km": 290, "distance_m": 6000}]
+    q = dw.quality_session(runs)
+    assert q.name == "Norwegian 4x4" and q.pace_lo_s == 285

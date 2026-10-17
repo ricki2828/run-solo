@@ -24,6 +24,7 @@ LONG_MIN_KM = 12.0
 LONG_EASY_MULT = 1.5
 LONG_MIN_S = 75 * 60
 TEMPO_MIN_S, TEMPO_MAX_S = 20 * 60, 60 * 60
+TRAIL_TEMPO_Z45_SHARE = 0.5  # on a trail climbs push HR into Z3-Z4 at an easy effort: tempo needs mostly Z4+Z5
 
 
 def hard_zone_share(run: Mapping[str, Any]) -> float | None:
@@ -73,8 +74,8 @@ def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zon
 
     intervals -> interval (free when no rep was done and no work pace: the workout was stopped early); cooper -> race (a test effort); laps -> interval when it has reps or work/recovery splits
     (`has_reps`; the app does not upload them today, so laps is easy for now), else easy. free / trail -> race when
-    PB-flagged, else long (distance >= max(1.5 x the typical easy run, 12 km) or 75+ min), else tempo (most time in
-    Z3-Z4 over 20-60 min), else easy."""
+    PB-flagged, else long (distance >= max(1.5 x the typical easy run, 12 km) or 75+ min), else tempo (free: most time in
+    Z3-Z4 over 20-60 min; trail: most time in Z4+Z5, since climbs push an easy effort into Z3), else easy."""
     if app_type not in APP_TYPES:
         return app_type
     if app_type == "intervals" and not reps_done and not work_pace:
@@ -93,6 +94,12 @@ def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zon
         return "long"
     zm = zone_min or {}
     total = sum(zm.values())
+    if app_type == "trail":
+        # Climbs lift HR into Z3 at an easy effort, and the raw pace is not comparable to road pace, so a trail run
+        # is a tempo only when most of it is in Z4+Z5 (a real threshold effort even with the grade).
+        if total > 0 and (zm.get("z4", 0) + zm.get("z5", 0)) / total >= TRAIL_TEMPO_Z45_SHARE and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
+            return "tempo"
+        return "easy"
     if total > 0 and (zm.get("z3", 0) + zm.get("z4", 0)) / total > 0.5 and TEMPO_MIN_S <= duration_s <= TEMPO_MAX_S:
         return "tempo"
     return "easy"
