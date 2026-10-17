@@ -72,13 +72,13 @@ final class RecorderHost {
 
   // MARK: Lifecycle
 
-  /// Starts a run with no session (Free, Laps, by-feel intervals). Structured sessions need the
-  /// Pigeon -> core SessionSpec mapping, which is not wired yet.
-  func start(runId: String, mode: RecordMode, units: Units, tz: String = TimeZone.current.identifier) throws {
+  /// Starts a live run. [spec] is the expanded session (nil for Free, Laps, by-feel intervals);
+  /// the core validates it and throws for an unsupported one.
+  func start(runId: String, mode: RecordMode, spec: SessionSpec? = nil, units: Units, tz: String = TimeZone.current.identifier) throws {
     try queue.sync {
       guard !kotlin.active else { throw RecorderHostError.alreadyRecording }
       try kotlin.start(
-        runId: runId, mode: Self.name(mode), specJson: nil, units: units == .mi ? "mi" : "km",
+        runId: runId, mode: Self.name(mode), specJson: try spec.map(Self.specJson), units: units == .mi ? "mi" : "km",
         device: Self.device, app: Self.appVersion, tz: tz, t: clock.monoMs(), w: clock.wallMs())
       begin(mode: mode, runId: runId)
     }
@@ -402,6 +402,23 @@ final class RecorderHost {
     let hr = (o["hr"] as? [[Any]] ?? []).map { (t: Self.int($0[0]), bpm: Int32(Self.int($0[1]))) }
     let presses = (o["presses"] as? [[Any]] ?? []).map { (atMs: Self.int($0[0]), press: $0[1] as? String ?? "") }
     return ReplayScript(mode: o["mode"] as? String ?? "free", fixes: fixes, hr: hr, presses: presses)
+  }
+
+  /// Pigeon session -> the core's `SessionSpec.toJson()` shape (as Android's `SessionSpec.toCore`).
+  /// Pigeon's Swift enum cases carry the core's names (`work`, `equalToPreviousWork`, ...).
+  static func specJson(_ spec: SessionSpec) throws -> String {
+    var m: [String: Any] = [
+      "templateId": spec.templateId, "templateVersion": spec.templateVersion, "name": spec.name,
+      "warmupSeconds": spec.warmupSeconds.map { $0 as Any } ?? NSNull(),
+      "cooldownSeconds": spec.cooldownSeconds.map { $0 as Any } ?? NSNull(),
+      "lapLockout": spec.lapLockout, "autoStop": spec.autoStop ?? false, "cueProfile": "\(spec.cueProfile)",
+      "steps": spec.steps.map { st in
+        ["kind": "\(st.kind)", "target": "\(st.target)", "value": st.value, "style": "\(st.style)", "rep": st.repIndex] as [String: Any]
+      },
+    ]
+    if let lo = spec.hrBandLow, let hi = spec.hrBandHigh { m["hrBand"] = [lo, hi] } else { m["hrBand"] = NSNull() }
+    if let spoken = spec.spokenName { m["spokenName"] = spoken }
+    return String(decoding: try JSONSerialization.data(withJSONObject: m), as: UTF8.self)
   }
 
   static var appVersion: String {
