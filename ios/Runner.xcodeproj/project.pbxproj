@@ -18,6 +18,9 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		5C1A0E022F00000000A1B2C3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5C1A0E012F00000000A1B2C3 /* PrivacyInfo.xcprivacy */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		AA00000000000000000000A3 /* LocationSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B3 /* LocationSource.swift */; };
+		AA00000000000000000000A4 /* PermissionsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B4 /* PermissionsHost.swift */; };
+		AA00000000000000000000A5 /* LocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B5 /* LocationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +66,9 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA00000000000000000000B3 /* LocationSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationSource.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B4 /* PermissionsHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsHost.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B5 /* LocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
+				AA00000000000000000000B5 /* LocationTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -128,6 +135,8 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				AA00000000000000000000B1 /* PlatformApi.g.swift */,
 				AA00000000000000000000B2 /* PlatformHost.swift */,
+				AA00000000000000000000B3 /* LocationSource.swift */,
+				AA00000000000000000000B4 /* PermissionsHost.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -274,6 +283,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
+				AA00000000000000000000A5 /* LocationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -286,6 +296,8 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				AA00000000000000000000A1 /* PlatformApi.g.swift in Sources */,
 				AA00000000000000000000A2 /* PlatformHost.swift in Sources */,
+				AA00000000000000000000A3 /* LocationSource.swift in Sources */,
+				AA00000000000000000000A4 /* PermissionsHost.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
