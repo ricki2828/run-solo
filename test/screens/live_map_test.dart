@@ -225,8 +225,9 @@ void main() {
     final pages = tester.getSize(find.byKey(_pages));
     expect(map.height, lessThanOrEqualTo(pages.height * 0.4 + 1));
     for (final k in ['map-page-distance', 'map-page-time', 'map-page-pace']) {
-      // Rendered height, so a FittedBox that shrank the figure shows up.
-      final h = tester.getSize(find.byKey(ValueKey(k))).height;
+      // Painted height: getRect goes through the FittedBox's transform, so a
+      // figure it shrank shows up (getSize is the unscaled layout size).
+      final h = tester.getRect(find.byKey(ValueKey(k))).height;
       expect(h, greaterThanOrEqualTo(36), reason: k);
     }
     // The numbers sit above the map.
