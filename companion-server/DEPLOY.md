@@ -287,6 +287,25 @@ message per tester per 7 days, 10 a day). Nothing is approved until Ricki approv
 - The audit (`ops_sends`: tester, template, hash, time, result) is deleted with the user, appears in the runner's own export as
   template and date only, and is purged on `COMPANION_TEST_END_DATE` (default 2026-12-15).
 
+## 7d. Daily concierge and Monday digest (`ops_jobs/`)
+
+Both run from the deployed tree, read the database read-only and do their work through `companion.cli ops` (override with `RS_OPS_CMD`). Neither is installed by this repo. Crontab lines (cd first; times are UTC):
+
+```
+# cron has no user bus; `systemd-run --user` (the ops command) needs these two lines at the top of the crontab
+XDG_RUNTIME_DIR=/run/user/1000
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+# rs-concierge, 09:00 SGT daily from 20 Oct. Dry run: decisions only. Add --apply only after Ricki approves the templates (7c).
+0 1 * * * cd ~/services/run-supreme-companion && .venv/bin/python ops_jobs/concierge.py >> ~/ai/state/run-supreme-testers/concierge.log 2>&1
+# rs-digest, Monday 07:00 SGT = Sunday 23:00 UTC. Add RS_TELEGRAM_ENV_FILE=<file with TELEGRAM_BOT_TOKEN> for the real send.
+0 23 * * 0 cd ~/services/run-supreme-companion && .venv/bin/python ops_jobs/digest.py >> ~/ai/state/run-supreme-testers/digest.log 2>&1
+```
+
+- Concierge: no model. N1 (no run by day 3), N2 (silent 7 days), N3 (chat invite, week 3, needs `--link` or `RS_BOOKING_LINK`). It only asks `ops send` for what is due; `ops send` still refuses unapproved templates, paused runners, repeats and anything inside 7 days of the last ops message. Log: `~/ai/state/run-supreme-testers/concierge-YYYY-MM-DD.md` (`-dryrun` suffix without `--apply`).
+- Digest: writes `digest-YYYY-WW.md` (private: contains feedback text, which never goes to the model or Telegram). A 6-line numbers-only summary goes to Ricki's topic only. `--dry-run` prints it instead of sending; `--no-narrative` skips `claude -p`. It files no GitHub issues; it lists candidates.
+- Exit codes: 3 = the ops command could not run (concierge), or the digest refused to send because an ops call or the scorecard failed. `--dry-run` writes nothing but the digest file; it reads the newest scorecard snapshot already on disk.
+- Smoke without sending: `python3 ops_jobs/concierge.py --no-log` and `python3 ops_jobs/digest.py --dry-run --no-narrative`.
+
 ## 8. Rollback
 
 `systemctl --user disable --now companion.service`, remove the tunnel ingress block, and (if needed)
