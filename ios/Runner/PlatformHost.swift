@@ -2,8 +2,9 @@ import Flutter
 import UIKit
 
 // Swift hosts for the Pigeon contract (iOS plan §2.4). Phase 1 stubs: every API answers with a
-// safe default and nothing records yet. Real implementations replace these one API at a time
-// (P2 location + permissions, P3 recorder, P5 place name, P7 strap).
+// safe default and nothing records yet (location + permissions live in LocationSource.swift
+// and PermissionsHost.swift). Real implementations replace these one API at a time
+// (P3 recorder, P5 place name, P7 strap).
 
 /// Where Swift keeps run data. `path_provider.getApplicationSupportDirectory()` resolves to the
 /// same directory on iOS, so Dart's `runs/` and `state/` and Swift's `journals/` share one root.
@@ -32,6 +33,9 @@ enum StorageDirs {
 }
 
 final class RecorderApiStub: RecorderApi {
+  /// Pre-start GPS readiness (P2). The recorder itself stays a stub until P3.
+  var probe: GpsProbe?
+
   private func notYet() -> StartResult { StartResult(runId: nil, error: .startFailed) }
 
   func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult { notYet() }
@@ -66,8 +70,8 @@ final class RecorderApiStub: RecorderApi {
   func discardJournal(runId: String) throws {}
   func discardRun() throws -> Bool { false }
   func setCues(enabled: Bool) throws {}
-  func startGpsProbe() throws {}
-  func stopGpsProbe() throws {}
+  func startGpsProbe() throws { DispatchQueue.main.async { self.probe?.start() } }
+  func stopGpsProbe() throws { DispatchQueue.main.async { self.probe?.stop() } }
   func setKmSplits(enabled: Bool) throws {}
   func setSpokenSummary(enabled: Bool) throws {}
   func setVoiceCoach(config: VoiceCoachConfig) throws {}
@@ -95,42 +99,6 @@ final class StorageApiStub: StorageApi {
     BackupStatus(backedUpBytes: 0, budgetBytes: 15 * 1024 * 1024, quotaBytes: 25 * 1024 * 1024, archivedRunCount: 0, overBudget: false)
   }
   func enforceBackupBudget() throws -> [String] { [] }
-}
-
-final class PermissionsApiStub: PermissionsApi {
-  // Location reads as not granted until P2 maps CoreLocation, so Home shows the setup step.
-  // notifications, bluetooth (no strap in Phase 1), battery and gms are Android concepts or
-  // out of scope here: true keeps the Dart checklist and canRecord gate passing (plan C2).
-  func permissionStatus() throws -> PermissionStatus {
-    PermissionStatus(
-      fineLocation: false,
-      approximateOnly: false,
-      locationEnabled: true,
-      notifications: true,
-      bluetooth: true,
-      batteryUnrestricted: true,
-      gmsAvailable: true
-    )
-  }
-
-  func requestPermission(kind: PermissionKind, completion: @escaping (Result<Bool, Error>) -> Void) {
-    completion(.success(kind == .notifications))
-  }
-
-  func openBatterySettings() throws { try openAppSettings() }
-
-  func openAppSettings() throws {
-    DispatchQueue.main.async {
-      guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-      UIApplication.shared.open(url)
-    }
-  }
-
-  func setKeepScreenOn(enabled: Bool) throws {
-    DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = enabled }
-  }
-
-  func volumeKeyLapsSupported() throws -> Bool { false }
 }
 
 final class PlaceApiStub: PlaceApi {
@@ -177,9 +145,11 @@ final class RecorderEventBus: RecorderEventsStreamHandler {
 enum PlatformHost {
   static func register(with messenger: FlutterBinaryMessenger) {
     StorageDirs.prepare()
-    RecorderApiSetup.setUp(binaryMessenger: messenger, api: RecorderApiStub())
+    let recorder = RecorderApiStub()
+    recorder.probe = GpsProbe(source: LocationSource()) { RecorderEventBus.shared.send($0) }
+    RecorderApiSetup.setUp(binaryMessenger: messenger, api: recorder)
     StorageApiSetup.setUp(binaryMessenger: messenger, api: StorageApiStub())
-    PermissionsApiSetup.setUp(binaryMessenger: messenger, api: PermissionsApiStub())
+    PermissionsApiSetup.setUp(binaryMessenger: messenger, api: PermissionsHost())
     PlaceApiSetup.setUp(binaryMessenger: messenger, api: PlaceApiStub())
     BleApiSetup.setUp(binaryMessenger: messenger, api: BleApiStub())
     HealthApiSetup.setUp(binaryMessenger: messenger, api: HealthApiStub())
