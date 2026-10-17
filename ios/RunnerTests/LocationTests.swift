@@ -139,8 +139,9 @@ final class GpsProbeTests: XCTestCase {
     func cancel() { run() }
   }
 
-  private func makeProbe(fake: FakeLocationManager, notifications: NotificationCenter = NotificationCenter()) -> GpsProbe {
-    GpsProbe(
+  private func makeProbe(fake: FakeLocationManager, notifications: NotificationCenter = NotificationCenter(), authorized: Bool = true) -> GpsProbe {
+    fake.authorizationStatus = authorized ? .authorizedWhenInUse : .notDetermined
+    return GpsProbe(
       source: LocationSource(manager: fake),
       notifications: notifications,
       now: { self.clock },
@@ -166,6 +167,18 @@ final class GpsProbeTests: XCTestCase {
     XCTAssertNil(events[0].lat)
     XCTAssertNil(events[0].fixAgeMs)
     XCTAssertEqual(fake.startCalls, 1)
+  }
+
+  func testWithoutPermissionReportsNoFixAndAsksForNothing() {
+    let fake = FakeLocationManager()
+    let probe = makeProbe(fake: fake, authorized: false)
+    probe.start()
+    XCTAssertTrue(probe.running)
+    XCTAssertEqual(fake.startCalls, 0)
+    XCTAssertEqual(fake.whenInUseRequests, 0)
+    XCTAssertFalse(events[0].fix)
+    probe.stop()
+    XCTAssertEqual(fake.stopCalls, 0)
   }
 
   func testFreshFixCarriesPositionAccuracyAndAge() {
@@ -290,8 +303,18 @@ final class PermissionsHostTests: XCTestCase {
     fake.authorizationStatus = .authorizedWhenInUse
     fake.accuracyAuthorization = .reducedAccuracy
     let s = try status(host)
-    XCTAssertTrue(s.fineLocation)
+    XCTAssertFalse(s.fineLocation)
     XCTAssertTrue(s.approximateOnly)
+  }
+
+  func testRequestLocationWithApproximateResolvesFalse() {
+    let fake = FakeLocationManager()
+    fake.accuracyAuthorization = .reducedAccuracy
+    let host = PermissionsHost(manager: fake)
+    var result: Bool?
+    host.requestPermission(kind: .location) { if case .success(let v) = $0 { result = v } }
+    XCTAssertEqual(fake.whenInUseRequests, 1)
+    XCTAssertEqual(result, false)
   }
 
   func testLocationServicesOffIsReported() throws {

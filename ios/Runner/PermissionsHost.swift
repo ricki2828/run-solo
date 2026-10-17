@@ -22,17 +22,21 @@ final class PermissionsHost: NSObject, PermissionsApi, CLLocationManagerDelegate
     manager.delegate = self
   }
 
-  private var fineLocation: Bool {
+  private var authorized: Bool {
     switch manager.authorizationStatus {
     case .authorizedWhenInUse, .authorizedAlways: return true
     default: return false
     }
   }
 
+  /// Precise only, as Android's `fine`: with Approximate the Dart setup row must read blocked,
+  /// not ok, since `canRecord` needs `fineLocation && !coarseOnly`.
+  private var fineLocation: Bool { authorized && manager.accuracyAuthorization == .fullAccuracy }
+
   func permissionStatus() throws -> PermissionStatus {
     PermissionStatus(
       fineLocation: fineLocation,
-      approximateOnly: fineLocation && manager.accuracyAuthorization == .reducedAccuracy,
+      approximateOnly: authorized && manager.accuracyAuthorization == .reducedAccuracy,
       locationEnabled: manager.servicesEnabled,
       notifications: true,
       bluetooth: true,

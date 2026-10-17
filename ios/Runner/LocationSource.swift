@@ -41,6 +41,14 @@ final class LocationSource: NSObject, CLLocationManagerDelegate {
   private var activity: BackgroundActivityHandle?
   private(set) var running = false
 
+  /// When-In-Use or Always granted.
+  var authorized: Bool {
+    switch manager.authorizationStatus {
+    case .authorizedWhenInUse, .authorizedAlways: return true
+    default: return false
+    }
+  }
+
   /// Every fix, on the thread CoreLocation calls back on (main for a main-thread manager).
   var onFix: ((CLLocation) -> Void)?
   /// Authorization changed (including downgrades mid-run).
@@ -144,11 +152,11 @@ final class GpsProbe {
 
   var running: Bool { timer != nil }
 
-  /// Idempotent.
+  /// Idempotent. Without location permission it reports no fix and asks for nothing (as Android).
   func start() {
     guard timer == nil else { return }
     last = nil
-    source.start(background: false)
+    if source.authorized { source.start(background: false) }
     timer = schedule { [weak self] in self?.tick() }
     tick()
   }
