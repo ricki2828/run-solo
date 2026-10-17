@@ -329,3 +329,18 @@ def test_a_plan_next_session_name_is_never_a_goal():
     base = dict(type="quality", day="2026-10-20", week=1)
     assert PlanNextIn.model_validate({**base, "session_name": "10K goal", "session_id": "x"}).session_name is None
     assert PlanNextIn.model_validate({**base, "session_name": "Norwegian 4x4"}).session_name == "Norwegian 4x4"
+
+
+def test_default_week_tempo_pace_ignores_goal_efforts():
+    from companion.default_week import quality_session
+    q = quality_session([run(type="tempo", session_name="10K goal", goal_reached=1, true_pace_s_per_km=290.0)])
+    assert q.pace_lo_s is None
+
+
+@pytest.mark.parametrize("goal", ["30 min goal", "12.3 km goal", "1 h 15 min goal", "10K goal"])
+def test_a_goal_name_in_the_headline_is_not_the_picture_repeated(goal):
+    from companion.writer import CardText, clean
+    facts = build_facts(run(type="tempo", session_name=goal, goal_reached=1), [], {}).facts
+    assert clean(CardText(headline=f"{goal} reached", body="You held it to the end."), facts) is None
+    assert clean(CardText(headline=f"{goal} reached in 27 min", body="You held it to the end."), facts) \
+        == "headline_repeats_picture"
