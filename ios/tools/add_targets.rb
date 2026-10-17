@@ -89,8 +89,9 @@ end
 # Runner only (a static framework, so no embed phase). The Swift wrapper lives in Runner/RunCore
 # and its XCTest in RunnerTests (hosted in Runner, so it reaches the core through the app).
 CORE_XCFRAMEWORK = 'RunCore/RunCore.xcframework'
-CORE_RUNNER_SOURCES = ['CoreFacade.swift'].freeze
-CORE_TEST_SOURCES = ['CoreFacadeTests.swift'].freeze
+# P3 adds the recorder host, its Pigeon API, and the diagnostics log next to the facade.
+CORE_RUNNER_SOURCES = ['CoreFacade.swift', 'RecorderHost.swift', 'RecorderApiHost.swift', 'Diagnostics.swift'].freeze
+CORE_TEST_SOURCES = ['CoreFacadeTests.swift', 'RecorderHostTests.swift'].freeze
 
 def add_sources(project, target, group_name, files, subdir: nil)
   group = project.main_group.find_subpath(group_name, false) or fail!("no #{group_name} group")

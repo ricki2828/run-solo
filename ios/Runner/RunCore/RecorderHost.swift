@@ -99,7 +99,7 @@ final class RecorderHost {
     laps = []
     autoPaused = false
     fixCount = 0
-    fixWindowStart = clock.monoMs()
+    fixWindowStart = 0
     trace("recorder start run=\(runId) mode=\(Self.name(mode))")
     send(StateEvent(state: .recording, runId: runId, phase: .none))
   }
@@ -153,6 +153,7 @@ final class RecorderHost {
     let status = Self.object(kotlin.statusJson(t: t))
     for event in out["events"] as? [[String: Any]] ?? [] { dispatch(event, status: status) }
     sendTick(status)
+    if fixWindowStart == 0 { fixWindowStart = t }
     if t - fixWindowStart >= 60_000 {
       trace("fix rate \(fixCount)/min accuracy=\(lastAccuracy.map { String(format: "%.1f", $0) } ?? "none") journalOk=\(status["journalOk"] as? Bool ?? true)")
       fixCount = 0
@@ -390,6 +391,11 @@ final class RecorderHost {
   }
 
   // MARK: Helpers
+
+  /// A finished run file as parsed JSON (the core's gzip reader).
+  func readRunFile(runId: String) throws -> [String: Any] {
+    try queue.sync { Self.object(try kotlin.readRunFileJson(runId: runId)) }
+  }
 
   func script(kind: String) throws -> ReplayScript { try queue.sync { try scriptLocked(kind: kind) } }
 

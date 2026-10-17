@@ -16,6 +16,7 @@ import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
+import app.runsolo.core.run.RunFile
 import app.runsolo.core.run.RunPaths
 
 /**
@@ -258,6 +259,13 @@ class LiveRecorder(rootDir: String) {
             out.add(row)
         }
         return Json.write(out)
+    }
+
+    /** Run file `runs/run-<id>.json.gz` (or the archive's) as JSON, through the core's reader. */
+    @Throws(Exception::class)
+    fun readRunFileJson(runId: String): String {
+        val path = RunPaths.runFile(runId).takeIf { fs.exists(it) } ?: RunPaths.runFile(runId, RunPaths.ARCHIVE_DIR)
+        return Json.write(RunFile.readJson(fs.readBytes(path)))
     }
 
     /** A scenario's inputs for a Swift-driven replay: `{fixes: [[t, lat, lon, alt, acc, speed]], hr: [[t, bpm]], presses: [[atMs, press]]}`. */
