@@ -26,8 +26,10 @@ Future<(FakeRecorderGateway, AppServices)> open(
   AppSettings settings = const AppSettings(onboardingDone: true),
   bool intervals = false,
   bool emitRoute = true,
+  Size? logicalSize,
 }) async {
   phoneViewport(tester);
+  if (logicalSize != null) tester.view.physicalSize = logicalSize * 3;
   final fake = FakeRecorderGateway(now: now)..emitRoute = emitRoute;
   final services = fakeServices(recorder: fake, settings: settings, maps: maps);
   await services.recording.start(
@@ -239,17 +241,17 @@ void main() {
 
   testWidgets('short phone, laps: no map on page 2, the numbers take the '
       'room', (tester) async {
-    await open(tester);
-    tester.view.physicalSize = const Size(1080, 1920); // 360 x 640
-    await pumpTimes(tester, 4);
-    await tester.tap(find.byKey(_toggle));
-    await settleAnimations(tester);
+    // Opens on the map page (remembered) so page 1 is never built.
+    await open(
+      tester,
+      logicalSize: const Size(360, 640),
+      settings: const AppSettings(onboardingDone: true, liveMapTypes: {'laps'}),
+    );
     expect(find.byKey(_map), findsNothing);
     for (final k in ['map-page-distance', 'map-page-time', 'map-page-pace']) {
       final h = tester.getRect(find.byKey(ValueKey(k))).height;
       expect(h, greaterThanOrEqualTo(36), reason: k);
     }
-    // Free run on the same phone keeps its map.
   });
 
   testWidgets('the page is remembered per run type', (tester) async {
