@@ -306,10 +306,18 @@
   (up to 1000 characters, within 30 minutes) is saved as feedback. Ricki reads it. It is never sent to OpenRouter or any AI
   provider, and the reply is a fixed line. We keep it for 30 days and then delete it, it is left out of the nightly backup, and
   it is deleted at once when you delete your data.</p>
-  <p><strong>Counting taps and activity.</strong> To judge whether the coach is useful, the server counts what you do with it:
-  which cards were sent, which buttons you tapped, and the runs and notes you add. Each runner is a tester number such as T3, not a
-  name, chat id or message text, so the counts are per person but pseudonymous. From them we work out, per tester and per week, whether you
-  are still using it in week 4, and what the writing service cost for your cards. We use them only to improve the companion, and never for ads.</p>
+  <p><strong>Counting taps and activity.</strong> To judge whether the coach is useful, the server counts what you do with it,
+  once you have agreed to the companion terms. Each time you tap a button, add a note, send feedback, send a command such as STOP, send
+  any other message, or open the Mini App, it records the kind and the time, never the words. Those records are kept for 120 days, are
+  deleted when you delete your data, and are left out of the nightly backup. It also counts the cards it sent and the runs and notes you add.
+  Each runner is a tester number such as T3, not a name, chat id or message text, so the counts are per person but pseudonymous. From
+  them we work out, per tester and per week, whether you are still using it in week 4, how many replies you send, and what the writing
+  service cost for your cards.</p>
+  <p>Two questions are answered with fixed buttons. The day after the Sunday recap, the coach asks whether last week's coaching got you right (Spot on, Mostly or
+  Not really). Once, about three to four weeks after you join, it asks how you would feel if the coach went away. Each counts as that day's one
+  question, and neither is sent to an AI provider. We keep these answers until the test ends, and they are deleted when you delete your data.
+  When anyone sends DELETE or STOP, the server adds one to a count for that week, with no id, so the totals are right after the person is gone.
+  We use all of this only to improve the companion, and never for ads.</p>
   <p>During the test Ricki can also send a few fixed, pre-written messages through the coach, such as a nudge if you have not run yet or an invite to a chat. Which one was sent to you and when is logged against your tester number (not the words), kept until the test ends, and deleted when you delete your data. The words themselves stay with the other messages the coach has sent you, for 30 days, like any card.</p>
 
   <h3>Your phone number or Telegram chat</h3>

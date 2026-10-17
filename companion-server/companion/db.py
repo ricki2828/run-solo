@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from datetime import timezone
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -296,7 +297,27 @@ CREATE TABLE IF NOT EXISTS llm_calls (
   ts TEXT NOT NULL, model TEXT, provider TEXT, cost_usd REAL NOT NULL DEFAULT 0, outcome TEXT NOT NULL,
   user_id TEXT
 );
+-- Phase A measurement. inbound_events: one row per thing a consented runner did in the chat or Mini App: a kind and a time,
+-- never content (tap | note | feedback | command | text | miniapp_open). Kept 120 days, deleted with the runner, left out of the
+-- nightly backup (backup.PRIVATE_TABLES). survey_answers: the day-after-recap "did last week get you right" (kind trust) and the one
+-- "how would you feel if the coach went away" question (kind ellis) as fixed options, kept until the test ends.
+CREATE TABLE IF NOT EXISTS inbound_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inbound_events_user ON inbound_events (user_id, ts);
+CREATE INDEX IF NOT EXISTS inbound_events_age ON inbound_events (ts);
+CREATE TABLE IF NOT EXISTS survey_answers (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, ref TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind, ref)
+);
 -- Tables below hold no user data (no user_id column).
+-- Opt-out counts by ISO week (Monday UTC): a runner who sends DELETE (chat, app or web) is erased, so the scorecard would
+-- lose them. A week and a number only, never an id. stop_counts counts STOP messages that paused a runner.
+CREATE TABLE IF NOT EXISTS deleted_tombstones (week TEXT PRIMARY KEY, n INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS stop_counts (week TEXT PRIMARY KEY, n INTEGER NOT NULL);
 -- Messages for Ricki (spend at 50/80/100% of the cap, a runner paused for flooding). T-numbers only, never a name or chat.
 -- The host cron (deploy/flush-alerts.sh) sends the unsent ones through notify: the service sandbox cannot reach it.
 CREATE TABLE IF NOT EXISTS alerts (
@@ -309,7 +330,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 # Tables allowed to carry no user_id. The deletion test fails on any other new table without one.
-NO_USER_TABLES = frozenset({"alerts", "enrol_refused", "settings", "sqlite_sequence"})
+NO_USER_TABLES = frozenset({"alerts", "enrol_refused", "settings", "sqlite_sequence", "deleted_tombstones", "stop_counts"})
 # Tables with a user_id that a delete clears (sets NULL) instead of removing the rows, so shared totals stay true.
 ANONYMISE_ON_DELETE = frozenset({"llm_calls"})
 
@@ -538,9 +559,18 @@ def checkpoint_truncate(path: str, tries: int = 5, wait_s: float = 0.2) -> bool:
     return False
 
 
-def hard_delete_user(path: str, user_id: str) -> None:
-    """Delete every row keyed by the user in one transaction, then scrub and truncate the WAL."""
+def bump_week(c: sqlite3.Connection, table: str, now) -> None:
+    """Add one to this ISO week's count (week = Monday UTC, as the scorecard counts). `table` is one of ours, never input."""
+    y, w, _ = now.astimezone(timezone.utc).isocalendar()
+    c.execute(f"INSERT INTO {table} (week, n) VALUES (?,1) ON CONFLICT(week) DO UPDATE SET n = n + 1", (f"{y}-W{w:02d}",))
+
+
+def hard_delete_user(path: str, user_id: str, tombstone_at=None) -> None:
+    """Delete every row keyed by the user in one transaction, then scrub and truncate the WAL. `tombstone_at` (a time)
+    adds one to that week's deleted count, in the same transaction: pass it when the runner asked for the deletion."""
     with tx(path) as c:
+        if tombstone_at is not None:
+            bump_week(c, "deleted_tombstones", tombstone_at)
         for t in user_tables(c):
             if t in ANONYMISE_ON_DELETE:
                 c.execute(f"UPDATE {t} SET user_id = NULL WHERE user_id = ?", (user_id,))

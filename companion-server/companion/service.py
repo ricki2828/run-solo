@@ -24,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, f
 from . import db
 from .channels import ChannelError, Inbound, OutCard, TelegramChannel, WhatsAppChannel, feel_template_eligible
 from .checkin_service import CheckinMixin
+from .measure import MeasureMixin
+from . import measure as cv_measure
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
 from .media import GHOST_CLIP_S, Media, MediaError, from_settings
@@ -363,7 +365,7 @@ EXPORTED_TABLES = {
     "users": "profile", "runs": "runs_received", "memory": "memory", "cards": "messages_sent_30d",
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
-    "feedback": "feedback", "quests": "quests",
+    "feedback": "feedback", "quests": "quests", "inbound_events": "activity", "survey_answers": "survey_answers",
     "ops_sends": "ops_messages",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
@@ -393,7 +395,7 @@ def _opaque_user_id() -> str:
     return "u_" + "".join(secrets.choice(string.ascii_lowercase) for _ in range(12))
 
 
-class Service(CheckinMixin):
+class Service(CheckinMixin, MeasureMixin):
     def __init__(self, settings: Settings, http: httpx.Client):
         self.s, self.http = settings, http
         self.writer = Writer(settings, http)
@@ -567,9 +569,11 @@ class Service(CheckinMixin):
                 c.execute("UPDATE users SET last_inbound_at=? WHERE id=?", (iso(now), user["id"]))
                 c.execute("UPDATE inbound_seen SET user_id=? WHERE msg_id=?", (user["id"], self._mac(inb.msg_id)))
         if inb.card_id is not None:
+            self._log_event(user, "tap", now)
             self._handle_button(ch, inb, user, now)
             return
         text = inb.text.strip()
+        event = "command"   # what this message was, for the scorecard: a kind and a time, never the words
         word = text.lstrip("/").upper()
         m = START_RE.match(text)
         reply: str
@@ -594,6 +598,8 @@ class Service(CheckinMixin):
             if user:
                 with db.tx(self.s.db_path) as c:
                     c.execute("UPDATE users SET paused=1 WHERE id=?", (user["id"],))
+                    if not user["paused"]:
+                        db.bump_week(c, "stop_counts", now)   # a week and a number, no id
             reply = ("Paused. No more messages from me. Send RESUME to turn them back on, or DELETE to erase your data."
                      if user else "Nothing to pause here.")
         elif word == "RESUME":
@@ -605,7 +611,8 @@ class Service(CheckinMixin):
             reply = "Back on. Your next run recap will land here." if user else UNKNOWN
         elif word == "DELETE":
             if user:
-                db.hard_delete_user(self.s.db_path, user["id"])
+                db.hard_delete_user(self.s.db_path, user["id"], tombstone_at=now)
+                event = None   # the runner and their events are gone
                 log.info("deleted user=%s via keyword", user["id"])
                 reply = "Done. Everything we held about you is deleted. Meta may keep delivery records for up to 30 days."
             else:
@@ -616,6 +623,9 @@ class Service(CheckinMixin):
             # Free text is only ever a note (after "Add a note") or feedback (after "Tell Ricki"). Everything else gets
             # the fixed canned reply, and no free text ever reaches a model.
             reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now) or UNKNOWN
+            event = {FEEDBACK_SAVED: "feedback", NOTE_SAVED: "note"}.get(reply, "text")
+        if event:
+            self._log_event(user, event, now)
         self._reply(ch, inb.ref, reply)
 
     def _redelivered(self, inb: Inbound) -> bool:
@@ -793,6 +803,13 @@ class Service(CheckinMixin):
             elif kind == "fb" and rest == "tell":
                 refusal = self._fb_start(c, user, real_now)   # feedback runs on the real clock, even for a replayed card
                 msg, fb_prompt = ("Type your feedback.", FEEDBACK_PROMPT) if refusal is None else ("Not now.", refusal)
+            elif kind in ("trust", "ellis"):
+                if replay_card or not self._survey_answer(c, user, dict(card), kind, rest, now):
+                    msg = "That button has expired."
+                else:
+                    msg = cv_measure.TRUST_THANKS if kind == "trust" else "Thanks."
+                    # nothing more to show under either survey card
+                    keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] == cv_feedback.FEEDBACK_ACTION]
             elif kind == "ans":
                 key, _, val = rest.partition(":")
                 if valid_answer(key, val):
@@ -887,6 +904,8 @@ class Service(CheckinMixin):
             run_notes = [dict(r) for r in c.execute(
                 "SELECT run_id, note, created_at FROM run_notes WHERE user_id=? ORDER BY created_at", (uid,))]
             feedback = [dict(r) for r in c.execute("SELECT ts, text FROM feedback WHERE user_id=? ORDER BY id", (uid,))]
+            activity = [dict(r) for r in c.execute("SELECT kind, ts FROM inbound_events WHERE user_id=? ORDER BY id", (uid,))]
+            survey = [dict(r) for r in c.execute("SELECT kind, ref, value, created_at FROM survey_answers WHERE user_id=? ORDER BY created_at", (uid,))]
             shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
                        "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
                        "reps": json.loads(r["reps_json"]) if r["reps_json"] else None,
@@ -900,7 +919,7 @@ class Service(CheckinMixin):
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"], "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
-            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "memory": memory, "suggestion_outcomes": outcomes,
+            "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "activity": activity, "survey_answers": survey, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests, "ops_messages": ops_msgs,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
@@ -918,7 +937,7 @@ class Service(CheckinMixin):
         return out or None
 
     def delete_me(self, uid: str) -> None:
-        db.hard_delete_user(self.s.db_path, uid)
+        db.hard_delete_user(self.s.db_path, uid, tombstone_at=now_utc())
         log.info("deleted user=%s via api", uid)
 
     def set_settings(self, uid: str, quiet_start: int | None, quiet_end: int | None, zone_id: str | None,
@@ -1541,11 +1560,12 @@ class Service(CheckinMixin):
                 "SELECT 1 FROM run_notes WHERE user_id=? AND run_id=?", (uid, rid)).fetchone()), None)
         card_id = secrets.token_hex(16)
         with db.tx(self.s.db_path) as c:
+            buttons = [{"label": "Tell Ricki", "action": cv_feedback.FEEDBACK_ACTION, "row": 0}]
+            body = rc.rendered.body
             c.execute("INSERT INTO cards (card_id, user_id, run_id, kind, headline, body, buttons_json, source, created_at, "
                       "quote_run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, rc.rendered.body,
-                       json.dumps([{"label": "Tell Ricki", "action": cv_feedback.FEEDBACK_ACTION, "row": 0}]),
-                       "template", iso(now), quote_rid))
+                      (card_id, uid, f"recap:{week_ref}", "recap", rc.rendered.headline, body,
+                       json.dumps(buttons), "template", iso(now), quote_rid))
             self._convo_write(c, uid, now, card_id, rc.rendered.situation, rc.media, rc.rendered.allowed,
                               [rc.rendered.variant_id], None)
             if rc.empty:
@@ -1860,6 +1880,14 @@ class Service(CheckinMixin):
             if user["channel"] != "telegram":  # Telegram first; WhatsApp would bill it as marketing
                 return "skipped", None
             card_id = self._build_recap_card(user["id"], item["ref"], now)
+        elif item["kind"] == "trust":
+            if user["channel"] != "telegram":
+                return "skipped", None
+            card_id = self._build_trust_card(user["id"], item["ref"], now)
+        elif item["kind"] == "ellis":
+            if user["channel"] != "telegram":
+                return "skipped", None
+            card_id = self._build_ellis_card(user["id"], now)
         elif item["kind"] == "monthly":
             if user["channel"] != "telegram":  # same as the recap: WhatsApp would bill an unprompted poster as marketing
                 return "skipped", None
@@ -2065,6 +2093,7 @@ class Service(CheckinMixin):
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))
+            c.execute("DELETE FROM inbound_events WHERE ts < ?" + held, (iso(now - timedelta(days=cv_measure.EVENT_RETENTION_DAYS)),))
             # Only sent alerts age out, and after 62 days (two months), so a month's cap keys outlive the month: no re-fire on
             # the 31st, and an unsent backlog (cron not running) is never silently dropped.
             c.execute("DELETE FROM alerts WHERE sent_at IS NOT NULL AND ts < ?", (iso(now - timedelta(days=62)),))
@@ -2107,6 +2136,8 @@ class Service(CheckinMixin):
         self.plan_checkins(now)   # before the evening suggestion: a question that is due in the same window goes first
         self.plan_evening(now)
         self.plan_recap(now)
+        self.plan_trust(now)
+        self.plan_ellis(now)
         self.plan_monthly(now)
         self.run_outbox(now)
         with db.tx(self.s.db_path) as c:
@@ -2116,3 +2147,4 @@ class Service(CheckinMixin):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_purge', ?)", (iso(now),))
         if due:
             self.purge(now)
+            cv_measure.purge_surveys(self.s.db_path, now)

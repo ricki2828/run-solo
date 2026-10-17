@@ -5,9 +5,11 @@ a chat name or a user id. The T-number to person map lives only on Ricki's host 
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Callable
 
 from . import db
@@ -17,7 +19,7 @@ from .timeutil import iso, now_utc
 
 log = logging.getLogger("companion")
 TESTER = re.compile(r"^[Tt](\d{1,6})$")
-USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days] | send ... | sends | templates"
+USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days] | survey purge --yes | scorecard-snapshot [dir] | send ... | sends | templates"
 
 
 def _month_start() -> str:
@@ -108,6 +110,29 @@ def feedback(s: Settings, days: int = 7, limit: int = 200) -> list[str]:
     return out
 
 
+SNAPSHOT_DIR = "~/ai/state/run-supreme-testers"
+
+
+def scorecard_snapshot(s: Settings, directory: str | None = None, now: datetime | None = None) -> str:
+    """Write this week's scorecard as JSON to scorecard-YYYY-WW.json (T-numbers only) and return the path. Cards purge at
+    30 days, so the week-1 numbers would be gone by the readout without these. Rewriting the same week replaces the file."""
+    from . import scorecard
+    now = now or now_utc()
+    y, w, _ = now.isocalendar()
+    d = Path(directory or SNAPSHOT_DIR).expanduser()
+    d.mkdir(parents=True, exist_ok=True)
+    con = scorecard.open_ro(s.db_path)
+    try:
+        sc = scorecard.compute_scorecard(con, now=now)
+    finally:
+        con.close()
+    path = d / f"scorecard-{y}-{w:02d}.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(sc, indent=2))
+    tmp.replace(path)
+    return str(path)
+
+
 def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> int:
     cmd = argv[0] if argv else "status"
     if cmd == "status":
@@ -123,6 +148,16 @@ def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> in
         return ops_send.main(s, argv, out)
     elif cmd == "alerts":
         lines = alerts(s)
+    elif cmd == "scorecard-snapshot":
+        out(scorecard_snapshot(s, argv[1] if len(argv) > 1 else None))
+        return 0
+    elif cmd == "survey" and argv[1:2] == ["purge"]:
+        from . import measure
+        if "--yes" not in argv:
+            out("this deletes every survey answer now; run `ops survey purge --yes` to confirm")
+            return 2
+        out(f"deleted {measure.purge_surveys(s.db_path, now_utc(), force=True)} survey answers")
+        return 0
     elif cmd == "feedback":
         arg = argv[1] if len(argv) > 1 else "7"
         if not arg.isdigit() or not 1 <= int(arg) <= 30:
