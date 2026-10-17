@@ -299,7 +299,16 @@ void main() {
     final backfill = q.drain();
     await first.seen.future;
     final urgent = q.fetchForVerdict(fresh.id);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    // Release the held request only once the urgent run is really in the
+    // queue file (a fixed delay raced the file edit on a slow CI runner),
+    // then a few turns so fetchForVerdict marks its priority ready.
+    for (var i = 0; i < 500 && !(await q.queued()).contains(fresh.id); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(await q.queued(), contains(fresh.id));
+    for (var i = 0; i < 20; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
     first.reply.complete(const WeatherRejected(404));
     await Future.wait([backfill, urgent]);
     expect(requests, hasLength(3));
