@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS cards (
   source TEXT NOT NULL,
   created_at TEXT NOT NULL, sent_at TEXT, answered_at TEXT,
   quote_run_id TEXT,  -- a recap that quotes this run's note: the quote is looked up at send time, never stored in body
-  tg_message_id TEXT, tg_is_photo INTEGER,  -- the Telegram message that carries a run card's text and buttons (late-note edit)
+  tg_message_id TEXT, tg_is_photo INTEGER,  -- the Telegram message carrying a run card's text + buttons; 0 text, 1 short caption, 2 full caption (morning edit)
   next_line TEXT,                           -- a run card's fixed "Next: ..." line, as sent
   note_edit_at TEXT                         -- set once when a late note or feel edited the card in place: at most one edit
 );

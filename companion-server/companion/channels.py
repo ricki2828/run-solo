@@ -81,6 +81,7 @@ class OutCard:
 
 _COMPARISON = re.compile(r"\b(faster|slower|level with|than (?:your )?last|no real change)\b", re.I)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_NOTED = re.compile(r"^Noted: ")   # a late note's acknowledgement (service._late_edit) rides the caption too
 
 
 def caption_text(card: OutCard) -> str:
@@ -91,7 +92,7 @@ def caption_text(card: OutCard) -> str:
         return f"{card.headline}\n{card.body}"
     first, _, rest = card.body.partition("\n\n")
     sentences = [x for x in _SENTENCE_SPLIT.split(first.strip()) if x]
-    keep = [x for x in sentences[:-1] if _COMPARISON.search(x)] + sentences[-1:]  # the comparison stays too
+    keep = [x for x in sentences[:-1] if _COMPARISON.search(x) or _NOTED.match(x)] + sentences[-1:]  # the comparison stays too
     lines = [card.headline.strip(), " ".join(keep)]
     if rest.strip():
         lines.append(rest.strip())
@@ -188,6 +189,8 @@ class TelegramChannel:
         rows: dict[int, list[dict]] = {}
         feel = 0
         for i, b in enumerate(card.buttons):
+            if b.get("hidden"):   # off screen, but its index (the callback data) stays
+                continue
             if media:
                 if b["action"].startswith("ans:"):
                     continue

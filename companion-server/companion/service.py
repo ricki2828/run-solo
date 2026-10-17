@@ -1733,9 +1733,10 @@ class Service(CheckinMixin, MeasureMixin):
         with db.tx(self.s.db_path) as c:
             slot = c.execute("SELECT is_photo FROM checkin_slots WHERE user_id=? AND slot='today' AND state='consumed' "
                              "AND message_id=?", (uid, mid)).fetchone()
-            if slot is not None:
-                is_photo = bool(slot["is_photo"])
-            c.execute("UPDATE cards SET tg_message_id=?, tg_is_photo=? WHERE card_id=?", (mid, int(is_photo), card_id))
+            photo = int(is_photo)   # 1: a picture whose caption is the short one (caption_text)
+            if slot is not None:     # the morning edit puts the whole text in the caption: 2
+                photo = 2 if slot["is_photo"] else 0
+            c.execute("UPDATE cards SET tg_message_id=?, tg_is_photo=? WHERE card_id=?", (mid, photo, card_id))
 
     LATE_NOTE_MIN = 15   # a note or feel landing this soon after the card went out may update that card, once
 
@@ -1777,8 +1778,13 @@ class Service(CheckinMixin, MeasureMixin):
             card = dict(row, body=row["body"].replace(old, ack, 1))
             with db.ro(self.s.db_path) as c:
                 card = self._ci_line(c, self._quoted(c, card), now)
-            buttons = self._buttons(run["feel"], None, None, note=True)
-            out = OutCard(row["card_id"], card["headline"], card["body"], buttons, None, (), short_caption=bool(row["tg_is_photo"]))
+            # The keyboard as it is on screen, by the stored indices (the callback data): a feel tap left "Add a note" alone
+            buttons = json.loads(row["buttons_json"])
+            felt = run["feel"] is not None and any(b["action"].startswith("feel:") for b in buttons)
+            if felt:
+                buttons = [b if b["action"] == NOTE_ACTION else dict(b, hidden=True) for b in buttons]
+            out = OutCard(row["card_id"], card["headline"], card["body"], buttons, None, () if felt else self._links(card),
+                          short_caption=row["tg_is_photo"] == 1)
             try:
                 ch.edit_card_body(user["chat_ref"], row["tg_message_id"], out, bool(row["tg_is_photo"]))
             except ChannelError as e:

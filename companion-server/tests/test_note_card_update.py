@@ -89,6 +89,27 @@ def test_hard_feel_updates_the_card_once(client, fakes):
     assert len(ed) == 1 and "Noted: that it felt hard. Next: an easy run tomorrow" in ed[0][1]["text"]
     kb = [b["text"] for r in ed[0][1]["reply_markup"]["inline_keyboard"] for b in r]
     assert kb == ["Add a note"]   # the feel row is gone once answered
+    cb = [b["callback_data"] for r in ed[0][1]["reply_markup"]["inline_keyboard"] for b in r]
+    assert cb == [f"{card_id}:{acts.index('note:add')}"]   # the stored index, not its place on screen
+
+
+def test_add_a_note_still_opens_note_mode_after_the_edit(client, fakes):
+    t = enrol(client)
+    quality_run(client, t)
+    card_id, _ = note_idx(client, "r1")
+    acts = [b["action"] for b in json.loads(card_row(client)["buttons_json"])]
+    post_tg(client, tg_callback(next(_n), f"{card_id}:{acts.index('feel:hard')}"))
+    (cb,) = [b["callback_data"] for r in edits(fakes)[0][1]["reply_markup"]["inline_keyboard"] for b in r]
+    assert post_tg(client, tg_callback(next(_n), cb)).status_code == 200
+    assert q(client, "SELECT feel FROM runs WHERE run_id='r1'")[0]["feel"] == "hard"   # not re-read as "Easy"
+    assert q(client, "SELECT run_id FROM note_mode")[0]["run_id"] == "r1"
+
+
+def test_short_caption_keeps_the_noted_line():
+    from companion.channels import OutCard, caption_text
+    body = "Steady 6.2 km at 5:40/km. A good solid run.\nNoted: the travel. Next: an easy run tomorrow"
+    cap = caption_text(OutCard("x", "Nice run", body, [], short_caption=True))
+    assert "Noted: the travel. Next: an easy run tomorrow" in cap
 
 
 def test_edit_failure_releases_the_claim(client, fakes):
