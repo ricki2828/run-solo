@@ -119,7 +119,7 @@ jobs:
         run: |
           set -o pipefail
           flutter build ios --simulator --debug -v 2>&1 | tee build/ios-logs/4-build.log
-      - name: XCTest (RunnerTests drive the Kotlin core through the facade)
+      - name: XCTest (RunnerTests - Kotlin core via the facade, P2 location)
         # Hosted in Runner on the newest iPhone simulator. The tests compare each replay run file
         # with the Kotlin contract fixtures (parsed JSON equality).
         run: |
@@ -131,6 +131,7 @@ jobs:
           print(c[-1]['udid'])")
           xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug \
             -destination "platform=iOS Simulator,id=$udid" -only-testing:RunnerTests \
+            -resultBundlePath build/ios-logs/RunnerTests.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/ios-logs/4b-xctest.log | grep -iE "error:|Test Case|Executed|TEST (SUCCEEDED|FAILED)|\*\* " || true
           xcrun simctl shutdown all || true # the smoke step boots its own
           grep -q "TEST SUCCEEDED" build/ios-logs/4b-xctest.log
