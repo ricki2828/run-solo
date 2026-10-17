@@ -26,6 +26,10 @@ Not added yet, on purpose: Bluetooth, HealthKit and motion usage strings, `bluet
 - **CI digest**: every job writes `ios/tools/error_digest.py` output (about 30 lines) to the job summary and the `ios-verify-digest` artifact. Read that first; full logs are in `ios-verify-logs`.
 - **Release build path (T4)**: `flutter build ios --release --config-only`, then `xcodebuild archive` and `xcodebuild -exportArchive -allowProvisioningUpdates` with the App Store Connect API key and `destination: upload`. `flutter build ipa` cannot pass the API key flags.
 
+## Shared Kotlin core (K3)
+
+The recorder core (`android/core-jvm`, Kotlin Multiplatform) reaches iOS as a static XCFramework, `RunCore.xcframework` (slices ios-arm64 and ios-arm64-simulator). CI builds it (`./gradlew assembleRunCoreReleaseXCFramework` in `android/core-jvm`), copies it to `ios/RunCore/` (gitignored) and `tools/add_targets.rb` links it into Runner only: no embed phase, and RunnerTests must not link it (a second copy of the Kotlin runtime). Swift code never imports `RunCore` directly except `Runner/RunCore/CoreFacade.swift` (`internal import`), which wraps the ObjC-flavoured `RunCoreFacade` (Strings and lists in and out) behind one serial queue. `RunnerTests/CoreFacadeTests.swift` replays every `ReplayScenarios` kind through it and compares with `android/core-jvm/src/test/fixtures/contract/replay_*.json` (parsed JSON). The framework and the Swift files are added to the pbxproj by the script (idempotent), so a local Mac needs the same two steps: build and copy the framework, then `ruby ios/tools/add_targets.rb`. The `verify` job uploads the framework as artifact / release asset `RunCore-xcframework`.
+
 ## Known gaps for P1
 
 - Pigeon Swift hosts are stubs (`Runner/PlatformHost.swift`, P1): safe defaults, nothing records. Generated `Runner/PlatformApi.g.swift` is covered by the Pigeon drift check in `ci.yml`; add new Swift files to `project.pbxproj` by hand for Runner (extra targets still go through `add_targets.rb`). Dart hides strap pairing, the Bluetooth row and the Health toggle on iOS (`lib/platform/host_caps.dart`).

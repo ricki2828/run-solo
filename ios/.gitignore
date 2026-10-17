@@ -32,3 +32,6 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# K3: built by CI from android/core-jvm (assembleRunCoreReleaseXCFramework) and copied here
+/RunCore/
