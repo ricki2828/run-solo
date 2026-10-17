@@ -268,3 +268,52 @@ def test_nothing_is_sent_after_the_test_ends_even_if_queued_before(env):
     assert env.send("T2", "N2", now=end) == 1 and "test ended" in env.out[0]
     env.svc.run_outbox(end)
     assert env.sent() == [] and env.rows("SELECT result FROM ops_sends")[0]["result"] == "skipped: test ended"
+
+
+def test_a_different_or_tricked_link_is_refused_and_the_approved_one_is_used(env):
+    env.approve("INVITE")
+    assert env.send("T1", "INVITE", link="https://calendar.app.google/other") == 1
+    assert env.send("T1", "INVITE", link="https://calendar.app.google@evil.com/x") == 1
+    assert env.send("T1", "INVITE") == 0
+    env.svc.run_outbox(NOW)
+    assert env.sent() and LINK in str(env.sent()[-1])
+
+
+def test_a_card_body_edited_after_queueing_is_skipped(env):
+    env.approve("N1")
+    assert env.send("T1", "N1") == 0
+    c = sqlite3.connect(env.s.db_path); c.execute("UPDATE cards SET body='evil' WHERE kind='ops'"); c.commit()
+    env.svc.run_outbox(NOW)
+    assert not env.sent()
+    assert env.rows("SELECT result FROM ops_sends")[0]["result"] == "skipped: text changed"
+
+
+def test_a_second_queued_message_to_the_same_tester_is_refused(env):
+    env.approve("N1", "N2")
+    assert env.send("T1", "N1") == 0
+    assert env.send("T1", "N1") == 1
+    assert env.send("T1", "N2") == 1
+
+
+def test_a_missing_state_dir_sends_nothing(env, monkeypatch):
+    env.approve("N1")
+    assert env.send("T1", "N1") == 0
+    monkeypatch.setenv("COMPANION_OPS_STATE_DIR", str(env.d / "nope"))
+    env.svc.run_outbox(NOW)
+    assert not env.sent()
+
+
+def test_purge_after_the_end_then_a_tick_sends_nothing(env):
+    env.approve("N1")
+    env.send("T1", "N1")
+    env.svc.purge(datetime(2026, 12, 16, tzinfo=UTC))
+    env.svc.run_outbox(NOW)
+    assert not env.sent()
+
+
+def test_an_empty_or_bad_end_date_in_the_environment_falls_back_to_the_default():
+    from companion.config import Settings
+    base = {"COMPANION_PEPPER": "p" * 32}
+    assert Settings.from_env({**base, "COMPANION_TEST_END_DATE": ""}).test_end_date == "2026-12-15"
+    assert Settings.from_env({**base, "COMPANION_TEST_END_DATE": "soon"}).test_end_date == "2026-12-15"
+    assert Settings.from_env({**base, "COMPANION_TEST_END_DATE": "2027-01-02"}).test_end_date == "2027-01-02"
