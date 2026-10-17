@@ -315,10 +315,16 @@ def suggest_after_run(run: Mapping[str, Any], history: Sequence[Mapping[str, Any
 
 def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, soften: bool = False) -> str:
     """The fixed closing line of a post-run card: what to do next and when. Deterministic, never written by the model.
-    The app's plan wins when it names the next session; otherwise a hard or long run, high load, a hard feel or a
-    flagged note means easy next, and a long gap since the last hard session means one is due."""
-    from .convo.suggest import session_parts
+    The app's plan wins when it names the next session, unless it puts a push tomorrow after a hard run, high load, a
+    hard feel or a flagged note (the evening suggestion turns that push easy too). Otherwise those, a long run, a run
+    back after a break or a runner's first fortnight mean easy next, and a long gap since the last hard session means
+    one is due tomorrow (the same gap the evening suggestion uses)."""
+    from .convo.suggest import GAP_DAYS, NEW_RUNNER_DAYS, session_parts
+    from .convo.touches import BREAK_DAYS
     when = _when(run)
+    parts = session_parts("easy_load", history, when)
+    easy = f"easy {parts[1]} km" if parts else "an easy run"
+    ease = soften or run.get("feel") == "hard" or run.get("load_state") in LOAD_ALERT or is_hard_run(run)
     nxt, day = run.get("plan_next_type"), run.get("plan_next_day")
     if nxt in ("easy", "long", "quality") and day:
         word = {"easy": "easy", "long": "long run", "quality": "quality session"}[nxt]
@@ -328,22 +334,26 @@ def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, s
             gap = (datetime.fromisoformat(day).date() - local.date()).days
         except ValueError:
             gap = None
-        if gap == 1:
-            return f"Next: {word}{km} tomorrow"
-        if gap is not None and gap > 1:
-            return f"Next: {word}{km} on {datetime.fromisoformat(day).strftime('%A')}"
-        return f"Next: {word}{km} as planned"
-    parts = session_parts("easy_load", history, when)
-    easy = f"easy {parts[1]} km" if parts else "an easy run"
-    if soften or run.get("feel") == "hard" or run.get("load_state") in LOAD_ALERT or is_hard_run(run) \
-            or run.get("type") == "long":
+        stale = gap is not None and gap < 0          # a plan day already gone says nothing about what is next
+        blocked = ease and nxt != "easy" and (gap is None or gap <= 1)
+        if not stale and not blocked:
+            if gap == 1:
+                return f"Next: {word}{km} tomorrow"
+            if gap is not None and gap > 1:
+                return f"Next: {word}{km} on {datetime.fromisoformat(day).strftime('%A')}"
+            return f"Next: {word}{km} as planned"
+    if ease or run.get("type") == "long":
         return f"Next: {easy} tomorrow"
+    if history and (when - _when(history[0])).days >= BREAK_DAYS:
+        return f"Next: {easy} tomorrow"   # back after a break: build back before any push
+    if history and len(history) < 60 and when - _when(history[-1]) < timedelta(days=NEW_RUNNER_DAYS):
+        return f"Next: {easy} tomorrow"   # first fortnight: no push yet, as the evening suggestion
     gap = days_since_hard(history, when)
-    if gap is not None and gap >= 4:
+    if gap is not None and gap >= GAP_DAYS:
         q = session_parts("gap", history, when)
         if q:
-            return f"Next: {q[0]} {q[1]} km in 2 days"
-        return "Next: one harder session in 2 days"
+            return f"Next: {q[0]} {q[1]} km tomorrow"
+        return "Next: one harder session tomorrow"
     return f"Next: {easy} tomorrow"
 
 

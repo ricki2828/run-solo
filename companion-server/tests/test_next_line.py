@@ -13,6 +13,11 @@ from test_notes import q, send_run
 T0 = datetime(2026, 10, 17, 7, 0, tzinfo=timezone.utc)
 
 
+def ago(days, **kw):
+    """A prior run `days` before T0 (hist() counts back from the interval tests' own date)."""
+    return hist(days, **kw) | {"start_utc": T0 - timedelta(days=days)}
+
+
 # --- fix 2: the Next line -------------------------------------------------------------------------
 
 def test_next_line_after_a_hard_run_is_easy_tomorrow():
@@ -26,11 +31,36 @@ def test_next_line_uses_the_apps_plan_when_it_names_the_next_session():
     assert next_line(r, []) == "Next: long run 12.0 km tomorrow"
 
 
-def test_next_line_with_no_plan_and_a_long_gap_since_hard_asks_for_quality():
+def test_next_line_with_no_plan_and_a_long_gap_since_hard_asks_for_quality_tomorrow():
+    # same gap (5+ days) and same day as the evening suggestion, so the two never disagree
     r = run(type="easy", start_utc=T0)
-    h = [hist(2, type="easy", distance_m=5000), hist(5, type="easy", distance_m=5000),
-         hist(8, type="tempo", distance_m=6000, feel="hard")]
-    assert next_line(r, h).startswith("Next: ") and "tomorrow" not in next_line(r, h)
+    h = [ago(2, type="easy", distance_m=5000), ago(5, type="easy", distance_m=5000),
+         ago(8, type="tempo", distance_m=6000, feel="hard"), ago(30, type="easy", distance_m=5000)]
+    assert next_line(r, h) == "Next: tempo 6 km tomorrow"
+
+
+def test_next_line_no_push_in_the_first_fortnight_or_back_after_a_break():
+    r = run(type="easy", start_utc=T0)
+    new = [ago(2, type="easy", distance_m=5000), ago(8, type="tempo", distance_m=6000)]
+    assert next_line(r, new) == "Next: easy 5 km tomorrow"
+    back = [ago(12, type="easy", distance_m=5000), ago(20, type="tempo", distance_m=6000),
+            ago(40, type="easy", distance_m=5000)]
+    assert next_line(r, back) == "Next: easy 5 km tomorrow"
+
+
+def test_a_planned_push_tomorrow_turns_easy_after_a_hard_run_or_a_flagged_note():
+    h = [ago(2, type="easy", distance_m=5000)]
+    plan = dict(plan_next_type="quality", plan_next_day="2026-10-18")
+    assert next_line(run(type="tempo", start_utc=T0, **plan), h) == "Next: easy 5 km tomorrow"
+    assert next_line(run(type="easy", start_utc=T0, **plan), h, soften=True) == "Next: easy 5 km tomorrow"
+    assert next_line(run(type="easy", start_utc=T0, **plan), h) == "Next: quality session tomorrow"
+    later = dict(plan_next_type="quality", plan_next_day="2026-10-20")   # a push later in the week stays
+    assert next_line(run(type="tempo", start_utc=T0, **later), h) == "Next: quality session on Tuesday"
+
+
+def test_a_stale_plan_day_is_ignored():
+    r = run(type="tempo", start_utc=T0, plan_next_type="long", plan_next_day="2026-10-10")
+    assert next_line(r, [ago(2, type="easy", distance_m=5000)]) == "Next: easy 5 km tomorrow"
 
 
 def test_next_line_without_history_never_invents_a_distance():
