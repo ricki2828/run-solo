@@ -42,7 +42,8 @@ def test_n2_after_7_silent_days_once_and_not_before_n1():
     assert ("send", "N2") not in acts(T(days=8, first_run=ran, last_activity=NOW - timedelta(days=6)))
     # never ran and N1 not sent yet: N1 comes first, not N2
     assert acts(T(days=8))[-1] == ("send", "N1")
-    assert ("send", "N2") in acts(T(days=8, sent={"N1": NOW - timedelta(days=4)}))
+    assert ("send", "N2") in acts(T(days=10, sent={"N1": NOW - timedelta(days=8)}))
+    assert ("wait", "N2") in acts(T(days=10, sent={"N1": NOW - timedelta(days=4)}))   # ops send spaces messages 7 days apart
 
 
 def test_n3_in_week_3_for_a_tester_who_has_run_and_needs_a_link():

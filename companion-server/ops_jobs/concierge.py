@@ -5,7 +5,7 @@
 
 Default is a dry run: it prints what it would do and why, sends nothing. `--apply` calls `ops send` for each decision.
 `ops send` is the gate: it refuses a template Ricki has not approved, a paused or STOPped runner, a runner who has not
-agreed to consent v2, a second ops message inside 3 days, and a template already sent. The decisions here only avoid
+agreed to consent v2, a second ops message inside 7 days, and a template already sent. The decisions here only avoid
 asking for things that are bound to be refused.
 
 N1 no run by day 3 (once). N2 silent for 7 days (once). N3 chat invite in week 3 (once; needs --link or RS_BOOKING_LINK).
@@ -25,7 +25,7 @@ from ops_jobs import common  # noqa: E402
 
 N1_DAY, N2_SILENT_DAYS = 3, 7
 N3_FROM_DAY, N3_TO_DAY = 14, 27
-SPACING_DAYS = 3             # ops send's own rule; checked here only to say "waiting" instead of "refused"
+SPACING_DAYS = 7             # ops send's own rule (ops_send.SPACING_DAYS); checked here only to say "waiting" instead of "refused"
 CONSENT_REQUIRED = int(os.environ.get("RS_CONSENT_REQUIRED") or 2)
 STUCK_NO_CONSENT_DAYS = 2    # joined but never agreed to the companion terms
 STUCK_NO_RUN_DAYS = 7        # consented, still no run after a week
@@ -128,7 +128,7 @@ def load_testers(db: str) -> list[Tester]:
             " FROM users u WHERE u.tester_no IS NOT NULL ORDER BY u.tester_no").fetchall()
         sends: dict[str, dict[str, datetime]] = {}
         if has_sends:
-            for r in con.execute("SELECT user_id, template, MAX(ts) AS ts FROM ops_sends GROUP BY user_id, template"):
+            for r in con.execute("SELECT user_id, template, MAX(ts) AS ts FROM ops_sends WHERE result NOT LIKE 'skipped%' GROUP BY user_id, template"):
                 sends.setdefault(r["user_id"], {})[r["template"]] = common.parse(r["ts"])
         out = []
         for r in rows:
