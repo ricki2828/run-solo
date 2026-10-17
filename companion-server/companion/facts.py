@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
 
 from .convo.questions import ENUMS as _EXTENDED_ENUMS
-from .timeutil import UTC, parse_iso
+from .timeutil import UTC, parse_iso, to_local
 
 HARD_TYPES = frozenset({"tempo", "interval", "race"})
 FLOOD_SHARE = 0.4  # share of zone time in Z4 and Z5 that makes a run hard
@@ -230,6 +230,8 @@ def comparable(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> 
     with a work pace is matched on the same session name and work pace instead."""
     if not run.get("distance_m"):
         return None
+    if run.get("type") == "interval" and not is_session_run(run):
+        return None   # an interval run with no reps detected has no work pace: the whole-run average is not a comparison
     t0 = _when(run)
     if is_session_run(run):
         # An interval session is compared on its work pace, against the same session only (whatever the total
@@ -243,6 +245,8 @@ def comparable(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> 
     for h in history:  # newest first
         if h["type"] != run["type"] or not h.get("distance_m"):
             continue
+        if (h.get("app_type") == "trail") != (run.get("app_type") == "trail"):
+            continue   # like with like: a trail run is only ever compared with a trail run
         ratio = h["distance_m"] / run["distance_m"]
         if not 0.8 <= ratio <= 1.25:
             continue
@@ -307,6 +311,40 @@ def suggest_after_run(run: Mapping[str, Any], history: Sequence[Mapping[str, Any
     if gap is not None and gap >= 6 and _recent_count(history, now, 14) >= 3:
         return Suggestion("quality", "gap", f"It has been {gap} days since your last hard session, so one this week fits.")
     return None
+
+
+def next_line(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]], *, soften: bool = False) -> str:
+    """The fixed closing line of a post-run card: what to do next and when. Deterministic, never written by the model.
+    The app's plan wins when it names the next session; otherwise a hard or long run, high load, a hard feel or a
+    flagged note means easy next, and a long gap since the last hard session means one is due."""
+    from .convo.suggest import session_parts
+    when = _when(run)
+    nxt, day = run.get("plan_next_type"), run.get("plan_next_day")
+    if nxt in ("easy", "long", "quality") and day:
+        word = {"easy": "easy", "long": "long run", "quality": "quality session"}[nxt]
+        km = f" {fmt_km(run['plan_next_m'])} km" if run.get("plan_next_m") else ""
+        local = to_local(when, run.get("zone_id") or "UTC")
+        try:
+            gap = (datetime.fromisoformat(day).date() - local.date()).days
+        except ValueError:
+            gap = None
+        if gap == 1:
+            return f"Next: {word}{km} tomorrow"
+        if gap is not None and gap > 1:
+            return f"Next: {word}{km} on {datetime.fromisoformat(day).strftime('%A')}"
+        return f"Next: {word}{km} as planned"
+    parts = session_parts("easy_load", history, when)
+    easy = f"easy {parts[1]} km" if parts else "an easy run"
+    if soften or run.get("feel") == "hard" or run.get("load_state") in LOAD_ALERT or is_hard_run(run) \
+            or run.get("type") == "long":
+        return f"Next: {easy} tomorrow"
+    gap = days_since_hard(history, when)
+    if gap is not None and gap >= 4:
+        q = session_parts("gap", history, when)
+        if q:
+            return f"Next: {q[0]} {q[1]} km in 2 days"
+        return "Next: one harder session in 2 days"
+    return f"Next: {easy} tomorrow"
 
 
 def suggest_evening(history: Sequence[Mapping[str, Any]], now: datetime) -> Suggestion | None:

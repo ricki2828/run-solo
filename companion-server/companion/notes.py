@@ -16,9 +16,10 @@ NOTE_MODE_MIN = 10          # "Add a note" waits this long for the text
 SOFTEN_DAYS = 7             # a flagged note softens suggestions for this long after it was written
 QUOTE_MAX_CHARS = 200       # the recap shows at most this much of a note
 
-# Stems, matched at the start of a word: niggle(s), sore(ness), injury/injured, tired, sick(ness). Deliberately blunt:
-# "not sore today" still softens. A gentler suggestion is the safe error.
-FLAG_RE = re.compile(r"\b(niggl|sore|injur|tired|sick)", re.I)
+# Stems, matched at the start of a word: niggle(s), sore(ness), injury/injured, tired, sick(ness), and the conditions
+# that make a slow run expected: flight, jet lag, haze, smoke, heat, hills, travel. Deliberately blunt: "not sore
+# today" still softens. A gentler suggestion is the safe error.
+FLAG_RE = re.compile(r"\b(niggl|sore|injur|tired|sick|flight|jet\s?lag|haz[ey]|smok|heat|hill|travel)", re.I)
 
 
 def clean(text: str) -> str:

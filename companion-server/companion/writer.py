@@ -58,6 +58,12 @@ LEVEL_RE = re.compile(r"\b(no real change|no change|level|unchanged|the same|sam
 # Which of those the card may say, by the direction the facts state (verdict first, else the pace gap).
 FORBIDDEN_DIRECTION = {"faster": (SLOWER_RE, LEVEL_RE), "slower": (FASTER_RE, LEVEL_RE), "level": (FASTER_RE, SLOWER_RE),
                        "none": (FASTER_RE, SLOWER_RE)}
+# Forward-looking advice. The model may only say these when the facts already do (the "suggestion" fact); otherwise the
+# card falls back to the template. Matched text must appear verbatim in the facts.
+ADVICE_RE = re.compile(
+    r"\b(next (?:week|time|run|session)|this week|tomorrow|(?:work|push|build|bring|get) (?:the pace|your pace|it|back)|"
+    r"try(?:ing)? to|aim(?:ing)? (?:to|for)|you should|should|consider|make sure|focus on|remember to|don't forget|"
+    r"ease (?:back|into|off)|take it easy|rest up|going forward|from here)\b", re.I)
 PHONE_RE = re.compile(r"\+?\d[\d\s-]{7,}\d")
 
 SYSTEM_PROMPT = """You write one short running recap card for a runner, in plain, calm, direct English.
@@ -70,6 +76,7 @@ Rules:
 - Quote a pace only as its own fact gives it. Never put a pace from one fact beside a gap from another. A gap "on true pace" is compared with the true paces in that same fact.
 - The picture already shows distance, time and pace. The headline names the session in plain words with no distance, time or pace and no full stop. The body is one short sentence of judgement (a comparison, a hard minute count, a climb), not a repeat of the picture.
 - If the JSON has a "session", the run was that interval session: name it and what it trains ("purpose"), and judge it on the work pace in the facts. Never call the whole-run average, recoveries included, a number to beat or a line in the sand.
+- Give no advice and no instructions about future runs ("next week", "tomorrow", "try to", "work the pace"). Only describe what happened, unless a fact states the advice.
 - No medical advice, no diagnosis, no links, no phone numbers, no emojis.
 - headline: at most 60 characters. body: at most 160 characters, one short sentence (two at most).
 - The "style" list shows the voice: a dry, honest coach. Few words, a little Kiwi humour, no hype. Match the tone only; never copy the "headline | body" layout, the pipe is only a separator in the list. Its {placeholders} stand for numbers: take numbers from the facts, never from "style".
@@ -167,6 +174,9 @@ def clean(out: CardText, facts: Sequence[Fact] = ()) -> str | None:
             return f"banned:{b}"
     if PHONE_RE.search(text):
         return "phone_like"
+    fact_low = " ".join(f.text for f in facts).lower()
+    if any(m.group(0).lower() not in fact_low for m in ADVICE_RE.finditer(text)):
+        return "unbacked_advice"
     if PIPE_RE.search(text) or out.headline.rstrip().endswith("."):
         return "format"
     if MEASURE_RE.search(out.headline):

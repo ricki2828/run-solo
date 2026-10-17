@@ -40,7 +40,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, FactsResult, build_facts, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, FactsResult, build_facts, next_line, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
@@ -1352,6 +1352,8 @@ class Service(CheckinMixin, MeasureMixin):
         w = self.writer.write(res, digest_lines(mem, feels), voice=v.rendered, style=v.style,
                               suggestion_line=sline.body if sline else None, user_id=uid)
         body = w.body
+        nline = next_line(run, full, soften=soft)   # fixed text: what next and when, never the model's
+        body += f"\n{nline}"
         if v.touch_line:
             body += f"\n\n{v.touch_line}"
         with db.ro(self.s.db_path) as c:
@@ -1360,7 +1362,7 @@ class Service(CheckinMixin, MeasureMixin):
             body += f"\n\n{cv_quest.done_line(done)}"
         buttons = self._buttons(run["feel"], None, None, note=True)
         card_id = secrets.token_hex(16)
-        allowed = " ".join([f.text for f in res.facts] + [v.allowed, suggestion.text if suggestion else "",
+        allowed = " ".join([f.text for f in res.facts] + [nline, v.allowed, suggestion.text if suggestion else "",
                                                           sline.allowed if sline else ""])
         used = v.used_variants if w.source == "template" else [x for x in v.used_variants if x.startswith("touch_")]
         if sline and w.source == "template":
