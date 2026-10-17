@@ -396,17 +396,23 @@ def test_replies_median_starts_at_the_first_logged_event_or_consent(client, fake
     assert t["replies_from"] >= scorecard._week_start(now - timedelta(days=14)).strftime("%Y-%m-%d")
 
 
-def test_survey_answers_are_purged_after_the_test_end_date(client, fakes, tok):
-    from companion.measure import purge_surveys
+def test_survey_answers_are_purged_with_the_ops_audit_at_the_test_end_date(client, fakes, tok):
     uid = q(client, "SELECT id FROM users")[0]["id"]
     with db.tx(client.svc.s.db_path) as c:
         c.execute("INSERT INTO survey_answers VALUES (?,?,?,?,?)", (uid, "ellis", "once", "very", iso(now_utc())))
-    path = client.svc.s.db_path
-    assert purge_surveys(path, datetime(2026, 12, 14, tzinfo=timezone.utc)) == 0
-    assert purge_surveys(path, datetime(2026, 12, 15, tzinfo=timezone.utc)) == 1
-    with db.tx(path) as c:
+    end = client.svc.s.test_end_date
+    day = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+    client.svc.purge(day - timedelta(days=1))
+    assert q(client, "SELECT COUNT(*) n FROM survey_answers")[0]["n"] == 1
+    client.svc.purge(day + timedelta(hours=1))
+    assert q(client, "SELECT COUNT(*) n FROM survey_answers")[0]["n"] == 0
+
+
+def test_ops_survey_purge_needs_yes(client, fakes, tok):
+    uid = q(client, "SELECT id FROM users")[0]["id"]
+    with db.tx(client.svc.s.db_path) as c:
         c.execute("INSERT INTO survey_answers VALUES (?,?,?,?,?)", (uid, "ellis", "once", "very", iso(now_utc())))
-        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('test_end_date','2027-01-01')")
-    assert purge_surveys(path, datetime(2026, 12, 20, tzinfo=timezone.utc)) == 0   # the setting moves the date
     out = []
-    assert ops.main(client.svc.s, ["survey", "purge", "--yes"], out.append) == 0 and out == ["deleted 1 survey answers"]
+    assert ops.main(client.svc.s, ["survey", "purge"], out.append) == 2
+    assert q(client, "SELECT COUNT(*) n FROM survey_answers")[0]["n"] == 1
+    assert ops.main(client.svc.s, ["survey", "purge", "--yes"], out.append) == 0 and out[-1] == "deleted 1 survey answers"

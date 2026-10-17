@@ -2082,6 +2082,7 @@ class Service(CheckinMixin, MeasureMixin):
             cv_quest.purge(c, now, held)
             if ops_send.test_over(self.s, now):   # the tester programme's audit goes when the test ends
                 c.execute("DELETE FROM ops_sends")
+                cv_measure.purge_surveys(c, now, self.s.test_end_date)
             c.execute("DELETE FROM replay_items WHERE real_at < ?" + held, (log_cut,))
             c.execute("DELETE FROM replay_runs WHERE user_id IN (SELECT user_id FROM replay_state WHERE status = 'done' "
                       "AND updated_at < ?)", (log_cut,))
@@ -2147,4 +2148,4 @@ class Service(CheckinMixin, MeasureMixin):
                 c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_purge', ?)", (iso(now),))
         if due:
             self.purge(now)
-            cv_measure.purge_surveys(self.s.db_path, now)
+

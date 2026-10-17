@@ -43,18 +43,13 @@ SURVEY_VALUES = {
     "ellis": frozenset(v for v, _ in ELLIS_OPTIONS),
 }
 
-TEST_END_DEFAULT = "2026-12-15"   # settings key test_end_date overrides; the survey answers go on this date
 
-
-def purge_surveys(path: str, now: datetime, force: bool = False) -> int:
-    """Delete every survey answer once the test has ended (setting test_end_date, a YYYY-MM-DD date, default
-    TEST_END_DEFAULT), or at once with force. Returns the rows removed. The answers are kept only until then."""
-    with db.tx(path) as c:
-        if not force:
-            r = c.execute("SELECT value FROM settings WHERE key='test_end_date'").fetchone()
-            if now.date().isoformat() < (r["value"] if r else TEST_END_DEFAULT):
-                return 0
-        return c.execute("DELETE FROM survey_answers").rowcount
+def purge_surveys(c, now: datetime, end: str, force: bool = False) -> int:
+    """Delete every survey answer from the test's last day on (`end` is Settings.test_end_date, a YYYY-MM-DD date), or at
+    once with force. Runs on the caller's connection. Returns the rows removed; the answers are kept only until then."""
+    if not force and now.date().isoformat() < end:
+        return 0
+    return c.execute("DELETE FROM survey_answers").rowcount
 
 
 class MeasureMixin:

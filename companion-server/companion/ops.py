@@ -156,7 +156,9 @@ def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> in
         if "--yes" not in argv:
             out("this deletes every survey answer now; run `ops survey purge --yes` to confirm")
             return 2
-        out(f"deleted {measure.purge_surveys(s.db_path, now_utc(), force=True)} survey answers")
+        with db.tx(s.db_path) as c:
+            n = measure.purge_surveys(c, now_utc(), s.test_end_date, force=True)
+        out(f"deleted {n} survey answers")
         return 0
     elif cmd == "feedback":
         arg = argv[1] if len(argv) > 1 else "7"
