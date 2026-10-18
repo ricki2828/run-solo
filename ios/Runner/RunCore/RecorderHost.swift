@@ -3,12 +3,14 @@ import Foundation
 internal import RunCore
 
 /// The core's clocks: device monotonic millis (the journal's `t`) and wall epoch millis (`w`).
+/// Mono must keep counting while the device sleeps (plan §2.6, Android `elapsedRealtime`):
+/// `CLOCK_MONOTONIC_RAW` is `mach_continuous_time`; `systemUptime` stops during sleep.
 struct RecorderClock {
   var monoMs: () -> Int64
   var wallMs: () -> Int64
 
   static let system = RecorderClock(
-    monoMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) },
+    monoMs: { Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) / 1_000_000) },
     wallMs: { Int64(Date().timeIntervalSince1970 * 1000) }
   )
 }
