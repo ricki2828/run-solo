@@ -70,20 +70,38 @@ final class LocationSource: NSObject, CLLocationManagerDelegate {
     manager.pausesLocationUpdatesAutomatically = false
   }
 
-  /// Start updates. Pass `background: true` for a recording started from the foreground.
-  func start(background: Bool = false) {
+  /// Who asked for updates: the GPS probe and the recorder share one manager (P3). Updates run
+  /// while any owner holds them; background mode while any owner asked for it.
+  private var owners: [String: Bool] = [:]
+
+  /// Start updates for `owner`. Pass `background: true` for a recording started from the foreground.
+  func start(background: Bool = false, owner: String = "default") {
+    owners[owner] = background || owners[owner] == true
     if background { enableBackground() }
     guard !running else { return }
     running = true
     manager.startUpdatingLocation()
+    LocationSource.trace?("location start owner=\(owner) background=\(background)")
   }
 
-  func stop() {
-    guard running else { return }
+  /// Release `owner`'s hold; updates stop when no owner is left.
+  func stop(owner: String = "default") {
+    guard owners.removeValue(forKey: owner) != nil else { return }
+    if !owners.values.contains(true) { disableBackground() }
+    guard running, owners.isEmpty else { return }
     running = false
     manager.stopUpdatingLocation()
-    disableBackground()
+    LocationSource.trace?("location stop owner=\(owner)")
   }
+
+  /// Extra fix listeners by key (the recorder's), called after `onFix`.
+  private var listeners: [String: (CLLocation) -> Void] = [:]
+
+  func addFixListener(_ key: String, _ listener: @escaping (CLLocation) -> Void) { listeners[key] = listener }
+  func removeFixListener(_ key: String) { listeners[key] = nil }
+
+  /// Diagnostics hook (authorization changes, start/stop); set by PlatformHost.
+  static var trace: ((String) -> Void)?
 
   private func enableBackground() {
     manager.allowsBackgroundLocationUpdates = true
@@ -101,7 +119,10 @@ final class LocationSource: NSObject, CLLocationManagerDelegate {
   // MARK: CLLocationManagerDelegate
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-    for location in locations { onFix?(location) }
+    for location in locations {
+      onFix?(location)
+      for listener in listeners.values { listener(location) }
+    }
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -109,6 +130,7 @@ final class LocationSource: NSObject, CLLocationManagerDelegate {
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    LocationSource.trace?("authorization status=\(manager.authorizationStatus.rawValue) accuracy=\(manager.accuracyAuthorization.rawValue)")
     onAuthorizationChange?()
   }
 }
@@ -142,7 +164,7 @@ final class GpsProbe {
     observer = notifications.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
       self?.stop()
     }
-    source.onFix = { [weak self] location in
+    source.addFixListener("probe") { [weak self] location in
       guard let self else { return }
       self.last = (location, self.now())
     }
@@ -156,7 +178,7 @@ final class GpsProbe {
   func start() {
     guard timer == nil else { return }
     last = nil
-    if source.authorized { source.start(background: false) }
+    if source.authorized { source.start(background: false, owner: "probe") }
     timer = schedule { [weak self] in self?.tick() }
     tick()
   }
@@ -164,7 +186,7 @@ final class GpsProbe {
   func stop() {
     timer?.cancel()
     timer = nil
-    source.stop()
+    source.stop(owner: "probe")
     last = nil
   }
 

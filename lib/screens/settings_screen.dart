@@ -232,6 +232,16 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   /// "Move all runs (one file)": every run, edits and verdict in ONE
   /// gzipped file through the share sheet (logic in run_transfer.dart).
+  /// iOS (plan B4): the Swift diagnostics log opens in the share sheet.
+  Future<void> _shareDiagnostics() async {
+    try {
+      await const MethodChannel('app.runsupreme/diagnostics')
+          .invokeMethod<bool>('share');
+    } on PlatformException catch (_) {
+      // Nothing to share yet; the row stays quiet.
+    }
+  }
+
   Future<void> _moveRuns(BuildContext context) async {
     final services = AppServices.of(context);
     setState(() => _busy = true);
@@ -544,6 +554,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 value: _busy ? 'Working' : '',
                 onTap: _busy ? null : () => _importRuns(context),
               ),
+              if (HostCaps.diagnosticsShare)
+                SettingsRow(
+                  label: 'Share diagnostics',
+                  value: '',
+                  onTap: _shareDiagnostics,
+                ),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: Space.x12),
                 child: Text(

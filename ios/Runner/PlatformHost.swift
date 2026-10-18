@@ -1,10 +1,9 @@
 import Flutter
 import UIKit
 
-// Swift hosts for the Pigeon contract (iOS plan §2.4). Phase 1 stubs: every API answers with a
-// safe default and nothing records yet (location + permissions live in LocationSource.swift
-// and PermissionsHost.swift). Real implementations replace these one API at a time
-// (P3 recorder, P5 place name, P7 strap).
+// Swift hosts for the Pigeon contract (iOS plan §2.4). The recorder is RunCore/RecorderApiHost.swift
+// (P3); location + permissions live in LocationSource.swift and PermissionsHost.swift. The rest are
+// Phase 1 stubs answering safe defaults until their tasks (P5 place name, P7 strap).
 
 /// Where Swift keeps run data. `path_provider.getApplicationSupportDirectory()` resolves to the
 /// same directory on iOS, so Dart's `runs/` and `state/` and Swift's `journals/` share one root.
@@ -29,67 +28,6 @@ enum StorageDirs {
       }
     }
     NSLog("RunSupreme: support dir \(support.path)")
-  }
-}
-
-final class RecorderApiStub: RecorderApi {
-  /// Pre-start GPS readiness (P2). The recorder itself stays a stub until P3.
-  var probe: GpsProbe?
-
-  private func notYet() -> StartResult { StartResult(runId: nil, error: .startFailed) }
-
-  func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult { notYet() }
-  func startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig) throws -> StartResult {
-    StartResult(runId: nil, error: .replayUnavailable)
-  }
-  func resumeRecovered(runId: String) throws -> StartResult { StartResult(runId: nil, error: .noSuchJournal) }
-  func pause() throws {}
-  func resume() throws {}
-  func lap(source: LapSource) throws {}
-  func startReps() throws {}
-  func stop() throws -> String? { nil }
-
-  func status() throws -> RecorderStatus {
-    RecorderStatus(
-      state: .idle,
-      mode: .free,
-      laps: [],
-      elapsedMs: 0,
-      lapIndex: 0,
-      gpsFix: false,
-      hrConnected: false,
-      phase: .none,
-      repIndex: 0,
-      phaseRemainingMs: 0,
-      journalOk: true
-    )
-  }
-
-  func recover() throws -> [OrphanJournal] { [] }
-  func finalise(runId: String) throws -> String? { nil }
-  func discardJournal(runId: String) throws {}
-  func discardRun() throws -> Bool { false }
-  func setCues(enabled: Bool) throws {}
-  func startGpsProbe() throws { DispatchQueue.main.async { self.probe?.start() } }
-  func stopGpsProbe() throws { DispatchQueue.main.async { self.probe?.stop() } }
-  func setKmSplits(enabled: Bool) throws {}
-  func setSpokenSummary(enabled: Bool) throws {}
-  func setVoiceCoach(config: VoiceCoachConfig) throws {}
-  func setCheckIn(metrics: [String], zoneBottomsBpm: [Double]?) throws {}
-  func setCoachSlowdown(slowdown: Double?) throws {}
-  func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws {}
-  func prepareCountdownVoice() throws {}
-  func speakCountdownBeat(beat: Int64) throws {}
-  func stopCountdownVoice() throws {}
-  func setAutoPause(enabled: Bool) throws {}
-  func muteTips() throws {}
-  func setVolumeKeyLaps(enabled: Bool) throws {}
-  func routeSince(fromIndex: Int64) throws -> [Double] { [] }
-  func followedRoute() throws -> FollowRoute? { nil }
-  func listRunFiles() throws -> [String: String] { [:] }
-
-  func exitDiagnosis(runId: String) throws -> ExitDiagnosis {
-    ExitDiagnosis(runId: runId, reason: .other, timestampMs: 0, manufacturer: "Apple")
   }
 }
 
@@ -125,8 +63,7 @@ final class HealthApiStub: HealthApi {
   }
 }
 
-/// Holds the event sink while Dart listens. Nothing emits yet (the recorder is a stub), so the
-/// stream stays open and quiet; P3 pushes `RecorderEvent`s through `send`.
+/// Holds the event sink while Dart listens; `RecorderHost` and the GPS probe push through `send`.
 final class RecorderEventBus: RecorderEventsStreamHandler {
   static let shared = RecorderEventBus()
   private var sink: PigeonEventSink<RecorderEvent>?
@@ -145,8 +82,16 @@ final class RecorderEventBus: RecorderEventsStreamHandler {
 enum PlatformHost {
   static func register(with messenger: FlutterBinaryMessenger) {
     StorageDirs.prepare()
-    let recorder = RecorderApiStub()
-    recorder.probe = GpsProbe(source: LocationSource()) { RecorderEventBus.shared.send($0) }
+    let diagnostics = DiagnosticsLog.shared
+    diagnostics.observeSystem()
+    LocationSource.trace = { diagnostics.log("location", $0) }
+    DiagnosticsChannel.register(with: messenger, log: diagnostics)
+    // One location source for the probe and the recorder (P3).
+    let source = LocationSource()
+    let host = RecorderHost(
+      root: StorageDirs.support, trace: { diagnostics.log("recorder", $0) }, send: { RecorderEventBus.shared.send($0) })
+    let recorder = RecorderApiHost(host: host, source: source, log: diagnostics)
+    recorder.probe = GpsProbe(source: source) { RecorderEventBus.shared.send($0) }
     RecorderApiSetup.setUp(binaryMessenger: messenger, api: recorder)
     StorageApiSetup.setUp(binaryMessenger: messenger, api: StorageApiStub())
     PermissionsApiSetup.setUp(binaryMessenger: messenger, api: PermissionsHost())
