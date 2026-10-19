@@ -554,6 +554,8 @@ class CoachChat:
             # for Sonnet 5.5 are Google and Bedrock, not Anthropic first-party.
             "provider": {"zdr": True, "data_collection": "deny", "allow_fallbacks": False, "require_parameters": True},
             "max_tokens": self.s.coach_max_tokens,
+            # No thinking: it counts against max_tokens and can leave no reply at all (seen on the screen call, 19-Oct).
+            "reasoning": {"enabled": False},
             "temperature": 0.5,
             "usage": {"include": True},
         }

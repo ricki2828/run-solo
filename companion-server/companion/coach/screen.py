@@ -38,6 +38,9 @@ def request_body(model: str, text: str, max_tokens: int) -> dict:
         "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": json.dumps({"message": text})}],
         "provider": {"zdr": True, "data_collection": "deny", "allow_fallbacks": False},
         "max_tokens": max_tokens,
+        # Haiku 5.5 thinks by default on ambiguous text and spent the whole 60-token budget on it (finish "length",
+        # no content): 28 of ~58 real calls on 19-Oct. The answer is three booleans; no thinking.
+        "reasoning": {"enabled": False},
         "temperature": 0,
         "usage": {"include": True},
     }
