@@ -48,6 +48,10 @@ class Fakes:
         self.llm_mode = "ok"
         self.mid = 100
         self.fails: dict[str, list[tuple]] = {}   # Telegram method -> queued failures (see fail())
+        # Coach chat (a request with "tools"): queued OpenRouter answers, each a dict (the JSON body), an int (an HTTP
+        # status), "timeout", or a callable(body) -> one of those. Empty queue: a plain reply with no numbers.
+        self.coach_queue: list = []
+        self.coach_calls: list[dict] = []
 
     def fail(self, method: str, status: int = 400, description: str = "", retry_after: float | None = None,
              times: int = 1, timeout: bool = False) -> None:
@@ -81,6 +85,9 @@ class Fakes:
             self.mid += 1
             return httpx.Response(200, json={"messages": [{"id": f"wamid.{self.mid}"}]})
         if host == "openrouter.ai":
+            if "tools" in body:   # the coach chat; never a real call
+                self.coach_calls.append(body)
+                return self._coach(body)
             self.llm.append(body)
             return self._llm(body)
         return httpx.Response(404)
@@ -108,11 +115,36 @@ class Fakes:
             "provider": "FakeProvider", "usage": {"cost": 0.0004},
             "choices": [{"message": {"content": json.dumps(text)}}]})
 
+    def _coach(self, body):
+        nxt = self.coach_queue.pop(0) if self.coach_queue else coach_text("Keep the next one easy and see how the legs feel.")
+        if callable(nxt):
+            nxt = nxt(body)
+        if nxt == "timeout":
+            raise httpx.ReadTimeout("slow")
+        if isinstance(nxt, int):
+            return httpx.Response(nxt, json={})
+        return httpx.Response(200, json=nxt)
+
     def tg_methods(self):
         return [m for m, _ in self.tg]
 
     def tg_texts(self):
         return [b["text"] for m, b in self.tg if m == "sendMessage"]
+
+
+def coach_text(text: str, cost: float = 0.002, cached: int = 0) -> dict:
+    """An OpenRouter chat answer with plain text."""
+    return {"provider": "Google", "usage": {"cost": cost, "prompt_tokens": 9000, "completion_tokens": 60,
+                                            "prompt_tokens_details": {"cached_tokens": cached, "cache_write_tokens": 0}},
+            "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": text}}]}
+
+
+def coach_tools(*calls: tuple, cost: float = 0.002) -> dict:
+    """An OpenRouter answer that calls tools: each call is (name, args dict or raw string)."""
+    tcs = [{"id": f"call_{i}", "type": "function",
+            "function": {"name": n, "arguments": a if isinstance(a, str) else json.dumps(a)}} for i, (n, a) in enumerate(calls)]
+    return {"provider": "Google", "usage": {"cost": cost, "prompt_tokens": 9000, "completion_tokens": 30},
+            "choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": tcs}}]}
 
 
 @pytest.fixture

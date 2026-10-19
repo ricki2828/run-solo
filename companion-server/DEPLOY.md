@@ -268,6 +268,30 @@ dashboard; if a name differs, look for the key's "credit limit".
 7. Check it: reopen the key and read the limit back. Tell the agent "key limit set" so the digest records it.
 If the key is ever refused (HTTP 402), the coach already falls back to template text; no action is needed beyond raising the limit.
 
+## 7b2. Coach chat (C1, off by default; do not enable from this PR)
+
+Free text from a gated runner goes to a Sonnet agent loop with read-only tools (`companion/coach/`). Every one of these
+must be true for a message to reach the model: `COMPANION_COACH_CHAT=1`, the runner in `COMPANION_COACH_ALLOWLIST`
+(user ids, T-numbers like `T1`, or `telegram:<chat id>`), the app's consent at or above `COMPANION_COACH_CONSENT_REQUIRED`
+(3), not paused and not ops-paused. Before turning it on: the privacy page and consent v3 (C4) are live, the OpenRouter
+account-level ZDR toggle is on, the eval gate has passed for the deployed `prompt_hash` (logged at start-up as
+`coach chat on: prompt_hash=...`), and Ricki's consent is recorded with `companion.cli set-consent <chat_ref> 3` (W6; the
+allowlist never bypasses consent).
+
+- Prompt: compiled at start-up from `coach/` (`COMPANION_COACH_DIR`, default the repo's `coach/`) by `coach/scripts/build_prompt.py`.
+  A skill that does not compile keeps the chat off. Deploy the `coach/` dir from the same reviewed commit as the server.
+- Model and caps: `COMPANION_COACH_MODEL` (default `anthropic/claude-sonnet-5.5`), every call with `provider: {zdr, data_collection:
+  deny, allow_fallbacks: false}`. `COMPANION_COACH_MONTHLY_CAP_USD` (50, all model spend, cards included, with
+  `COMPANION_COACH_CARD_RESERVE_USD` kept back for cards), `COMPANION_COACH_DAILY_MSGS` (40) and `COMPANION_COACH_DAILY_USD`
+  (1.5) per runner per UTC day, counted from the database. Alerts at 50/80/100% of the coach cap and when more than 20% of
+  replies in 24 hours fall back to the template.
+- Red flags (chest pain, fainting, self-harm words) never reach the model: a fixed reply by country (NZ and AU lines
+  verified, elsewhere the emergency number and "your local crisis line"), a health flag and one alert per runner, kind and
+  day. Clear a flag: `companion.cli ops clear-flag T<n> <urgent|wellbeing|ill|injury>`.
+- Cache hits: each call logs `prompt_tokens`, `cached_tokens` and `cache_write`; check the first 20 real messages (W5).
+- Retention: `coach_messages` and `coach_jobs` 30 days, left out of the nightly backup; `cost_ledger` 400 days with the runner
+  id cleared on DELETE. Dropping consent below 3 deletes the chat history at once.
+
 ## 7c. `ops send` (approved tester messages)
 
 `python -m companion.cli ops send --tester T3 --template N1|N2|N3|INVITE [--dry-run]`, `ops sends`, `ops templates [--link URL]`.

@@ -1,13 +1,13 @@
 name: companion-server
 
-# Lightweight (ubuntu, no Flutter). Runs only when companion-server/** or this file changes;
+# Lightweight (ubuntu, no Flutter). Runs only when companion-server/**, coach/** (the skill the server compiles) or this file changes;
 # the Flutter workflows ignore companion-server/** so a server-only PR costs one cheap job.
 on:
   push:
     branches: [main]
-    paths: ['companion-server/**', '.github/workflows/companion-server.yml']
+    paths: ['companion-server/**', 'coach/**', '.github/workflows/companion-server.yml']
   pull_request:
-    paths: ['companion-server/**', '.github/workflows/companion-server.yml']
+    paths: ['companion-server/**', 'coach/**', '.github/workflows/companion-server.yml']
 
 concurrency:
   group: companion-server-${{ github.ref }}

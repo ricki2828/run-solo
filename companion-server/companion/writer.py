@@ -1,7 +1,9 @@
 """Card writer: OpenRouter phrases the facts; everything it returns is validated or replaced.
 
 Boundary rules (eng-review B4): only fact texts and an enumerated memory digest go out; never a
-phone number, chat id or free text. The model writes headline + body only, never buttons.
+phone number, chat id or free text. The model writes headline + body only, never buttons. This boundary is the card
+writer's. The coach chat (companion.coach) is a separate path that does send a gated runner's own messages, runs,
+check-ins and notes, under its own rails (coach eng-review B1-B9).
 """
 from __future__ import annotations
 
@@ -16,31 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from . import db
 from .config import Settings
 from .facts import GOAL_NAME_IN_TEXT_RE, Fact, FactsResult
+from .grounding import LONG_UNITS, NUM_RE, NUM_WORDS, UNIT_AFTER_NUM, UNIT_CANON, numbers_in, units_in  # noqa: F401 (re-exported)
 from .rails import add_alert, tag
 from .timeutil import iso, now_utc
 
-NUM_RE = re.compile(r"\d+(?:[:.]\d+)*")
-NUM_WORDS = re.compile(
-    r"\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
-    r"seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
-    r"dozen|twice|thrice)\b", re.I)
-# Units are compared in canonical form, so "kilometres" == "km" but "miles" != "km".
-UNIT_CANON = {
-    "km": "km", "kms": "km", "kilometre": "km", "kilometres": "km", "kilometer": "km", "kilometers": "km",
-    "mi": "mi", "mile": "mi", "miles": "mi",
-    "m": "m", "metre": "m", "metres": "m", "meter": "m", "meters": "m",
-    "min": "min", "mins": "min", "minute": "min", "minutes": "min",
-    "h": "h", "hr": "h", "hrs": "h", "hour": "h", "hours": "h",
-    "s": "s", "sec": "s", "secs": "s", "second": "s", "seconds": "s",
-    "day": "day", "days": "day", "week": "week", "weeks": "week", "month": "month", "months": "month",
-    "kg": "kg", "lb": "lb", "lbs": "lb", "ft": "ft", "feet": "ft", "foot": "ft", "bpm": "bpm", "%": "%",
-    "kcal": "kcal", "cal": "kcal",
-}
-# Distance and mass words are checked even without a number ("fewer miles"); time words are not
-# ("second half", "in recent days" are ordinary English).
-LONG_UNITS = {"kilometre", "kilometres", "kilometer", "kilometers", "mile", "miles", "metre", "metres", "meter",
-              "meters", "feet", "kcal"}
-UNIT_AFTER_NUM = re.compile(r"\d[\d:.]*\s*(/?[A-Za-z%]+(?:/[A-Za-z]+)?)")
 # Filler the voice was built to avoid. The model reaches for it anyway, so the validator rejects it.
 FILLER = ("solid effort", "great effort", "good effort", "nice effort", "strong effort", "great job", "good job",
           "nice job", "well done", "nice work", "great work", "good work", "keep it up", "keep up the", "keep going",
@@ -110,24 +91,6 @@ class Written:
     body: str
     source: str  # llm | template
     note: str = ""  # why the template was used, or the provider that served the call
-
-
-def numbers_in(text: str) -> set[str]:
-    return set(NUM_RE.findall(text))
-
-
-def units_in(text: str, loose: bool) -> set[str]:
-    """Canonical units used next to a number; with loose=True also unambiguous unit words anywhere."""
-    out: set[str] = set()
-    for m in UNIT_AFTER_NUM.finditer(text):
-        for part in m.group(1).lower().split("/"):
-            if part in UNIT_CANON:
-                out.add(UNIT_CANON[part])
-    if loose:
-        for w in re.findall(r"[A-Za-z]+", text.lower()):
-            if w in LONG_UNITS:
-                out.add(UNIT_CANON[w])
-    return out
 
 
 def grounded(out: CardText, allowed_text: str) -> bool:

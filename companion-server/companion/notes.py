@@ -4,7 +4,9 @@ A note is used in exactly two deterministic ways, and in no others:
   1. the weekly recap quotes it back ("You said: ...");
   2. a few plain keywords soften the next suggestion and the touches (see `soften`), and name a fixed label on the
      run card's "Noted: ..." line (see `flag_label`; the note's own words never go on a card).
-It is NEVER put in a prompt, a render request, a log line or a card the writer sees. The text lives in its own table
+It is never put in a card prompt, a render request, a log line or a card the writer sees. The one exception is the coach
+chat (companion.coach, C1): for a runner past its gate (flag, allowlist, consent v3) the read tools return their notes
+to the coach model as quoted runner text, which Ricki decided on 19-Oct. The text lives in its own table
 (`run_notes`) rather than a `runs` column, so no `SELECT * FROM runs` can carry it anywhere by accident.
 """
 from __future__ import annotations

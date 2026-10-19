@@ -46,6 +46,20 @@ def _posint(v: str | None, default: int) -> int:
     return n if n > 0 else default
 
 
+def _posfloat(v: str | None, default: float) -> float:
+    """A positive number, else the default (a typo must not turn a cap off)."""
+    try:
+        n = float((v or "").strip())
+    except ValueError:
+        return default
+    return n if n > 0 else default
+
+
+def default_coach_dir() -> str:
+    """The skill lives at the repo root (`coach/`), next to companion-server/."""
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "coach")
+
+
 def _https_base(v: str | None) -> str | None:
     v = (v or "").strip().rstrip("/")
     return v if v.startswith("https://") and len(v) > 8 and not any(c in v for c in " ?#") else None
@@ -126,6 +140,31 @@ class Settings:
     rate_per_day: int = 200
     rate_strikes_to_pause: int = 3
 
+    # Coach chat (C1): free text from a gated runner goes to a model with read-only tools. Off by default; the gate is
+    # COMPANION_COACH_CHAT and the allowlist and consent at or above coach_consent_required (eng-review B1).
+    coach_chat: bool = False
+    # Who may use it: user ids (u_...), T-numbers (T3) or "telegram:<chat id>". Empty = nobody, even with the flag on.
+    coach_allowlist: frozenset[str] = frozenset()
+    coach_consent_required: int = 3
+    coach_model: str = "anthropic/claude-sonnet-5.5"
+    # All model spend in a month (cards + chat). Chat stops when it would cross the cap less what the cards still have
+    # reserved (coach_card_reserve_usd minus the cards' spend this month), so chat can never starve the cards.
+    coach_monthly_cap_usd: float = 50.0
+    coach_card_reserve_usd: float = 5.0
+    # Per runner, per UTC day, counted from the database (a restart does not reset them, eng-review B9).
+    coach_daily_msgs: int = 40
+    coach_daily_usd: float = 1.5
+    coach_max_tokens: int = 600
+    coach_max_tool_turns: int = 6
+    coach_turn_timeout_s: float = 30.0
+    coach_job_deadline_s: float = 60.0
+    coach_merge_s: float = 5.0     # messages a runner sends within this long of each other are answered as one turn
+    coach_history: int = 12        # earlier chat messages sent with each turn
+    # Reservation estimates (USD per million tokens); the settle uses the cost OpenRouter reports.
+    coach_usd_per_mtok_in: float = 3.0
+    coach_usd_per_mtok_out: float = 15.0
+    coach_dir: str = field(default_factory=default_coach_dir)
+
     sends_paused: bool = False
     stale_card_hours: float = 6.0
     default_quiet: tuple[int, int] = (21 * 60 + 30, 7 * 60)  # minutes after local midnight
@@ -187,4 +226,15 @@ class Settings:
             rate_strikes_to_pause=_posint(e.get("COMPANION_RATE_STRIKES"), 3),
             test_end_date=_iso_date(e.get("COMPANION_TEST_END_DATE")),
             sends_paused=_flag(e.get("COMPANION_SENDS_PAUSED")),
+            coach_chat=_flag(e.get("COMPANION_COACH_CHAT")),
+            coach_allowlist=_csv(e.get("COMPANION_COACH_ALLOWLIST")),
+            coach_consent_required=_posint(e.get("COMPANION_COACH_CONSENT_REQUIRED"), 3),
+            coach_model=(e.get("COMPANION_COACH_MODEL") or "anthropic/claude-sonnet-5.5").strip(),
+            coach_monthly_cap_usd=_posfloat(e.get("COMPANION_COACH_MONTHLY_CAP_USD"), 50.0),
+            coach_card_reserve_usd=_posfloat(e.get("COMPANION_COACH_CARD_RESERVE_USD"), 5.0),
+            coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
+            coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
+            coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 600),
+            coach_max_tool_turns=min(_posint(e.get("COMPANION_COACH_MAX_TOOL_TURNS"), 6), 6),
+            coach_dir=os.path.expanduser(e.get("COMPANION_COACH_DIR") or default_coach_dir()),
         )
