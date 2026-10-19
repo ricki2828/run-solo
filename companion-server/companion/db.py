@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS convo_cards (
   touch_kind TEXT
 );
 -- A note the runner typed for one run ("Add a note"). Kept apart from `runs` so no SELECT * over runs can carry it into
--- a prompt or a render. Read only by the deterministic recap quote and keyword softening; never sent to a model.
+-- a prompt or a render. Read only by the deterministic recap quote and keyword softening; never sent to the card writer; the coach chat's tools read it for a runner past the coach gate (C1).
 -- It lives and dies with its run (cascade), and with the user (hard delete).
 CREATE TABLE IF NOT EXISTS run_notes (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -239,7 +239,7 @@ CREATE TABLE IF NOT EXISTS replay_items (  -- every message the replay sent: vir
 );
 CREATE INDEX IF NOT EXISTS replay_items_card ON replay_items (card_id);
 -- Check-ins (companion.checkins): the runner's one-tap life answers. Kept 14 days, then purged; shown in the export under
--- `checkins`; excluded from the nightly backup (backup.PRIVATE_TABLES). Never read by the writer or any model prompt.
+-- `checkins`; excluded from the nightly backup (backup.PRIVATE_TABLES). Never read by the card writer; the coach chat's get_checkins reads it for a runner past the coach gate (C1).
 -- kind: ready | today | why | postrun | shape. local_date: the session day (ready, today, why), the run's local day
 -- (postrun) or the Monday of the week it is about (shape). value: a fixed enum (see checkins.py), never free text.
 CREATE TABLE IF NOT EXISTS checkin_answers (
@@ -316,6 +316,64 @@ CREATE TABLE IF NOT EXISTS survey_answers (
   kind TEXT NOT NULL, ref TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL,
   PRIMARY KEY (user_id, kind, ref)
 );
+-- Coach chat (companion.coach, C1). Only for a runner who passed the coach gate (flag, allowlist, consent v3).
+-- coach_jobs: one row per inbound chat message, inserted in the same transaction as its inbound_seen row (eng-review B3).
+-- The runner's words go to coach_messages in that same transaction; `reply` is stored before the send, so a failed send
+-- is retried without another model call, and cleared once it is sent. Purged after 30 days, deleted with the runner, left out of the nightly backup.
+CREATE TABLE IF NOT EXISTS coach_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  msg_mac TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL DEFAULT 'chat',        -- chat | safety (a red flag: fixed template, no model)
+  state TEXT NOT NULL DEFAULT 'pending',    -- pending | running | replied | sending | sent | merged | cancelled | failed
+  attempts INTEGER NOT NULL DEFAULT 0,
+  merged_into INTEGER,                      -- answered together with this job
+  reply TEXT, reply_source TEXT, outcome TEXT,   -- reply_source: llm | template | safety
+  prompt_hash TEXT,
+  screen TEXT,                              -- the safety classifier's verdict: clear | hit:<kind> | error:<why>
+  send_attempts INTEGER NOT NULL DEFAULT 0, parts_sent INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sending_at TEXT, sent_at TEXT
+);
+CREATE INDEX IF NOT EXISTS coach_jobs_state ON coach_jobs (state, created_at);
+CREATE INDEX IF NOT EXISTS coach_jobs_user ON coach_jobs (user_id, created_at);
+-- The chat itself, both sides, for the next turn's context and the runner's export. 30 days, then purged.
+CREATE TABLE IF NOT EXISTS coach_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER,
+  role TEXT NOT NULL CHECK (role IN ('runner','coach')),
+  text TEXT NOT NULL,
+  ts TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS coach_messages_user ON coach_messages (user_id, id);
+CREATE INDEX IF NOT EXISTS coach_messages_age ON coach_messages (ts);
+-- Health flags. C1 sets them only from the deterministic red-flag check (source 'rail'); only the operator clears
+-- urgent and wellbeing (`ops clear-flag`). No message text: a kind, a state and times.
+CREATE TABLE IF NOT EXISTS health_flags (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('ill','injury','urgent','wellbeing')),
+  state TEXT NOT NULL CHECK (state IN ('active','cleared')),
+  source TEXT NOT NULL,
+  set_at TEXT NOT NULL, cleared_at TEXT, cleared_by TEXT,
+  PRIMARY KEY (user_id, kind)
+);
+-- One row per coach model call: reserved before the call (inside a write transaction, so two calls cannot both pass the
+-- cap), settled from OpenRouter's usage after it. Like llm_calls, user_id has no foreign key and is set to NULL on
+-- delete, so the month's spend cannot be reset by deleting. Token counts include the cached share (eng-review W5).
+CREATE TABLE IF NOT EXISTS cost_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  user_id TEXT,
+  job_id INTEGER,
+  model TEXT, provider TEXT, prompt_hash TEXT,
+  purpose TEXT NOT NULL DEFAULT 'chat',     -- chat (the main model) | screen (the safety classifier)
+  state TEXT NOT NULL DEFAULT 'reserved',   -- reserved | settled | released
+  reserved_usd REAL NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER, completion_tokens INTEGER, cached_tokens INTEGER, cache_write_tokens INTEGER,
+  outcome TEXT
+);
+CREATE INDEX IF NOT EXISTS cost_ledger_ts ON cost_ledger (ts);
+CREATE INDEX IF NOT EXISTS cost_ledger_user ON cost_ledger (user_id, ts);
 -- Tables below hold no user data (no user_id column).
 -- Opt-out counts by ISO week (Monday UTC): a runner who sends DELETE (chat, app or web) is erased, so the scorecard would
 -- lose them. A week and a number only, never an id. stop_counts counts STOP messages that paused a runner.
@@ -335,7 +393,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 # Tables allowed to carry no user_id. The deletion test fails on any other new table without one.
 NO_USER_TABLES = frozenset({"alerts", "enrol_refused", "settings", "sqlite_sequence", "deleted_tombstones", "stop_counts"})
 # Tables with a user_id that a delete clears (sets NULL) instead of removing the rows, so shared totals stay true.
-ANONYMISE_ON_DELETE = frozenset({"llm_calls"})
+ANONYMISE_ON_DELETE = frozenset({"llm_calls", "cost_ledger"})
 
 
 def connect(path: str) -> sqlite3.Connection:

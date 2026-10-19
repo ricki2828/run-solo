@@ -19,7 +19,7 @@ from .timeutil import iso, now_utc
 
 log = logging.getLogger("companion")
 TESTER = re.compile(r"^[Tt](\d{1,6})$")
-USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days] | survey purge --yes | scorecard-snapshot [dir] | send ... | sends | templates"
+USAGE = "usage: ops status | roster | pause T<n> | resume T<n> | alerts | feedback [days] | survey purge --yes | scorecard-snapshot [dir] | send ... | sends | templates | clear-flag T<n> <urgent|wellbeing|ill|injury>"
 
 
 def _month_start() -> str:
@@ -91,6 +91,26 @@ def set_ops_pause(s: Settings, who: str, pause: bool) -> tuple[int, str]:
     return 0, f"T{n} {'paused: they get no messages and their chat is ignored (DELETE still works)' if pause else 'resumed'}"
 
 
+FLAG_KINDS = ("urgent", "wellbeing", "ill", "injury")
+
+
+def clear_flag(s: Settings, who: str, kind: str) -> tuple[int, str]:
+    """The operator's one command for a health flag the coach's red-flag rail set (only the operator clears urgent and
+    wellbeing). Logged by T-number and kind only."""
+    from .coach.chat import clear_flag as _clear
+    m = TESTER.match(who or "")
+    if not m or kind not in FLAG_KINDS:
+        return 2, USAGE
+    n = int(m.group(1))
+    with db.tx(s.db_path) as c:
+        r = c.execute("SELECT id FROM users WHERE tester_no=?", (n,)).fetchone()
+        if not r:
+            return 1, f"no runner T{n}"
+        done = _clear(c, r["id"], kind, "ops", now_utc())
+    log.info("ops clear-flag tester=T%d kind=%s cleared=%s", n, kind, done)
+    return 0, f"T{n} {kind} flag {'cleared' if done else 'was not set'}"
+
+
 def alerts(s: Settings) -> list[str]:
     return [f"#{a['id']} {a['ts']} {a['title']} | {a['body']}" for a in pending_alerts(s.db_path)] or ["no unsent alerts"]
 
@@ -148,6 +168,10 @@ def main(s: Settings, argv: list[str], out: Callable[[str], None] = print) -> in
         return ops_send.main(s, argv, out)
     elif cmd == "alerts":
         lines = alerts(s)
+    elif cmd == "clear-flag":
+        code, msg = clear_flag(s, argv[1] if len(argv) > 1 else "", argv[2] if len(argv) > 2 else "")
+        out(msg)
+        return code
     elif cmd == "scorecard-snapshot":
         out(scorecard_snapshot(s, argv[1] if len(argv) > 1 else None))
         return 0

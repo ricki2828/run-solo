@@ -160,8 +160,11 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
         if t:
             svc.mark_replay_aware()
             t.start()
+        if run_worker and svc.coach.enabled:   # one coach thread; jobs live in SQLite, so a restart picks them up
+            threading.Thread(target=svc.coach.run_forever, args=(stop,), name="coach", daemon=True).start()
         yield
         stop.set()
+        svc.coach.wake.set()
 
     app = FastAPI(title="Run Supreme companion", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(BodyLimit)

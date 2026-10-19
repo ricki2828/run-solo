@@ -203,6 +203,10 @@ class TelegramChannel:
         d = self._call("sendMessage", {"chat_id": int(ref), "text": text})
         return str(d["result"]["message_id"])
 
+    def send_typing(self, ref: str) -> None:
+        """"typing..." in the chat for about 5 seconds, while the coach works on a reply."""
+        self._call("sendChatAction", {"chat_id": int(ref), "action": "typing"})
+
     @staticmethod
     def _keyboard(card: OutCard, media: bool) -> list[list[dict]]:
         """Callback buttons by row, then one row of deep-link buttons. Callback index = position in card.buttons.
