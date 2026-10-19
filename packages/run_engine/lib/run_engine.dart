@@ -63,6 +63,7 @@ export 'src/export/intervals_workout_text.dart';
 export 'src/export/gpx_course.dart';
 export 'src/import/gpx_exporter.dart';
 export 'src/import/gpx_importer.dart';
+export 'src/import/health_connect_importer.dart';
 export 'src/import/import_dedupe.dart';
 export 'src/import/import_util.dart';
 export 'src/import/run_bundle.dart';

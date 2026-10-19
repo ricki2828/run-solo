@@ -20,6 +20,7 @@ import app.runsolo.platform.BleApi
 import app.runsolo.platform.BleApiImpl
 import app.runsolo.platform.HealthApi
 import app.runsolo.platform.HealthApiImpl
+import app.runsolo.platform.HealthImportChannel
 import app.runsolo.platform.PermissionKind
 import app.runsolo.platform.PermissionStatus
 import app.runsolo.platform.PermissionsApi
@@ -82,6 +83,9 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             HealthApiImpl(applicationContext) { perms, cb -> requestHealth(perms, cb) },
         )
+        // SPIKE: read side for runs other apps wrote (Dart flag kHealthConnectImport, off).
+        HealthImportChannel(applicationContext) { perms, cb -> requestHealth(perms, cb) }
+            .register(flutterEngine.dartExecutor.binaryMessenger)
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
         handleFinish(intent)
