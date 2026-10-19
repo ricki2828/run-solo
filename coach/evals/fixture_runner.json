@@ -1,0 +1,188 @@
+{
+ "today": "2026-10-19 (Monday)",
+ "get_runner": {
+  "first_name": "Sam",
+  "units": "km",
+  "timezone": "Pacific/Auckland",
+  "goal": {
+   "kind": "race",
+   "label": "Auckland Half",
+   "date": "2026-12-06",
+   "target": "1:55:00"
+  },
+  "days_available": 4,
+  "long_run_day": "Sunday",
+  "health_flags": [],
+  "remembered": [
+   "school run Tue/Thu mornings, runs after 7pm those days",
+   "left calf niggle in July, settled"
+  ]
+ },
+ "get_recent_runs": [
+  {
+   "run_id": "r9",
+   "date": "2026-10-18",
+   "type": "long",
+   "session_name": "Long run",
+   "distance_m": 14200,
+   "duration_s": 5112,
+   "pace_s_per_km": 360,
+   "zone_min": {
+    "z1": 22,
+    "z2": 58,
+    "z3": 5
+   },
+   "climb_m": 85,
+   "feel": "right",
+   "weekday": "Sun"
+  },
+  {
+   "run_id": "r8",
+   "date": "2026-10-16",
+   "type": "quality",
+   "session_name": "Norwegian 4x4",
+   "distance_m": 8100,
+   "duration_s": 2580,
+   "pace_s_per_km": 318,
+   "work_pace_s_per_km": 268,
+   "reps_done": 4,
+   "rep_spread_s": 5,
+   "zone_min": {
+    "z2": 18,
+    "z4": 12,
+    "z5": 4
+   },
+   "feel": "hard",
+   "weekday": "Fri"
+  },
+  {
+   "run_id": "r7",
+   "date": "2026-10-14",
+   "type": "easy",
+   "session_name": "Easy run",
+   "distance_m": 6000,
+   "duration_s": 2070,
+   "pace_s_per_km": 345,
+   "zone_min": {
+    "z2": 20,
+    "z3": 12,
+    "z4": 2
+   },
+   "feel": "right",
+   "weekday": "Wed"
+  },
+  {
+   "run_id": "r6",
+   "date": "2026-10-11",
+   "type": "long",
+   "session_name": "Long run",
+   "distance_m": 13000,
+   "duration_s": 4745,
+   "pace_s_per_km": 365,
+   "zone_min": {
+    "z1": 15,
+    "z2": 60,
+    "z3": 4
+   },
+   "climb_m": 60,
+   "weekday": "Sun"
+  },
+  {
+   "run_id": "r5",
+   "date": "2026-10-10",
+   "type": "race",
+   "session_name": "parkrun",
+   "distance_m": 5000,
+   "duration_s": 1395,
+   "pace_s_per_km": 279,
+   "pb": "5k",
+   "weekday": "Sat"
+  },
+  {
+   "run_id": "r4",
+   "date": "2026-10-08",
+   "type": "quality",
+   "session_name": "Norwegian 4x4",
+   "distance_m": 7900,
+   "duration_s": 2600,
+   "pace_s_per_km": 329,
+   "work_pace_s_per_km": 274,
+   "reps_done": 4,
+   "rep_spread_s": 11,
+   "feel": "hard",
+   "weekday": "Thu"
+  },
+  {
+   "run_id": "r3",
+   "date": "2026-10-06",
+   "type": "easy",
+   "session_name": "Easy run",
+   "distance_m": 6200,
+   "duration_s": 2170,
+   "pace_s_per_km": 350,
+   "zone_min": {
+    "z2": 28,
+    "z3": 8
+   },
+   "weekday": "Tue"
+  }
+ ],
+ "get_stats": {
+  "weekly_km": {
+   "2026-09-21": 24.1,
+   "2026-09-28": 27.0,
+   "2026-10-05": 32.1,
+   "2026-10-12": 28.3
+  },
+  "pbs": {
+   "5k": "23:15 (2026-10-10)",
+   "10k": "50:40 (2026-08-30)"
+  },
+  "longest_run_last_4w_km": 14.2,
+  "load_state": "steady"
+ },
+ "get_plan": {
+  "goal": "Auckland Half 2026-12-06, target 1:55:00",
+  "week": 5,
+  "of": 11,
+  "this_week": [
+   {
+    "day": "2026-10-20",
+    "type": "easy",
+    "name": "Easy run",
+    "minutes": 35,
+    "weekday": "Tue"
+   },
+   {
+    "day": "2026-10-22",
+    "type": "quality",
+    "name": "Tempo",
+    "minutes": 45,
+    "detail": "3 \u00d7 10 min tempo / 2 min jog",
+    "weekday": "Thu"
+   },
+   {
+    "day": "2026-10-23",
+    "type": "easy",
+    "name": "Easy run + strides",
+    "minutes": 30,
+    "weekday": "Fri"
+   },
+   {
+    "day": "2026-10-25",
+    "type": "long",
+    "name": "Long run",
+    "distance_m": 15000,
+    "weekday": "Sun"
+   }
+  ]
+ },
+ "get_checkins": [
+  {
+   "date": "2026-10-17",
+   "readiness": "ok",
+   "sleep": "short",
+   "weekday": "Sat"
+  }
+ ]
+}

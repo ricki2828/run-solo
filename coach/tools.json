@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "notes": "Tool contract the host (companion server) implements. JSON Schema, usable as Anthropic tools or OpenAI-style functions. Read tools return only what the runner already shared with the app. Write tools are validated server-side; a rejected write returns {ok:false, error} and the coach must not claim it happened. Every date the host returns carries its weekday (e.g. {\"day\": \"2026-10-22\", \"weekday\": \"Thu\"}); models get weekdays wrong when left to compute them.",
+  "tools": [
+    {
+      "name": "get_runner",
+      "description": "Profile and preferences: first name, units, timezone, goal, days available, long-run day, active health flags, and remembered facts.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_recent_runs",
+      "description": "Runs newest first with type, session_name, date, distance_m, duration_s, pace, work_pace for reps, rep_spread_s, zone minutes, climb_m, verdict, feel, trail board and PB flags.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "default": 42
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "any",
+              "easy",
+              "long",
+              "quality",
+              "race",
+              "trail"
+            ],
+            "default": "any"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_run",
+      "description": "One run in full: splits, reps, zones, trail block, notes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_stats",
+      "description": "Aggregates: weekly km for N weeks, PBs by distance, longest run, best efforts per trail or route, load_state trend.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "weeks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52,
+            "default": 8
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_plan",
+      "description": "The current plan: goal, weeks, sessions with day/type/name/target, and which sessions are done, missed or moved.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "get_checkins",
+      "description": "Recent check-in answers (readiness, sleep, sore/ill, skip reasons), last 14 days.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "propose_plan_change",
+      "description": "Create or patch the plan. Body follows references/plan-building.md (Plan JSON). Server validates guardrails and returns the accepted plan or the rule that failed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "goal": {
+            "type": "object"
+          },
+          "weeks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "reason",
+          "weeks"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remember",
+      "description": "Keep a fact the runner told you that should shape future coaching (e.g. 'night shifts Mon-Wed', 'left knee history', 'prefers morning runs'). Shown to the runner in 'What the coach knows' and deletable.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "fact": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "preference",
+              "history",
+              "goal",
+              "life"
+            ]
+          },
+          "expires_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "required": [
+          "fact",
+          "kind"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "flag_health",
+      "description": "Set or clear a health flag. ill/injury remove quality sessions until cleared; urgent pauses the plan and alerts the operator; wellbeing alerts the operator.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ill",
+              "injury",
+              "urgent",
+              "wellbeing"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "set",
+              "clear"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "kind",
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
