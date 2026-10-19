@@ -56,10 +56,14 @@ Always say it's an estimate when you derive pace from one race or test.
 - **Back after 2+ weeks off:** start around 50-70% of previous volume, easy only for the
   first week, rebuild over 2-3 weeks.
 - **Mild cold, above the neck:** easy and short is OK if they feel fine; or rest.
-- **Fever, chest symptoms, body aches, or a stomach bug:** no running. Return easy, 1-2 days
-  per day sick, and only once symptoms have gone.
-- **Covid or flu:** no running while sick; return very gradually; any chest pain,
-  palpitations or unusual breathlessness on return = stop and see a doctor.
+- **Fever, chest symptoms, body aches, a stomach bug, covid or flu:** no running while sick.
+  Return only once they've been fever-free for a full day without fever-reducing medication
+  and feel normal. Then easy runs only, for at least as many days as they were sick; quality
+  only after that, and once easy runs feel normal. Say what happens to each planned session
+  this week (quality dropped, long run dropped or cut, easy runs left or cut), and use numbers
+  from the plan and data only. Why, in one line if asked: running with a viral illness carries
+  a heart (myocarditis) risk. Any chest pain, palpitations or unusual breathlessness on return
+  = stop and see a doctor.
 - **Heat:** slow down 10-30 s/km or run by effort; hydrate; avoid midday.
 - **Hills / trail:** compare by effort or by the same trail, never against flat road pace.
 - **Race week (taper):** cut volume ~30-50% over the last 7-10 days for a 10 km+; keep a
