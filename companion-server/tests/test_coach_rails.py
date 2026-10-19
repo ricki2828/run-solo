@@ -222,3 +222,11 @@ def test_screen_parse_accepts_one_exact_object(content):
 def test_screen_parse_rejects_anything_else(content):
     from companion.coach import screen
     assert screen.parse(_ans(content)) is None
+
+
+def test_screen_turns_thinking_off():
+    # Thinking ate the whole 60-token budget on ambiguous text in the real eval (19-Oct): no answer, fail-closed.
+    from companion.coach import screen
+    body = screen.request_body("anthropic/claude-haiku-5.5", "feel hopeless", 60)
+    assert body["reasoning"] == {"enabled": False}
+    assert body["provider"] == {"zdr": True, "data_collection": "deny", "allow_fallbacks": False}
