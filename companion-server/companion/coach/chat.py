@@ -14,6 +14,7 @@ Flow (eng-review section 2):
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
@@ -40,6 +41,8 @@ DAILY_CAP = "That's all the chat I've got in me today. Ask me again tomorrow; yo
 BUDGET = "The coach chat is resting for now. Your run cards still come as normal."
 MAX_CHAT_CHARS = 2000
 MAX_SEND_ATTEMPTS = 5
+STALE_GRACE_S = 30
+MAX_BATCH_CHARS = 4000   # a merged turn is cut to its latest 4000 characters
 SEND_BACKOFF_S = 30
 MAX_TOOL_CALLS_PER_TURN = 8
 TG_LIMIT = 4096
@@ -193,14 +196,16 @@ class CoachChat:
             self.wake.set()
         return True
 
-    def note_flag(self, user: dict, note_text: str, now: datetime) -> str | None:
-        """A typed run note from a gated runner goes through the same red-flag check. -> the safety reply, or None."""
-        kind = redflag.detect(note_text)
-        if not kind or self.gate_for(user["id"]) is not None:
+    def rail(self, user: dict, text: str, now: datetime, where: str = "note") -> str | None:
+        """The red-flag check for text that does not go to the coach: a typed run note, Tell Ricki feedback, or free text
+        from a paused coach runner (review of #341, P2-5). Applies to runners past the gate or only paused. -> the safety
+        reply (the flag and the alert are written), or None. Never a model call."""
+        kind = redflag.detect(text)
+        if not kind or self.gate_for(user["id"]) not in (None, "paused"):
             return None
         with db.tx(self.s.db_path) as c:
             self._flag(c, user, kind, now)
-        log.warning("coach red flag in a note kind=%s tester=%s", kind, tag(user.get("tester_no")))
+        log.warning("coach red flag in %s kind=%s tester=%s", where, kind, tag(user.get("tester_no")))
         return redflag.template(kind, user.get("zone_id"))
 
     def _flag(self, c, user: dict, kind: str, now: datetime) -> None:
@@ -222,8 +227,9 @@ class CoachChat:
     def withdraw(self, c, uid: str) -> None:
         """Consent dropped below the coach version (W6): the chat history goes and nothing queued is answered."""
         c.execute("DELETE FROM coach_messages WHERE user_id=?", (uid,))
-        c.execute("UPDATE coach_jobs SET state='cancelled', outcome='withdrawn', reply=NULL "
-                  "WHERE user_id=? AND state IN ('pending','running','merged')", (uid,))
+        c.execute("UPDATE coach_jobs SET reply=NULL WHERE user_id=?", (uid,))
+        c.execute("UPDATE coach_jobs SET state='cancelled', outcome='withdrawn' "
+                  "WHERE user_id=? AND state IN ('pending','running','merged','replied','sending')", (uid,))
 
     # ------------------------------------------------------------------------------------------ Telegram out
     def _typing(self, ch: Any, ref: str, force: bool = False) -> None:
@@ -239,14 +245,19 @@ class CoachChat:
                 pass   # cosmetic
 
     def send_job(self, job_id: int) -> bool:
-        """Send a stored reply as plain text, split at 4096. A failure is retried later by the worker, the send only."""
-        with db.ro(self.s.db_path) as c:
+        """Send a stored reply as plain text, split at 4096. The send is claimed first (replied -> sending, one winner),
+        so the webhook and the worker can never both send it (review of #341, P2-1). A failure goes back to 'replied' for
+        the worker to retry, the send only. After the send the reply is cleared from the job (it lives in coach_messages)."""
+        with db.tx(self.s.db_path) as c:
+            if c.execute("UPDATE coach_jobs SET state='sending', sending_at=? WHERE id=? AND state='replied' AND reply IS NOT NULL",
+                         (iso(now_utc()), job_id)).rowcount != 1:
+                return False
             j = c.execute("SELECT * FROM coach_jobs WHERE id=?", (job_id,)).fetchone()
-            u = c.execute("SELECT channel, chat_ref FROM users WHERE id=?", (j["user_id"],)).fetchone() if j else None
-        if not j or not u or j["state"] != "replied" or not j["reply"]:
-            return False
-        ch = self.svc.channels.get(u["channel"])
+            u = c.execute("SELECT channel, chat_ref, tester_no FROM users WHERE id=?", (j["user_id"],)).fetchone()
+        ch = self.svc.channels.get(u["channel"]) if u else None
         if ch is None:
+            with db.tx(self.s.db_path) as c:
+                c.execute("UPDATE coach_jobs SET state='failed', outcome=COALESCE(outcome,'')||':no_channel' WHERE id=?", (job_id,))
             return False
         parts = split_text(j["reply"])
         done = j["parts_sent"]
@@ -255,14 +266,19 @@ class CoachChat:
                 ch.send_text(u["chat_ref"], parts[i])
                 done = i + 1
         except ChannelError as e:
+            failed = j["send_attempts"] + 1 >= MAX_SEND_ATTEMPTS
             with db.tx(self.s.db_path) as c:
-                c.execute("UPDATE coach_jobs SET parts_sent=?, send_attempts=send_attempts+1, "
-                          "state=CASE WHEN send_attempts+1 >= ? THEN 'failed' ELSE state END WHERE id=? AND state='replied'",
-                          (done, MAX_SEND_ATTEMPTS, job_id))
+                c.execute("UPDATE coach_jobs SET parts_sent=?, send_attempts=send_attempts+1, state=? WHERE id=? AND state='sending'",
+                          (done, "failed" if failed else "replied", job_id))
+                if failed and j["kind"] == "safety":   # a safety reply that never arrived: a person has to follow up
+                    t = tag(u["tester_no"])
+                    add_alert(c, f"coach-safety-send:{job_id}", f"Run Supreme coach: safety reply to {t} NOT delivered",
+                              f"The fixed safety reply to {t} failed {MAX_SEND_ATTEMPTS} times (Telegram). Contact them directly.",
+                              now_utc())
             log.warning("coach send failed job=%s: %s", job_id, type(e).__name__)
             return False
         with db.tx(self.s.db_path) as c:
-            c.execute("UPDATE coach_jobs SET state='sent', sent_at=?, parts_sent=? WHERE id=? AND state='replied'",
+            c.execute("UPDATE coach_jobs SET state='sent', sent_at=?, parts_sent=?, reply=NULL WHERE id=? AND state='sending'",
                       (iso(now_utc()), done, job_id))
         return True
 
@@ -286,11 +302,18 @@ class CoachChat:
             n += 1
         return n
 
-    def recover(self, now: datetime) -> None:
-        """After a restart: a job left 'running' gets one more try, then the template (B3). Stale reservations go."""
+    def recover(self, now: datetime, stale_only: bool = False) -> int:
+        """A job left 'running' (a restart, or a crash in the worker) gets one more try, then the template (B3). With
+        stale_only, only jobs claimed longer ago than the job deadline + 30 s (the worker calls this every step, review of
+        #341 P2-2). A send left 'sending' goes back to 'replied'. Stale reservations go. -> jobs touched."""
+        cut = iso(now - timedelta(seconds=self.s.coach_job_deadline_s + STALE_GRACE_S)) if stale_only else iso(now + timedelta(days=1))
+        n = 0
         with db.tx(self.s.db_path) as c:
             budget.release_stale(c, now)
-            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running'").fetchall():
+            n += c.execute("UPDATE coach_jobs SET state='replied' WHERE state='sending' AND COALESCE(sending_at, '') < ?", (cut,)).rowcount
+            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND COALESCE(claimed_at, '') < ?",
+                               (cut,)).fetchall():
+                n += 1
                 if j["attempts"] >= 2:
                     c.execute("UPDATE coach_jobs SET state='replied', reply=?, reply_source='template', outcome='recovered', "
                               "replied_at=? WHERE id=?", (FALLBACK, iso(now), j["id"]))
@@ -299,9 +322,12 @@ class CoachChat:
                     c.execute("UPDATE coach_jobs SET state='pending', claimed_at=NULL WHERE id=?", (j["id"],))
                     c.execute("UPDATE coach_jobs SET state='pending', merged_into=NULL WHERE merged_into=? AND state='merged'",
                               (j["id"],))
+        return n
 
     def step(self, now: datetime) -> bool:
-        """One unit of work. True when something was done (send, claim or cancel)."""
+        """One unit of work. True when something was done (send, claim, cancel or a stuck job recovered)."""
+        if self.recover(now, stale_only=True):
+            return True
         with db.ro(self.s.db_path) as c:
             unsent = c.execute("SELECT id, send_attempts, replied_at FROM coach_jobs WHERE state='replied' AND send_attempts < ? "
                                "ORDER BY id LIMIT 20", (MAX_SEND_ATTEMPTS,)).fetchall()
@@ -318,7 +344,17 @@ class CoachChat:
             return False
         if claimed is True:
             return True
-        self._run(claimed, now)
+        try:
+            self._run(claimed, now)
+        except Exception as e:   # never leave a claimed job hanging: the runner gets the template (review of #341, P2-2)
+            log.error("coach run failed job=%s: %s", claimed.job_id, type(e).__name__)
+            with db.tx(self.s.db_path) as c:
+                if c.execute("SELECT 1 FROM coach_jobs WHERE id=? AND state='running'", (claimed.job_id,)).fetchone():
+                    self._reply_now(c, claimed.user_id, claimed.job_id, FALLBACK, f"error:{type(e).__name__}", now)
+            if claimed.ledger_id is not None:
+                with contextlib.suppress(Exception):
+                    self._settle(claimed.ledger_id, now, None, "error", None)
+            self.send_job(claimed.job_id)
         return True
 
     def _claim(self, now: datetime) -> Claimed | bool | None:
@@ -344,25 +380,42 @@ class CoachChat:
                       (primary, *batch, primary))
             c.execute("UPDATE coach_jobs SET state='running', claimed_at=?, attempts=attempts+1, prompt_hash=? WHERE id=?",
                       (iso(now), self.prompt.prompt_hash if self.prompt else None, primary))
-            if budget.daily_msgs(c, uid, now) > self.s.coach_daily_msgs:
-                self._reply_now(c, uid, primary, DAILY_CAP, "daily_cap", now)
-                return True
+            u = dict(c.execute("SELECT id, tester_no, zone_id FROM users WHERE id=?", (uid,)).fetchone())
             texts = [r["text"] for r in c.execute(
                 f"SELECT text FROM coach_messages WHERE user_id=? AND role='runner' AND job_id IN ({marks}) ORDER BY id",
                 (uid, *batch))]
+            # Earlier turns, without the red-flag turns: those were answered by the fixed template and are not coaching
+            # context the model should build on (review of #341, P3).
             history = alternate([{"role": "user" if r["role"] == "runner" else "assistant", "content": r["text"]}
                                  for r in reversed(c.execute(
-                                     f"SELECT role, text FROM coach_messages WHERE user_id=? AND (job_id IS NULL OR job_id NOT IN ({marks})) "
-                                     "ORDER BY id DESC LIMIT ?", (uid, *batch, self.s.coach_history)).fetchall())])
+                                     "SELECT m.role, m.text FROM coach_messages m LEFT JOIN coach_jobs j ON j.id = m.job_id "
+                                     f"WHERE m.user_id=? AND (m.job_id IS NULL OR m.job_id NOT IN ({marks})) "
+                                     "AND COALESCE(j.kind, 'chat') <> 'safety' AND COALESCE(j.reply_source, '') <> 'safety' "
+                                     "ORDER BY m.id DESC LIMIT ?", (uid, *batch, self.s.coach_history)).fetchall())])
             message = "\n".join(texts)
             if message and history and history[-1]["role"] == "user":   # earlier words that never got an answer lead in
                 message = history.pop()["content"] + "\n" + message
+            message = message[-MAX_BATCH_CHARS:]
             if not message:
                 self._reply_now(c, uid, primary, FALLBACK, "no_text", now)
                 return True
+            # The rail again, on the merged turn: "I want to" + "die" or "chest" + "pain on the hill" sent as two messages
+            # each pass alone (review of #341, P1-2). Before the caps, like the inbound rail.
+            kind = redflag.detect(message)
+            if kind:
+                reply = redflag.template(kind, u["zone_id"])
+                c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, "
+                          "replied_at=? WHERE id=?", (reply, kind, iso(now), primary))
+                self._message(c, uid, primary, "coach", reply, now)
+                self._flag(c, u, kind, now)
+                log.warning("coach red flag (merged turn) kind=%s tester=%s job=%s", kind, tag(u["tester_no"]), primary)
+                return True
+            if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
+                self._reply_now(c, uid, primary, DAILY_CAP, "daily_cap", now)
+                return True
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
-            ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars), now,
-                                            self.prompt.prompt_hash if self.prompt else None)
+            ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars, first=True), now,
+                                            self.prompt.prompt_hash if self.prompt else None, u["zone_id"])
             if ledger_id is None:
                 self._reply_now(c, uid, primary, BUDGET if why == "month_cap" else DAILY_CAP, why, now)
                 return True
@@ -455,8 +508,9 @@ class CoachChat:
             if ledger_id is None:
                 with db.tx(self.s.db_path) as c:
                     chars = job.chars + sum(len(json.dumps(m)) for m in messages[2 + len(job.history):])
+                    zone = (c.execute("SELECT zone_id FROM users WHERE id=?", (job.user_id,)).fetchone() or {"zone_id": "UTC"})["zone_id"]
                     ledger_id, why = budget.reserve(c, self.s, job.user_id, job.job_id, budget.estimate(self.s, chars),
-                                                    now, self.prompt.prompt_hash)
+                                                    now, self.prompt.prompt_hash, zone)
                 if ledger_id is None:
                     return None, why, sources
             remaining = deadline - time.monotonic()
@@ -483,17 +537,22 @@ class CoachChat:
             except (KeyError, IndexError, TypeError):
                 return None, "bad_response", sources
             calls = msg.get("tool_calls") or []
+            if not isinstance(calls, list):
+                calls = []
             if calls and not final:
+                calls = [x if isinstance(x, dict) else {} for x in calls]   # odd shapes from the provider never raise
                 messages.append({"role": "assistant", "content": msg.get("content") or None, "tool_calls": calls})
-                for call in calls[:MAX_TOOL_CALLS_PER_TURN]:
-                    fn = (call.get("function") or {}) if isinstance(call, dict) else {}
+                for k, call in enumerate(calls):
+                    call_id = str(call.get("id") or f"call_{k}")
+                    if k >= MAX_TOOL_CALLS_PER_TURN:
+                        messages.append({"role": "tool", "tool_call_id": call_id,
+                                         "content": json.dumps({"ok": False, "error": "too many tool calls in one turn"})})
+                        continue
+                    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
                     res = tools.call(str(fn.get("name", "")), fn.get("arguments"))
                     enc = tools.encode(res)
                     sources.append(enc)
-                    messages.append({"role": "tool", "tool_call_id": str(call.get("id", "")), "content": enc})
-                for call in calls[MAX_TOOL_CALLS_PER_TURN:]:
-                    messages.append({"role": "tool", "tool_call_id": str(call.get("id", "")),
-                                     "content": json.dumps({"ok": False, "error": "too many tool calls in one turn"})})
+                    messages.append({"role": "tool", "tool_call_id": call_id, "content": enc})
                 continue
             content = msg.get("content")
             if isinstance(content, list):

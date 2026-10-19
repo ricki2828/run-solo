@@ -285,9 +285,12 @@ allowlist never bypasses consent).
   `COMPANION_COACH_CARD_RESERVE_USD` kept back for cards), `COMPANION_COACH_DAILY_MSGS` (40) and `COMPANION_COACH_DAILY_USD`
   (1.5) per runner per UTC day, counted from the database. Alerts at 50/80/100% of the coach cap and when more than 20% of
   replies in 24 hours fall back to the template.
-- Red flags (chest pain, fainting, self-harm words) never reach the model: a fixed reply by country (NZ and AU lines
-  verified, elsewhere the emergency number and "your local crisis line"), a health flag and one alert per runner, kind and
-  day. Clear a flag: `companion.cli ops clear-flag T<n> <urgent|wellbeing|ill|injury>`.
+- Red flags (chest pain, breathlessness, fainting or dizziness, self-harm words) never reach the model: checked on each
+  message, again on the merged turn, and on notes, Tell Ricki feedback and a paused runner's text. A fixed reply by country
+  (NZ, AU, UK and US lines verified; ZA, SG and unknown get the emergency number and "your local crisis line"), a health
+  flag and one alert per runner, kind and day. A safety reply that cannot be delivered after 5 tries raises its own alert.
+  Clear a flag: `companion.cli ops clear-flag T<n> <urgent|wellbeing|ill|injury>`.
+- Daily caps reset at the runner's local midnight.
 - Cache hits: each call logs `prompt_tokens`, `cached_tokens` and `cache_write`; check the first 20 real messages (W5).
 - Retention: `coach_messages` and `coach_jobs` 30 days, left out of the nightly backup; `cost_ledger` 400 days with the runner
   id cleared on DELETE. Dropping consent below 3 deletes the chat history at once.

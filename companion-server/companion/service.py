@@ -385,7 +385,8 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
     "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
     "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
-    "coach_jobs": "the coach chat queue: states, times and the reply until it is sent (the words are under coach_chat_30d)",
+    "coach_jobs": "the coach chat queue: states and times, and a reply only while it waits to be sent; the words of both "
+                  "sides are exported under coach_chat_30d",
     "cost_ledger": "the cost and token counts of each coach model call, so the caps can be counted; no content",
 }
 
@@ -637,9 +638,11 @@ class Service(CheckinMixin, MeasureMixin):
             reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now, noted) or UNKNOWN
             event = {FEEDBACK_SAVED: "feedback", NOTE_SAVED: "note"}.get(reply, "text")
             if reply == UNKNOWN and user and self.coach.enabled and self.coach.gate_for(user["id"]) == "paused":
-                reply = COACH_PAUSED   # a paused coach runner: told how to turn it back on, no model call
-            elif reply == NOTE_SAVED and user and self.coach.enabled:
-                reply = self.coach.note_flag(user, cv_notes.clean(inb.text), now) or reply   # a red flag in a typed note
+                # a paused coach runner: the red-flag rail still answers (no model); otherwise how to turn it back on
+                reply = self.coach.rail(user, cv_notes.clean(inb.text), now, "paused chat") or COACH_PAUSED
+            elif reply in (NOTE_SAVED, FEEDBACK_SAVED) and user and self.coach.enabled:
+                # a red flag in a typed note or in Tell Ricki feedback gets the safety reply too (the text is still saved)
+                reply = self.coach.rail(user, cv_notes.clean(inb.text), now, "note" if reply == NOTE_SAVED else "feedback") or reply
         if event:
             self._log_event(user, event, now)
         self._reply(ch, inb.ref, reply)

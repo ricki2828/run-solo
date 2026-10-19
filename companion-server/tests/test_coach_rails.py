@@ -38,6 +38,21 @@ from companion.config import default_coach_dir
     ("feel hopeless", "wellbeing"),
     ("I don’t want to be here anymore", "wellbeing"),
     ("chest pain and I feel hopeless", "wellbeing"),   # both: wellbeing wins
+    # every miss from the review of #341 (P1-1)
+    ("my chest is killing me", "urgent"), ("pain in chest", "urgent"), ("pains in my chest", "urgent"),
+    ("tightness in chest", "urgent"), ("chest felt heavy", "urgent"), ("crushing feeling in my chest", "urgent"),
+    ("chest-pain", "urgent"), ("short of breath", "urgent"), ("shortness of breath", "urgent"),
+    ("couldnt catch my breath", "urgent"), ("hard to breathe", "urgent"), ("trouble breathing", "urgent"),
+    ("felt dizzy and lightheaded", "urgent"), ("feinted", "urgent"), ("pased out", "urgent"),
+    ("lost consciousness", "urgent"), ("heart was going crazy", "urgent"), ("left arm numb", "urgent"),
+    ("no sleep fainted at work", "urgent"),
+    ("kms", "wellbeing"), ("i wanna kms", "wellbeing"), ("unalive myself", "wellbeing"),
+    ("dont want to be alive anymore", "wellbeing"), ("life isnt worth living", "wellbeing"),
+    ("not worth living", "wellbeing"), ("thinking about ending it", "wellbeing"), ("cut myself", "wellbeing"),
+    ("overdose", "wellbeing"), ("no one would miss me", "wellbeing"), ("it all feels pointless", "wellbeing"),
+    ("whats the point anymore", "wellbeing"),
+    ("did suicides on the track today", "wellbeing"),   # the sprint drill: a deliberate false positive
+    ("without any chest pain now", "urgent"),           # only an immediate "no/never/without" negates
 ])
 def test_red_flags_hit(text, kind):
     assert redflag.detect(text) == kind
@@ -45,13 +60,12 @@ def test_red_flags_hit(text, kind):
 
 @pytest.mark.parametrize("text", [
     "no chest pain this time, legs felt good",
-    "without any chest pain now",
     "never fainted, just tired",
     "can I move my long run to Sunday?",
     "the hill reps were brutal but I loved it",
     "how fast should my easy runs be",
     "felt confused about the plan this week",
-    "a faint niggle in my calf",
+    "never fainted",
     "",
 ])
 def test_red_flags_miss(text):
@@ -70,7 +84,11 @@ def test_templates_by_country():
     w_au = redflag.template("wellbeing", "Australia/Perth")
     assert "13 11 14" in w_au and "0477 13 11 14" in w_au and "000" in w_au
     w_uk = redflag.template("wellbeing", "Europe/London")
-    assert "local crisis line" in w_uk and "999" in w_uk and "Samaritans" not in w_uk   # unverified lines stay out
+    assert "Samaritans" in w_uk and "116 123" in w_uk and "999" in w_uk
+    w_us = redflag.template("wellbeing", "America/New_York")
+    assert "988" in w_us and "911" in w_us
+    w_za = redflag.template("wellbeing", "Africa/Johannesburg")
+    assert "local crisis line" in w_za and "10111" in w_za   # unverified lines stay out
     w_sg = redflag.template("wellbeing", "Asia/Singapore")
     assert "local crisis line" in w_sg and "995" in w_sg
     for t in (nz, w_nz, w_au, w_uk):
@@ -97,7 +115,11 @@ def test_validator_passes(reply):
 
 @pytest.mark.parametrize("reply, why", [
     ("You ran 21.3 km at 4:05.", "ungrounded"),
-    ("Go for 15 km on Sunday.", None),   # 15 is a skill constant (guardrail +15 min)
+    ("Go for 15 km on Sunday.", "ungrounded"),   # 15 is a skill constant, but never as a measurement
+    # the review of #341 (P2-3): constants and crisis digits are not data
+    ("Do 20 km this week.", "ungrounded"), ("You ran 10 km.", "ungrounded"), ("Your 30 min tempo was fine.", "ungrounded"),
+    ("Try 13 km on Sunday.", "ungrounded"), ("Aim for 11 km.", "ungrounded"),
+    ("Go for twelve kilometres.", "spelled_measure"), ("Run ten minutes easy.", "spelled_measure"),
     ("Run 45 minutes tomorrow.", "ungrounded"),
     ("Check https://example.com for drills.", "link"),
     ("Read runsupreme.com tips.", "link"),

@@ -567,3 +567,137 @@ def test_broken_skill_keeps_the_chat_off(tmp_path, fakes):
         c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(t))
         say(c, "hello")
         assert last_text(fakes).startswith("I only send run recaps")
+
+
+# ------------------------------------------------------------------------------------------------- review of #341 fixes
+def test_a_red_flag_split_across_two_messages_is_caught_on_the_merged_turn(cc, fakes):
+    say(cc, "I want to", now=T0)
+    say(cc, "die", now=T0 + timedelta(seconds=2))
+    assert rows(cc, "SELECT kind FROM health_flags") == []   # each alone passes the inbound rail
+    run_worker(cc, T0 + timedelta(seconds=12))
+    assert fakes.coach_calls == []                            # no model call
+    assert "I'm really sorry you're feeling like this" in last_text(fakes) and "1737" in last_text(fakes)
+    assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "wellbeing"}]
+    assert rows(cc, "SELECT state, kind FROM coach_jobs ORDER BY id")[-1] == {"state": "sent", "kind": "safety"}
+    assert rows(cc, "SELECT COUNT(*) AS n FROM cost_ledger")[0]["n"] == 0
+
+
+def test_red_flag_turns_stay_out_of_the_next_turns_history(cc, fakes):
+    say(cc, "chest pain earlier", now=T0)
+    say(cc, "how was my run?", now=T0 + timedelta(minutes=1))
+    run_worker(cc, T0 + timedelta(minutes=2))
+    msgs = fakes.coach_calls[0]["messages"]
+    assert [m["role"] for m in msgs] == ["system", "user"] and msgs[1]["content"] == "how was my run?"
+
+
+def test_a_reply_is_sent_once_even_when_two_senders_race(cc, fakes):
+    fakes.fail("sendMessage", status=500)
+    say(cc, "hi")
+    run_worker(cc)
+    n = fakes.tg_methods().count("sendMessage")
+    jid = rows(cc, "SELECT id FROM coach_jobs")[0]["id"]
+    with db.tx(cc.svc.s.db_path) as c:   # another sender claimed it first
+        c.execute("UPDATE coach_jobs SET state='sending', sending_at=? WHERE id=?", (db_ts(T0), jid))
+    assert cc.svc.coach.send_job(jid) is False
+    assert fakes.tg_methods().count("sendMessage") == n
+
+
+def test_safety_reply_is_not_sent_twice_by_webhook_and_worker(cc, fakes):
+    say(cc, "chest pain on the hill")
+    run_worker(cc)
+    assert len([t for t in fakes.tg_texts() if t.startswith("Please stop running")]) == 1
+
+
+def test_sent_replies_are_cleared_from_the_job(cc, fakes):
+    say(cc, "hi")
+    run_worker(cc)
+    assert rows(cc, "SELECT state, reply FROM coach_jobs") == [{"state": "sent", "reply": None}]
+
+
+def test_withdrawal_clears_replied_and_sent_replies(cc, fakes):
+    fakes.fail("sendMessage", status=500)
+    say(cc, "hi")
+    run_worker(cc)
+    assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "replied"}]
+    cc.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(cc.token))
+    assert rows(cc, "SELECT state, reply FROM coach_jobs") == [{"state": "cancelled", "reply": None}]
+    cc.svc.coach.drain(T0 + timedelta(minutes=5))
+    assert "Keep the next one easy" not in " ".join(fakes.tg_texts())
+
+
+def test_a_job_stuck_running_is_recovered_by_the_worker_without_a_restart(cc, fakes):
+    say(cc, "hi")
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("UPDATE coach_jobs SET state='running', attempts=2, claimed_at=?", (db_ts(T0),))
+    cc.svc.coach.drain(T0 + timedelta(seconds=30))   # inside the deadline + 30 s: left alone
+    assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "running"}]
+    cc.svc.coach.drain(T0 + timedelta(seconds=95))
+    assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "recovered"}]
+    assert last_text(fakes) == coach_chat.FALLBACK
+
+
+def test_a_crash_in_the_run_writes_the_template(cc, fakes, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(cc.svc.coach, "_agent", boom)
+    say(cc, "hi")
+    run_worker(cc)
+    assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "error:RuntimeError"}]
+    assert last_text(fakes) == coach_chat.FALLBACK
+    assert {r["state"] for r in rows(cc, "SELECT state FROM cost_ledger")} == {"released"}
+
+
+def test_odd_tool_call_shapes_never_raise(cc, fakes):
+    weird = coach_tools(("get_stats", {}))
+    weird["choices"][0]["message"]["tool_calls"] = ["nonsense", {"id": "c1", "function": "also nonsense"}, 7]
+    fakes.coach_queue = [weird, coach_text("Ok.")]
+    say(cc, "hi")
+    run_worker(cc)
+    results = [json.loads(m["content"]) for m in fakes.coach_calls[1]["messages"] if m["role"] == "tool"]
+    assert len(results) == 3 and all(r["ok"] is False for r in results)
+    assert last_text(fakes) == "Ok."
+
+
+def test_paused_coach_runner_still_gets_the_safety_reply(cc, fakes):
+    say(cc, "STOP")
+    say(cc, "I want to kill myself")
+    assert "1737" in last_text(fakes)
+    assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "wellbeing"}]
+    assert fakes.coach_calls == [] and rows(cc, "SELECT * FROM coach_jobs") == []
+
+
+def test_red_flag_in_tell_ricki_feedback(cc, fakes):
+    say(cc, "/feedback")
+    say(cc, "app is fine but honestly I feel hopeless")
+    assert "1737" in last_text(fakes)
+    assert rows(cc, "SELECT COUNT(*) AS n FROM feedback")[0]["n"] == 1   # still saved for Ricki
+    assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "wellbeing"}]
+
+
+def test_failed_safety_send_raises_an_alert(cc, fakes):
+    fakes.fail("sendMessage", status=500, times=10)
+    say(cc, "chest pain on the hill")
+    for i in range(6):
+        cc.svc.coach.drain(T0 + timedelta(minutes=10 * (i + 1)))
+    assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "failed"}]
+    assert rows(cc, "SELECT key FROM alerts WHERE key LIKE 'coach-safety-send:%'")
+
+
+def test_daily_cap_resets_at_the_runners_local_midnight(cc, fakes):
+    import dataclasses
+    cc.svc.coach.s = dataclasses.replace(cc.svc.s, coach_daily_msgs=1)
+    # Auckland is UTC+13 on 21 Oct: local midnight is 11:00 UTC. 10:50 and 11:10 UTC are different local days.
+    a = datetime(2026, 10, 21, 10, 50, tzinfo=timezone.utc)
+    b = datetime(2026, 10, 21, 11, 10, tzinfo=timezone.utc)
+    say(cc, "one", now=a)
+    run_worker(cc, a + timedelta(seconds=10))
+    say(cc, "two", now=b)
+    run_worker(cc, b + timedelta(seconds=10))
+    assert len(fakes.coach_calls) == 2
+
+
+def test_merged_turn_is_capped(cc, fakes):
+    for i in range(4):
+        say(cc, ("x" * 1990) + str(i), now=T0 + timedelta(seconds=i))
+    run_worker(cc, T0 + timedelta(seconds=20))
+    assert len(fakes.coach_calls[0]["messages"][-1]["content"]) == coach_chat.MAX_BATCH_CHARS

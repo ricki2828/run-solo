@@ -114,10 +114,10 @@ class ReadTools:
                 raw_args = json.loads(raw_args) if raw_args.strip() else {}
             except ValueError:
                 return {"ok": False, "error": "arguments are not valid JSON"}
-        args, err = check_args(self.schemas[name], raw_args)
-        if err:
-            return {"ok": False, "error": err}
         try:
+            args, err = check_args(self.schemas[name], raw_args)
+            if err:
+                return {"ok": False, "error": err}
             out = self._impl[name](**args)
         except Exception as e:   # a tool must never take the job down; the model is told it failed
             return {"ok": False, "error": f"tool failed: {type(e).__name__}"}

@@ -13,7 +13,7 @@ from typing import Any
 
 from ..config import Settings
 from ..rails import add_alert
-from ..timeutil import iso
+from ..timeutil import iso, to_local
 
 STALE_RESERVATION = timedelta(minutes=10)
 
@@ -22,8 +22,10 @@ def month_start(now: datetime) -> str:
     return now.strftime("%Y-%m-01T00:00:00Z")
 
 
-def day_start(now: datetime) -> str:
-    return now.strftime("%Y-%m-%dT00:00:00Z")
+def day_start(now: datetime, zone_id: str | None = None) -> str:
+    """The runner's local midnight, as a UTC timestamp: the daily caps reset when their day does, not at 00:00 UTC."""
+    local = to_local(now, zone_id or "UTC")
+    return iso(local.replace(hour=0, minute=0, second=0, microsecond=0))
 
 
 def _ledger_sum(c, since: str, user_id: str | None = None) -> float:
@@ -50,23 +52,29 @@ def chat_headroom(c, s: Settings, now: datetime) -> float:
     return s.coach_monthly_cap_usd - card_hold - (cards + _ledger_sum(c, month_start(now)))
 
 
-def estimate(s: Settings, prompt_chars: int) -> float:
-    """Upper-bound cost of one call: every prompt token at the uncached rate plus a full max_tokens reply."""
-    tokens_in = prompt_chars / 3.5
-    return (tokens_in * s.coach_usd_per_mtok_in + s.coach_max_tokens * s.coach_usd_per_mtok_out) / 1e6
+CACHE_WRITE_PREMIUM = 1.25
 
 
-def daily_msgs(c, user_id: str, now: datetime) -> int:
+def estimate(s: Settings, prompt_chars: int, first: bool = False) -> float:
+    """Upper-bound cost of one call: every prompt token at the uncached rate (2.5 chars a token covers JSON tool results),
+    the cache-write premium on a job's first call, plus a full max_tokens reply."""
+    tokens_in = prompt_chars / 2.5
+    rate_in = s.coach_usd_per_mtok_in * (CACHE_WRITE_PREMIUM if first else 1.0)
+    return (tokens_in * rate_in + s.coach_max_tokens * s.coach_usd_per_mtok_out) / 1e6
+
+
+def daily_msgs(c, user_id: str, now: datetime, zone_id: str | None = None) -> int:
     """Chat turns charged today: jobs that were (or are being) answered, not merged ones, not safety replies."""
     return int(c.execute("SELECT COUNT(*) FROM coach_jobs WHERE user_id=? AND kind='chat' AND created_at>=? "
-                         "AND state IN ('running','replied','sent','failed')", (user_id, day_start(now))).fetchone()[0])
+                         "AND state IN ('running','replied','sending','sent','failed')", (user_id, day_start(now, zone_id))).fetchone()[0])
 
 
-def reserve(c, s: Settings, user_id: str, job_id: int, est: float, now: datetime, prompt_hash: str | None = None) -> tuple[int | None, str]:
+def reserve(c, s: Settings, user_id: str, job_id: int, est: float, now: datetime, prompt_hash: str | None = None,
+            zone_id: str | None = None) -> tuple[int | None, str]:
     """Inside the caller's write transaction. -> (ledger id, "") or (None, why): 'month_cap' or 'daily_usd'."""
     if est > chat_headroom(c, s, now):
         return None, "month_cap"
-    if _ledger_sum(c, day_start(now), user_id) + est > s.coach_daily_usd:
+    if _ledger_sum(c, day_start(now, zone_id), user_id) + est > s.coach_daily_usd:
         return None, "daily_usd"
     cur = c.execute("INSERT INTO cost_ledger (ts, user_id, job_id, model, prompt_hash, state, reserved_usd) VALUES (?,?,?,?,?,?,?)",
                     (iso(now), user_id, job_id, s.coach_model, prompt_hash, "reserved", est))
@@ -96,10 +104,10 @@ def usage_fields(usage: Any, s: Settings) -> dict:
 def settle(c, s: Settings, ledger_id: int, now: datetime, *, provider: str | None, outcome: str, fields: dict | None) -> None:
     """Replace the reservation with the real cost (or release it when the call cost nothing), then the spend alerts."""
     if fields is None:
-        c.execute("UPDATE cost_ledger SET state='released', outcome=? WHERE id=?", (outcome, ledger_id))
+        c.execute("UPDATE cost_ledger SET state='released', outcome=? WHERE id=? AND state='reserved'", (outcome, ledger_id))
         return
     c.execute("UPDATE cost_ledger SET state='settled', provider=?, outcome=?, cost_usd=?, prompt_tokens=?, completion_tokens=?, "
-              "cached_tokens=?, cache_write_tokens=? WHERE id=?",
+              "cached_tokens=?, cache_write_tokens=? WHERE id=? AND state='reserved'",
               (provider, outcome, fields["cost_usd"], fields["prompt_tokens"], fields["completion_tokens"],
                fields["cached_tokens"], fields["cache_write_tokens"], ledger_id))
     cap_alerts(c, s, now)

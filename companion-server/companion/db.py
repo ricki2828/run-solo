@@ -319,19 +319,19 @@ CREATE TABLE IF NOT EXISTS survey_answers (
 -- Coach chat (companion.coach, C1). Only for a runner who passed the coach gate (flag, allowlist, consent v3).
 -- coach_jobs: one row per inbound chat message, inserted in the same transaction as its inbound_seen row (eng-review B3).
 -- The runner's words go to coach_messages in that same transaction; `reply` is stored before the send, so a failed send
--- is retried without another model call. Purged after 30 days, deleted with the runner, left out of the nightly backup.
+-- is retried without another model call, and cleared once it is sent. Purged after 30 days, deleted with the runner, left out of the nightly backup.
 CREATE TABLE IF NOT EXISTS coach_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   msg_mac TEXT NOT NULL UNIQUE,
   kind TEXT NOT NULL DEFAULT 'chat',        -- chat | safety (a red flag: fixed template, no model)
-  state TEXT NOT NULL DEFAULT 'pending',    -- pending | running | replied | sent | merged | cancelled | failed
+  state TEXT NOT NULL DEFAULT 'pending',    -- pending | running | replied | sending | sent | merged | cancelled | failed
   attempts INTEGER NOT NULL DEFAULT 0,
   merged_into INTEGER,                      -- answered together with this job
   reply TEXT, reply_source TEXT, outcome TEXT,   -- reply_source: llm | template | safety
   prompt_hash TEXT,
   send_attempts INTEGER NOT NULL DEFAULT 0, parts_sent INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sent_at TEXT
+  created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sending_at TEXT, sent_at TEXT
 );
 CREATE INDEX IF NOT EXISTS coach_jobs_state ON coach_jobs (state, created_at);
 CREATE INDEX IF NOT EXISTS coach_jobs_user ON coach_jobs (user_id, created_at);
