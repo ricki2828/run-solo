@@ -1,8 +1,9 @@
 """Check-ins: one-tap life answers that move the coach's next session. Pure logic, no I/O.
 
 The runner answers with buttons only (fixed enums, no free text). The answers live in `checkin_answers` for 14 days and
-nothing here is ever handed to the writer or any model: every line that uses an answer comes from checkin_copy.py
-templates (eng-review A2). The next session is one resolver, `resolve`, so the evening rules, the morning card and
+nothing here is ever handed to the card writer: every line that uses an answer comes from checkin_copy.py templates
+(eng-review A2). The coach chat's get_checkins tool (companion.coach, C1) is the one reader that sends answers to a model,
+and only for a runner past its gate (flag, allowlist, consent v3). The next session is one resolver, `resolve`, so the evening rules, the morning card and
 `GET /v1/me/next-session` always agree. It is a pure function of the app's planned session plus the answers, so a move is
 never stored: delete the answer (Undo, or the 14-day purge) and the session is back where the plan put it.
 """

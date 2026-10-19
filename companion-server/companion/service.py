@@ -47,6 +47,7 @@ from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
 from .writer import Writer, Written, digest_lines
+from .coach.chat import COACH_PAUSED, CoachChat
 
 log = logging.getLogger("companion")
 
@@ -370,7 +371,7 @@ EXPORTED_TABLES = {
     "outcomes": "suggestion_outcomes", "convo_cards": "messages_sent_30d", "convo_log": "conversation_log",
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
     "feedback": "feedback", "quests": "quests", "inbound_events": "activity", "survey_answers": "survey_answers",
-    "ops_sends": "ops_messages",
+    "ops_sends": "ops_messages", "coach_messages": "coach_chat_30d", "health_flags": "health_flags",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -384,6 +385,9 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "media_file_ids": "Telegram file ids of clips already sent to the runner (opaque, no content)",
     "inbound_strikes": "times the chat was told to slow down (2 days), used to pause a flood",
     "llm_calls": "the cost of each writing-service call, so the monthly cap can be counted per runner; no content",
+    "coach_jobs": "the coach chat queue: states and times, and a reply only while it waits to be sent; the words of both "
+                  "sides are exported under coach_chat_30d",
+    "cost_ledger": "the cost and token counts of each coach model call, so the caps can be counted; no content",
 }
 
 
@@ -412,6 +416,7 @@ class Service(CheckinMixin, MeasureMixin):
         self.weather = OpenMeteo(http) if settings.weather_enabled else NoWeather()
         self.media = from_settings(settings.render_socket)  # a socket client only; nothing connects unless media_enabled is on
         db.init(settings.db_path)
+        self.coach = CoachChat(self)   # inert unless COMPANION_COACH_CHAT, an allowlist and a compiled skill
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)
     def token_hash(self, token: str) -> str:
@@ -563,6 +568,8 @@ class Service(CheckinMixin, MeasureMixin):
         if verdict != "ok":
             self._rate_limited(ch, inb, verdict, now)
             return
+        if self.coach.enabled and inb.card_id is None and not bare_delete and self._coach_take(ch, inb, now):
+            return   # free text from a gated runner: queued for the coach (or answered by the red-flag rail) in one tx
         if self._seen(inb, now):
             return
         user = self._user_by_ref(inb.channel, inb.ref)
@@ -625,15 +632,39 @@ class Service(CheckinMixin, MeasureMixin):
         elif word == cv_feedback.FEEDBACK_WORD:
             reply = self._feedback_open(user, now) if user else UNKNOWN
         else:
-            # Free text is only ever a note (after "Add a note") or feedback (after "Tell Ricki"). Everything else gets
-            # the fixed canned reply, and no free text ever reaches a model.
+            # Free text here is a note (after "Add a note") or feedback (after "Tell Ricki"); everything else gets the
+            # fixed canned reply. The one path from free text to a model is the coach chat (_coach_take, above), and only
+            # for a runner past its gate: COMPANION_COACH_CHAT, the allowlist and consent v3 (coach eng-review B1).
             reply = self._feedback_reply(user, inb.text, now) or self._note_reply(user, inb.text, now, noted) or UNKNOWN
             event = {FEEDBACK_SAVED: "feedback", NOTE_SAVED: "note"}.get(reply, "text")
+            if reply == UNKNOWN and user and self.coach.enabled and self.coach.gate_for(user["id"]) == "paused":
+                # a paused coach runner: the red-flag rail still answers (no model); otherwise how to turn it back on
+                reply = self.coach.rail(user, cv_notes.clean(inb.text), now, "paused chat") or COACH_PAUSED
+            elif reply in (NOTE_SAVED, FEEDBACK_SAVED) and user and self.coach.enabled:
+                # a red flag in a typed note or in Tell Ricki feedback gets the safety reply too (the text is still saved)
+                reply = self.coach.rail(user, cv_notes.clean(inb.text), now, "note" if reply == NOTE_SAVED else "feedback") or reply
         if event:
             self._log_event(user, event, now)
         self._reply(ch, inb.ref, reply)
         if noted:   # a note just saved: the run card it belongs to may update, once
             self._late_edit(ch, user, noted[0], now)
+
+    def _coach_take(self, ch: Any, inb: Inbound, now: datetime) -> bool:
+        """True when this message went to the coach. Only plain free text gets here: a /start, a command word, /feedback,
+        or any text while an Add a note / Tell Ricki window exists keeps its ordinary path, unchanged."""
+        text = inb.text.strip()
+        word = text.lstrip("/").upper()
+        if not text or START_RE.match(text) or word in NOTE_BARE_WORDS or word in ("RESUME", "STOP ALL", "UNSUBSCRIBE") \
+                or word == cv_feedback.FEEDBACK_WORD:
+            return False
+        user = self._user_by_ref(inb.channel, inb.ref)
+        if not user:
+            return False
+        with db.ro(self.s.db_path) as c:
+            if c.execute("SELECT 1 FROM note_mode WHERE user_id=? UNION ALL SELECT 1 FROM feedback_mode WHERE user_id=?",
+                         (user["id"], user["id"])).fetchone():
+                return False
+        return self.coach.accept(ch, inb, user, now)
 
     def _redelivered(self, inb: Inbound) -> bool:
         with db.ro(self.s.db_path) as c:
@@ -952,6 +983,10 @@ class Service(CheckinMixin, MeasureMixin):
             feedback = [dict(r) for r in c.execute("SELECT ts, text FROM feedback WHERE user_id=? ORDER BY id", (uid,))]
             activity = [dict(r) for r in c.execute("SELECT kind, ts FROM inbound_events WHERE user_id=? ORDER BY id", (uid,))]
             survey = [dict(r) for r in c.execute("SELECT kind, ref, value, created_at FROM survey_answers WHERE user_id=? ORDER BY created_at", (uid,))]
+            coach_chat = [dict(r) for r in c.execute("SELECT role, text, ts FROM coach_messages WHERE user_id=? ORDER BY id", (uid,))]
+            flags = [dict(r) for r in c.execute("SELECT kind, state, source, set_at, cleared_at FROM health_flags WHERE user_id=? "
+                                                "ORDER BY kind", (uid,))]
+            coach_on = self.coach.gate(c, uid) in (None, "paused")
             shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
                        "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
                        "reps": json.loads(r["reps_json"]) if r["reps_json"] else None,
@@ -967,7 +1002,10 @@ class Service(CheckinMixin, MeasureMixin):
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "activity": activity, "survey_answers": survey, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests, "ops_messages": ops_msgs,
+            "coach_chat_30d": coach_chat, "health_flags": flags,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
+                        *(["OpenRouter and a zero-data-retention model provider, for the coach chat: your messages, runs, "
+                           "check-ins and run notes (no phone number or chat id)"] if coach_on else []),
                         "Telegram" if u["channel"] == "telegram" else "Meta (WhatsApp Cloud API, keeps messages up to 30 days)",
                         *(["Open-Meteo (a location rounded to about 11 km and a timezone, no identifier)"]
                           if self.s.weather_enabled else [])],
@@ -1037,6 +1075,8 @@ class Service(CheckinMixin, MeasureMixin):
         def go(c):
             if not c.execute("UPDATE users SET checkin_consent=? WHERE id=?", (version, uid)).rowcount:
                 raise NotFound()
+            if version < self.s.coach_consent_required:
+                self.coach.withdraw(c, uid)   # below the coach version: chat history purged, nothing queued is answered
             log.info("consent version=%s set user=%s via %s", version, uid, source)
         if c is not None:
             return go(c)   # inside the caller's transaction: it calls _ci_unpin_weeks after the commit
@@ -2306,6 +2346,7 @@ class Service(CheckinMixin, MeasureMixin):
     def purge(self, now: datetime | None = None) -> None:
         now = now or now_utc()
         log_cut = iso(now - timedelta(days=RETENTION_LOG_DAYS))
+        gone = 0
         with db.tx(self.s.db_path) as c:
             c.execute("DELETE FROM enrolments WHERE expires_at < ?", (iso(now - timedelta(days=1)),))
             c.execute("DELETE FROM users WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.user_id = users.id)",
@@ -2335,6 +2376,11 @@ class Service(CheckinMixin, MeasureMixin):
                           "t.user_id = replay_rows.user_id AND " + ident + " = replay_rows.rid)", (tbl,))
             c.execute("DELETE FROM replay_state WHERE status = 'done' AND updated_at < ?", (log_cut,))
             c.execute("DELETE FROM llm_calls WHERE ts < ?", (iso(now - timedelta(days=400)),))
+            # coach chat: messages and jobs (with their replies) 30 days; the cost ledger like llm_calls; cleared flags 90 days
+            gone += c.execute("DELETE FROM coach_messages WHERE ts < ?", (log_cut,)).rowcount
+            gone += c.execute("DELETE FROM coach_jobs WHERE created_at < ?", (log_cut,)).rowcount
+            c.execute("DELETE FROM cost_ledger WHERE ts < ?", (iso(now - timedelta(days=400)),))
+            c.execute("DELETE FROM health_flags WHERE state='cleared' AND cleared_at < ?", (iso(now - timedelta(days=90)),))
             c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))
             c.execute("DELETE FROM inbound_events WHERE ts < ?" + held, (iso(now - timedelta(days=cv_measure.EVENT_RETENTION_DAYS)),))
             # Only sent alerts age out, and after 62 days (two months), so a month's cap keys outlive the month: no re-fire on
@@ -2360,7 +2406,7 @@ class Service(CheckinMixin, MeasureMixin):
                       "AND r.run_id=run_shape.run_id)")  # belt and braces: a shape never outlives its run
             c.execute("DELETE FROM memory WHERE key='niggle_area' AND updated_at < ?" + held,
                       (iso(now - timedelta(days=NIGGLE_TTL_DAYS)),))
-            gone = self.purge_checkins(c, now, held)
+            gone += self.purge_checkins(c, now, held)
             gone += c.execute("DELETE FROM feedback WHERE ts < ?" + held,
                               (iso(now - timedelta(days=cv_feedback.FEEDBACK_RETENTION_DAYS)),)).rowcount
             c.execute("DELETE FROM feedback_mode WHERE expires_at < ?", (iso(now - timedelta(hours=1)),))

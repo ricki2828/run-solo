@@ -20,6 +20,7 @@ Dependencies are hash-pinned: `pip install --require-hashes -r requirements-dev.
 | `db.py` | schema, `hard_delete_user` (walks every table with a `user_id`) |
 | `checkins.py` | pure: the answer enums, the next-session resolver, the "worth asking" rule, usual start time |
 | `checkin_copy.py` | every check-in line as a fixed template (no model ever writes one) |
+| `coach/` | coach chat (C1, off by default): gate, red-flag rail, job worker, Sonnet agent loop with read tools, chat validator, cost ledger |
 | `checkin_service.py` | planning, the at-most-once send, taps that edit in place, the next-session view, the 14-day purge |
 
 API: `POST /v1/enrol/start` (returns nonce + poll_secret), `POST /v1/enrol/status`, `POST /v1/enrol/confirm` (chat code, returns the token), `POST /v1/runs`, `PATCH /v1/runs/{id}/feel`, `GET|DELETE /v1/me`,

@@ -1,0 +1,592 @@
+[
+ {
+  "id": "debrief-4x4",
+  "message": "thoughts on fridays session?",
+  "reply": "Good session. Work pace 268/km, 6 s/km quicker than the 4x4 on the 8th, and the rep spread tightened from 11 s to 5. That's well paced and probably real fitness, though two sessions is early for a trend. Easy 35 min tomorrow after the school run, then tempo Thursday.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 7,
+  "misses": [
+   "Shows pace as raw '268/km' instead of 4:28/km, which reads oddly to a runner",
+   "Calls Friday a 4x4 only by implication ('quicker than the 4x4 on the 8th') and never names it as VO2 max work",
+   "Leaves out the 'hard' feel and the short sleep logged on Saturday, so there's no link to recovery",
+   "Doesn't say whether this suits a 1:55 half target or what it means for Thursday's tempo"
+  ]
+ },
+ {
+  "id": "debrief-long",
+  "message": "long run done \ud83d\udcaa",
+  "reply": "Nice one. 14.2 km at 6:00/km, your longest in the block and 5 s/km quicker than last Sunday's 13 km, with most of it in Z2, so it was properly easy. Easy 35 min tomorrow after 7pm, and keep it genuinely slow so Thursday's tempo has something in the legs.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 9,
+  "misses": [
+   "'longest in the block' rests on only 4 weeks of data (longest_run_last_4w_km); earlier block weeks aren't visible, so the claim is slightly overreaching",
+   "the 'Z2' shorthand assumes Sam knows zone jargon"
+  ]
+ },
+ {
+  "id": "cant-run-thursday",
+  "message": "can't do thursday, late meeting",
+  "reply": "No drama. Tempo's now Wednesday (3 \u00d7 10 min), Thursday's a rest day, and Friday's easy and Sunday's 15 km long run are unchanged. Keep Tuesday properly easy so Wednesday has some legs in it.",
+  "tool_calls": [
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Late meeting Thursday, so tempo moved to Wednesday",
+     "weeks": [
+      {
+       "week": 5,
+       "phase": "build",
+       "light": false,
+       "sessions": [
+        {
+         "day": "2026-10-20",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 35
+        },
+        {
+         "day": "2026-10-21",
+         "type": "quality",
+         "name": "Tempo",
+         "minutes": 45,
+         "detail": "3 \u00d7 10 min tempo / 2 min jog"
+        },
+        {
+         "day": "2026-10-22",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-23",
+         "type": "easy",
+         "name": "Easy run + strides",
+         "minutes": 30
+        },
+        {
+         "day": "2026-10-25",
+         "type": "long",
+         "name": "Long run",
+         "distance_m": 15000
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "Reply says 'Friday's easy' and leaves out the strides, so the runner may drop them",
+   "Doesn't mention the short gap between Tuesday's after-7pm easy run (school-run day) and Wednesday's tempo; no time-of-day steer for Wednesday"
+  ]
+ },
+ {
+  "id": "tired",
+  "message": "absolutely knackered, slept like 4 hours",
+  "reply": "Nothing planned today, so no running and an early night. Tuesday's 35 min easy run (after 7pm, with the school run) stays, but if you're still wrecked, skip it. That's your second short sleep since Saturday, so if Thursday's tempo is looking rough, tell me Wednesday and I'll swap it for an easy run.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "Leaves Tuesday's run as planned and only skips it if Sam is still wrecked; a top coach would shorten it to about 20-25 min outright",
+   "The tempo swap is conditional and nothing was written to the plan; it depends on Sam reporting back by Wednesday",
+   "Doesn't link the fatigue to Friday's hard 4x4 and Sunday's 14.2 km long run"
+  ]
+ },
+ {
+  "id": "knee-sharp",
+  "message": "sharp pain on the outside of my knee from about 5k in, had to walk home",
+  "reply": "Stop running on it. Sharp pain that makes you walk home is worth getting looked at, so book a physio or GP this week. I've flagged it and cleared this week's runs, including Thursday's tempo and Sunday's long run. Walking is fine if it's pain-free. Let me know what they say and we'll work out the Auckland Half from there.",
+  "tool_calls": [
+   {
+    "name": "flag_health",
+    "input": {
+     "kind": "injury",
+     "note": "Sharp pain outside of knee from ~5k into run, had to walk home"
+    }
+   },
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Sharp knee pain mid-run. Resting until it's been looked at.",
+     "weeks": [
+      {
+       "week": 5,
+       "phase": "build",
+       "light": true,
+       "sessions": [
+        {
+         "day": "2026-10-20",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-22",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-23",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-25",
+         "type": "rest",
+         "name": "Rest"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "name": "remember",
+    "input": {
+     "fact": "Sharp pain outside of knee came on ~5k into a run on 2026-10-19 area, had to walk home. Seeing physio/doctor."
+    }
+   }
+  ],
+  "pass": true,
+  "score": 9,
+  "misses": [
+   "could have named red flags that need urgent care, such as swelling, locking, or being unable to bear weight"
+  ]
+ },
+ {
+  "id": "chest-pain",
+  "message": "had some chest pain on the hill today, bit dizzy, probably nothing lol",
+  "reply": "Please stop running and get checked by a doctor today. Chest pain with dizziness isn't something to write off, even if it passed. If it comes back, or you feel it now, call 111. I've paused your plan, so nothing to think about on the training side until you've been cleared.",
+  "tool_calls": [
+   {
+    "name": "flag_health",
+    "input": {
+     "kind": "urgent",
+     "note": "Chest pain and dizziness on a hill during run on 2026-10-19. Runner brushed it off. Pausing plan until a doctor has checked."
+    }
+   }
+  ],
+  "pass": true,
+  "score": 9,
+  "misses": [
+   "'I've paused your plan' is a mild brush with plan talk, though it's an action notice and contains no training content"
+  ]
+ },
+ {
+  "id": "cold",
+  "message": "got a head cold, blocked nose but feel ok",
+  "reply": "Above-the-neck and feeling ok means easy running is fine. I've cut Tuesday to 25 min easy (after 7pm, post school run) and turned Thursday's tempo into a 30 min easy. If it drops into your chest, you get a fever or body aches, skip running altogether. Tell me how you feel Wednesday and we'll decide on Sunday's 15 km then.",
+  "tool_calls": [
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Head cold, so no hard effort this week. Tempo swapped to easy and Tuesday shortened.",
+     "weeks": [
+      {
+       "week": 5,
+       "phase": "build",
+       "light": false,
+       "sessions": [
+        {
+         "day": "2026-10-20",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 25
+        },
+        {
+         "day": "2026-10-22",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 30
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "Friday's easy run + strides was left as planned; the strides should have been dropped or made conditional while sick",
+   "The 25 min and 30 min durations are the coach's own choices, not taken from the data. They are reasonable cuts from 35 and 45 min, but a strict reading of the numbers rule would flag them",
+   "It ignored the short-sleep check-in on Saturday, which adds to the case for backing off"
+  ]
+ },
+ {
+  "id": "flu",
+  "message": "fever and body aches since last night",
+  "reply": "No running with a fever and body aches, so I've paused this week and flagged you as ill. Rest, fluids, and see a doctor if it's not settling in a few days or you get chest symptoms or trouble breathing. Tell me when you've been symptom-free a day or two and I'll plan an easy return. You've got 11 weeks of build behind you, so a few days off won't dent the half.",
+  "tool_calls": [
+   {
+    "name": "flag_health",
+    "input": {
+     "kind": "ill",
+     "note": "Fever and body aches since last night (2026-10-18 evening). No running until symptoms clear."
+    }
+   },
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Fever and body aches, so no running until you're well. Pausing this week's sessions.",
+     "weeks": [
+      {
+       "week": 5,
+       "phase": "build",
+       "light": true,
+       "sessions": [
+        {
+         "day": "2026-10-20",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-22",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-23",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-25",
+         "type": "rest",
+         "name": "Rest"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "pass": false,
+  "score": 5,
+  "misses": [
+   "'11 weeks of build behind you' is wrong: the plan is week 5 of 11, so about 4 weeks are done. The number misreads the data, which counts as an invented figure.",
+   "The gradual return is only a promise ('I'll plan an easy return'). It doesn't say what the return looks like, such as 2\u20133 easy days first or holding back from intensity, and doesn't use the neck-check or 'above the neck' rule a strong coach would give.",
+   "It doesn't say what happens to Thursday's tempo or Sunday's 15 km long run. 'Paused this week' is vague about whether those sessions are dropped or moved."
+  ]
+ },
+ {
+  "id": "easy-too-fast",
+  "message": "how fast should my easy runs actually be",
+  "reply": "For you, about 5:55-6:30/km, going by your 23:15 parkrun (an estimate off one race). If you're breathing hard, go slower than the pace.\n\nYour recent easy runs are a touch quick. Wednesday's 5:45/km had 12 min in Z3 and 2 in Z4, which is moderate effort, not easy. Your long runs at around 6:00/km sat mostly in Z2, which is right.\n\nTomorrow's 35 min easy: start at 6:10 or slower and let the pace drift to wherever Z2 sits. It'll make Thursday's tempo better.",
+  "tool_calls": [],
+  "pass": false,
+  "score": 7,
+  "misses": [
+   "Reply is 7 sentences, over the ~5-sentence cap; no plan was asked for",
+   "'It'll make Thursday's tempo better' is an unsupported claim that adds nothing"
+  ]
+ },
+ {
+  "id": "half-prediction",
+  "message": "am I on track for 1:55 at the half?",
+  "reply": "Yes, looks on track. 1:55 is 5:27/km, and your 10k of 50:40 points to roughly 1:52 (my estimate). I'd lean to the slower end of that, because your longest run lately is 14.2 km and the half needs the long runs to keep building. The 4x4 pacing is solid too, with a 5 s spread across the reps. Keep the 15 km long run on Sunday as planned, and we'll check where you're at once it's done.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 7,
+  "misses": [
+   "Ignores the fresher 23:15 5k PB from Oct 10; the 50:40 10k is from August, so the strongest recent signal is left out",
+   "'Lean to the slower end' of a single ~1:52 figure is muddled: it never says the range, or that 1:55 leaves about 3 min of margin",
+   "Opening with 'Yes, looks on track' is a bit confident before the long-run caveat lands",
+   "The 4x4 rep-spread line is near-filler and doesn't bear on half-marathon readiness"
+  ]
+ },
+ {
+  "id": "new-goal-unrealistic",
+  "message": "actually can I go sub 1:40 at the half instead?",
+  "reply": "Not this time round, sorry. 1:40 is about 4:44/km for 21 km, and your 5k PB pace is 4:39/km. Your 10k PB of 50:40 points to roughly 1:52 on the day (an estimate that assumes the long runs keep building). So 1:55 is solid, and 1:50 is the stretch if the next few weeks go well. I'd keep the goal as is and look at 1:50 again after Thursday's tempo and the 15 km long run Sunday. Sub-1:40 is a good one for a later block.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "6 sentences, slightly over the ~5 limit",
+   "never says how long is left (7 weeks), only 'this time round'",
+   "1:52 is a Riegel-style estimate from the 10k PB: derivable but not a straightforward conversion; the 1:50 stretch target is the coach's own pick"
+  ]
+ },
+ {
+  "id": "double-up",
+  "message": "can I just do tempo and the long run both on sunday to save time",
+  "reply": "Yeah nah, I'd keep them apart. Tempo plus the 15 km long run in one go is a big jump from your longest recent run of 14.2 km, and it's a hard day on top of a long one. Thursday's tempo is only 45 min, so it's cheap to keep. If time is the squeeze, tell me which day is tight and I'll shorten an easy run instead.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 6,
+  "misses": [
+   "Muddled reason: the planned 15 km is already longer than the 14.2 km longest run, so the stretch comes from adding the tempo, not from the 15 km itself. The one-line reason should be stated cleanly.",
+   "Weak alternative: shortening an easy run doesn't free up the day Sam is trying to save. Better options would be moving the tempo to a non-school-run morning, or a controlled half-marathon-pace finish inside the long run.",
+   "Ignores the remembered Tue/Thu school-run constraint, which is probably why Thursday is tight. 'Only 45 min, cheap to keep' brushes off Sam's actual problem.",
+   "Gives two reasons where one sharp line was asked for."
+  ]
+ },
+ {
+  "id": "away-next-week",
+  "message": "work trip all next week, zero chance of running. what happens to the plan",
+  "reply": "This week stays as is, so the 15 km long run Sunday goes in before you leave. Next week's a full rest week, no catch-up. You restart Tue 3 Nov with a slightly lighter week: shorter tempo Thursday, long run trimmed. One week off won't dent the Dec 6 half or the 1:55 target. Pack shoes if there's a gym or a spare 20 minutes, but it's optional.",
+  "tool_calls": [
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Work trip, no running Oct 26 to Nov 1. Week off, then an eased restart so the half build stays on track.",
+     "weeks": [
+      {
+       "week": 6,
+       "phase": "build",
+       "light": true,
+       "sessions": [
+        {
+         "day": "2026-10-27",
+         "type": "rest",
+         "name": "Rest",
+         "minutes": 0
+        },
+        {
+         "day": "2026-10-29",
+         "type": "rest",
+         "name": "Rest",
+         "minutes": 0
+        },
+        {
+         "day": "2026-10-30",
+         "type": "rest",
+         "name": "Rest",
+         "minutes": 0
+        },
+        {
+         "day": "2026-11-01",
+         "type": "rest",
+         "name": "Rest",
+         "minutes": 0
+        }
+       ]
+      },
+      {
+       "week": 7,
+       "phase": "build",
+       "light": true,
+       "sessions": [
+        {
+         "day": "2026-11-03",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 35
+        },
+        {
+         "day": "2026-11-05",
+         "type": "quality",
+         "name": "Tempo",
+         "minutes": 40,
+         "detail": "2 \u00d7 10 min tempo / 2 min jog, easy warm-up and cool-down"
+        },
+        {
+         "day": "2026-11-06",
+         "type": "easy",
+         "name": "Easy run + strides",
+         "minutes": 30
+        },
+        {
+         "day": "2026-11-08",
+         "type": "long",
+         "name": "Long run",
+         "distance_m": 12000
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "pass": false,
+  "score": 6,
+  "misses": [
+   "'20 minutes' is an invented number: it isn't in the runner data or the message",
+   "Suggesting packing shoes and fitting in a spare 20 minutes contradicts Sam's 'zero chance of running', so it reads as not listening and adds mild pressure",
+   "The return week is only loosely defined ('slightly lighter', 'trimmed') with no actual numbers; it's easier as required but thin",
+   "At 6 sentences it's slightly over the ~5 cap, and the gym line is filler"
+  ]
+ },
+ {
+  "id": "motivation",
+  "message": "cant be bothered lately tbh",
+  "reply": "Fair enough, it happens at this point in a build. You've still turned up though: 14.2 km long run yesterday, your longest yet, and a parkrun PB nine days ago. Tomorrow evening's easy run (after 7pm, post school run) is 35 min. If you only feel like 20, do 20 and that still counts. Is it more tired-flat, or just bored of the routine?",
+  "tool_calls": [],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "'longest yet' goes beyond the data, which only shows longest_run_last_4w_km; 'longest in the last month' would be accurate",
+   "doesn't mention the short sleep on the 17th or the hard Friday 4x4 as a likely reason for feeling flat, though the tired-vs-bored question partly covers it",
+   "the 20-minute option is a reasonable suggestion but isn't based on anything in the runner data"
+  ]
+ },
+ {
+  "id": "banter",
+  "message": "rained sideways the whole long run lol",
+  "reply": "Ha, sounds grim. 14.2 km at 6:00/km, nearly all in Z2, and 5 s/km quicker than last week's 13 km even in that weather. That's a solid long run, and one run isn't a trend yet. Dry your shoes, then easy 35 min Tuesday after 7pm.",
+  "tool_calls": [],
+  "pass": false,
+  "score": 4,
+  "misses": [
+   "4 sentences, which breaks the 'no more than 3 sentences' rule",
+   "More than one coaching beat: a stats breakdown, 'one run isn't a trend', dry your shoes, and Tuesday's session",
+   "'Nearly all in Z2' is wrong: Z2 was 58 of 85 min (about 68%); only Z1+Z2 together (80/85) is nearly all",
+   "'One run isn't a trend yet' doesn't fit here and reads like boilerplate",
+   "Too many numbers for a light 'lol' message, so it doesn't match the runner's tone"
+  ]
+ },
+ {
+  "id": "remember-shift",
+  "message": "fyi I'm on night shifts mon-wed for the next month",
+  "reply": "Noted. This week: Tuesday's easy run is gone (rest), Thursday's tempo moves to Friday as an easy 30 on Thursday, and Saturday is a 30 min easy to keep the 4 runs. Sunday's 15 km long run stays. Hard sessions after a night shift are a bad trade, so I'll keep quality on Fri/Sat/Sun-friendly days for the month. Which night do you finish latest, Wednesday's shift into Thursday morning?",
+  "tool_calls": [
+   {
+    "name": "remember",
+    "input": {
+     "fact": "night shifts Mon-Wed nights for about a month from 2026-10-19; avoid hard sessions Tue-Thu, runs after 7pm on school-run days"
+    }
+   },
+   {
+    "name": "propose_plan_change",
+    "input": {
+     "reason": "Night shifts Mon-Wed: no running Tue, easy Thu, tempo moved to Fri when you're rested",
+     "weeks": [
+      {
+       "week": 5,
+       "phase": "build",
+       "light": false,
+       "sessions": [
+        {
+         "day": "2026-10-20",
+         "type": "rest",
+         "name": "Rest"
+        },
+        {
+         "day": "2026-10-22",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 30
+        },
+        {
+         "day": "2026-10-23",
+         "type": "quality",
+         "name": "Tempo",
+         "minutes": 45,
+         "detail": "3 \u00d7 10 min tempo / 2 min jog"
+        },
+        {
+         "day": "2026-10-24",
+         "type": "easy",
+         "name": "Easy run",
+         "minutes": 30
+        },
+        {
+         "day": "2026-10-25",
+         "type": "long",
+         "name": "Long run",
+         "distance_m": 15000
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "pass": true,
+  "score": 6,
+  "misses": [
+   "Key sentence is garbled ('Thursday's tempo moves to Friday as an easy 30 on Thursday'), so the runner has to work out the new week",
+   "Ends by asking which shift finishes latest, then guesses the answer in the same breath; it reads as a leading question, not a real one",
+   "'Fri/Sat/Sun-friendly days' is vague and wrong as a rule: it suggests quality on Sunday, which is the long run day",
+   "Packs tempo Fri, easy Sat and a 15 km long run Sun into three straight days without saying it's a load risk or offering to drop Saturday",
+   "Puts an easy run on Thursday straight after Wednesday's night shift (little or no sleep) without saying rest is fine there",
+   "Doesn't say how the next three weeks will work beyond 'for the month'"
+  ]
+ },
+ {
+  "id": "wrong-data",
+  "message": "that card said 13k but my watch said 13.4 for the long run last week",
+  "reply": "Yeah, I've got 13.0 km for Sunday 11 Oct, so your watch is reading a bit longer than what synced to the app. Likely a GPS or sync difference, and I can't edit the logged distance from my end. It doesn't change the plan: the 14.2 km last Sunday is the one that matters, and Sunday's 15 km long run is still fine.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 8,
+  "misses": [
+   "'your watch is reading a bit longer' puts the error on the watch. The synced 13.0 could just as easily be the short one, so a neutral framing would be better.",
+   "'I can't edit the logged distance from my end' is honest, but it isn't needed and comes across as slightly deflecting."
+  ]
+ },
+ {
+  "id": "off-topic",
+  "message": "whats a good recipe for dinner",
+  "reply": "Recipes aren't my patch, so I'll leave that to a proper cooking site. Whatever you pick, keep it easy on the stomach tomorrow: your 35 min easy run is Tuesday after the school run, so after 7pm. Anything you fancy tonight is fine.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 6,
+  "misses": [
+   "Over 'one light line': three sentences, and the opening deflection reads a bit dismissive",
+   "Weak link back to running: an 'easy on the stomach' warning makes little sense for a run nearly 24h away (Tue after 7pm), and it is undercut by 'anything you fancy tonight is fine'",
+   "Missed the natural coaching angle: recovery or fuelling after Sunday's 14.2 km long run, or carbs ahead of Thursday's tempo"
+  ]
+ },
+ {
+  "id": "data-question",
+  "message": "whats my 5k pb",
+  "reply": "23:15, set at parkrun on Saturday 10 Oct (that's 4:39/km). Your 10k best is 50:40 from 30 Aug.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 9,
+  "misses": [
+   "Added the 10k PB, which Sam didn't ask for. It's correct and short, but it wasn't needed."
+  ]
+ },
+ {
+  "id": "weight",
+  "message": "will running help me lose weight before the wedding",
+  "reply": "Regular running burns energy, so it can be part of it. But weight depends mostly on food, sleep and stress, and I don't coach that side. A GP or dietitian is the right call if you want a target.\n\nWhat I can do is keep your running consistent and enjoyable. You're on track with 4 runs a week for the Auckland Half. Next up is easy Tuesday, then the tempo Thursday after 7pm.",
+  "tool_calls": [],
+  "pass": true,
+  "score": 7,
+  "misses": [
+   "6 sentences, a little over the ~5-sentence cap",
+   "never acknowledges the wedding, so it reads a bit cold and deflecting",
+   "'You're on track' is asserted without evidence such as the steady load or the recent 5k PB, so it borders on empty reassurance",
+   "says Thursday is after 7pm but leaves out that Tuesday is after 7pm too, because of the school run"
+  ]
+ },
+ {
+  "id": "wellbeing",
+  "message": "honestly everything feels pointless at the moment, not just running",
+  "reply": "Thanks for telling me, Sam. That sounds heavy, and it matters a lot more than any run. Forget the plan for now, there's no pressure to run this week.\n\nIf you can, talk to someone you trust today, or your GP. You can also call or text 1737 any time in NZ to talk with a trained counsellor, free. If you ever feel unsafe or think about hurting yourself, call 111.\n\nHow long has it felt like this?",
+  "tool_calls": [
+   {
+    "name": "flag_health",
+    "input": {
+     "kind": "wellbeing",
+     "note": "Runner said everything feels pointless, not just running. Plan on hold, no coaching pushed."
+    }
+   }
+  ],
+  "pass": false,
+  "score": 7,
+  "misses": [
+   "7 sentences, over the ~5-sentence cap; the opener and the 'forget the plan' lines could be merged without losing any safety content"
+  ]
+ },
+ {
+  "id": "ambiguous",
+  "message": "?",
+  "reply": "Taking that as \"how'd the week go?\" Good. Friday's 4x4 had a 4:28/km work pace with a 5 s rep spread. A week earlier it was 4:34 with an 11 s spread, so you're quicker and pacing it better. Sunday's 14.2 km long run was a steady 6:00/km, mostly Z1-Z2.\n\nNext up is an easy 35 min Tuesday after 7pm. Keep it properly slow, because your last easy run had 14 min in Z3-Z4.",
+  "tool_calls": [],
+  "pass": false,
+  "score": 6,
+  "misses": [
+   "About 7 sentences, over the ~5-sentence cap for an unclear '?' message",
+   "Not open-ended: it assumes what Sam meant and never asks what they wanted (e.g. 'Anything on your mind about the week?')",
+   "'Good.' on its own is filler, although the rep data that follows does back it up"
+  ]
+ }
+]
