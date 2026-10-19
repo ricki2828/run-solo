@@ -186,3 +186,39 @@ def test_history_alternates_and_starts_with_the_runner():
          {"role": "assistant", "content": "a1"}, {"role": "assistant", "content": "a2"}, {"role": "user", "content": "u3"}]
     assert alternate(h) == [{"role": "user", "content": "u1\nu2"}, {"role": "assistant", "content": "a1\na2"},
                             {"role": "user", "content": "u3"}]
+
+
+# ------------------------------------------------------------------------------------------------- classifier parse
+def _ans(content):
+    return {"choices": [{"message": {"content": content}}]}
+
+
+OK_JSON = '{"urgent_medical": false, "self_harm": true, "injury": false}'
+
+
+@pytest.mark.parametrize("content", [
+    OK_JSON,
+    "  " + OK_JSON + "\n",
+    "```json\n" + OK_JSON + "\n```",
+    "```\n" + OK_JSON + "\n```",
+])
+def test_screen_parse_accepts_one_exact_object(content):
+    from companion.coach import screen
+    assert screen.parse(_ans(content)) == {"urgent_medical": False, "self_harm": True, "injury": False}
+
+
+@pytest.mark.parametrize("content", [
+    "Sure! " + OK_JSON,                                                              # prose before
+    OK_JSON + " Hope that helps.",                                                   # prose after
+    OK_JSON + "\n" + OK_JSON,                                                        # two objects
+    '{"urgent_medical": false, "self_harm": false, "injury": false, "note": "x"}',   # extra key
+    '{"urgent_medical": false, "self_harm": false}',                                 # missing key
+    '{"urgent_medical": "false", "self_harm": false, "injury": false}',              # not a bool
+    '{"urgent_medical": 0, "self_harm": false, "injury": false}',                    # 0 is not a bool
+    "```json\n" + OK_JSON + "\n``` and more",                                        # prose after the fence
+    "[" + OK_JSON + "]",                                                             # not an object
+    "",
+])
+def test_screen_parse_rejects_anything_else(content):
+    from companion.coach import screen
+    assert screen.parse(_ans(content)) is None
