@@ -52,6 +52,9 @@ class Fakes:
         # status), "timeout", or a callable(body) -> one of those. Empty queue: a plain reply with no numbers.
         self.coach_queue: list = []
         self.coach_calls: list[dict] = []
+        # The safety classifier (X-Title "Run Supreme coach screen"): queued answers like coach_queue; empty = all clear.
+        self.screen_queue: list = []
+        self.screen_calls: list[dict] = []
 
     def fail(self, method: str, status: int = 400, description: str = "", retry_after: float | None = None,
              times: int = 1, timeout: bool = False) -> None:
@@ -85,6 +88,16 @@ class Fakes:
             self.mid += 1
             return httpx.Response(200, json={"messages": [{"id": f"wamid.{self.mid}"}]})
         if host == "openrouter.ai":
+            if req.headers.get("X-Title") == "Run Supreme coach screen":   # the coach's safety classifier
+                self.screen_calls.append(body)
+                nxt = self.screen_queue.pop(0) if self.screen_queue else screen_verdict()
+                if callable(nxt):
+                    nxt = nxt(body)
+                if nxt == "timeout":
+                    raise httpx.ReadTimeout("slow")
+                if isinstance(nxt, int):
+                    return httpx.Response(nxt, json={})
+                return httpx.Response(200, json=nxt)
             if "tools" in body:   # the coach chat; never a real call
                 self.coach_calls.append(body)
                 return self._coach(body)
@@ -137,6 +150,13 @@ def coach_text(text: str, cost: float = 0.002, cached: int = 0) -> dict:
     return {"provider": "Google", "usage": {"cost": cost, "prompt_tokens": 9000, "completion_tokens": 60,
                                             "prompt_tokens_details": {"cached_tokens": cached, "cache_write_tokens": 0}},
             "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": text}}]}
+
+
+def screen_verdict(urgent: bool = False, self_harm: bool = False, injury: bool = False, cost: float = 0.0001) -> dict:
+    """An OpenRouter answer from the safety classifier."""
+    return {"provider": "Google", "usage": {"cost": cost, "prompt_tokens": 400, "completion_tokens": 20},
+            "choices": [{"message": {"role": "assistant", "content": json.dumps(
+                {"urgent_medical": urgent, "self_harm": self_harm, "injury": injury})}}]}
 
 
 def coach_tools(*calls: tuple, cost: float = 0.002) -> dict:

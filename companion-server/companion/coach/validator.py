@@ -98,7 +98,8 @@ def _scrub_crisis(text: str) -> str:
     """Blank out whole crisis numbers ("call 111", "13 11 14") so their digits never count as data. A crisis number with
     a measure unit after it ("13 km") is not a phone number and stays to be checked."""
     for n in sorted(CRISIS_NUMBERS, key=len, reverse=True):
-        rx = re.compile(r"(?<![\d.:])" + re.escape(n) + r"(?![\d.:])")
+        # a full stop after it ends the sentence ("Call 111."); only "111.5" makes it part of another number
+        rx = re.compile(r"(?<![\d:])(?<!\d\.)" + re.escape(n) + r"(?![\d:]|\.\d)")
         text = rx.sub(lambda m: m.group(0) if _unit_after(text, m.end()) else " " * len(m.group(0)), text)
     return text
 

@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS coach_jobs (
   merged_into INTEGER,                      -- answered together with this job
   reply TEXT, reply_source TEXT, outcome TEXT,   -- reply_source: llm | template | safety
   prompt_hash TEXT,
+  screen TEXT,                              -- the safety classifier's verdict: clear | hit:<kind> | error:<why>
   send_attempts INTEGER NOT NULL DEFAULT 0, parts_sent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sending_at TEXT, sent_at TEXT
 );
@@ -365,6 +366,7 @@ CREATE TABLE IF NOT EXISTS cost_ledger (
   user_id TEXT,
   job_id INTEGER,
   model TEXT, provider TEXT, prompt_hash TEXT,
+  purpose TEXT NOT NULL DEFAULT 'chat',     -- chat (the main model) | screen (the safety classifier)
   state TEXT NOT NULL DEFAULT 'reserved',   -- reserved | settled | released
   reserved_usd REAL NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0,
   prompt_tokens INTEGER, completion_tokens INTEGER, cached_tokens INTEGER, cache_write_tokens INTEGER,

@@ -1,4 +1,5 @@
-"""Deterministic red-flag check (eng-review B6). Runs in handle_inbound before any cap, budget or model call.
+"""Red-flag check (eng-review B6), the deterministic first layer. The hard tier runs in handle_inbound before any cap,
+budget or model call; the soft tier and everything else go to the classifier (coach/screen.py) in the worker.
 
 A hit means: a fixed safety reply chosen by the runner's country, a health flag set in code, one operator alert per
 runner, kind and day, and no model call in that turn (coach/references/safety.md: "no coaching content in the same
@@ -13,43 +14,57 @@ import unicodedata
 
 URGENT = "urgent"
 WELLBEING = "wellbeing"
+HARD, SOFT = "hard", "soft"
 
-# Physical red flags: stop running, get checked today (safety.md "Red flags"). Broad on purpose (review of #341, P1-1).
+# Two tiers (orchestrator decision after the #341 re-review: regex alone measured 14/20 misses and 11/20 false alarms on
+# a fresh adversarial set).
+#  HARD: unambiguous phrases. The safety reply goes out at once, in the webhook, before any cap or model.
+#  SOFT: ambiguous words ("dead", "dying", "kms", "pointless", "dizzy", "breath"). Like every message without a regex hit,
+#        the turn goes to a cheap classifier (coach/screen.py) before the main model. A soft hit fails towards safety: if
+#        the classifier errors or times out, the safety reply goes out anyway.
 _CHEST = r"(?:chest|cheat|chets|chset)"
-_URGENT = [
-    _CHEST + r"\W*(?:pain|pian|pains|tight\w*|pressure|hurt\w*|ache\w*|ach|squeez\w*|discomfort|heav\w*)",
+_HARD_URGENT = [
+    _CHEST + r"\W*(?:pain|pian|pains|tight\w*|pressure|hurt\w*|ache\w*|ach|squeez\w*|discomfort)",
     _CHEST + r"\s+(?:\w+\s+){0,3}(?:tight\w*|hurt\w*|pain\w*|pressure|ach\w*|heavy|killing|squeez\w*)",
-    r"(?:pain|pains|tight\w*|pressure|heav\w*|crush\w*|squeez\w*)\s+(?:\w+\s+){0,3}" + _CHEST,
-    r"(?:nearly|almost|about to)\s+(?:f[ae]int\w*|pas+e?d?\s+out|black(?:ed)?\s+out|collaps\w*)",
-    r"f[ae]int\w*", r"pas+e?d?\s+out", r"passing\s+out", r"black(?:ed|ing)?\s+out", r"collaps(?:e|ed|ing)\b",
-    r"lost\s+consciousness", r"dizz\w*", r"light\s*-?\s*headed\w*",
-    r"heart\s+(?:was\s+|is\s+|kept\s+)?(?:racing|pounding|fluttering|skipping|irregular|all over the place|going\s+crazy|going\s+mental)",
-    r"(?:racing|irregular|fluttering|skipping)\s+heart", r"palpitation\w*", r"heart\s*(?:beat|rate)\s+(?:went\s+|was\s+)?(?:weird|crazy|irregular|all over)",
-    r"(?:couldn'?t|could not|can'?t|cant|cannot|struggl\w+ to)\s+breathe?\b",
-    r"short(?:ness)?\s+(?:of\s+)?breath", r"(?:catch|get)\s+my\s+breath", r"(?:hard|trouble|difficult\w*|struggl\w*)\s+(?:to\s+)?breath\w*",
-    r"(?:severe|worst|splitting|crushing)\s+headache",
-    r"(?:felt|got|feeling|went)\s+(?:really\s+|very\s+|totally\s+)?confused\b(?!\s+(?:about|by|with|on)\b)",
-    r"stopped\s+sweating", r"heat\s*stroke", r"hot\s+dry\s+skin",
-    r"arm\s+(?:went\s+|is\s+|was\s+|felt\s+)?numb", r"numb\s+(?:left\s+)?arm",
-    r"pain\s+(?:down|in)\s+(?:my\s+)?(?:left\s+)?arm\s+and\s+(?:jaw|chest)",
+    r"(?:pain|pains|tightness|pressure|crush\w*|squeez\w*)\s+(?:\w+\s+){0,3}(?:" + _CHEST[3:-1] + r"|sternum)",
+    r"(?:nearly|almost|about to)\s+(?:f[ae]int\w*|pas+e?d\s+out|black(?:ed)?\s+out|collaps\w*)",
+    r"f[ae]int(?:ed|ing)\b", r"pas+e?d\s+out", r"black(?:ed)\s+out", r"collaps(?:e|ed|ing)\b", r"lost\s+consciousness",
+    r"palpitation\w*", r"arm\s+(?:went\s+|is\s+|was\s+|felt\s+)?numb", r"numb\s+(?:left\s+)?arm",
+    r"(?:severe|worst|splitting|crushing)\s+headache", r"stopped\s+sweating", r"heat\s*stroke", r"hot\s+dry\s+skin",
 ]
-# Distress or crisis: drop the coaching, point to support (safety.md "Wellbeing"). "suicides" the sprint drill also
-# hits: a deliberate false positive (one safety reply and one alert), cheaper than a carve-out that could miss.
-_WELLBEING = [
-    r"kill(?:ing)?\s+my\s*self", r"\bkms\b", r"un\s*-?alive", r"suicid\w*", r"self[\s-]*harm\w*",
-    r"(?:hurt|cut|harm)(?:ting)?\s+my\s*self", r"end(?:ing)?\s+it\s+all", r"end(?:ing)?\s+it\b", r"end\s+my\s+life",
-    r"overdos\w*", r"(?:want|wanna|wish)\s+(?:to\s+)?(?:be\s+)?dead", r"want\s+to\s+die", r"wanna\s+die",
-    r"better\s+off\s+(?:dead|without\s+me)", r"(?:don'?t|dont|do not)\s+want\s+to\s+(?:be\s+here|be\s+alive|live|wake\s+up)",
-    r"(?:not|isn'?t|isnt)\s+worth\s+living", r"no\s+(?:point|reason)\s+(?:in\s+)?(?:living|going on|to live)",
-    r"(?:no\s*one|nobody)\s+would\s+(?:miss|care)",
-    r"(?:it\s+all|everything|life)\s+(?:\w+\s+)?(?:so\s+)?pointless",
-    r"hopeless", r"can'?t\s+(?:go on|cope|do this anymore)", r"what'?s\s+the\s+point\b",
+_SOFT_URGENT = [
+    r"dizz\w*", r"light\s*-?\s*headed\w*", r"f[ae]int\w*", r"pass(?:ing)?\s+out", r"black(?:ing)?\s+out",
+    r"(?:went|go|going|everything)\s+black", r"saw\s+stars", r"heart\s+(?:\w+\s+){0,3}(?:racing|pounding|fluttering|skipping|"
+    r"irregular|weird\w*|crazy|mental|all over|million)", r"(?:racing|irregular|fluttering|skipping)\s+heart",
+    r"(?:can'?t|cant|couldn'?t|could\s+not|cannot|barely|hard\s+to|trouble|struggl\w*|difficult\w*)\s+(?:\w+\s+)?bre?a?the?\w*",
+    r"short(?:ness)?\s+of\s+breath", r"(?:catch|get)\s+my\s+breath", r"wheez\w*", r"(?:get|getting)\s+(?:any\s+)?air\b",
+    _CHEST + r"\s+feels?\s+like", r"confus\w*", r"sternum",
 ]
-URGENT_RE = re.compile("|".join(f"(?:{p})" for p in _URGENT), re.I)
-WELLBEING_RE = re.compile("|".join(f"(?:{p})" for p in _WELLBEING), re.I)
-# A negation immediately before the phrase ("no chest pain", "never fainted"). Zero words in between: "no sleep, fainted
-# at work" and "not sure if it's chest pain" are hits.
-_NEGATION = re.compile(r"\b(?:no|never|without)\s+$", re.I)
+_HARD_WELLBEING = [
+    r"kill(?:ing)?\s+my\s*self", r"suicid(?!es\b)\w*", r"un\s*-?alive", r"self[\s-]*harm\w*",
+    r"(?:hurt(?:ing)?|harm(?:ing)?|cut(?:ting)?)\s+my\s*self", r"(?:wanna|gonna|going\s+to|want\s+to|i)\s+kms\b",
+    r"end(?:ing)?\s+my\s+life", r"end(?:ing)?\s+it\s+all", r"overdos\w*", r"(?:take|taking|took)\s+all\s+(?:my|the)\s+pills",
+    r"(?:want|wanna|wish)\s+(?:to\s+)?(?:be\s+)?dead\b(?!\s+legs)", r"want\s+to\s+die", r"wanna\s+die", r"better\s+off\s+(?:dead|without\s+me)",
+    r"(?:don'?t|dont|do\s+not)\s+want\s+to\s+(?:be\s+here|be\s+alive|live|wake\s+up)", r"(?:not|isn'?t|isnt)\s+worth\s+living",
+    r"no\s+(?:point|reason)\s+(?:in\s+)?(?:living|going on|to live)", r"(?:no\s*one|nobody)\s+(?:would\s+)?(?:miss|cares?)\b",
+]
+_SOFT_WELLBEING = [
+    r"suicides", r"(?<![\d.]\s)(?<!\d)\bkms\b", r"pointless", r"hopeless", r"worthless", r"what'?s\s+the\s+point",
+    r"(?:don'?t|dont)\s+see\s+the\s+point", r"can'?t\s+(?:go on|cope|do this anymore|take it)", r"end(?:ing)?\s+(?:it|things)\b",
+    r"disappear", r"done\s+with\s+(?:everything|it all|life)", r"(?:want|need)\s+it\s+(?:all\s+)?to\s+stop", r"goodbye",
+    r"\bdead\b", r"\bdying\b", r"\bdie\b", r"\bkill\w*",
+]
+
+
+def _rx(ps: list[str]) -> re.Pattern:
+    return re.compile("|".join(f"(?:{p})" for p in ps), re.I)
+
+
+HARD_URGENT_RE, SOFT_URGENT_RE = _rx(_HARD_URGENT), _rx(_SOFT_URGENT)
+HARD_WELLBEING_RE, SOFT_WELLBEING_RE = _rx(_HARD_WELLBEING), _rx(_SOFT_WELLBEING)
+# A negation immediately before the phrase ("no chest pain", "never fainted", "without any chest pain"). Nothing else in
+# between: "no sleep, fainted at work" and "not sure if it's chest pain" are hits.
+_NEGATION = re.compile(r"\b(?:no|never|without)\s+(?:any\s+)?$", re.I)
 
 
 def _norm(text: str) -> str:
@@ -64,16 +79,32 @@ def _hit(rx: re.Pattern, text: str) -> bool:
     return False
 
 
-def detect(text: str) -> str | None:
-    """'wellbeing', 'urgent' or None. Wellbeing wins when both appear: it is the reply that must not be missed."""
+def tier(text: str) -> tuple[str | None, str | None]:
+    """-> (HARD | SOFT | None, WELLBEING | URGENT | None). Wellbeing wins within a tier; a hard hit wins over a soft one."""
     t = _norm(text)
     if not t:
-        return None
-    if _hit(WELLBEING_RE, t):
-        return WELLBEING
-    if _hit(URGENT_RE, t):
-        return URGENT
-    return None
+        return None, None
+    if _hit(HARD_WELLBEING_RE, t):
+        return HARD, WELLBEING
+    if _hit(HARD_URGENT_RE, t):
+        return HARD, URGENT
+    if _hit(SOFT_WELLBEING_RE, t):
+        return SOFT, WELLBEING
+    if _hit(SOFT_URGENT_RE, t):
+        return SOFT, URGENT
+    return None, None
+
+
+def detect(text: str) -> str | None:
+    """The hard tier only: 'wellbeing', 'urgent' or None. A hit is answered at once with the safety reply."""
+    level, kind = tier(text)
+    return kind if level == HARD else None
+
+
+def soft(text: str) -> str | None:
+    """The soft tier only (ambiguous words): the classifier decides, and an error means the safety reply."""
+    level, kind = tier(text)
+    return kind if level == SOFT else None
 
 
 # Country from the runner's time zone (the only location the server holds for everyone). NZ, AU, UK and US crisis lines

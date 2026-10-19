@@ -3,12 +3,14 @@
 Flow (eng-review section 2):
   handle_inbound (sync, no model call)
     gate: COMPANION_COACH_CHAT, allowlist, consent >= coach_consent_required, not paused, not ops-paused   (B1)
-    red-flag check -> fixed safety template, health flag, deduped alert, no model                        (B6)
+    red-flag check, hard tier -> fixed safety template, health flag, deduped alert, no model             (B6)
     else one transaction: inbound_seen + coach_jobs (UNIQUE msg_mac) + the runner's words                 (B3)
   one worker thread (persisted jobs survive a restart)                                                    (B2)
     claim: per runner, messages within coach_merge_s answered as one turn; gate re-checked; daily caps;
            first spend reservation in the claim transaction                                              (B9)
     agent: <= coach_max_tool_turns tool turns, 30 s per model call, 60 s per job, max_tokens 600
+    hard tier again on the merged turn, then the safety classifier (screen.py): a hit, or a soft regex
+           hit with a classifier error, gets the safety template and no main model call
     chat validator -> template fallback on failure (counted, alert above 20% in 24 h)                     (B7)
     reply stored on the job before the send; a failed send retries the send only                         (B3)
 """
@@ -30,7 +32,7 @@ from ..channels import ChannelError, utf16_len
 from ..notes import clean as clean_text
 from ..rails import add_alert, tag
 from ..timeutil import iso, now_utc, parse_iso
-from . import budget, prompt as coach_prompt, redflag, validator
+from . import budget, prompt as coach_prompt, redflag, screen, validator
 from .tools import ReadTools
 
 log = logging.getLogger("companion")
@@ -48,6 +50,8 @@ MAX_TOOL_CALLS_PER_TURN = 8
 TG_LIMIT = 4096
 TYPING_EVERY_S = 4.0
 FALLBACK_ALERT_SHARE = 0.2
+SCREEN_ALERT_SHARE = 0.05
+SCREEN_ALERT_MIN_JOBS = 10
 FALLBACK_ALERT_MIN_JOBS = 5
 CAP_OUTCOMES = ("daily_cap", "daily_usd", "month_cap")
 
@@ -105,6 +109,8 @@ class Claimed:
     chars: int
     history: list[dict] = field(default_factory=list)
     message: str = ""
+    soft_kind: str | None = None     # a soft regex hit on the merged turn: a classifier error means the safety reply
+    zone_id: str = "UTC"
 
 
 class CoachChat:
@@ -199,7 +205,8 @@ class CoachChat:
     def rail(self, user: dict, text: str, now: datetime, where: str = "note") -> str | None:
         """The red-flag check for text that does not go to the coach: a typed run note, Tell Ricki feedback, or free text
         from a paused coach runner (review of #341, P2-5). Applies to runners past the gate or only paused. -> the safety
-        reply (the flag and the alert are written), or None. Never a model call."""
+        reply (the flag and the alert are written), or None. Hard tier only: these paths have no classifier (the webhook
+        never calls a model), and soft words in notes ("legs were dead") must not page the operator."""
         kind = redflag.detect(text)
         if not kind or self.gate_for(user["id"]) not in (None, "paused"):
             return None
@@ -401,32 +408,98 @@ class CoachChat:
                 return True
             # The rail again, on the merged turn: "I want to" + "die" or "chest" + "pain on the hill" sent as two messages
             # each pass alone (review of #341, P1-2). Before the caps, like the inbound rail.
-            kind = redflag.detect(message)
-            if kind:
-                reply = redflag.template(kind, u["zone_id"])
-                c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, "
-                          "replied_at=? WHERE id=?", (reply, kind, iso(now), primary))
-                self._message(c, uid, primary, "coach", reply, now)
-                self._flag(c, u, kind, now)
-                log.warning("coach red flag (merged turn) kind=%s tester=%s job=%s", kind, tag(u["tester_no"]), primary)
+            level, kind = redflag.tier(message)
+            if level == redflag.HARD:
+                self._safety_now(c, u, primary, kind, kind, now, "merged turn")
                 return True
-            if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
-                self._reply_now(c, uid, primary, DAILY_CAP, "daily_cap", now)
-                return True
+            soft_kind = kind if level == redflag.SOFT else None
+            over = None
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
-            ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars, first=True), now,
-                                            self.prompt.prompt_hash if self.prompt else None, u["zone_id"])
-            if ledger_id is None:
-                self._reply_now(c, uid, primary, BUDGET if why == "month_cap" else DAILY_CAP, why, now)
+            if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
+                over = (DAILY_CAP, "daily_cap")
+            else:
+                ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars, first=True), now,
+                                                self.prompt.prompt_hash if self.prompt else None, u["zone_id"])
+                if ledger_id is None:
+                    over = (BUDGET if why == "month_cap" else DAILY_CAP, why)
+            if over:
+                if soft_kind:   # no classifier over the caps: an ambiguous red flag fails towards the safety reply
+                    self._safety_now(c, u, primary, soft_kind, f"soft:{soft_kind}:{over[1]}", now, "soft hit over cap")
+                else:
+                    self._reply_now(c, uid, primary, over[0], over[1], now)
                 return True
-        return Claimed(primary, uid, batch, ledger_id, chars, history, message)
+        return Claimed(primary, uid, batch, ledger_id, chars, history, message, soft_kind, u["zone_id"] or "UTC")
+
+    def _safety_now(self, c, u: dict, job_id: int, kind: str, outcome: str, now: datetime, where: str) -> None:
+        """The fixed safety reply on this job (no model), the flag and the deduped alert, in the caller's transaction."""
+        reply = redflag.template(kind, u["zone_id"])
+        c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, "
+                  "replied_at=? WHERE id=?", (reply, outcome, iso(now), job_id))
+        self._message(c, u["id"], job_id, "coach", reply, now)
+        self._flag(c, u, kind, now)
+        log.warning("coach red flag (%s) kind=%s tester=%s job=%s", where, kind, tag(u["tester_no"]), job_id)
 
     def _reply_now(self, c, uid: str, job_id: int, text: str, outcome: str, now: datetime) -> None:
         c.execute("UPDATE coach_jobs SET state='replied', reply=?, reply_source='template', outcome=?, replied_at=? WHERE id=?",
                   (text, outcome, iso(now), job_id))
         self._message(c, uid, job_id, "coach", text, now)
 
+    def _screen(self, job: Claimed, now: datetime) -> tuple[str, str | None]:
+        """The classifier on the merged turn. -> ("hit", kind) | ("clear", None) | ("error", why)."""
+        if not self.s.openrouter_key:
+            return "error", "no_key"
+        with db.tx(self.s.db_path) as c:
+            ledger_id, why = budget.reserve(c, self.s, job.user_id, job.job_id, budget.screen_estimate(self.s, len(job.message)),
+                                            now, None, job.zone_id, purpose="screen")
+        if ledger_id is None:
+            return "error", why
+        body = screen.request_body(self.s.coach_screen_model, job.message, self.s.coach_screen_max_tokens)
+        data, why = screen.call(self.svc.http, self.s.openrouter_url, self.s.openrouter_key, body, self.s.coach_screen_timeout_s)
+        if data is None:
+            self._settle(ledger_id, now, None, why, None)
+            return "error", why
+        provider = data.get("provider") if isinstance(data.get("provider"), str) else None
+        self._settle(ledger_id, now, provider, "ok", budget.usage_fields(data.get("usage"), self.s))
+        verdict = screen.parse(data)
+        if verdict is None:
+            return "error", "bad_output"
+        if verdict[screen.SELF_HARM]:
+            return "hit", redflag.WELLBEING
+        if verdict[screen.URGENT_MEDICAL]:
+            return "hit", redflag.URGENT
+        if verdict[screen.INJURY]:
+            log.info("coach screen job=%s injury=true (the coach model handles injury triage)", job.job_id)
+        return "clear", None
+
+    def _screen_alert(self, c, now: datetime) -> None:
+        r = c.execute("SELECT COUNT(*) AS n, SUM(screen LIKE 'error:%') AS e FROM coach_jobs WHERE screen IS NOT NULL "
+                      "AND claimed_at >= ?", (iso(now - timedelta(hours=24)),)).fetchone()
+        n, e = r["n"] or 0, r["e"] or 0
+        if n >= SCREEN_ALERT_MIN_JOBS and e / n > SCREEN_ALERT_SHARE:
+            add_alert(c, f"coach-screen-errors:{now.strftime('%Y-%m-%d')}", "Run Supreme coach: safety classifier failing",
+                      f"{e} of {n} safety classifier calls in the last 24 hours failed (timeout or error). Turns with an "
+                      "ambiguous red flag got the safety reply; the rest went to the main model on its own safety rules.", now)
+
     def _run(self, job: Claimed, now: datetime) -> None:
+        result, detail = self._screen(job, now)
+        screen_note = {"hit": f"hit:{detail}", "clear": "clear"}.get(result, f"error:{detail}")
+        kind = detail if result == "hit" else (job.soft_kind if result == "error" else None)
+        with db.tx(self.s.db_path) as c:
+            c.execute("UPDATE coach_jobs SET screen=? WHERE id=?", (screen_note, job.job_id))
+            self._screen_alert(c, now)
+            if kind:
+                u = c.execute("SELECT id, tester_no, zone_id FROM users WHERE id=?", (job.user_id,)).fetchone()
+                j = c.execute("SELECT state FROM coach_jobs WHERE id=?", (job.job_id,)).fetchone()
+                if u and j and j["state"] == "running":
+                    why = f"screen:{kind}" if result == "hit" else f"soft:{kind}:screen_{detail}"
+                    self._safety_now(c, dict(u), job.job_id, kind, why, now,
+                                     "classifier" if result == "hit" else "soft hit, classifier failed")
+        if kind:
+            self._settle(job.ledger_id, now, None, "safety", None)   # the main call never happens
+            self.send_job(job.job_id)
+            return
+        if result == "error":
+            log.warning("coach screen failed job=%s why=%s: no regex hit, going on to the main model", job.job_id, detail)
         reply, outcome, sources = self._agent(job, now)
         source = "llm"
         if reply is not None:

@@ -63,6 +63,11 @@ def estimate(s: Settings, prompt_chars: int, first: bool = False) -> float:
     return (tokens_in * rate_in + s.coach_max_tokens * s.coach_usd_per_mtok_out) / 1e6
 
 
+def screen_estimate(s: Settings, chars: int) -> float:
+    """Upper bound for one classifier call, priced at the main model's rates (Haiku is cheaper, so this over-reserves)."""
+    return ((chars + 2000) / 2.5 * s.coach_usd_per_mtok_in + s.coach_screen_max_tokens * s.coach_usd_per_mtok_out) / 1e6
+
+
 def daily_msgs(c, user_id: str, now: datetime, zone_id: str | None = None) -> int:
     """Chat turns charged today: jobs that were (or are being) answered, not merged ones, not safety replies."""
     return int(c.execute("SELECT COUNT(*) FROM coach_jobs WHERE user_id=? AND kind='chat' AND created_at>=? "
@@ -70,14 +75,15 @@ def daily_msgs(c, user_id: str, now: datetime, zone_id: str | None = None) -> in
 
 
 def reserve(c, s: Settings, user_id: str, job_id: int, est: float, now: datetime, prompt_hash: str | None = None,
-            zone_id: str | None = None) -> tuple[int | None, str]:
+            zone_id: str | None = None, *, purpose: str = "chat") -> tuple[int | None, str]:
     """Inside the caller's write transaction. -> (ledger id, "") or (None, why): 'month_cap' or 'daily_usd'."""
     if est > chat_headroom(c, s, now):
         return None, "month_cap"
     if _ledger_sum(c, day_start(now, zone_id), user_id) + est > s.coach_daily_usd:
         return None, "daily_usd"
-    cur = c.execute("INSERT INTO cost_ledger (ts, user_id, job_id, model, prompt_hash, state, reserved_usd) VALUES (?,?,?,?,?,?,?)",
-                    (iso(now), user_id, job_id, s.coach_model, prompt_hash, "reserved", est))
+    model = s.coach_screen_model if purpose == "screen" else s.coach_model
+    cur = c.execute("INSERT INTO cost_ledger (ts, user_id, job_id, model, prompt_hash, purpose, state, reserved_usd) "
+                    "VALUES (?,?,?,?,?,?,?,?)", (iso(now), user_id, job_id, model, prompt_hash, purpose, "reserved", est))
     return cur.lastrowid, ""
 
 

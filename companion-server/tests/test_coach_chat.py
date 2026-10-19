@@ -18,7 +18,7 @@ from companion.channels import TelegramChannel
 from companion.coach import chat as coach_chat
 from companion.coach.prompt import READ_TOOLS
 
-from conftest import OWNER, auth, coach_text, coach_tools, enrol, make_settings, run_payload
+from conftest import OWNER, auth, coach_text, coach_tools, enrol, make_settings, run_payload, screen_verdict
 
 T0 = datetime(2026, 10, 21, 1, 0, tzinfo=timezone.utc)   # a Wednesday, 2 pm in Auckland
 OTHER = "444555666"
@@ -275,7 +275,7 @@ def test_timeout_or_error_gives_the_template_and_releases_the_reservation(cc, fa
     say(cc, "hello?")
     run_worker(cc)
     assert last_text(fakes) == coach_chat.FALLBACK
-    assert rows(cc, "SELECT state, outcome FROM cost_ledger") == [{"state": "released", "outcome": "timeout"}]
+    assert rows(cc, "SELECT state, outcome FROM cost_ledger WHERE purpose='chat'") == [{"state": "released", "outcome": "timeout"}]
 
 
 def test_get_plan_is_app_next_only(cc, fakes):
@@ -325,13 +325,19 @@ def test_red_flag_fires_even_over_the_caps(tmp_path, fakes):
         c.svc = app.state.svc
         t = enrol(c)
         c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(t))
-        say(c, "everything feels pointless at the moment, not just running")
+        say(c, "I want to kill myself")   # hard: answered in the webhook
         assert "local crisis line" in last_text(fakes)   # zone UTC: no verified line, the local fallback
-        assert fakes.coach_calls == []
+        say(c, "everything feels pointless at the moment, not just running", now=T0 + timedelta(minutes=1))   # soft
+        c.svc.coach.drain(T0 + timedelta(minutes=2))   # over the cap: no classifier, the soft hit fails towards safety
+        assert "local crisis line" in last_text(fakes)
+        assert fakes.coach_calls == [] and fakes.screen_calls == []
 
 
 def test_wellbeing_reply_by_country(cc, fakes):
+    fakes.screen_queue = [screen_verdict(self_harm=True)]
     say(cc, "honestly everything feels pointless at the moment, not just running")
+    run_worker(cc)
+    assert fakes.coach_calls == []
     assert "1737" in last_text(fakes) and "111" in last_text(fakes)
     assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "wellbeing"}]
 
@@ -407,7 +413,7 @@ def test_usage_is_settled_with_cached_tokens_and_cap_alerts_fire(cc, fakes):
     fakes.coach_queue = [coach_text("Ok.", cost=0.6, cached=8000)]
     say(cc, "hi")
     run_worker(cc)
-    led = rows(cc, "SELECT state, cost_usd, cached_tokens, prompt_tokens, prompt_hash FROM cost_ledger")
+    led = rows(cc, "SELECT state, cost_usd, cached_tokens, prompt_tokens, prompt_hash FROM cost_ledger WHERE purpose='chat'")
     assert led == [{"state": "settled", "cost_usd": 0.6, "cached_tokens": 8000, "prompt_tokens": 9000,
                     "prompt_hash": cc.svc.coach.prompt.prompt_hash}]
     keys = [r["key"] for r in rows(cc, "SELECT key FROM alerts WHERE key LIKE 'coachcap:%'")]
@@ -473,14 +479,14 @@ def test_delete_clears_every_coach_table_and_the_ledger_keeps_only_cost(cc, fake
     say(cc, "how was my run?", now=T0 + timedelta(minutes=1))
     run_worker(cc, T0 + timedelta(minutes=2))
     uid = uid_of(cc)
-    assert rows(cc, "SELECT COUNT(*) AS n FROM cost_ledger WHERE user_id=?", uid)[0]["n"] == 1
+    assert rows(cc, "SELECT COUNT(*) AS n FROM cost_ledger WHERE user_id=? AND purpose='chat'", uid)[0]["n"] == 1
     assert cc.delete("/v1/me", headers=auth(cc.token)).json() == {"status": "deleted"}
     con = sqlite3.connect(cc.svc.s.db_path)
     con.row_factory = sqlite3.Row
     for t in db.user_tables(con) + ["users"]:
         col = "id" if t == "users" else "user_id"
         assert con.execute(f"SELECT COUNT(*) FROM {t} WHERE {col}=?", (uid,)).fetchone()[0] == 0, t
-    assert con.execute("SELECT COUNT(*) FROM cost_ledger WHERE user_id IS NULL").fetchone()[0] == 1
+    assert con.execute("SELECT COUNT(*) FROM cost_ledger WHERE user_id IS NULL").fetchone()[0] == 2   # chat + screen
     raw = b"".join(open(p, "rb").read() for p in (cc.svc.s.db_path, cc.svc.s.db_path + "-wal")
                    if __import__("os").path.exists(p))
     assert b"how was my run" not in raw and b"chest pain earlier" not in raw
@@ -644,7 +650,7 @@ def test_a_crash_in_the_run_writes_the_template(cc, fakes, monkeypatch):
     run_worker(cc)
     assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "error:RuntimeError"}]
     assert last_text(fakes) == coach_chat.FALLBACK
-    assert {r["state"] for r in rows(cc, "SELECT state FROM cost_ledger")} == {"released"}
+    assert {r["state"] for r in rows(cc, "SELECT state FROM cost_ledger WHERE purpose='chat'")} == {"released"}
 
 
 def test_odd_tool_call_shapes_never_raise(cc, fakes):
@@ -668,7 +674,7 @@ def test_paused_coach_runner_still_gets_the_safety_reply(cc, fakes):
 
 def test_red_flag_in_tell_ricki_feedback(cc, fakes):
     say(cc, "/feedback")
-    say(cc, "app is fine but honestly I feel hopeless")
+    say(cc, "app is fine but I keep thinking about hurting myself")
     assert "1737" in last_text(fakes)
     assert rows(cc, "SELECT COUNT(*) AS n FROM feedback")[0]["n"] == 1   # still saved for Ricki
     assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "wellbeing"}]
@@ -701,3 +707,88 @@ def test_merged_turn_is_capped(cc, fakes):
         say(cc, ("x" * 1990) + str(i), now=T0 + timedelta(seconds=i))
     run_worker(cc, T0 + timedelta(seconds=20))
     assert len(fakes.coach_calls[0]["messages"][-1]["content"]) == coach_chat.MAX_BATCH_CHARS
+
+
+# ------------------------------------------------------------------------------------------------- safety classifier
+def test_every_turn_is_screened_before_the_main_model(cc, fakes):
+    say(cc, "how was my run?")
+    run_worker(cc)
+    assert len(fakes.screen_calls) == 1 and len(fakes.coach_calls) == 1
+    body = fakes.screen_calls[0]
+    assert body["model"] == "anthropic/claude-haiku-5.5" and body["max_tokens"] == 60
+    assert body["provider"] == {"zdr": True, "data_collection": "deny", "allow_fallbacks": False}
+    assert json.loads(body["messages"][1]["content"]) == {"message": "how was my run?"}
+    assert "tools" not in body
+    led = rows(cc, "SELECT purpose, state, model FROM cost_ledger WHERE purpose='screen'")
+    assert led == [{"purpose": "screen", "state": "settled", "model": "anthropic/claude-haiku-5.5"}]
+    assert rows(cc, "SELECT screen FROM coach_jobs") == [{"screen": "clear"}]
+
+
+def test_classifier_hit_sends_the_safety_reply_without_the_main_model(cc, fakes):
+    fakes.screen_queue = [screen_verdict(urgent=True)]
+    say(cc, "my ticker went bananas on the climb, had to stop")   # no regex hit
+    run_worker(cc)
+    assert fakes.coach_calls == []
+    assert last_text(fakes).startswith("Please stop running") and "111" in last_text(fakes)
+    assert rows(cc, "SELECT kind FROM health_flags") == [{"kind": "urgent"}]
+    assert rows(cc, "SELECT kind, outcome, screen FROM coach_jobs") == [
+        {"kind": "safety", "outcome": "screen:urgent", "screen": "hit:urgent"}]
+    assert rows(cc, "SELECT state FROM cost_ledger WHERE purpose='chat'") == [{"state": "released"}]
+
+
+def test_self_harm_verdict_wins(cc, fakes):
+    fakes.screen_queue = [screen_verdict(urgent=True, self_harm=True)]
+    say(cc, "whatever, see you never")
+    run_worker(cc)
+    assert "1737" in last_text(fakes)
+
+
+def test_classifier_failure_on_a_soft_hit_fails_towards_safety(cc, fakes):
+    fakes.screen_queue = ["timeout"]
+    say(cc, "really dizzy at the end")   # soft regex hit
+    run_worker(cc)
+    assert fakes.coach_calls == []
+    assert last_text(fakes).startswith("Please stop running")
+    assert rows(cc, "SELECT outcome, screen FROM coach_jobs") == [{"outcome": "soft:urgent:screen_timeout", "screen": "error:timeout"}]
+
+
+def test_classifier_failure_without_a_regex_hit_goes_on_to_the_main_model(cc, fakes):
+    fakes.screen_queue = [500]
+    say(cc, "how was my run?")
+    run_worker(cc)
+    assert len(fakes.coach_calls) == 1
+    assert rows(cc, "SELECT screen, reply_source FROM coach_jobs") == [{"screen": "error:http_500", "reply_source": "llm"}]
+
+
+def test_classifier_bad_output_counts_as_an_error(cc, fakes):
+    fakes.screen_queue = [coach_text("sure, here you go")]
+    say(cc, "how was my run?")
+    run_worker(cc)
+    assert rows(cc, "SELECT screen FROM coach_jobs") == [{"screen": "error:bad_output"}]
+
+
+def test_soft_hit_cleared_by_the_classifier_is_coached(cc, fakes):
+    say(cc, "dying on the last rep, legs were dead")
+    run_worker(cc)
+    assert len(fakes.coach_calls) == 1 and rows(cc, "SELECT kind FROM health_flags") == []
+
+
+def test_injury_alone_goes_to_the_coach(cc, fakes):
+    fakes.screen_queue = [screen_verdict(injury=True)]
+    say(cc, "sharp pain in my shin when I run")
+    run_worker(cc)
+    assert len(fakes.coach_calls) == 1 and rows(cc, "SELECT kind FROM health_flags") == []
+
+
+def test_classifier_error_rate_alert(cc, fakes):
+    fakes.screen_queue = [500] * 12
+    for i in range(10):
+        say(cc, f"question {i}", now=T0 + timedelta(minutes=i))
+        run_worker(cc, T0 + timedelta(minutes=i, seconds=10))
+    assert rows(cc, "SELECT key FROM alerts WHERE key LIKE 'coach-screen-errors:%'")
+
+
+def test_screen_model_comes_from_config():
+    from companion.config import Settings
+    assert Settings.from_env({"COMPANION_PEPPER": "x" * 20}).coach_screen_model == "anthropic/claude-haiku-5.5"
+    assert Settings.from_env({"COMPANION_PEPPER": "x" * 20, "COMPANION_COACH_SCREEN_MODEL": "x/y"}).coach_screen_model == "x/y"

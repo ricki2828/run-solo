@@ -12,64 +12,55 @@ from companion.config import default_coach_dir
 
 
 # ------------------------------------------------------------------------------------------------- red flags
-@pytest.mark.parametrize("text, kind", [
-    # the Haiku evals v2 misses
-    ("had some chest pain on the hill today, bit dizzy, probably nothing lol", "urgent"),
-    ("honestly everything feels pointless at the moment, not just running", "wellbeing"),
-    # physical red flags, typos and phrasing
-    ("chest pian after the tempo", "urgent"),
-    ("cheat pain on the last rep", "urgent"),
-    ("my chest is tight since the run", "urgent"),
-    ("tightness in my chest on the climb", "urgent"),
-    ("I nearly fainted at the end", "urgent"),
-    ("felt faint on the last km", "urgent"),
-    ("passed out after parkrun", "urgent"),
-    ("heart was racing and wouldn't settle", "urgent"),
-    ("palpitations during the long run", "urgent"),
-    ("couldn't breathe properly on the hill", "urgent"),
-    ("worst headache of my life after the race", "urgent"),
-    ("I stopped sweating and felt weird", "urgent"),
-    ("think I had heat stroke", "urgent"),
-    ("felt really confused halfway round", "urgent"),
-    # distress
-    ("I want to kill myself", "wellbeing"),
-    ("been thinking about suicide", "wellbeing"),
-    ("I've been self-harming again", "wellbeing"),
-    ("feel hopeless", "wellbeing"),
-    ("I don’t want to be here anymore", "wellbeing"),
-    ("chest pain and I feel hopeless", "wellbeing"),   # both: wellbeing wins
-    # every miss from the review of #341 (P1-1)
-    ("my chest is killing me", "urgent"), ("pain in chest", "urgent"), ("pains in my chest", "urgent"),
-    ("tightness in chest", "urgent"), ("chest felt heavy", "urgent"), ("crushing feeling in my chest", "urgent"),
-    ("chest-pain", "urgent"), ("short of breath", "urgent"), ("shortness of breath", "urgent"),
-    ("couldnt catch my breath", "urgent"), ("hard to breathe", "urgent"), ("trouble breathing", "urgent"),
-    ("felt dizzy and lightheaded", "urgent"), ("feinted", "urgent"), ("pased out", "urgent"),
-    ("lost consciousness", "urgent"), ("heart was going crazy", "urgent"), ("left arm numb", "urgent"),
-    ("no sleep fainted at work", "urgent"),
-    ("kms", "wellbeing"), ("i wanna kms", "wellbeing"), ("unalive myself", "wellbeing"),
-    ("dont want to be alive anymore", "wellbeing"), ("life isnt worth living", "wellbeing"),
-    ("not worth living", "wellbeing"), ("thinking about ending it", "wellbeing"), ("cut myself", "wellbeing"),
-    ("overdose", "wellbeing"), ("no one would miss me", "wellbeing"), ("it all feels pointless", "wellbeing"),
-    ("whats the point anymore", "wellbeing"),
-    ("did suicides on the track today", "wellbeing"),   # the sprint drill: a deliberate false positive
-    ("without any chest pain now", "urgent"),           # only an immediate "no/never/without" negates
-])
-def test_red_flags_hit(text, kind):
+from redflag_cases import HARMLESS, RED_FLAGS, REVIEW_RED_FLAGS  # noqa: E402
+
+# Unambiguous: answered at once in the webhook, before any classifier, cap or model.
+MUST_BE_HARD = {
+    "my chest is killing me": "urgent", "chest pian": "urgent", "chest-pain": "urgent", "tightness in chest": "urgent",
+    "sharp pain under my sternum": "urgent", "no warning, just collapsed": "urgent", "fainted": "urgent",
+    "no sleep fainted at work": "urgent", "pased out": "urgent", "lost consciousness": "urgent", "left arm numb": "urgent",
+    "kill myself": "wellbeing", "I want to kill myself": "wellbeing", "i wanna kms": "wellbeing", "overdose": "wellbeing",
+    "going to take all my pills": "wellbeing", "i keep thinking about hurting myself": "wellbeing",
+    "hurting myself": "wellbeing", "harming myself": "wellbeing", "been thinking about suicide": "wellbeing",
+    "no one would miss me": "wellbeing", "nobody cares if im gone": "wellbeing", "I have zero energy and chest pain": "urgent",
+    "chest pain and I feel hopeless": "urgent",   # a hard hit beats a soft one
+}
+# Plain training talk with no regex hit at all (still screened by the classifier, but never failed towards safety).
+NO_HIT = ["no chest pain today", "ran 12 kms today", "10 kms easy", "no dizziness at all", "without any chest pain",
+          "short break then breathe and go", "heavy legs chest fine", "can I move my long run to Sunday?",
+          "how fast should my easy runs be", "never fainted"]
+
+
+@pytest.mark.parametrize("text", RED_FLAGS)
+def test_every_red_flag_phrasing_hits_a_regex_tier(text):
+    level, kind = redflag.tier(text)
+    assert level in (redflag.HARD, redflag.SOFT) and kind in (redflag.URGENT, redflag.WELLBEING), text
+
+
+@pytest.mark.parametrize("text", HARMLESS)
+def test_harmless_phrasings_are_never_hard(text):
+    assert redflag.tier(text)[0] != redflag.HARD, text
+    assert redflag.detect(text) is None
+
+
+@pytest.mark.parametrize("text, kind", sorted(MUST_BE_HARD.items()))
+def test_unambiguous_phrasings_are_hard(text, kind):
+    assert redflag.tier(text) == (redflag.HARD, kind)
     assert redflag.detect(text) == kind
 
 
-@pytest.mark.parametrize("text", [
-    "no chest pain this time, legs felt good",
-    "never fainted, just tired",
-    "can I move my long run to Sunday?",
-    "the hill reps were brutal but I loved it",
-    "how fast should my easy runs be",
-    "felt confused about the plan this week",
-    "never fainted",
-    "",
-])
-def test_red_flags_miss(text):
-    assert redflag.detect(text) is None
+@pytest.mark.parametrize("text", NO_HIT)
+def test_plain_training_talk_has_no_regex_hit(text):
+    assert redflag.tier(text) == (None, None)
+
+
+def test_regex_tier_counts_on_the_101_phrasings():
+    """Recorded for the PR: on the reviewer's 81 red flags and 20 harmless phrasings."""
+    pos = REVIEW_RED_FLAGS
+    missed = [t for t in pos if redflag.tier(t)[0] is None]
+    hard_false = [t for t in HARMLESS if redflag.tier(t)[0] == redflag.HARD]
+    assert missed == [] and hard_false == []
+    assert sum(redflag.tier(t)[0] == redflag.HARD for t in pos) >= 45
 
 
 def test_templates_by_country():
@@ -108,6 +99,9 @@ TOOLS = '{"ok":true,"runs":[{"distance_km":7.0,"pace_per_km":"5:42","duration":"
     "If it keeps hurting, see a physio or a doctor.",
     "In NZ you can call or text 1737, or 111 if it's urgent.",
     "Keep long runs under 35% of the week.",
+    # crisis numbers that end a sentence (re-review of #341, P1-3)
+    "Call 111.", "In NZ you can text 1737.", "Call Lifeline on 13 11 14.", "You can call or text 988.",
+    "Call Samaritans on 116 123.",
 ])
 def test_validator_passes(reply):
     assert validator.check(reply, [TOOLS, "was today too fast?"]) is None

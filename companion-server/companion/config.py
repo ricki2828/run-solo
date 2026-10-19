@@ -158,6 +158,10 @@ class Settings:
     coach_max_tool_turns: int = 6
     coach_turn_timeout_s: float = 30.0
     coach_job_deadline_s: float = 60.0
+    # The safety classifier (coach/screen.py): every coach turn the hard regex tier did not answer, before the main model.
+    coach_screen_model: str = "anthropic/claude-haiku-5.5"
+    coach_screen_timeout_s: float = 5.0
+    coach_screen_max_tokens: int = 60
     coach_merge_s: float = 5.0     # messages a runner sends within this long of each other are answered as one turn
     coach_history: int = 12        # earlier chat messages sent with each turn
     # Reservation estimates (USD per million tokens); the settle uses the cost OpenRouter reports.
@@ -235,6 +239,7 @@ class Settings:
             coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
             coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
             coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 600),
+            coach_screen_model=(e.get("COMPANION_COACH_SCREEN_MODEL") or "anthropic/claude-haiku-5.5").strip(),
             coach_max_tool_turns=min(_posint(e.get("COMPANION_COACH_MAX_TOOL_TURNS"), 6), 6),
             coach_dir=os.path.expanduser(e.get("COMPANION_COACH_DIR") or default_coach_dir()),
         )

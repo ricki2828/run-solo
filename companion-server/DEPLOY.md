@@ -285,12 +285,21 @@ allowlist never bypasses consent).
   `COMPANION_COACH_CARD_RESERVE_USD` kept back for cards), `COMPANION_COACH_DAILY_MSGS` (40) and `COMPANION_COACH_DAILY_USD`
   (1.5) per runner per UTC day, counted from the database. Alerts at 50/80/100% of the coach cap and when more than 20% of
   replies in 24 hours fall back to the template.
-- Red flags (chest pain, breathlessness, fainting or dizziness, self-harm words) never reach the model: checked on each
-  message, again on the merged turn, and on notes, Tell Ricki feedback and a paused runner's text. A fixed reply by country
+- Red flags, two layers. (1) Regex, hard tier (unambiguous: chest pain, collapsed, suicide, overdose): the fixed reply at
+  once, in the webhook, before any cap or model; also on the merged turn, notes, Tell Ricki feedback and a paused runner's
+  text. (2) Every other coach turn goes to a safety classifier first (`COMPANION_COACH_SCREEN_MODEL`, default
+  `anthropic/claude-haiku-5.5`, same ZDR settings, max_tokens 60, 5 s, cost in the ledger). A classifier hit gets the fixed
+  reply and no main model call. If the classifier fails, a soft regex hit (ambiguous words: dizzy, breath, dead, kms,
+  pointless) still gets the fixed reply; a turn with no regex hit goes on to the main model, and more than 5% classifier
+  errors in 24 hours raises an alert. Measure the real classifier with `OPENROUTER_API_KEY=... python3
+  scripts/redflag_eval.py` before enabling. A fixed reply by country
   (NZ, AU, UK and US lines verified; ZA, SG and unknown get the emergency number and "your local crisis line"), a health
   flag and one alert per runner, kind and day. A safety reply that cannot be delivered after 5 tries raises its own alert.
   Clear a flag: `companion.cli ops clear-flag T<n> <urgent|wellbeing|ill|injury>`.
 - Daily caps reset at the runner's local midnight.
+- **C1 allowlist: only runners whose time zone maps to NZ, AU, UK or US** (the countries with verified crisis lines). The
+  fixed reply is country-correct everywhere, but the chat validator accepts any crisis number, so a model reply could
+  quote another country's line; per-country checking comes with C4.
 - Cache hits: each call logs `prompt_tokens`, `cached_tokens` and `cache_write`; check the first 20 real messages (W5).
 - Retention: `coach_messages` and `coach_jobs` 30 days, left out of the nightly backup; `cost_ledger` 400 days with the runner
   id cleared on DELETE. Dropping consent below 3 deletes the chat history at once.
