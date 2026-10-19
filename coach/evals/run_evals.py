@@ -149,7 +149,7 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
     out |= {"reply": coach.get("reply", ""), "tool_calls": coach.get("tool_calls") or []}
     misses = tool_misses(sc, coach.get("tool_calls") or [])
     try:
-        j = parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(called),
+        j = parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(coach.get("tool_calls") or []),
                                                results=json.dumps(results) if results else "none (write calls are assumed to have succeeded)",
                                                reply=out["reply"], must=sc.get("must", []),
                                                must_not=sc.get("must_not", [])), judge))

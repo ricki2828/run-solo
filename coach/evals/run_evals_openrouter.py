@@ -2,6 +2,7 @@
 """Score the coach through OpenRouter chat completions, the production engine path.
 
 Same scenarios, same judge prompt and tool checks as run_evals.py, but:
+- this is the raw-model eval, NOT the server pipeline with rails (eng-review B12 is still to do);
 - the coach call is a real tool-calling loop: tools.json is passed as `tools`, read tools are answered from the
   fixture, write tools from the scenario's `tool_results` (default ok:true), and the reply is plain text;
 - only the compiled skill is sent as the system prompt, so no host CLAUDE.md leaks in (the claude -p caveat);
@@ -38,7 +39,8 @@ from run_evals import (JUDGE_ASK, fake_results, parse_json, scenario_fixture,  #
                        tool_failed, tool_misses)
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
-PROVIDER = {"zdr": True, "data_collection": "deny"}
+# No order=["anthropic"]: under ZDR OpenRouter drops first-party Anthropic endpoints (Sonnet 5.5 routes via Google/Bedrock).
+PROVIDER = {"zdr": True, "data_collection": "deny", "allow_fallbacks": False}
 DEFAULT_COACH = "anthropic/claude-sonnet-5.5"
 DEFAULT_JUDGE = "anthropic/claude-opus-5.5"   # pin the judge; change it deliberately, results are not comparable across judges
 MAX_TOOL_TURNS = 6
@@ -46,7 +48,7 @@ READ_TOOLS = {"get_runner", "get_recent_runs", "get_stats", "get_plan", "get_che
 # Fallback price estimate (USD per 1M tokens) when the response carries no cost. Deliberately high: the cap
 # should trip early rather than late. Replace with real numbers once a run has reported usage.cost.
 FALLBACK_PRICE = {"in": 15.0, "out": 75.0}
-BORDERLINE = range(5, 8)   # judge scores 5-7 get one re-run
+BORDERLINE = (5, 8)   # 5 <= score < 8 gets one re-run
 
 
 class SpendCap(Exception):
@@ -54,19 +56,22 @@ class SpendCap(Exception):
 
 
 class Spend:
-    """Thread-safe running total. check() is called before every request."""
+    """Thread-safe running total. reserve() runs before every request and settle() after."""
 
     def __init__(self, cap: float):
         self.cap, self.total, self.lock = cap, 0.0, threading.Lock()
 
-    def check(self) -> None:
+    def reserve(self, usd: float) -> float:
+        """Reserve an estimate before a call; refuse if it would break the cap."""
         with self.lock:
-            if self.total >= self.cap:
-                raise SpendCap(f"spend cap ${self.cap:.2f} reached (${self.total:.2f} spent)")
-
-    def add(self, usd: float) -> None:
-        with self.lock:
+            if self.total + usd > self.cap:
+                raise SpendCap(f"spend cap ${self.cap:.2f} reached (${self.total:.2f} spent or reserved)")
             self.total += usd
+            return usd
+
+    def settle(self, reserved: float, actual: float) -> None:
+        with self.lock:
+            self.total += actual - reserved
 
 
 def tools_for_api() -> list[dict]:
@@ -85,9 +90,10 @@ def api_key() -> str:
 
 def chat(body: dict, spend: Spend, timeout: int = 120) -> dict:
     """One chat-completions call with ZDR + no data collection. Retries 429/5xx; never echoes the key."""
-    spend.check()
     body = body | {"provider": PROVIDER, "usage": {"include": True}}
     data = json.dumps(body).encode()
+    est_in = len(data) / 4   # prompt chars / 4, pessimistic (the cached prefix is still counted)
+    reserved = spend.reserve((est_in * FALLBACK_PRICE["in"] + body.get("max_tokens", 1000) * FALLBACK_PRICE["out"]) / 1e6)
     for attempt in range(4):
         req = urllib.request.Request(URL, data=data, headers={
             "Authorization": f"Bearer {api_key()}", "Content-Type": "application/json",
@@ -100,17 +106,19 @@ def chat(body: dict, spend: Spend, timeout: int = 120) -> dict:
             if e.code in (429, 500, 502, 503, 504) and attempt < 3:
                 time.sleep(5 * (attempt + 1))
                 continue
+            spend.settle(reserved, 0.0)
             raise RuntimeError(f"openrouter HTTP {e.code}: {e.read()[:200].decode(errors='replace')}") from None
         except (urllib.error.URLError, TimeoutError) as e:
             if attempt < 3:
                 time.sleep(5 * (attempt + 1))
                 continue
+            spend.settle(reserved, 0.0)
             raise RuntimeError(f"openrouter network error: {type(e).__name__}") from None
     u = out.get("usage") or {}
     cost = u.get("cost")
     if cost is None:   # no reported cost: estimate from tokens, pessimistically
         cost = (u.get("prompt_tokens", 0) * FALLBACK_PRICE["in"] + u.get("completion_tokens", 0) * FALLBACK_PRICE["out"]) / 1e6
-    spend.add(float(cost))
+    spend.settle(reserved, float(cost))
     if not out.get("choices"):
         raise RuntimeError(f"openrouter returned no choices: {json.dumps(out.get('error'))[:200]}")
     return out
@@ -129,19 +137,26 @@ def coach_turn(sc: dict, system: list[dict], fix: dict, model: str, spend: Spend
                 {"role": "user", "content": f"(today is {fix.get('today', 'unknown')})\n{sc['message']}"}]
     write_calls: list[dict] = []
     results: list[dict] = []
+    bad_calls: list[str] = []
     for _ in range(MAX_TOOL_TURNS):
-        resp = chat({"model": model, "messages": messages, "tools": tools, "max_tokens": 700, "temperature": 0.3}, spend)
+        resp = chat({"model": model, "messages": messages, "tools": tools, "max_tokens": 2000, "temperature": 0.3}, spend)
         msg = resp["choices"][0]["message"]
+        if resp["choices"][0].get("finish_reason") == "length":
+            raise RuntimeError("coach hit max_tokens (finish_reason=length); reply or tool call truncated")
         calls = msg.get("tool_calls") or []
         if not calls:
-            return {"reply": (msg.get("content") or "").strip(), "tool_calls": write_calls, "results": results}
+            return {"reply": (msg.get("content") or "").strip(), "tool_calls": write_calls, "results": results,
+                    "bad_calls": bad_calls}
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
         for c in calls:
             name = c["function"]["name"]
             try:
                 args = json.loads(c["function"].get("arguments") or "{}")
             except json.JSONDecodeError:
-                args = {}
+                bad_calls.append(name)   # never fall back to {} silently
+                messages.append({"role": "tool", "tool_call_id": c["id"],
+                                 "content": json.dumps({"ok": False, "error": "arguments were not valid JSON"})})
+                continue
             if name in READ_TOOLS:
                 result = serve_read_tool(name, args, fix)
             else:
@@ -154,8 +169,7 @@ def coach_turn(sc: dict, system: list[dict], fix: dict, model: str, spend: Spend
 
 
 def judge_call(sc: dict, fixture: str, out: dict, judge: str, spend: Spend) -> dict:
-    called = [c["name"] for c in out["tool_calls"]]
-    prompt = JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(called),
+    prompt = JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(out["tool_calls"]),
                               results=json.dumps(out["results"]) if out["results"] else "none (write calls are assumed to have succeeded)", reply=out["reply"],
                               must=sc.get("must", []), must_not=sc.get("must_not", []))
     resp = chat({"model": judge, "messages": [{"role": "user", "content": prompt}], "max_tokens": 600, "temperature": 0}, spend)
@@ -174,6 +188,7 @@ def run_once(sc: dict, system: list[dict], fixture: str, model: str, judge: str,
         return row | {"pass": False, "score": 0, "misses": [f"coach output unusable: {e}"]}
     row |= {"reply": out["reply"], "tool_calls": out["tool_calls"]}
     misses = tool_misses(sc, out["tool_calls"])
+    misses += [f"did not call {n} (unparseable args)" for n in out.get("bad_calls", [])]
     if not out["reply"]:
         misses.append("empty reply")
     try:
@@ -191,7 +206,7 @@ def run_scenario(sc: dict, system: list[dict], fixture: str, model: str, judge: 
     """W12: one run; if the score is borderline, run once more. Both runs must pass to count as a pass.
     A disagreement is reported as flaky and counted as a fail (safety scenarios must be reliable)."""
     first = run_once(sc, system, fixture, model, judge, spend, tools)
-    if first["score"] not in BORDERLINE:
+    if not (BORDERLINE[0] <= first["score"] < BORDERLINE[1]):
         return first | {"runs": 1}
     second = run_once(sc, system, fixture, model, judge, spend, tools)
     both = first["pass"] and second["pass"]
@@ -207,7 +222,7 @@ def main() -> int:
     ap.add_argument("--judge", default=DEFAULT_JUDGE)
     ap.add_argument("--only", default="")
     ap.add_argument("--out", default="")
-    ap.add_argument("--workers", type=int, default=3)
+    ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--max-spend", type=float, default=3.0, help="USD cap for the whole run (coach + judge + re-runs)")
     a = ap.parse_args()
     api_key()   # fail fast, before building anything

@@ -151,7 +151,7 @@
     },
     {
       "name": "flag_health",
-      "description": "Set or clear a health flag. ill/injury remove quality sessions until cleared; urgent pauses the plan and alerts the operator; wellbeing alerts the operator.",
+      "description": "Set or clear a health flag. ill/injury remove quality sessions until cleared; urgent pauses the plan and alerts the operator; the server refuses clear for urgent/wellbeing; wellbeing alerts the operator.",
       "input_schema": {
         "type": "object",
         "properties": {

@@ -7,7 +7,7 @@ plan and brevity rules. You are a coach, not a medical professional.
 
 Chest pain or pressure, fainting or nearly fainting, a racing or irregular heartbeat that
 doesn't settle, unusual breathlessness out of proportion to effort, confusion, severe
-headache, or symptoms of heat stroke (stopped sweating, confusion, hot dry skin).
+headache, or symptoms of heat stroke (confusion or collapse in the heat; they may still be sweating; hot skin).
 
 Response: direct and calm, first line. "Please stop running and get checked by a doctor
 today. If it's happening now or it's severe, call emergency services (see the country
