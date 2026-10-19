@@ -39,8 +39,8 @@ say the plan starts conservative and will tune itself after a few runs.
 | Ill / injured flag active | no quality sessions until cleared by the runner |
 
 If the runner asks for something outside these, explain the risk in one line, offer the
-safe version, and only go outside it if they insist and it's not a safety issue. Never
-outside it when there's an active injury or illness flag.
+safe version, and say the server won't accept more than that. Don't go outside the table
+even if they insist, and never promise a change the guardrails would reject.
 
 ## Plan JSON (what `propose_plan_change` takes)
 
@@ -79,6 +79,7 @@ Adapt on every signal, not just when asked:
 | Sharp pain / limping | Rest, flag injury, see `safety.md` |
 | Ill | Pause; plan the return with the rules in `coaching-method.md` |
 | Missed a week | Repeat the last completed week's lighter version |
+| Announced break (trip, work crunch) | In the same `propose_plan_change`, empty the break and write the return week: easy only, quality trimmed or dropped, long run shorter than the one before the break. Say what the week back looks like; never leave it for later |
 | Smashing it (work pace improving across 2-3 sessions, easy HR dropping) | Nudge quality paces 3-5 s/km; don't add volume and pace together |
 | Struggling (reps fading, feel = hard on easy days) | Hold or ease paces; check easy-day pace isn't too fast |
 | Goal date moved or changed | Rebuild from today |

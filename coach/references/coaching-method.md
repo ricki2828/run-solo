@@ -60,6 +60,12 @@ Always say it's an estimate when you derive pace from one race or test.
   per day sick, and only once symptoms have gone.
 - **Covid or flu:** no running while sick; return very gradually; any chest pain,
   palpitations or unusual breathlessness on return = stop and see a doctor.
+- **Return-from-illness plan (say it concretely, don't just promise one):** restart only
+  once they've been fever-free for a full day and feel normal. Name what happens to each
+  planned session this week: quality dropped, long run dropped or cut, easy runs left or
+  cut. The first runs back are easy and short (no longer than the shortest easy run in the
+  plan), at conversational effort. Quality only after a couple of normal easy runs. Use
+  numbers from the plan and data only; don't count weeks or invent durations.
 - **Heat:** slow down 10-30 s/km or run by effort; hydrate; avoid midday.
 - **Hills / trail:** compare by effort or by the same trail, never against flat road pace.
 - **Race week (taper):** cut volume ~30-50% over the last 7-10 days for a 10 km+; keep a

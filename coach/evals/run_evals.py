@@ -39,6 +39,17 @@ The read tools above have already been called for you. The runner just sent:
 Answer with JSON only, no prose around it:
 {{"tool_calls": [{{"name": "<write tool>", "input": {{...}}}}], "reply": "<the message you send the runner>"}}
 Use an empty tool_calls list if no write tool is needed. Assume write tools succeed."""
+FOLLOWUP_ASK = """<tool_results>
+{fixture}
+</tool_results>
+
+The runner just sent:
+<message>{message}</message>
+
+You made these write tool calls: {calls}
+The server returned: {results}
+
+Now answer with JSON only: {{"tool_calls": [], "reply": "<the message you send the runner, given what the server returned>"}}"""
 JUDGE_ASK = """You are grading an AI running coach's reply. Be strict; a world-class human coach is the bar.
 
 Runner data (what the coach could see):
@@ -46,6 +57,7 @@ Runner data (what the coach could see):
 
 Runner's message: {message}
 Coach's write tool calls: {tools}
+Server results for those calls (if any): {results}
 Coach's reply: {reply}
 
 MUST: {must}
@@ -81,23 +93,70 @@ def parse_json(text: str) -> dict:
     return json.loads(m.group(0))
 
 
+def deep_merge(base, patch):
+    """Scenario `fixture_patch`: dicts merge, anything else (lists included) replaces."""
+    if isinstance(base, dict) and isinstance(patch, dict):
+        return {k: deep_merge(base[k], patch[k]) if k in patch else base[k] for k in base} | \
+               {k: v for k, v in patch.items() if k not in base}
+    return patch
+
+
+def scenario_fixture(sc: dict, fixture: str) -> str:
+    """The fixture JSON text for one scenario, with its optional `fixture_patch` applied."""
+    if not sc.get("fixture_patch"):
+        return fixture
+    return json.dumps(deep_merge(json.loads(fixture), sc["fixture_patch"]), indent=1)
+
+
+def fake_results(sc: dict, calls: list) -> list:
+    """What the fake server returns for each write call. A scenario's `tool_results` maps tool name to the
+    result; any other write tool succeeds. Returns [{name, result}] in call order."""
+    spec = sc.get("tool_results") or {}
+    return [{"name": c.get("name"), "result": spec.get(c.get("name"), {"ok": True})} for c in calls]
+
+
+def tool_misses(sc: dict, calls: list) -> list[str]:
+    """Code-checked tool expectations: must_call, must_not_call, must_not_call_with [{name, contains}]."""
+    exp = sc.get("tools") or {}
+    called = [c.get("name") for c in calls]
+    misses = [f"did not call {t}" for t in exp.get("must_call", []) if t not in called]
+    misses += [f"must not call {t}" for t in exp.get("must_not_call", []) if t in called]
+    for rule in exp.get("must_not_call_with", []):
+        misses += [f"must not call {rule['name']} with {rule['contains']}" for c in calls
+                   if c.get("name") == rule["name"] and str(rule["contains"]) in json.dumps(c.get("input", {}))]
+    return misses
+
+
+def tool_failed(misses: list[str]) -> bool:
+    return any(m.startswith(("did not call", "must not call")) for m in misses)
+
+
 def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict:
     out = {"id": sc["id"], "message": sc["message"]}
+    fixture = scenario_fixture(sc, fixture)
+    results: list = []
     try:
         coach = parse_json(claude(COACH_ASK.format(fixture=fixture, message=sc["message"]), model, system))
+        if sc.get("tool_results") and coach.get("tool_calls"):   # second turn: the coach sees the fake results
+            calls = coach["tool_calls"]
+            results = fake_results(sc, calls)
+            coach = parse_json(claude(FOLLOWUP_ASK.format(
+                fixture=fixture, message=sc["message"], calls=json.dumps(calls),
+                results=json.dumps(results)), model, system)) | {"tool_calls": calls}
     except Exception as e:   # a broken coach answer is a fail, never a skip
         return out | {"pass": False, "score": 0, "misses": [f"coach output unusable: {e}"]}
     called = [t.get("name") for t in coach.get("tool_calls") or []]
     out |= {"reply": coach.get("reply", ""), "tool_calls": coach.get("tool_calls") or []}
-    misses = [f"did not call {t}" for t in (sc.get("tools") or {}).get("must_call", []) if t not in called]
+    misses = tool_misses(sc, coach.get("tool_calls") or [])
     try:
         j = parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(called),
+                                               results=json.dumps(results) if results else "none (write calls are assumed to have succeeded)",
                                                reply=out["reply"], must=sc.get("must", []),
                                                must_not=sc.get("must_not", [])), judge))
     except Exception as e:
         return out | {"pass": False, "score": 0, "misses": misses + [f"judge failed: {e}"]}
     misses += j.get("misses", [])
-    return out | {"pass": bool(j.get("pass")) and not any(m.startswith("did not call") for m in misses),
+    return out | {"pass": bool(j.get("pass")) and not tool_failed(misses),
                   "score": j.get("score", 0), "misses": misses}
 
 
