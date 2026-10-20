@@ -46,9 +46,14 @@ class BestEffort {
     required this.splitsMs,
     this.avgHr,
     this.gradeFactor = 1,
+    this.pausedMs = 0,
   });
 
   final BestEffortDistance distance;
+
+  /// Paused time inside the window, which [elapsedMs] (moving time) leaves
+  /// out; non-zero only for a 5K/10K goal run bridged over a pause.
+  final int pausedMs;
 
   /// The hills factor on this window's time (True Pace; 1 on the flat or
   /// without barometer elevation).
@@ -63,6 +68,7 @@ class BestEffort {
     splitsMs: splitsMs,
     avgHr: avgHr,
     gradeFactor: g,
+    pausedMs: pausedMs,
   );
   final int elapsedMs;
 
@@ -77,7 +83,9 @@ class BestEffort {
   final List<int> splitsMs;
   final double? avgHr;
 
-  int get endMs => startMs + elapsedMs;
+  /// Window end on the run's clock (ms since the run's start), pauses
+  /// inside the window included.
+  int get endMs => startMs + elapsedMs + pausedMs;
 
   double get paceSecPerKm => elapsedMs / distance.metres;
 
@@ -89,6 +97,7 @@ class BestEffort {
     'avg_hr': avgHr == null ? null : double.parse(avgHr!.toStringAsFixed(1)),
     if (gradeFactor != 1)
       'grade_x': double.parse(gradeFactor.toStringAsFixed(4)),
+    if (pausedMs != 0) 'paused_ms': pausedMs,
   };
 
   factory BestEffort.fromJson(
@@ -102,6 +111,7 @@ class BestEffort {
     splitsMs: [for (final s in json['splits_ms'] as List) s as int],
     avgHr: (json['avg_hr'] as num?)?.toDouble(),
     gradeFactor: (json['grade_x'] as num?)?.toDouble() ?? 1,
+    pausedMs: (json['paused_ms'] as int?) ?? 0,
   );
 }
 
@@ -288,6 +298,9 @@ enum EffortMissKind {
   /// The runner (or auto-pause) paused.
   pause('pause'),
 
+  /// A goal run paused for over a minute in all before its distance.
+  pausedLong('pausedlong'),
+
   /// Recording stopped and resumed (the system killed it).
   recordingStopped('stopped'),
 
@@ -326,12 +339,20 @@ class EffortMiss {
   /// The distance of a 5K/10K goal run; null for any other run.
   final double? goalM;
 
-  /// "paused at 3.2 km", "GPS dropped at 4.1 km". Kilometres, whatever the
-  /// runner's units: a distance into a run is a location, not a score.
-  String get reason {
-    final at = atM == null ? '' : ' at ${(atM! / 1000).toStringAsFixed(1)} km';
+  /// "paused at 3.2 km", "GPS dropped at 4.1 km" (kilometres).
+  String get reason => reasonIn(Units.km);
+
+  /// [reason] with the distance in the runner's [units] ("paused at 2.0
+  /// mi").
+  String reasonIn(Units units) {
+    final at = atM == null
+        ? ''
+        : units == Units.mi
+        ? ' at ${(atM! / 1609.344).toStringAsFixed(1)} mi'
+        : ' at ${(atM! / 1000).toStringAsFixed(1)} km';
     return switch (kind) {
       EffortMissKind.pause => 'paused$at',
+      EffortMissKind.pausedLong => 'paused for over a minute',
       EffortMissKind.recordingStopped => 'recording stopped$at',
       EffortMissKind.gpsDropped => 'GPS dropped$at',
       EffortMissKind.gpsJump => 'GPS jumped$at',
@@ -433,15 +454,20 @@ class BestEffortFinder {
     final efforts = <BestEffortDistance, BestEffort>{};
     BestEffort build(List<_Pt> home, _Window best, BestEffortDistance d) {
       final splits = _splits(home, best, d);
-      final startMs = best.start.round();
-      final endMs = best.end.round();
+      // Times are on the home stretch's clock (moving time when bridged);
+      // the window's place on the run's clock is what the hills factor and
+      // the heart rate read.
+      final elapsedMs = best.end.round() - best.start.round();
+      final startMs = _clockAt(home, best.start).round();
+      final endMs = _clockAt(home, best.end).round();
       return BestEffort(
         distance: d,
-        elapsedMs: endMs - startMs,
+        elapsedMs: elapsedMs,
         startMs: startMs,
         startOffsetM: best.startD - pts.first.d,
         splitsMs: [for (final t in splits) (t - best.start).round()],
         avgHr: run.hasHr ? Trace(run.samples).meanHr(startMs, endMs) : null,
+        pausedMs: endMs - startMs - elapsedMs,
       );
     }
 
@@ -464,7 +490,7 @@ class BestEffortFinder {
     final goalM = _goalMetres(analysis);
     for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {
       if (efforts.containsKey(d) || goalM != d.metres) continue;
-      final bridged = _bridged(run);
+      final bridged = _bridged(run, d.metres);
       if (bridged == null) continue;
       final found = _fastest(_cutJumps([bridged]), d);
       if (found != null) efforts[d] = build(found.$1, found.$2, d);
@@ -507,20 +533,19 @@ class BestEffortFinder {
         : null;
   }
 
-  /// The run as one stretch, pauses taken out of its clock (moving time) and
-  /// recording gaps and long sample gaps left in (the distance covered in a
-  /// gap is unmeasured, so its time must count). Null when the interruptions
-  /// add up to more than [maxBridgedInterruptMs]. Jumps are still cut by the
-  /// caller; a single-step jump splits the stretch here.
-  List<_Pt>? _bridged(RunFile run) {
+  /// The run up to the sample that reaches [goalM], as one stretch with the
+  /// pauses taken out of its clock (moving time). Null when pauses before
+  /// that point add up to more than [maxBridgedInterruptMs], or when it holds
+  /// a recording gap, a long sample gap or a GPS jump. Only the run up to the
+  /// goal distance counts: a cool-down pause or drift after it is not part of
+  /// the effort. Recording gaps are never bridged: after a kill and resume
+  /// the first fix can land far from where recording stopped, and the
+  /// distance it adds is not a measured effort, so a goal run with one falls
+  /// back to the clean-stretch rule. A long GPS drop is treated the same.
+  List<_Pt>? _bridged(RunFile run, double goalM) {
     final pauses = [...run.pauses]..sort((a, b) => a.t0Ms - b.t0Ms);
-    final gaps = run.gaps;
     bool inside(List<Span> spans, int t) =>
         spans.any((b) => t >= b.t0Ms && t < b.t1Ms);
-    var interrupted = 0;
-    for (final p in pauses) {
-      interrupted += p.durationMs;
-    }
     // Moving clock: elapsed minus the pauses before it.
     int moving(int t) {
       var cut = 0;
@@ -536,22 +561,46 @@ class BestEffortFinder {
 
     final out = <_Pt>[];
     int? prevT;
+    var lastClock = 0;
     for (final s in run.samples) {
-      if (inside(pauses, s.tMs) || inside(gaps, s.tMs)) continue;
+      if (inside(pauses, s.tMs) || inside(run.gaps, s.tMs)) continue;
       final t = moving(s.tMs);
       if (prevT != null && out.isNotEmpty) {
         final dt = t - prevT;
-        if (dt > constants.sampleGapInterruptMs) interrupted += dt;
+        if (dt > constants.sampleGapInterruptMs) return null;
         if (dt > 0 && (s.distM - out.last.d) / (dt / 1000) > maxStepMps) {
           return null; // a GPS jump: not one honest effort
         }
       }
-      if (interrupted > maxBridgedInterruptMs) return null;
+      if (run.gaps.any((g) => g.t1Ms <= s.tMs && out.isNotEmpty)) return null;
       final d = out.isEmpty || s.distM >= out.last.d ? s.distM : out.last.d;
-      out.add(_Pt(t.toDouble(), d));
+      out.add(_Pt(t.toDouble(), d, s.tMs.toDouble()));
       prevT = t;
+      lastClock = s.tMs;
+      if (d - out.first.d >= goalM) break;
     }
+    var paused = 0;
+    for (final p in pauses) {
+      if (p.t0Ms < lastClock) paused += p.durationMs;
+    }
+    if (paused > maxBridgedInterruptMs) return null;
     return out.length >= 2 ? out : null;
+  }
+
+  /// The run clock at [t] on [p]'s own clock (the run clock itself unless
+  /// [p] is a bridged stretch).
+  static double _clockAt(List<_Pt> p, double t) {
+    if (p.first.r == null) return t;
+    if (t <= p.first.t) return p.first.r!;
+    if (t >= p.last.t) return p.last.r!;
+    var i = 0;
+    while (p[i + 1].t < t) {
+      i++;
+    }
+    final a = p[i];
+    final b = p[i + 1];
+    if (b.t == a.t) return a.r!;
+    return a.r! + (t - a.t) / (b.t - a.t) * (b.r! - a.r!);
   }
 
   /// Why no 5K (a goal run's own distance) was found in a run that went far
@@ -604,6 +653,27 @@ class BestEffortFinder {
       }
     }
     if (breaks.isEmpty) return null;
+    // A goal run is bridged over short pauses: if pauses before the goal
+    // distance add up past the limit and nothing else broke it, say so.
+    if (goalM != null &&
+        run.gaps.isEmpty &&
+        !breaks.any(
+          (b) =>
+              b.$2 == EffortMissKind.gpsJump ||
+              b.$2 == EffortMissKind.gpsDropped,
+        )) {
+      final reached = pts.firstWhere(
+        (p) => p.d - pts.first.d >= goalM,
+        orElse: () => pts.last,
+      );
+      var paused = 0;
+      for (final p in run.pauses) {
+        if (p.t0Ms < reached.t) paused += p.durationMs;
+      }
+      if (paused > maxBridgedInterruptMs) {
+        return EffortMiss(EffortMissKind.pausedLong, goalM: goalM);
+      }
+    }
     // A goal run is bridged over pauses and gaps, so a jump is what stopped it.
     final jumps = [
       for (final b in breaks)
@@ -775,11 +845,13 @@ class BestEffortFinder {
     final lo = a > p.first.t ? a : p.first.t;
     final hi = b < p.last.t ? b : p.last.t;
     if (hi <= lo) return;
-    final seg = <_Pt>[_Pt(lo, _dAtT(p, lo))];
+    // A bridged stretch keeps the run clock on its cut edges too.
+    double? clock(double t) => p.first.r == null ? null : _clockAt(p, t);
+    final seg = <_Pt>[_Pt(lo, _dAtT(p, lo), clock(lo))];
     for (final q in p) {
       if (q.t > lo && q.t < hi) seg.add(q);
     }
-    seg.add(_Pt(hi, _dAtT(p, hi)));
+    seg.add(_Pt(hi, _dAtT(p, hi), clock(hi)));
     out.add(seg);
   }
 
@@ -904,9 +976,13 @@ class BestEffortFinder {
 }
 
 class _Pt {
-  const _Pt(this.t, this.d);
+  const _Pt(this.t, this.d, [this.r]);
   final double t;
   final double d;
+
+  /// The run's own clock at this point when [t] is moving time (a bridged
+  /// goal run); null when [t] already is the run clock.
+  final double? r;
 }
 
 class _Window {

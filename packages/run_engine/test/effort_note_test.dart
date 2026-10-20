@@ -94,6 +94,36 @@ void main() {
     );
   });
 
+  test('a trail run with elevation but no window is explained like a road '
+      'run', () {
+    final c = run(
+      't',
+      mode: RunMode.trail,
+      trailMs: 1900000,
+      miss: const EffortMiss(EffortMissKind.pause, atM: 3200),
+    );
+    expect(
+      line([c]),
+      "Your trail run on 20 Oct didn't count: paused at 3.2 km",
+    );
+  });
+
+  test("distances follow the runner's units; a long pause has none", () {
+    final c = run('r', miss: const EffortMiss(EffortMissKind.pause, atM: 3200));
+    expect(
+      EffortNote.latest([c], now: now, units: Units.mi)!.line,
+      "Your run on 20 Oct didn't count: paused at 2.0 mi",
+    );
+    final long = run(
+      'l',
+      miss: const EffortMiss(EffortMissKind.pausedLong, goalM: 5000),
+    );
+    expect(
+      line([long]),
+      "Your 5K on 20 Oct didn't count: paused for over a minute",
+    );
+  });
+
   test('a Cooper test says what it is', () {
     expect(
       line([run('c', mode: RunMode.cooper, distanceM: 5200)]),

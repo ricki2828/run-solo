@@ -158,13 +158,20 @@ class _HomeScreenState extends State<HomeScreen> {
     // lands.
     final live = AppServices.of(context).live;
     if (live != null) {
+      // Distances in a "didn't count" line follow the runner's units.
+      final units = AppServices.of(context).settings.settings.units == Units.mi
+          ? engine.Units.mi
+          : engine.Units.km;
       _estimates = live.prepare().then(
-        (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
+        (_) => live.homeEstimates(
+          includeEvent: _hasEventCourse(live),
+          units: units,
+        ),
       );
       // A failed read just means the generic hint stays.
       _midNote = live
           .prepare()
-          .then<String?>((_) => live.effortNote()?.line)
+          .then<String?>((_) => live.effortNote(units: units)?.line)
           .catchError((_) => null);
       _raceLine = live
           .prepare()

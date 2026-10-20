@@ -1,3 +1,4 @@
+import '../model/run_file.dart' show Units;
 import '../model/session_spec.dart';
 import 'run_identity.dart';
 import 'event_names.dart';
@@ -162,8 +163,9 @@ class HomeEstimates {
     required DateTime now,
     required EventNames names,
     bool includeEvent = false,
+    Units units = Units.km,
   }) {
-    final note = EffortNote.latest(runs, now: now);
+    final note = EffortNote.latest(runs, now: now, units: units);
     final inputs = predictionInputsOf(runs);
     final predictor = Predictor(names: names);
     final all = predictor.predictAll(

@@ -79,9 +79,11 @@ class BoardInput {
 
   /// A Trail run's distance and moving time ([TrailScore.movingMs]) when it
   /// counts towards the AEROBIC and LONG lanes, scored at its True Pace
-  /// ([factorsFor]); null for every other run and for a trail run too short.
-  /// Only the identity lanes and the Home VO2 hero read this; boards and
-  /// predictions never do.
+  /// ([factorsFor]); null for every other run and for a trail run too short
+  /// or without barometer elevation. Its presence is also the gate for a
+  /// Trail run's 5K/10K windows to count for MID and the 5K/10K estimate.
+  /// Its 5K/10K windows also sit on the be:5000 / be:10000 boards, as any
+  /// run's do.
   final double? trailDistanceM;
   final int? trailMovingMs;
 

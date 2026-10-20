@@ -1,3 +1,4 @@
+import '../model/run_file.dart' show Units;
 import '../model/session_spec.dart';
 import '../run_mode.dart';
 import 'best_efforts.dart';
@@ -48,6 +49,7 @@ class EffortNote {
   static EffortNote? latest(
     Iterable<LiveCandidate> runs, {
     required DateTime now,
+    Units units = Units.km,
   }) {
     LiveCandidate? newest;
     for (final c in runs) {
@@ -77,21 +79,22 @@ class EffortNote {
     final counts =
         efforts.efforts.containsKey(BestEffortDistance.k5) ||
         efforts.efforts.containsKey(BestEffortDistance.k10);
-    if (i.mode == RunMode.trail) {
-      // Counts at hill-adjusted pace, which needs the barometer's elevation.
-      return i.trailMovingMs != null && counts
-          ? null
-          : note('trail run', 'no elevation data to adjust for hills');
+    // A trail run counts at hill-adjusted pace, which needs the barometer's
+    // elevation; with it, it is explained like any other run.
+    if (i.mode == RunMode.trail && i.trailMovingMs == null) {
+      return note('trail run', 'no elevation data to adjust for hills');
     }
     if (counts) return null;
     final miss = efforts.miss;
     if (miss == null) return null;
     final goal = miss.goalM;
-    final subject = goal == null
+    final subject = i.mode == RunMode.trail
+        ? 'trail run'
+        : goal == null
         ? 'run'
         : goal == BestEffortDistance.k5.metres
         ? '5K'
         : '10K';
-    return note(subject, miss.reason);
+    return note(subject, miss.reasonIn(units));
   }
 }
