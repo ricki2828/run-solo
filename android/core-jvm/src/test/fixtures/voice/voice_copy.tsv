@@ -28,7 +28,7 @@ km.split.whole-minutes	6	2 k, 10 minutes, pace 5:00.
 km.split.over-an-hour	7	12 k, 1 hour 4, pace 5:20.
 km.split.longest	7	10 k, 1 hour 59, pace 9:59.
 km.split.no-pace	5	4 k, 20 minutes 20.
-compare.distance.best	9	Best of 21 so far, 16 minutes 39 up.
+compare.distance.best	9	Fastest yet, 16 minutes 39 up on your best.
 compare.distance.best-level	9	Best of 21 so far, level with your best.
 compare.distance.rank	9	20th of 21, 16 minutes 39 off your best.
 compare.distance.rank-1s	8	3rd of 7, 1 second off your best.

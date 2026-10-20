@@ -59,7 +59,8 @@ object LiveWords {
         return if (r.of > 2) {
             when {
                 r.rank == 1 && s == 0L -> "Best of ${r.of} so far, level with your best."
-                r.rank == 1 -> "Best of ${r.of} so far, ${CueWords.gap(s)} up."
+                // Ricki 20-Oct: "50 seconds ahead" did not say of what; the gap is vs the previous best.
+                r.rank == 1 -> "Fastest yet, ${CueWords.gap(s)} up on your best."
                 s == 0L -> "${ordinal(r.rank)} of ${r.of}, level with your best."
                 else -> "${ordinal(r.rank)} of ${r.of}, ${CueWords.gap(s)} off your best."
             }

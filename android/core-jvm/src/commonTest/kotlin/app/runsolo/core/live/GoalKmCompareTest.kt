@@ -52,7 +52,7 @@ class GoalKmCompareTest {
     fun `ahead of every run - best so far`() {
         val f = assertNotNull(km(LiveCoach(half, RunMode.intervals, halfGoal), 1, 270_000))
         assertEquals(1, f.result.rank)
-        assertEquals("Best of 4 so far, 12 seconds up.", f.text)
+        assertEquals("Fastest yet, 12 seconds up on your best.", f.text)
     }
 
     @Test

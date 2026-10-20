@@ -60,7 +60,7 @@ class LiveCoachTest {
     @Test
     fun `free km 5 - best of 7 so far`() {
         val coach = LiveCoach(ctx(six), RunMode.free, null)
-        assertEquals("Best of 7 so far, 10 seconds up.", cross(coach, 5, 1_440_000)!!.fire!!.text)
+        assertEquals("Fastest yet, 10 seconds up on your best.", cross(coach, 5, 1_440_000)!!.fire!!.text)
     }
 
     @Test
