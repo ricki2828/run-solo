@@ -56,7 +56,7 @@ class PlannedTimeCuesTest {
     }
 
     @Test
-    fun `past planned time it is silent, even a cue that never got its turn`() {
+    fun `past planned time it is silent even for a cue that never got its turn`() {
         val c = PlannedTimeCues("easy", 20)
         assertNull(c.tick(min(20), min(20), 0))
         assertNull(c.tick(min(25), min(25), 0))
@@ -99,7 +99,7 @@ class PlannedTimeCuesTest {
     }
 
     @Test
-    fun `a cue more than 20 s late is dropped, not said at the wrong moment`() {
+    fun `a cue more than 20 s late is dropped and not said at the wrong moment`() {
         val c = PlannedTimeCues("easy", 30)
         assertEquals(emptyList(), c.run(min(15), min(15, 40)) { min(15, 30) })
         assertNull(c.tick(min(15, 45), min(15, 45), 0), "halfway is gone for good")
