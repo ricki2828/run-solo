@@ -183,6 +183,9 @@ def number_word(tok: str) -> bool:
 # ordinals stay rejected.)
 ONE_DET = frozenset("each every this that which".split())
 ONE_ART = frozenset("a an the".split())
+ONE_LEAD = frozenset("is s was earned deserve deserves deserved".split())
+AGAIN = frozenset(("again", "repeat", "repeating", "repeated"))
+REPEATABLE = frozenset("one ones rep reps set sets".split())
 ONE_NEXT_OK = frozenset("of even count so and then today at".split()) | frozenset(".,;:!?")
 
 
@@ -194,9 +197,14 @@ def _harmless(toks: list[str], i: int) -> bool:
     prev = toks[i - 1] if i else ""
     if nxt not in ONE_NEXT_OK:
         return False
+    if not prev.isalpha():
+        return False
     if tok == "one" and prev in ONE_DET:
         return True
-    return i >= 2 and toks[i - 2] in ONE_ART and prev not in ONE_ART and not number_word(prev) and prev != "slotx"
+    # "a quality one" only as the complement of is / earned / deserve ("Today is a quality one", "earned an easy one"):
+    # "throw in a hard one", "add a quick one" invent an extra effort.
+    return (i >= 3 and toks[i - 2] in ONE_ART and toks[i - 3] in ONE_LEAD
+            and prev not in ONE_ART and not number_word(prev) and prev != "slotx")
 
 
 def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
@@ -222,6 +230,8 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
     if ZONE_ONE_RE.search(bare) or EXTRA_REP_RE.search(bare):
         return "number_word"
     toks = re.findall(r"[a-z]+|[.,;:!?]", SLOT_RE.sub(" slotx ", text).lower())   # a slot is one token so its neighbours can be judged
+    if any(t in REPEATABLE and AGAIN & set(toks[i + 1:i + 3]) for i, t in enumerate(toks)):   # "do that one again": an extra rep
+        return "number_word"
     if any(number_word(t) and not _harmless(toks, i) for i, t in enumerate(toks) if t != "slotx"):
         return "number_word"
     if any(t in UNITS or t.startswith("kilomet") for t in toks):

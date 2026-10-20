@@ -215,7 +215,6 @@ def test_word_cap_counts_every_slot_at_its_worst_case():
 # well. Each must now pass the template check.
 EVAL_ACCEPTED = [
     ("Today's {session}, so take your time warming up, there's no rush into the work. Start controlled, hold {pace} on every rep, and keep each one even. Jog the recoveries properly.", {"session", "pace"}),
-    ("Today's {session}, a quality one. Start controlled, hold {pace} on the work, and jog the recoveries properly. Warm up for as long as you like.", {"session", "pace"}),
     ("Today's {session}, so ease into it with a warm-up as long as you like. Hold {pace} on the work, nice and controlled from the first rep, and jog the recoveries properly.", {"session", "pace"}),
     ("This is an easy run, {minutes} of relaxed running. Keep it conversational the whole way, slower than feels necessary, and never push. Last time got a bit quick, so ease off.", {"minutes"}),
     ("This is an easy run, {minutes} of relaxed, conversational running. Last time you went a bit quick, so start slower than feels natural and keep it chatty the whole way.", {"minutes"}),
@@ -245,14 +244,12 @@ def test_the_one_output_still_over_the_cap_is_rejected():
     "Every one of them relaxed.",
     "Make this one count.",
     "Your legs have already earned an easy one, so just enjoy it.",
-    "Today is a quality one.",
-    "Pick the hard one.",
     "Do the first rep gently.",
     "Let the first stretch feel almost too easy.",
     "Nice and gentle from the first step.",
     "Start easy at first.",
-    "Pick the easy ones.",
     "Make each one count, then settle.",
+    "Today is a quality one.",
 ])
 def test_harmless_one_and_first_are_allowed(text):
     assert bf.check_template(text, ALLOWED) is None
@@ -286,6 +283,15 @@ def test_harmless_one_and_first_are_allowed(text):
     "Run a few kms easy.",
     "Go for two hrs.",
     "Another bonus rep.",
+    "Throw in a hard one at the end.",
+    "Then add a quick one.",
+    "Finish with a fast one.",
+    "Today's {session}, a quality one.",
+    "Do that one, again.",
+    "Do the last rep again.",
+    "Do the, one.",
+    "Pick the hard one.",
+    "Pick the easy ones.",
     "A further rep at the end.",
 ])
 def test_invented_quantities_with_one_or_first_are_still_rejected(text):
@@ -305,10 +311,10 @@ def test_eval_push_pattern_passes_negated_and_fails_affirmative(eval_mod):
     easy = sc["easy-never-push"]
     base = "This is an easy run, {minutes} of relaxed running. Keep it conversational. "
     for ok in ("and never push.", "and don't push anything.", "so don’t push at all.", "you should not push it.",
-               "You won't push today.", "You do not push anywhere.", "You must not push it."):
+               "You do not push anywhere.", "You must not push it."):
         assert eval_mod.check(easy, base + ok) == [], ok
     for bad in ("Push the pace a little.", "Now push it.", "Never rush, but push the last bit.", "Don't dawdle, push on.",
-                "Why not push the last bit?", "There is no reason not to push.", "Keep pushing to the end."):
+                "Why not push the last bit?", "Who says you can't push?", "No reason you shouldn't push.", "There is no reason not to push.", "Keep pushing to the end."):
         assert any("forbidden" in m for m in eval_mod.check(easy, base + bad)), bad
 
 

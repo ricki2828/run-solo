@@ -67,7 +67,7 @@
     "as long as you like"
    ],
    "never": [
-    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!\\bdo not )(?<!\\bshould not )(?<!\\bmust not )(?<!\\bneed not )(?<!cannot )\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\ball.?out\\b",
     "\\brace pace\\b",
     "doctor",
@@ -168,7 +168,7 @@
     "nice and"
    ],
    "never": [
-    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!\\bdo not )(?<!\\bshould not )(?<!\\bmust not )(?<!\\bneed not )(?<!cannot )\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bpick it up\\b",
@@ -216,7 +216,7 @@
     "loose"
    ],
    "never": [
-    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!\\bdo not )(?<!\\bshould not )(?<!\\bmust not )(?<!\\bneed not )(?<!cannot )\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bsurge",
@@ -269,7 +269,7 @@
     "even"
    ],
    "never": [
-    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!\\bdo not )(?<!\\bshould not )(?<!\\bmust not )(?<!\\bneed not )(?<!cannot )\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\ball.?out\\b",
     "\\brace\\b",
     "doctor",
