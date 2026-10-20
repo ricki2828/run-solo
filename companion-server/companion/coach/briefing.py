@@ -204,7 +204,8 @@ def _harmless(toks: list[str], i: int) -> bool:
     # "a quality one" only as the complement of is / earned / deserve ("Today is a quality one", "earned an easy one"):
     # "throw in a hard one", "add a quick one" invent an extra effort.
     return (i >= 3 and toks[i - 2] in ONE_ART and toks[i - 3] in ONE_LEAD
-            and prev not in ONE_ART and not number_word(prev) and prev != "slotx")
+            and prev not in ONE_ART and not number_word(prev) and prev != "slotx"
+            and not (i >= 4 and toks[i - 4] in ("there", "here")))   # "there's a hard one at the end" adds one
 
 
 def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
@@ -230,7 +231,7 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
     if ZONE_ONE_RE.search(bare) or EXTRA_REP_RE.search(bare):
         return "number_word"
     toks = re.findall(r"[a-z]+|[.,;:!?]", SLOT_RE.sub(" slotx ", text).lower())   # a slot is one token so its neighbours can be judged
-    if any(t in REPEATABLE and AGAIN & set(toks[i + 1:i + 3]) for i, t in enumerate(toks)):   # "do that one again": an extra rep
+    if any(t in REPEATABLE and AGAIN & set(toks[i + 1:i + 4]) for i, t in enumerate(toks)):   # "do that one again": an extra rep
         return "number_word"
     if any(number_word(t) and not _harmless(toks, i) for i, t in enumerate(toks) if t != "slotx"):
         return "number_word"
