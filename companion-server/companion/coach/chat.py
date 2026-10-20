@@ -665,6 +665,7 @@ class CoachChat:
                 last = f"http_{r.status_code}"
                 continue
             if r.status_code != 200:
+                log.warning("coach openrouter http_%s: %s", r.status_code, error_reason(r))
                 return None, f"http_{r.status_code}"
             try:
                 data = r.json()
@@ -672,6 +673,19 @@ class CoachChat:
                 return None, "bad_json"
             return (data, "") if isinstance(data, dict) else (None, "bad_json")
         return None, last
+
+
+def error_reason(r: httpx.Response) -> str:
+    """OpenRouter's error message for a refused call, cut to 300 chars, for the log. The 400 and 404 on the first live
+    messages (20-Oct) were undiagnosable from the status alone. It names a parameter or schema problem; never the
+    request body, the key or the runner's text."""
+    try:
+        err = r.json().get("error") or {}
+        meta = err.get("metadata") or {}
+        why = f"{err.get('message', '')} | provider={meta.get('provider_name', '')} | raw={meta.get('raw', '')}"
+    except (ValueError, AttributeError):
+        why = "(no JSON body)"
+    return " ".join(str(why).split())[:300]
 
 
 def active_flags(c, uid: str) -> list[str]:
