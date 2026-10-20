@@ -8,6 +8,8 @@ import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/goal_picker.dart';
+import 'package:run_solo/widgets/odometer_distance.dart';
+import 'package:run_solo/widgets/pace_dial.dart';
 
 import '../helpers.dart';
 
@@ -324,6 +326,63 @@ void main() {
               .fontSize!,
         ),
       );
+    });
+
+    testWidgets('distance goal work phase: speedo for pace, odometer for to '
+        'go and covered', (tester) async {
+      kOdometerDistance = true;
+      addTearDown(() => kOdometerDistance = false);
+      final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      for (var i = 0; i < 60; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpTimes(tester, 4);
+      expect(find.byType(PaceDial), findsOneWidget);
+      expect(find.text('CURRENT PACE'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('event-to-go')),
+          matching: find.byType(OdometerDistance),
+        ),
+        findsOneWidget,
+      );
+      // To go plus COVERED.
+      expect(find.byType(OdometerDistance), findsNWidgets(2));
+    });
+
+    testWidgets('time goal work phase: the clock to go stays plain text, '
+        'COVERED is still an odometer', (tester) async {
+      kOdometerDistance = true;
+      addTearDown(() => kOdometerDistance = false);
+      final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalTime(1800, '30 min').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      for (var i = 0; i < 300; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpTimes(tester, 4);
+      expect(find.byType(PaceDial), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('event-to-go')),
+          matching: find.byType(OdometerDistance),
+        ),
+        findsNothing,
+      );
+      expect(find.text('25:00'), findsOneWidget);
+      expect(find.byType(OdometerDistance), findsOneWidget);
     });
 
     testWidgets('distance goal: to go and on pace, then the cool-down locks '
