@@ -11,6 +11,9 @@ import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
 import '../state/block_plan.dart';
+import '../state/coach_briefing.dart' show BriefingChoice;
+import '../state/companion.dart' show companionSessionRef;
+import '../state/start_briefing.dart';
 import '../state/courses.dart';
 import '../app/format.dart';
 import '../state/history_store.dart';
@@ -554,6 +557,15 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
     final planned = _plannedToday(services, s);
+    // The coach's briefing, from what is already cached in memory (no network, no await at Start). Only for
+    // today's plan session, and only when the content fingerprint and the session ref both match.
+    final companion = services.companion;
+    final choice = planned == null || companion == null
+        ? BriefingChoice.none
+        : companion.briefingChoice(
+            sessionRef: companionSessionRef(planned),
+            fingerprint: StartBriefing.fingerprintOf(planned, paces: _paces),
+          );
     return VoiceCoachPlan.build(
       settings: s,
       zones: services.hrZones,
@@ -566,6 +578,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
       sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
       paces: _paces,
+      briefingTemplate: choice.template,
+      suppressBriefing: choice.suppress,
     );
   }
 
