@@ -450,7 +450,7 @@ class CoachChat:
         self._message(c, uid, job_id, "coach", text, now)
 
     def _screen(self, job: Claimed, now: datetime) -> tuple[str, str | None]:
-        """The classifier on the merged turn. -> ("hit", kind) | ("clear", None) | ("error", why)."""
+        """The classifier on the merged turn. -> ("hit", kind) | ("clear", None or "injury") | ("error", why)."""
         if not self.s.openrouter_key:
             return "error", "no_key"
         with db.tx(self.s.db_path) as c:
@@ -474,6 +474,7 @@ class CoachChat:
             return "hit", redflag.URGENT
         if verdict[screen.INJURY]:
             log.info("coach screen job=%s injury=true (the coach model handles injury triage)", job.job_id)
+            return "clear", "injury"   # stored on the job (coach_jobs.screen = "clear:injury"): the briefing reads it for 7 days
         return "clear", None
 
     def _screen_alert(self, c, now: datetime) -> None:
@@ -487,7 +488,7 @@ class CoachChat:
 
     def _run(self, job: Claimed, now: datetime) -> None:
         result, detail = self._screen(job, now)
-        screen_note = {"hit": f"hit:{detail}", "clear": "clear"}.get(result, f"error:{detail}")
+        screen_note = {"hit": f"hit:{detail}", "clear": f"clear:{detail}" if detail else "clear"}.get(result, f"error:{detail}")
         kind = detail if result == "hit" else (job.soft_kind if result == "error" else None)
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE coach_jobs SET screen=? WHERE id=?", (screen_note, job.job_id))

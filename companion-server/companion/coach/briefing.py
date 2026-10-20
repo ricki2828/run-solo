@@ -6,7 +6,8 @@ the device from the same values it uses for the in-run cues (eng-review #1), in 
   facts      the session (latest upload's plan_next_*, else the coach week), recent like-for-like runs, recent check-in
              answers (enumerated values, no free text), coach memory (enumerated). Nothing the runner typed.
   generate   Sonnet through the SAME request helper as the coach chat (ZDR provider block, reasoning effort low and
-             excluded, no temperature, usage included, refusal reason logged), no tools, one call, at most one retry.
+             excluded, no temperature, usage included, refusal reason logged), one call, at most one retry. It sends the chat's tool list with tool_choice 'none' (tools are part of the
+             provider's cache prefix, so this shares the chat's cached prefix; the model cannot call a tool).
   validate   closed vocabulary: no digits, no number words from two upward, only known slots, word cap on the RENDERED
              text (each slot counted at its worst case), no dashes (#8, #9).
   store      coach_briefings, UNIQUE (user_id, session_ref), coalesced on facts_hash.
@@ -28,14 +29,16 @@ SLOT SET (the contract for the Kotlin renderer; every slot renders as spoken wor
   {minutes}   the planned duration ("forty five minutes"). Present only when the plan holds minutes. Worst case 4 words.
   {distance}  the planned distance in the runner's units ("ten point five kilometres"). Present only when the plan holds a
               distance. Worst case 5 words.
-  {reps}      the number of work reps ("four"). Present only for a session whose name or id carries "NxM". 1 word.
+  {reps}      the work reps, spoken WITH the word reps ("four reps"). Present only for a session whose name or id carries
+              "NxM". Worst case 2 words. The template must not add a unit or the word rep(s) after it.
 A template only ever uses slots listed in its facts (`available_slots`); the validator rejects any other. Cap: 28 words
 rendered (about 10 s). Kotlin re-counts after rendering and falls back (never truncates).
 ---------------------------------------------------------------------------------------------------------------------
 FINGERPRINT (#2): the app matches a cached briefing to the session it actually starts with a content hash.
   canonical string  "v1|kind=<easy|long|quality>|min=<int or empty>|dist_m=<int or empty>|reps=<int or empty>|
                      pace_lo=<int or empty>|pace_hi=<int or empty>"  (one line, fields in exactly this order, `|` joined)
-  numbers           integers in plain decimal; paces in whole seconds per km, rounded half up (floor(x + 0.5));
+  numbers           every number is converted with round-half-up, floor(x + 0.5), then written as a plain decimal integer
+                    (minutes, metres, reps and paces alike; a whole number is unchanged, 29.5 becomes 30);
                     an absent value is the empty string; `kind` is the plan's kind (a session made easy is "easy")
   fingerprint       lowercase hex of the first 16 characters of SHA-256 over the UTF-8 canonical string
   fixture           tests/fixtures/briefing_fingerprint.json (inputs -> canonical -> expected hash), tested here and to be
@@ -58,7 +61,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .. import db
-from ..timeutil import iso, now_utc, parse_iso
+from .. import checkins as ci
+from ..timeutil import iso, now_utc, parse_iso, to_local
 from . import budget
 from .tools import MEMORY_KEYS, ReadTools
 
@@ -66,15 +70,17 @@ log = logging.getLogger("companion")
 
 WORD_CAP = 28
 # Worst-case spoken length of each slot, in words. The validator counts a slot at this length (#9).
-SLOT_WORDS = {"session": 4, "pace": 6, "minutes": 4, "distance": 5, "reps": 1}
+SLOT_WORDS = {"session": 4, "pace": 6, "minutes": 4, "distance": 5, "reps": 2}
 SLOT_DOC = {
     "session": "the session's name, spoken by the app (a named session only)",
     "pace": "the target work pace, spoken by the app (a quality session with a pace only)",
     "minutes": "the planned duration, spoken by the app (only when the plan has minutes)",
     "distance": "the planned distance, spoken by the app (only when the plan has a distance)",
-    "reps": "how many work reps, spoken by the app (an NxM session only)",
+    "reps": "how many work reps, spoken by the app with the word reps, like four reps (an NxM session only)",
 }
 BLOCKING_FLAGS = ("urgent", "wellbeing", "injury", "ill")   # urgent = urgent medical, wellbeing = self-harm words
+INJURY_DAYS = 7           # the chat safety classifier's injury sighting blocks briefings for this long
+SCREEN_INJURY = "clear:injury"   # coach_jobs.screen when the classifier saw an injury but no red flag (chat.py writes it)
 MAX_ATTEMPTS = 2           # the first call plus one retry, both in the ledger
 RECENT_DAYS = 42
 STALE_GRACE_S = 30
@@ -116,9 +122,8 @@ def _round_half_up(x: float) -> int:
 def canonical(kind: str, minutes: int | None, distance_m: int | None, reps: int | None,
               pace_lo: float | None, pace_hi: float | None) -> str:
     def f(v: Any) -> str:
-        return "" if v is None else str(int(v))
-    def p(v: float | None) -> str:
         return "" if v is None else str(_round_half_up(v))
+    p = f
     return (f"{FINGERPRINT_VERSION}|kind={kind}|min={f(minutes)}|dist_m={f(distance_m)}|reps={f(reps)}"
             f"|pace_lo={p(pace_lo)}|pace_hi={p(pace_hi)}")
 
@@ -141,22 +146,32 @@ def reps_from(session_id: str | None, name: str | None) -> int | None:
 
 
 # ------------------------------------------------------------------------------------------------- validator (#8, #9)
-CARDINALS = ("two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen "
-             "nineteen twenty thirty forty fourty fifty sixty seventy eighty ninety hundred thousand million").split()
+STEMS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen "
+         "nineteen twenty thirty forty fourty fifty sixty seventy eighty ninety hundred thousand million dozen zero").split()
 ORDINALS = ("second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth "
             "sixteenth seventeenth eighteenth nineteenth twentieth thirtieth fortieth fiftieth sixtieth seventieth eightieth "
             "ninetieth hundredth thousandth").split()
-QUANTITY = ("dozen", "twice", "thrice", "double", "triple", "seconds")   # "second" is in ORDINALS: also a time unit
-BANNED_WORDS = frozenset(CARDINALS + ORDINALS + list(QUANTITY))
+# A token made only of number stems (plus a plural or -th ending) is a number word: "twentyfive", "fours", "tens", "dozens", "hundreds".
+_STEM_ALT = "|".join(sorted(STEMS, key=len, reverse=True))
+NUMBERISH_RE = re.compile(rf"^(?:(?:{_STEM_ALT})+|(?:twent|thirt|fort|fift|sixt|sevent|eight|ninet)(?:ies|ieth))(?:s|th|ths)?$")
+QUANTITY = frozenset(("twice thrice double doubles triple triples couple couples pair pairs few several handful bunch "
+                      "half halves quarter quarters").split())
+UNITS = frozenset(("hour hours minute minutes min mins mile miles metre metres meter meters yard yards lap laps").split())
 SLOT_RE = re.compile(r"\{([A-Za-z_]+)\}")
 ABBREV_RE = re.compile(r"(?<![A-Za-z])(?:x|km|bpm|hr)(?![A-Za-z])|/km", re.I)   # Z2 is caught as a digit
-COUPLE_RE = re.compile(r"\bcouple\s+of\b", re.I)
 ZONE_ONE_RE = re.compile(r"\bzone\s+one\b", re.I)
+REPS_UNIT_RE = re.compile(r"\{reps\}\W*([A-Za-z]+)")
+
+
+def number_word(tok: str) -> bool:
+    return tok in ORDINALS or tok in QUANTITY or bool(NUMBERISH_RE.match(tok))
 
 
 def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
     """None when the template is acceptable, else the reject class: empty | length | slot | digit | dash | number_word |
-    abbrev | cap. The checks are on the text as written (slots in place), the cap on the text as it will be rendered."""
+    unit | abbrev | cap. Numbers and units exist only inside slots (a slot speaks its own unit, {reps} says "four reps"), so
+    outside a slot there is no digit, no number word (one, twenty-five, fours, tens, dozens, twice, half, a few, several,
+    a pair, a quarter), and no unit word (hour, minute, mile, kilometre, metre). The word cap is on the rendered text."""
     if not text or not text.strip():
         return "empty"
     if len(text) > MAX_CHARS:
@@ -169,12 +184,19 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
         return "slot"
     if re.search(r"\d", bare):
         return "digit"
-    if "—" in text or "–" in text or "‒" in text or "―" in text or "−" in text:
+    if any(ch in text for ch in "\u2014\u2013\u2012\u2015\u2212"):
         return "dash"
-    if COUPLE_RE.search(bare) or ZONE_ONE_RE.search(bare):
+    if ZONE_ONE_RE.search(bare):
         return "number_word"
-    if any(w in BANNED_WORDS for w in re.findall(r"[a-z]+", bare.lower())):
+    toks = re.findall(r"[a-z]+", bare.lower())
+    if any(number_word(t) for t in toks):
         return "number_word"
+    if any(t in UNITS or t.startswith("kilomet") for t in toks):
+        return "unit"
+    for m in REPS_UNIT_RE.finditer(text):   # {reps} already says "reps"
+        nxt = m.group(1).lower()
+        if nxt in ("rep", "reps") or nxt in UNITS or nxt.startswith("kilomet") or number_word(nxt):
+            return "slot"
     if ABBREV_RE.search(bare):
         return "abbrev"
     if rendered_words(text) > WORD_CAP:
@@ -205,7 +227,7 @@ How it must read:
 - Informal and warm, the voice from your skill. No emoji, no hype, no markdown.
 - Never give medical advice and never mention pain, injury or illness.
 
-Numbers: you may NOT write any digit, any number word from two upward ("two", "ten", "third", "twice", "dozen", "a couple of"), or x, km, /km, bpm, HR, Z2. The only way to say a number is a slot, written in curly braces. The slots you may use are exactly: {slots}. A slot is spoken by the app in the runner's own units. Never describe a number in other words and never use a slot that is not in the list.
+Numbers and units: you may NOT write any digit, any number word at all ("one", "two", "ten", "twenty five", "fours", "tens", "dozens", "third", "twice", "a couple of", "a few", "several", "a pair", "half", "a quarter"), any unit word (hour, minute, mile, kilometre, metre), or x, km, /km, bpm, HR, Z2. The only way to say a number is a slot, written in curly braces. The slots you may use are exactly: {slots}. The app speaks each slot in the runner's own units and each slot already carries its own unit or word ("forty five minutes", "ten point five kilometres", "four reps", "five ten per kilometre"), so never write a unit or the word "reps" next to a slot. Never describe a number in other words and never use a slot that is not in the list.
 No dashes of any kind (use a comma or a full stop). At most {cap} words, counting each slot as its longest spoken form ({slot_cost}).
 
 Reply with the briefing text only.
@@ -236,11 +258,28 @@ class Briefings:
         self.svc, self.s = coach.svc, coach.s
 
     # -------------------------------------------------------------------------------------- safety + session
-    @staticmethod
-    def blocked(c, uid: str) -> bool:
+    def gate(self, c, uid: str) -> str | None:
+        """The chat gate AND the briefing kill switch (COMPANION_COACH_BRIEFING, default off)."""
+        if not self.s.coach_briefing:
+            return "briefing_off"
+        return self.coach.gate(c, uid)
+
+    def blocked(self, c, uid: str, now: datetime) -> bool:
+        """True when nothing may be said about training today (#4): an active urgent, wellbeing, injury or ill flag; or the
+        runner's own check-ins say ill or sore (a skip because ill or sore, or a sore answer, whose window has not ended);
+        or the chat safety classifier saw an injury in the last 7 days. Nothing writes an `injury` or `ill` health flag today,
+        so the last two are what actually fire. Reads fresh every time."""
         marks = ",".join("?" * len(BLOCKING_FLAGS))
-        return c.execute(f"SELECT 1 FROM health_flags WHERE user_id=? AND state='active' AND kind IN ({marks})",
-                         (uid, *BLOCKING_FLAGS)).fetchone() is not None
+        if c.execute(f"SELECT 1 FROM health_flags WHERE user_id=? AND state='active' AND kind IN ({marks})",
+                     (uid, *BLOCKING_FLAGS)).fetchone():
+            return True
+        u = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()
+        today = to_local(now, (u["zone_id"] if u else None) or "UTC").date()
+        answers = self.svc._ci_answers(c, uid, now)
+        if any(end >= today for _start, end in ci.care_windows(answers)):
+            return True
+        return c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND screen=? AND claimed_at>=?",
+                         (uid, SCREEN_INJURY, iso(now - timedelta(days=INJURY_DAYS)))).fetchone() is not None
 
     def spec_for(self, c, user: dict, now: datetime) -> Spec | None:
         """The runner's next session as it stands: the latest upload's plan_next_*, else the coach week. A session the
@@ -301,7 +340,7 @@ class Briefings:
             "SELECT kind, local_date, value FROM checkin_answers WHERE user_id=? AND created_at>? ORDER BY created_at DESC LIMIT 8",
             (uid, iso(now - timedelta(days=3))))]
         mem = self.svc._memory_get(c, uid, now)
-        remembered = {k: mem[k] for k in MEMORY_KEYS if k in mem}
+        remembered = {k: mem[k] for k in MEMORY_KEYS if k in mem and k != "niggle_area"}   # a briefing never mentions a niggle
         remembered.pop("run_why", None) if remembered.get("run_why") == "weight" else None
         slots = self.slots_for(spec)
         facts: dict[str, Any] = {
@@ -332,7 +371,7 @@ class Briefings:
         now = now or now_utc()
         try:
             with db.tx(self.s.db_path) as c:
-                if self.coach.gate(c, uid) is not None or self.blocked(c, uid):
+                if self.gate(c, uid) is not None or self.blocked(c, uid, now):
                     return False
                 if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND kind='briefing' AND state='pending'", (uid,)).fetchone():
                     return False
@@ -397,10 +436,10 @@ class Briefings:
             if not j:
                 return None
             uid, job_id = j["user_id"], j["id"]
-            why = self.coach.gate(c, uid)   # the same gate as chat, again at claim
+            why = self.gate(c, uid)   # the same gate as chat (plus the kill switch), again at claim
             if why is not None:
                 return self._cancel(c, job_id, why)
-            if self.blocked(c, uid):
+            if self.blocked(c, uid, now):
                 return self._cancel(c, job_id, "health_flag")
             user = self._user(c, uid)
             spec = self.spec_for(c, user, now) if user else None
@@ -494,7 +533,7 @@ class Briefings:
                 c.execute("UPDATE coach_jobs SET state='failed', outcome=? WHERE id=?", (outcome, job["job_id"]))
                 return
             # The runner may have withdrawn, been paused or raised a flag while the model was thinking: nothing is stored.
-            why = self.coach.gate(c, job["uid"]) or ("health_flag" if self.blocked(c, job["uid"]) else None)
+            why = self.gate(c, job["uid"]) or ("health_flag" if self.blocked(c, job["uid"], now) else None)
             if why is not None:
                 self._cancel(c, job["job_id"], why)
                 return
@@ -513,7 +552,7 @@ class Briefings:
         the runner's session as it stands now (same ref and fingerprint) and is younger than the TTL."""
         now = now or now_utc()
         with db.ro(self.s.db_path) as c:
-            if self.coach.gate(c, uid) is not None or self.blocked(c, uid):
+            if self.gate(c, uid) is not None or self.blocked(c, uid, now):
                 return 204, None
             user = self._user(c, uid)
             spec = self.spec_for(c, user, now) if user else None

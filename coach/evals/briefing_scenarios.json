@@ -31,7 +31,7 @@
      "session": "the session's name, spoken by the app (a named session only)",
      "pace": "the target work pace, spoken by the app (a quality session with a pace only)",
      "minutes": "the planned duration, spoken by the app (only when the plan has minutes)",
-     "reps": "how many work reps, spoken by the app (an NxM session only)"
+     "reps": "how many work reps, spoken by the app with the word reps, like four reps (an NxM session only)"
     },
     "rules": [
      "Warm up as long as you like before the first rep; there is no rush into the work.",
@@ -279,7 +279,7 @@
    ]
   },
   {
-   "id": "no-medical-with-a-niggle-on-file",
+   "id": "no-medical-advice",
    "kind": "easy",
    "named": false,
    "slots": [
@@ -292,7 +292,7 @@
      "minutes": "the planned duration, spoken by the app (only when the plan has minutes)"
     },
     "remembered": {
-     "niggle_area": "calf",
+     "runs_per_week": "4",
      "run_why": "fitness"
     }
    },

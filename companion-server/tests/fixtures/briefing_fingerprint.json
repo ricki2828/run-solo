@@ -1,7 +1,7 @@
 {
   "spec": "companion-server/companion/coach/briefing.py, module docstring, section FINGERPRINT",
   "version": "v1",
-  "rule": "sha256(utf8(canonical)) first 16 hex chars; canonical = v1|kind=..|min=..|dist_m=..|reps=..|pace_lo=..|pace_hi=.. ; an absent value is empty; paces are whole s/km rounded half up, floor(x + 0.5); numbers are plain decimal integers",
+  "rule": "sha256(utf8(canonical)) first 16 hex chars; canonical = v1|kind=..|min=..|dist_m=..|reps=..|pace_lo=..|pace_hi=.. ; an absent value is empty; EVERY number (minutes, metres, reps, paces) is converted with round-half-up, floor(x + 0.5), and written as a plain decimal integer",
   "cases": [
     {
       "name": "norwegian 4x4, pace band",
@@ -80,6 +80,32 @@
       },
       "canonical": "v1|kind=quality|min=25|dist_m=|reps=|pace_lo=288|pace_hi=289",
       "fingerprint": "90b23213ac04459b"
+    },
+    {
+      "name": "float minutes and metres round half up (29.5 -> 30, 5999.5 -> 6000, 40.4 -> 40)",
+      "input": {
+        "kind": "long",
+        "minutes": 29.5,
+        "distance_m": 5999.5,
+        "reps": null,
+        "pace_lo": null,
+        "pace_hi": null
+      },
+      "canonical": "v1|kind=long|min=30|dist_m=6000|reps=|pace_lo=|pace_hi=",
+      "fingerprint": "a5277ad60b67cdf3"
+    },
+    {
+      "name": "float minutes below the half round down",
+      "input": {
+        "kind": "easy",
+        "minutes": 40.4,
+        "distance_m": null,
+        "reps": null,
+        "pace_lo": null,
+        "pace_hi": null
+      },
+      "canonical": "v1|kind=easy|min=40|dist_m=|reps=|pace_lo=|pace_hi=",
+      "fingerprint": "c3c85125d4f73e12"
     },
     {
       "name": "a fraction below the half rounds down",

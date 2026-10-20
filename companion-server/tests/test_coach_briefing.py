@@ -33,7 +33,7 @@ PLAN = {"type": "quality", "day": "2026-10-22", "week": 3, "minutes": 30, "sessi
 
 def coach_settings(tmp_path, **over):
     base = dict(coach_chat=True, coach_allowlist=frozenset({f"telegram:{OWNER}"}), allowed_ids=frozenset({f"telegram:{OWNER}"}),
-                coach_merge_s=5.0)
+                coach_merge_s=5.0, coach_briefing=True)
     base.update(over)
     return make_settings(tmp_path, **base)
 
@@ -125,15 +125,45 @@ ALLOWED = {"session", "pace", "minutes", "distance", "reps"}
     ("Easy run, hold {pace.", "slot"),
     ("", "empty"),
     ("   ", "empty"),
+    # review P1-1: invented quantities and units outside a slot
+    ("Jog one minute between reps.", "number_word"),
+    ("An easy hour today.", "unit"),
+    ("Half an hour easy.", "number_word"),
+    ("About a quarter of an hour.", "number_word"),
+    ("Run a mile easy.", "unit"),
+    ("Do your fours at {pace}.", "number_word"),
+    ("Tens of minutes at a time.", "number_word"),
+    ("Dozens of them.", "number_word"),
+    ("Run twentyfive minutes.", "number_word"),
+    ("Run twenty-five and keep it easy.", "number_word"),
+    ("{reps} minutes each at {pace}.", "number_word_or_unit"),
+    ("{reps} reps at {pace}.", "slot"),
+    ("Hold {pace} for {reps} rep.", "slot"),
+    ("{reps} kilometres each at {pace}.", "unit"),
+    ("Easy for a few, then settle.", "number_word"),
+    ("Several easy ones.", "number_word"),
+    ("Go out a pair of gears down.", "number_word"),
+    ("Keep an hour of patience.", "unit"),
+    ("Go a kilometre easy.", "unit"),
+    ("Go a few metres easy.", "number_word"),
+    ("Go 1 rep.", "digit"),
+    ("Do the first rep gently.", None),
 ])
 def test_validator_rejects_each_class(text, why):
-    assert bf.check_template(text, ALLOWED) == why
+    got = bf.check_template(text, ALLOWED)
+    if why == "number_word_or_unit":
+        assert got in ("number_word", "unit", "slot")
+    else:
+        assert got == why
 
 
-def test_validator_accepts_a_clean_template_and_one_and_half():
+def test_validator_accepts_clean_templates_and_bans_one_and_half_too():
     assert bf.check_template(GOOD, ALLOWED) is None
-    assert bf.check_template("Easy run today. One steady block, and no hurry, you should be able to chat the whole way.", set()) is None
-    assert bf.check_template("Long run. Go out slower than feels right and keep half your effort back for the last stretch.", set()) is None
+    assert bf.check_template("Easy run today. A steady block, no hurry, you should be able to chat the whole way.", set()) is None
+    assert bf.check_template("Long run. Go out slower than feels right and keep something in reserve for the last stretch.", set()) is None
+    assert bf.check_template("Hold {pace} for {reps}, and jog the gaps easy.", ALLOWED) is None
+    assert bf.check_template("Easy run today. One steady block.", set()) == "number_word"
+    assert bf.check_template("Keep half your effort back.", set()) == "number_word"
 
 
 def test_validator_rejects_a_slot_the_facts_do_not_back():
@@ -149,7 +179,7 @@ def test_word_cap_counts_every_slot_at_its_worst_case():
     assert bf.check_template(" ".join(["word"] * 28), ALLOWED) is None
     assert bf.check_template(" ".join(["word"] * 29), ALLOWED) == "cap"
     assert bf.rendered_words("{pace}") == 6 and bf.rendered_words("a {session}, b") == 6
-    assert bf.rendered_words("{reps}") == 1 and bf.rendered_words("{minutes} {distance}") == 9
+    assert bf.rendered_words("{reps}") == 2 and bf.rendered_words("{minutes} {distance}") == 9
 
 
 def test_every_slot_has_a_worst_case_and_a_doc():
@@ -575,8 +605,9 @@ def _eval_scenarios():
 
 def test_briefing_eval_scenarios_are_well_formed_and_cover_the_adopted_checks():
     sc = _eval_scenarios()
+    assert "niggle_area" not in json.dumps(sc)
     ids = {s["id"] for s in sc}
-    assert {"quality-norwegian", "easy-never-push", "no-medical-with-a-niggle-on-file", "injury-flag-no-briefing"} <= ids
+    assert {"quality-norwegian", "easy-never-push", "no-medical-advice", "injury-flag-no-briefing"} <= ids
     for s in sc:
         if s.get("expect") == "none":
             assert s["flag"] in bf.BLOCKING_FLAGS
@@ -597,7 +628,135 @@ def test_the_eval_checker_fails_what_it_should():
     assert ev.check(sc["easy-never-push"], "Easy run today, push it a little for {minutes}.")                  # push with easy
     assert ev.check(sc["easy-never-push"], "Let's go for {minutes} today. Keep it relaxed and chatty.")        # kind not named first
     assert ev.check(sc["easy-never-push"], "Easy run for 40 minutes, keep it relaxed.")                       # a digit
-    assert ev.check(sc["no-medical-with-a-niggle-on-file"], "Easy run for {minutes}. Relaxed, and look after that calf.")
+    assert ev.check(sc["no-medical-advice"], "Easy run for {minutes}. Relaxed, and look after that calf.")
     nor = "Today's {session}. Warm up as long as you like, then hold {pace} on every rep and jog the gaps easy."
     assert ev.check(sc["quality-norwegian"], nor) == []
     assert ev.check(sc["quality-norwegian"], nor.replace("Warm up as long as you like", "Warm up a bit"))      # warm-up rule lost
+
+
+# ------------------------------------------------------------------------------------------------- review P1-2: injury / ill actually block
+def checkin(c, kind, day, value, at="2026-10-21T00:30:00Z"):
+    with db.tx(c.svc.s.db_path) as con:
+        con.execute("INSERT OR REPLACE INTO checkin_answers (user_id, kind, local_date, value, created_at) VALUES (?,?,?,?,?)",
+                    (c.uid, kind, day, value, at))
+
+
+@pytest.mark.parametrize("answers", [
+    [("ready", "2026-10-22", "sore")],                                        # sore the evening before the session
+    [("today", "2026-10-20", "skip"), ("why", "2026-10-20", "ill")],         # skipped because ill (7 day window)
+    [("today", "2026-10-19", "skip"), ("why", "2026-10-19", "sore")],        # skipped because sore (3 day window)
+])
+def test_a_sore_or_ill_checkin_means_no_briefing(cc, fakes, answers):
+    ready(cc, fakes)
+    assert get(cc).status_code == 200
+    for k, d, v in answers:
+        checkin(cc, k, d, v)
+    assert get(cc).status_code == 204                      # a stored briefing is not shown either
+    n = len(fakes.coach_calls)
+    assert cc.svc.coach.briefing.enqueue(cc.uid, T0 + timedelta(minutes=1)) is False
+    work(cc, T0 + timedelta(minutes=2))
+    assert len(fakes.coach_calls) == n
+
+
+def test_a_sore_checkin_raised_between_enqueue_and_claim_cancels_the_job(cc, fakes):
+    upload(cc)
+    checkin(cc, "ready", "2026-10-22", "sore")
+    work(cc)
+    assert fakes.coach_calls == [] and jobs(cc) == [{"state": "cancelled", "outcome": "health_flag"}]
+
+
+def test_a_finished_sore_window_no_longer_blocks(cc, fakes):
+    ready(cc, fakes)
+    checkin(cc, "today", "2026-10-10", "skip")
+    checkin(cc, "why", "2026-10-10", "sore")               # 3 days from 10 Oct: over well before 21 Oct
+    assert get(cc).status_code == 200
+
+
+def test_a_postrun_or_busy_answer_does_not_block(cc, fakes):
+    ready(cc, fakes)
+    checkin(cc, "today", "2026-10-20", "skip")
+    checkin(cc, "why", "2026-10-20", "busy")
+    assert get(cc).status_code == 200
+
+
+def test_a_chat_screen_injury_sighting_blocks_for_seven_days(cc, fakes):
+    from test_coach_chat import say
+    from conftest import screen_verdict
+    ready(cc, fakes)
+    assert get(cc).status_code == 200
+    fakes.screen_queue = [screen_verdict(injury=True)]
+    say(cc, "my knee has been grumbling on the hills", now=T0 + timedelta(minutes=2))
+    work(cc, T0 + timedelta(minutes=3))
+    assert rows(cc, "SELECT screen FROM coach_jobs WHERE kind='chat'") == [{"screen": "clear:injury"}]
+    assert get(cc).status_code == 204
+    assert cc.svc.coach.briefing.enqueue(cc.uid, T0 + timedelta(minutes=4)) is False
+    # 7 days later (the pinned clock moves on) the sighting has aged out
+    with db.ro(cc.svc.s.db_path) as c:
+        assert cc.svc.coach.briefing.blocked(c, cc.uid, T0 + timedelta(days=6, hours=23)) is True
+        assert cc.svc.coach.briefing.blocked(c, cc.uid, T0 + timedelta(days=7, hours=1)) is False
+
+
+def test_a_clear_screen_does_not_block(cc, fakes):
+    from test_coach_chat import say
+    ready(cc, fakes)
+    say(cc, "how did my run go?", now=T0 + timedelta(minutes=2))
+    work(cc, T0 + timedelta(minutes=3))
+    assert rows(cc, "SELECT screen FROM coach_jobs WHERE kind='chat'") == [{"screen": "clear"}]
+    assert get(cc).status_code == 200
+
+
+def test_the_screen_injury_sighting_is_deleted_with_the_runner(cc, fakes):
+    from test_coach_chat import say
+    from conftest import screen_verdict
+    fakes.screen_queue = [screen_verdict(injury=True)]
+    say(cc, "my knee has been grumbling on the hills")
+    work(cc)
+    cc.delete("/v1/me", headers=auth(cc.token))
+    assert rows(cc, "SELECT * FROM coach_jobs") == []
+
+
+def test_a_niggle_on_file_never_reaches_the_prompt(cc, fakes):
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("INSERT INTO memory (user_id, key, value, updated_at) SELECT id, 'niggle_area', 'calf', "
+                  "'2026-10-20T00:00:00Z' FROM users")
+        c.execute("INSERT INTO memory (user_id, key, value, updated_at) SELECT id, 'runs_per_week', '4', "
+                  "'2026-10-20T00:00:00Z' FROM users")
+    fakes.coach_queue = [coach_text(GOOD)]
+    upload(cc)
+    work(cc)
+    sent = fakes.coach_calls[0]["messages"][1]["content"]
+    assert "calf" not in sent and "niggle" not in sent.lower() and "runs_per_week" in sent
+
+
+# ------------------------------------------------------------------------------------------------- review P2: the kill switch
+def test_the_briefing_kill_switch_is_off_by_default_and_needs_the_chat_gates_too(tmp_path, fakes):
+    from companion.config import Settings
+    assert Settings.__dataclass_fields__["coach_briefing"].default is False
+    app = create_app(coach_settings(tmp_path, coach_briefing=False), httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        c.svc = app.state.svc
+        c.token = enrol(c)
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(c.token))
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        upload(c)
+        assert rows(c, "SELECT * FROM coach_jobs WHERE kind='briefing'") == [] and get(c).status_code == 204 and fakes.coach_calls == []
+
+
+def test_switching_the_briefing_off_hides_a_stored_row_and_cancels_queued_jobs(cc, fakes):
+    ready(cc, fakes)
+    assert get(cc).status_code == 200
+    upload(cc, "r2", now=T0 + timedelta(hours=1), plan={**PLAN, "minutes": 35})
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_briefing=False)
+    assert get(cc).status_code == 204
+    n = len(fakes.coach_calls)
+    work(cc, T0 + timedelta(hours=1, seconds=5))
+    assert len(fakes.coach_calls) == n and jobs(cc)[-1] == {"state": "cancelled", "outcome": "briefing_off"}
+
+
+def test_briefing_spend_shares_the_runners_daily_usd_cap_with_the_chat(cc, fakes):
+    from test_coach_chat import say
+    ready(cc, fakes)                                        # one briefing call (0.002) is already in today's ledger
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_daily_usd=0.0001)
+    say(cc, "how did my run go?", now=T0 + timedelta(minutes=2))
+    work(cc, T0 + timedelta(minutes=3))
+    assert rows(cc, "SELECT outcome FROM coach_jobs WHERE kind='chat'")[0]["outcome"] == "daily_usd"
