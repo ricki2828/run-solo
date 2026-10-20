@@ -132,4 +132,46 @@ void main() {
     expect(t.update(1000, 141).zone, 2);
     expect(t.update(2000, 142).zone, 3);
   });
+
+  group('positionInZone', () {
+    test('bottom 0, middle 0.5, next bottom 1 (percentMax 200)', () {
+      final z = HrZones.percentMax(200); // bottoms 100, 120, 140, 160, 180
+      expect(z.positionInZone(2, 120), 0);
+      expect(z.positionInZone(2, 130), 0.5);
+      expect(z.positionInZone(2, 140), 1);
+      expect(z.positionInZone(1, 110), 0.5);
+    });
+
+    test('clamps below the bottom and above the top', () {
+      final z = HrZones.percentMax(200);
+      expect(z.positionInZone(3, 100), 0);
+      expect(z.positionInZone(3, 200), 1);
+    });
+
+    test('Z5 uses the Z4 width', () {
+      final z = HrZones.percentMax(200); // Z4 width 20 -> Z5 180..200
+      expect(z.positionInZone(5, 180), 0);
+      expect(z.positionInZone(5, 190), 0.5);
+      expect(z.positionInZone(5, 200), 1);
+      expect(z.positionInZone(5, 230), 1);
+    });
+
+    test('custom zones', () {
+      final z = HrZones.custom([120, 140, 160, 180], z1Floor: 100);
+      expect(z.positionInZone(1, 110), 0.5);
+      expect(z.positionInZone(3, 150), 0.5);
+      expect(z.positionInZone(5, 190), 0.5);
+    });
+
+    test('reserve zones (rounded bounds)', () {
+      final z = HrZones.reserve(54, 188); // 108, 134, 148, 161, 175
+      expect(z.positionInZone(2, 141), 0.5);
+    });
+
+    test('zone outside 1..5 is 0.5', () {
+      final z = HrZones.percentMax(200);
+      expect(z.positionInZone(0, 150), 0.5);
+      expect(z.positionInZone(6, 150), 0.5);
+    });
+  });
 }

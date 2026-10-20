@@ -109,6 +109,20 @@ class HrZones {
     return 1;
   }
 
+  /// Where [hr] sits inside [zone]: 0.0 = bottom of the zone, 1.0 = top,
+  /// clamped. Z5 has no top, so it borrows Z4's width. [zone] is normally the
+  /// tracker's (hysteresis) zone, which can lag [hr], so the result clamps to
+  /// the zone's edge. A zone outside 1..5 gives 0.5.
+  double positionInZone(int zone, num hr) {
+    if (zone < 1 || zone > 5) return 0.5;
+    final lo = bottom(zone).toDouble();
+    final hi = zone < 5
+        ? bottom(zone + 1).toDouble()
+        : lo + (lo - bottom(4).toDouble());
+    if (hi <= lo) return 0.5;
+    return ((hr - lo) / (hi - lo)).clamp(0.0, 1.0).toDouble();
+  }
+
   @override
   bool operator ==(Object other) =>
       other is HrZones &&

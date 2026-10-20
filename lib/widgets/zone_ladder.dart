@@ -7,12 +7,16 @@ import '../theme/zones.dart';
 /// rungs, Z1 at the bottom to Z5 at the top, each labelled 1-5 and filled
 /// from the chart ramp ([HrZones.distributionLight]). Inactive rungs sit at
 /// 30 % opacity; the lit one is full with a Bone outline and a small pointer
-/// facing in. [zone] is the engine tracker's zone (hysteresis applied), so
+/// facing in; the pointer's height shows where HR sits within the zone
+/// ([position], 0 = bottom, 1 = top). [zone] is the engine tracker's zone (hysteresis applied), so
 /// the ladder never flickers; 0 (no HR) hides it. Colour is never the only
 /// cue: every rung carries its number.
 class ZoneLadder extends StatelessWidget {
-  const ZoneLadder({super.key, required this.zone});
+  const ZoneLadder({super.key, required this.zone, this.position = 0.5});
   final int zone;
+
+  /// 0 = bottom of the lit rung, 1 = top (`HrZones.positionInZone`).
+  final double position;
 
   /// The ladder's width; the screen reserves [reserve] for it and its pointer.
   static const double width = 18;
@@ -38,7 +42,7 @@ class ZoneLadder extends StatelessWidget {
           children: [
             for (var z = HrZones.count; z >= 1; z--)
               Expanded(
-                child: _Rung(z: z, lit: z == zone, t: t),
+                child: _Rung(z: z, lit: z == zone, position: position, t: t),
               ),
           ],
         ),
@@ -48,9 +52,15 @@ class ZoneLadder extends StatelessWidget {
 }
 
 class _Rung extends StatelessWidget {
-  const _Rung({required this.z, required this.lit, required this.t});
+  const _Rung({
+    required this.z,
+    required this.lit,
+    required this.position,
+    required this.t,
+  });
   final int z;
   final bool lit;
+  final double position;
   final RunSoloTokens t;
 
   @override
@@ -74,9 +84,14 @@ class _Rung extends StatelessWidget {
           SizedBox(
             width: ZoneLadder.pointer,
             child: lit
-                ? CustomPaint(
-                    key: const ValueKey('ladder-pointer'),
-                    painter: _PointerPainter(t.inkPrimary),
+                ? TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: position.clamp(0.0, 1.0)),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOut,
+                    builder: (context, p, _) => CustomPaint(
+                      key: const ValueKey('ladder-pointer'),
+                      painter: _PointerPainter(t.inkPrimary, p),
+                    ),
                   )
                 : null,
           ),
@@ -115,14 +130,18 @@ class _Rung extends StatelessWidget {
   }
 }
 
-/// A small triangle at the rung's left edge, pointing in (right).
+/// A small triangle at the rung's left edge, pointing in (right); [position]
+/// (0 bottom, 1 top) sets its height, kept clear of the rung's ends.
 class _PointerPainter extends CustomPainter {
-  _PointerPainter(this.colour);
+  _PointerPainter(this.colour, this.position);
   final Color colour;
+  final double position;
+
+  static const double _margin = 5;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cy = size.height / 2;
+    final cy = _margin + (1 - position) * (size.height - 2 * _margin);
     canvas.drawPath(
       Path()
         ..moveTo(0, cy - 5)
@@ -134,5 +153,5 @@ class _PointerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PointerPainter old) => old.colour != colour;
+  bool shouldRepaint(_PointerPainter old) => old.colour != colour || old.position != position;
 }
