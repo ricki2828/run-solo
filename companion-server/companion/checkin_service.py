@@ -450,6 +450,8 @@ class CheckinMixin:
             return
         ch.answer_callback(inb.callback_id)   # first: the button stops spinning whatever the edit does
         self._ci_sync_or_queue(user, slot, for_date, now)
+        if self.coach.enabled:
+            self.coach.briefing.enqueue(uid, now)   # C2b: an answer can change the next session (queued, never generated here)
         if parsed[0] in ("today", "why", "undo", "ready", "shape"):   # only answers that move or soften a session redraw the week
             self._ci_week_enqueue(user, now)
 

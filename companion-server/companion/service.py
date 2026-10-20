@@ -388,6 +388,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
     "coach_jobs": "the coach chat queue: states and times, and a reply only while it waits to be sent; the words of both "
                   "sides are exported under coach_chat_30d",
     "cost_ledger": "the cost and token counts of each coach model call, so the caps can be counted; no content",
+    "coach_briefings": "the coach's spoken-briefing template for the next planned session: words with slots, never a number",
 }
 
 
@@ -1114,6 +1115,8 @@ class Service(CheckinMixin, MeasureMixin):
         out = self._ingest_run(uid, run, now, replay=replay)
         if run.consent_version is not None and run.consent_version < self.s.checkin_consent_required:
             self._ci_unpin_weeks(uid)
+        if not replay and self.coach.enabled:
+            self.coach.briefing.enqueue(uid, now)   # C2b: never raises, never calls a model; the worker generates
         return out
 
     def _ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
@@ -2379,6 +2382,7 @@ class Service(CheckinMixin, MeasureMixin):
             # coach chat: messages and jobs (with their replies) 30 days; the cost ledger like llm_calls; cleared flags 90 days
             gone += c.execute("DELETE FROM coach_messages WHERE ts < ?", (log_cut,)).rowcount
             gone += c.execute("DELETE FROM coach_jobs WHERE created_at < ?", (log_cut,)).rowcount
+            gone += c.execute("DELETE FROM coach_briefings WHERE generated_at < ?", (log_cut,)).rowcount
             c.execute("DELETE FROM cost_ledger WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM health_flags WHERE state='cleared' AND cleared_at < ?", (iso(now - timedelta(days=90)),))
             c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))

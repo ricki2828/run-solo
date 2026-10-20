@@ -163,6 +163,9 @@ class Settings:
     coach_screen_timeout_s: float = 5.0
     coach_screen_max_tokens: int = 60
     coach_merge_s: float = 5.0     # messages a runner sends within this long of each other are answered as one turn
+    coach_briefing: bool = False      # COMPANION_COACH_BRIEFING: the briefing kill switch, off by default; needs the chat gates too
+    coach_briefing_daily: int = 8     # briefing model calls per runner per local day (a retry counts)
+    coach_briefing_ttl_h: float = 36.0   # a stored briefing is served for this long after it was generated
     coach_history: int = 12        # earlier chat messages sent with each turn
     # Reservation estimates (USD per million tokens); the settle uses the cost OpenRouter reports.
     coach_usd_per_mtok_in: float = 3.0
@@ -238,6 +241,8 @@ class Settings:
             coach_card_reserve_usd=_posfloat(e.get("COMPANION_COACH_CARD_RESERVE_USD"), 5.0),
             coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
             coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
+            coach_briefing=_flag(e.get("COMPANION_COACH_BRIEFING")),
+            coach_briefing_daily=_posint(e.get("COMPANION_COACH_BRIEFING_DAILY"), 8),
             coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 2000),
             coach_screen_model=(e.get("COMPANION_COACH_SCREEN_MODEL") or "anthropic/claude-haiku-5.5").strip(),
             coach_max_tool_turns=min(_posint(e.get("COMPANION_COACH_MAX_TOOL_TURNS"), 6), 6),

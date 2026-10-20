@@ -357,6 +357,20 @@ CREATE TABLE IF NOT EXISTS health_flags (
   set_at TEXT NOT NULL, cleared_at TEXT, cleared_by TEXT,
   PRIMARY KEY (user_id, kind)
 );
+-- Coach session briefing (C2b): the spoken briefing TEMPLATE for a runner's next planned session. Slots only ({pace},
+-- {minutes}, ...), never a number: the app fills them in on the device. One row per (runner, session_ref); `fingerprint` is
+-- the content hash the app matches on (coach/briefing.py documents the canonical spec), `facts_hash` coalesces regeneration.
+-- Deleted with the runner and on consent withdrawal, purged after 30 days, left out of the nightly backup.
+CREATE TABLE IF NOT EXISTS coach_briefings (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  session_ref TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  facts_hash TEXT NOT NULL,
+  template TEXT NOT NULL,
+  prompt_hash TEXT NOT NULL,
+  generated_at TEXT NOT NULL,
+  UNIQUE (user_id, session_ref)
+);
 -- One row per coach model call: reserved before the call (inside a write transaction, so two calls cannot both pass the
 -- cap), settled from OpenRouter's usage after it. Like llm_calls, user_id has no foreign key and is set to NULL on
 -- delete, so the month's spend cannot be reset by deleting. Token counts include the cached share (eng-review W5).

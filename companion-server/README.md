@@ -80,6 +80,40 @@ session). Without a name, `name` is the kind name ("Quality session", "Easy run"
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the
 fact that a session moved: no reason, no readiness, no skip. The same resolver feeds the evening rules and the morning card.
 
+### `GET /v1/me/briefing` (C2b: the coach's spoken session briefing, device token)
+
+A TEMPLATE for the runner's next planned session, with slots and never a number. The app (Kotlin) renders the slots on the device, in the
+runner's units, from the same values the in-run cues use. The server never renders a number. `Cache-Control: no-store`. Never calls a model.
+
+- `200` `{"session_ref", "fingerprint", "template", "generated_at", "prompt_hash"}`: serve it only to the session whose fingerprint matches. (A `200` without `template` is the suppress answer below.)
+- `202` `{"status":"pending"}`: a job is queued or running. Keep the cache.
+- `200 {"status":"suppress"}` (no `template`, no reason, never a flag kind): the gates pass but a safety block is on (an active health flag, a sore/ill check-in window, or an injury the chat screen saw in the last 7 days). Clear the cache and speak NO briefing at all, the app's own offline briefing included: use the plain start line (`SummaryWords.start`).
+- `204`: nothing to say, and nothing is implied about why (gate closed: kill switch off, flag off, not allowlisted, no consent, paused; or no session, nothing generated, expired after 36 h). Clear the cache; the app's own offline briefing may still be spoken.
+
+Every gate is re-read on every call: `COMPANION_COACH_CHAT`, the allowlist, consent at or above 3, not paused, and no active `urgent`, `wellbeing`
+(self-harm), `injury` or `ill` flag (injury is a plain 204, the review's simplest option; `ill` is added for the same reason). Nothing writes an `injury` or `ill` flag row today, so the rule also fires on what exists: a check-in that says ill or sore (a skip because ill or sore, or a sore answer, until its window ends), or the chat safety classifier seeing an injury in the last 7 days (`coach_jobs.screen = 'clear:injury'`). `niggle_area` memory is never sent to the model. Withdrawing consent deletes the rows. Off by default behind `COMPANION_COACH_BRIEFING=1` (needs the chat gates too).
+Generation: queued after a run upload or a check-in answer, run by the coach worker (same gate again at claim, per-runner daily cap
+`COMPANION_COACH_BRIEFING_DAILY` default 8 model calls, the shared cost ledger, at most one retry), coalesced on a hash of the facts.
+
+Slots (each speaks as words; worst-case length is what the 28-word cap counts):
+
+| slot | spoken as | worst case | present when |
+|---|---|---|---|
+| `{session}` | "Norwegian four by four" | 4 words | the plan names the session |
+| `{pace}` | "five ten per kilometre" (or per mile), the same value as `VoiceCoachConfig.targetPaceSecPerKm` | 6 | a quality session with a target pace |
+| `{minutes}` | "forty five minutes" | 4 | the plan holds minutes |
+| `{distance}` | "ten point five kilometres" | 5 | the plan holds a distance |
+| `{reps}` | "four reps" (spoken WITH the word reps) | 2 | the session id or name carries `NxM` |
+
+A template only uses slots its session has. Kotlin renders, re-counts words (cap 28), and on any problem (unknown slot, over cap) uses the Dart template, then
+`SummaryWords.start`; it never truncates. Outside a slot a template has no digit, no number word at all (one, twenty five, fours, tens, dozens, twice, half, a few, several, a pair, a quarter) and no unit word (hour, minute, mile, kilometre, metre): each slot speaks its own unit, so the template never writes one, and never writes "reps" next to `{reps}`.
+
+Fingerprint (the app matches the session it actually starts against it): the SHA-256 of
+`v1|kind=<easy|long|quality>|min=<int>|dist_m=<int>|reps=<int>|pace_lo=<int>|pace_hi=<int>`, first 16 hex characters. Fields in exactly that order, an absent value
+is empty, and EVERY number (minutes, metres, reps, paces in s/km) is converted with round-half-up, `floor(x + 0.5)` (29.5 gives 30), then written as a plain integer. Shared fixture, tested here and for the Dart side to test against the same file:
+`companion-server/tests/fixtures/briefing_fingerprint.json`. `plan_next` carries no rep count, so the server takes `reps` from an `NxM` in the session id or name
+(`norwegian_4x4` gives 4); the Dart side must derive it the same way for a plan session, or the match is simply missed and the app's own line is spoken.
+
 ### Quest block (`POST /v1/runs`, optional `quest`)
 
 The app owns quests (history, trail grouping, True Pace); the server keeps what it last said so it can issue the month's Telegram card, add the
