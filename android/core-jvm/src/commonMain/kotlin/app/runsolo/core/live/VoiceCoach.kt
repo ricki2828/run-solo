@@ -18,6 +18,8 @@ class VoiceCoach(private val config: Config) {
      * [full] false = Minimal (next step only): this class says nothing. [targetPaceSecPerKm] null =
      * no target status. [slowerIsFine]: an easy-run ceiling, slow is on target. [zoneBottomsBpm] =
      * the bottoms of zones 2..5 (as `HrZones`); with [plannedMaxZone] it turns drift on.
+     * [plannedKind] (`easy` or `long`) and [plannedMinutes] turn on [PlannedTimeCues]; null (a
+     * config persisted before they existed, or any other run) = no planned-time lines.
      */
     data class Config(
         val full: Boolean,
@@ -26,6 +28,8 @@ class VoiceCoach(private val config: Config) {
         val slowerIsFine: Boolean = false,
         val zoneBottomsBpm: List<Double>? = null,
         val plannedMaxZone: Int? = null,
+        val plannedKind: String? = null,
+        val plannedMinutes: Int? = null,
     ) {
         init {
             require(zoneBottomsBpm == null || zoneBottomsBpm.size == 4) { "zoneBottomsBpm is zones 2..5" }

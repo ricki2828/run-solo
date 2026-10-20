@@ -178,6 +178,8 @@ class RecorderService : Service() {
         const val PREF_VC_BAND = "voiceCoachBand"
         const val PREF_VC_BOTTOMS = "voiceCoachBottoms"
         const val PREF_VC_ZONE = "voiceCoachZone"
+        const val PREF_VC_PLAN_KIND = "voiceCoachPlanKind"
+        const val PREF_VC_PLAN_MINUTES = "voiceCoachPlanMinutes"
 
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile

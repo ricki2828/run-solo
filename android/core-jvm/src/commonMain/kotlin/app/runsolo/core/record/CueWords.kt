@@ -22,6 +22,12 @@ object CueWords {
     /** [RecorderCore.Output.Cue.value] of the `phaseEnd` that closes a fixed cool-down. */
     const val COOLDOWN_OVER = 1.0
 
+    /** A plan easy or long run's halfway line, on its planned minutes (`PlannedTimeCues`). */
+    const val PLANNED_HALFWAY = "Halfway."
+
+    /** The same run's "5 minutes to go." line. */
+    fun plannedToGo(minutes: Int): String = "$minutes ${if (minutes == 1) "minute" else "minutes"} to go."
+
     /** The Ready screen's spoken countdown: 3, 2, 1, then 0 = "Go" (null for any other number). */
     fun countdownBeat(beat: Int): String? = when (beat) {
         3 -> "Three"

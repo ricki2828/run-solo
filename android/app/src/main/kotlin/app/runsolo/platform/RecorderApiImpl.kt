@@ -386,6 +386,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .putString(RecorderService.PREF_VC_BAND, config.bandSecPerKm?.toString())
             .putString(RecorderService.PREF_VC_BOTTOMS, config.zoneBottomsBpm?.joinToString(","))
             .putInt(RecorderService.PREF_VC_ZONE, config.plannedMaxZone?.toInt() ?: 0)
+            .putString(RecorderService.PREF_VC_PLAN_KIND, config.plannedKind)
+            .putInt(RecorderService.PREF_VC_PLAN_MINUTES, config.plannedMinutes?.toInt() ?: 0)
             .commit()
     }
 
@@ -404,6 +406,9 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             slowerIsFine = prefs.getBoolean(RecorderService.PREF_VC_SLOWER_OK, false),
             zoneBottomsBpm = bottoms,
             plannedMaxZone = prefs.getInt(RecorderService.PREF_VC_ZONE, 0).takeIf { it in 1..4 && bottoms != null },
+            // Prefs written before these existed read as absent: no planned-time lines.
+            plannedKind = prefs.getString(RecorderService.PREF_VC_PLAN_KIND, null),
+            plannedMinutes = prefs.getInt(RecorderService.PREF_VC_PLAN_MINUTES, 0).takeIf { it > 0 },
         )
     }
 

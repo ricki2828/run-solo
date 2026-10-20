@@ -1,18 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/state/voice_coach_plan.dart';
 
-engine.BlockSession _session(engine.BlockKind kind, {String? presetId}) =>
-    engine.BlockSession(
-      id: 'w1s1',
-      week: 1,
-      dayOffset: 0,
-      role: engine.BlockRole.values.first,
-      kind: kind,
-      reason: 'test',
-      presetId: presetId,
-    );
+engine.BlockSession _session(
+  engine.BlockKind kind, {
+  String? presetId,
+  int? minutes,
+}) => engine.BlockSession(
+  id: 'w1s1',
+  week: 1,
+  dayOffset: 0,
+  role: engine.BlockRole.values.first,
+  kind: kind,
+  reason: 'test',
+  presetId: presetId,
+  minutes: minutes,
+);
 
 void main() {
   final zones = engine.HrZones.percentMax(190);
@@ -122,6 +127,69 @@ void main() {
     expect(long.slowerIsFine, isTrue);
     expect(long.plannedMaxZone, isNull);
   });
+
+  test('easy and long plan starts carry kind and planned minutes', () {
+    for (final (kind, name) in [
+      (engine.BlockKind.easy, 'easy'),
+      (engine.BlockKind.long, 'long'),
+    ]) {
+      final c = VoiceCoachPlan.build(
+        settings: const AppSettings(),
+        zones: zones,
+        planned: _session(kind, minutes: 45),
+        vdot: vdot,
+      );
+      expect(c.plannedKind, name);
+      expect(c.plannedMinutes, 45);
+    }
+  });
+
+  test(
+    'free, warned easy, goal, interval, no minutes and Minimal carry none',
+    () {
+      final cases = <VoiceCoachConfig>[
+        VoiceCoachPlan.build(settings: const AppSettings(), zones: zones),
+        VoiceCoachPlan.build(
+          settings: const AppSettings(),
+          zones: zones,
+          warnedEasy: true,
+        ),
+        VoiceCoachPlan.build(
+          settings: const AppSettings(),
+          zones: zones,
+          planned: _session(engine.BlockKind.goal, minutes: 30),
+          goalPaceSecPerKm: 295,
+        ),
+        VoiceCoachPlan.build(
+          settings: const AppSettings(),
+          zones: zones,
+          planned: _session(
+            engine.BlockKind.interval,
+            presetId: 'tempo',
+            minutes: 30,
+          ),
+          vdot: vdot,
+        ),
+        VoiceCoachPlan.build(
+          settings: const AppSettings(),
+          zones: zones,
+          planned: _session(engine.BlockKind.easy),
+          vdot: vdot,
+        ),
+        VoiceCoachPlan.build(
+          settings: const AppSettings(coachingDetail: CoachingDetail.minimal),
+          zones: zones,
+          planned: _session(engine.BlockKind.long, minutes: 60),
+          vdot: vdot,
+        ),
+        VoiceCoachPlan.off,
+      ];
+      for (final c in cases) {
+        expect(c.plannedKind, isNull);
+        expect(c.plannedMinutes, isNull);
+      }
+    },
+  );
 
   test('a goal run uses its own pace, not the plan estimate', () {
     final c = VoiceCoachPlan.build(

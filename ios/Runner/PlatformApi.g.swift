@@ -3333,6 +3333,11 @@ struct VoiceCoachConfig: Hashable {
   var bandSecPerKm: Double? = nil
   var zoneBottomsBpm: [Double]? = nil
   var plannedMaxZone: Int64? = nil
+  /// The plan session being run, `easy` or `long` (null for any other run), and its
+  /// planned minutes: "Halfway." and "5 minutes to go." on the run screen's clock. Not a
+  /// `SessionSpec` step: the run stays a Free run.
+  var plannedKind: String? = nil
+  var plannedMinutes: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -3344,6 +3349,8 @@ struct VoiceCoachConfig: Hashable {
     let bandSecPerKm: Double? = nilOrValue(pigeonVar_list[4])
     let zoneBottomsBpm: [Double]? = nilOrValue(pigeonVar_list[5])
     let plannedMaxZone: Int64? = nilOrValue(pigeonVar_list[6])
+    let plannedKind: String? = nilOrValue(pigeonVar_list[7])
+    let plannedMinutes: Int64? = nilOrValue(pigeonVar_list[8])
 
     return VoiceCoachConfig(
       enabled: enabled,
@@ -3352,7 +3359,9 @@ struct VoiceCoachConfig: Hashable {
       targetPaceSecPerKm: targetPaceSecPerKm,
       bandSecPerKm: bandSecPerKm,
       zoneBottomsBpm: zoneBottomsBpm,
-      plannedMaxZone: plannedMaxZone
+      plannedMaxZone: plannedMaxZone,
+      plannedKind: plannedKind,
+      plannedMinutes: plannedMinutes
     )
   }
   func toList() -> [Any?] {
@@ -3364,13 +3373,15 @@ struct VoiceCoachConfig: Hashable {
       bandSecPerKm,
       zoneBottomsBpm,
       plannedMaxZone,
+      plannedKind,
+      plannedMinutes,
     ]
   }
   static func == (lhs: VoiceCoachConfig, rhs: VoiceCoachConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.enabled, rhs.enabled) && deepEqualsPlatformApi(lhs.full, rhs.full) && deepEqualsPlatformApi(lhs.slowerIsFine, rhs.slowerIsFine) && deepEqualsPlatformApi(lhs.targetPaceSecPerKm, rhs.targetPaceSecPerKm) && deepEqualsPlatformApi(lhs.bandSecPerKm, rhs.bandSecPerKm) && deepEqualsPlatformApi(lhs.zoneBottomsBpm, rhs.zoneBottomsBpm) && deepEqualsPlatformApi(lhs.plannedMaxZone, rhs.plannedMaxZone)
+    return deepEqualsPlatformApi(lhs.enabled, rhs.enabled) && deepEqualsPlatformApi(lhs.full, rhs.full) && deepEqualsPlatformApi(lhs.slowerIsFine, rhs.slowerIsFine) && deepEqualsPlatformApi(lhs.targetPaceSecPerKm, rhs.targetPaceSecPerKm) && deepEqualsPlatformApi(lhs.bandSecPerKm, rhs.bandSecPerKm) && deepEqualsPlatformApi(lhs.zoneBottomsBpm, rhs.zoneBottomsBpm) && deepEqualsPlatformApi(lhs.plannedMaxZone, rhs.plannedMaxZone) && deepEqualsPlatformApi(lhs.plannedKind, rhs.plannedKind) && deepEqualsPlatformApi(lhs.plannedMinutes, rhs.plannedMinutes)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -3382,6 +3393,8 @@ struct VoiceCoachConfig: Hashable {
     deepHashPlatformApi(value: bandSecPerKm, hasher: &hasher)
     deepHashPlatformApi(value: zoneBottomsBpm, hasher: &hasher)
     deepHashPlatformApi(value: plannedMaxZone, hasher: &hasher)
+    deepHashPlatformApi(value: plannedKind, hasher: &hasher)
+    deepHashPlatformApi(value: plannedMinutes, hasher: &hasher)
   }
 }
 

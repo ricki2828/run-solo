@@ -3496,7 +3496,14 @@ data class VoiceCoachConfig (
   val targetPaceSecPerKm: Double? = null,
   val bandSecPerKm: Double? = null,
   val zoneBottomsBpm: List<Double>? = null,
-  val plannedMaxZone: Long? = null
+  val plannedMaxZone: Long? = null,
+  /**
+   * The plan session being run, `easy` or `long` (null for any other run), and its
+   * planned minutes: "Halfway." and "5 minutes to go." on the run screen's clock. Not a
+   * `SessionSpec` step: the run stays a Free run.
+   */
+  val plannedKind: String? = null,
+  val plannedMinutes: Long? = null
 )
  {
   companion object {
@@ -3508,7 +3515,9 @@ data class VoiceCoachConfig (
       val bandSecPerKm = pigeonVar_list[4] as Double?
       val zoneBottomsBpm = pigeonVar_list[5] as List<Double>?
       val plannedMaxZone = pigeonVar_list[6] as Long?
-      return VoiceCoachConfig(enabled, full, slowerIsFine, targetPaceSecPerKm, bandSecPerKm, zoneBottomsBpm, plannedMaxZone)
+      val plannedKind = pigeonVar_list[7] as String?
+      val plannedMinutes = pigeonVar_list[8] as Long?
+      return VoiceCoachConfig(enabled, full, slowerIsFine, targetPaceSecPerKm, bandSecPerKm, zoneBottomsBpm, plannedMaxZone, plannedKind, plannedMinutes)
     }
   }
   fun toList(): List<Any?> {
@@ -3520,6 +3529,8 @@ data class VoiceCoachConfig (
       bandSecPerKm,
       zoneBottomsBpm,
       plannedMaxZone,
+      plannedKind,
+      plannedMinutes,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -3530,7 +3541,7 @@ data class VoiceCoachConfig (
       return true
     }
     val other = other as VoiceCoachConfig
-    return PlatformApiPigeonUtils.deepEquals(this.enabled, other.enabled) && PlatformApiPigeonUtils.deepEquals(this.full, other.full) && PlatformApiPigeonUtils.deepEquals(this.slowerIsFine, other.slowerIsFine) && PlatformApiPigeonUtils.deepEquals(this.targetPaceSecPerKm, other.targetPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bandSecPerKm, other.bandSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.zoneBottomsBpm, other.zoneBottomsBpm) && PlatformApiPigeonUtils.deepEquals(this.plannedMaxZone, other.plannedMaxZone)
+    return PlatformApiPigeonUtils.deepEquals(this.enabled, other.enabled) && PlatformApiPigeonUtils.deepEquals(this.full, other.full) && PlatformApiPigeonUtils.deepEquals(this.slowerIsFine, other.slowerIsFine) && PlatformApiPigeonUtils.deepEquals(this.targetPaceSecPerKm, other.targetPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bandSecPerKm, other.bandSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.zoneBottomsBpm, other.zoneBottomsBpm) && PlatformApiPigeonUtils.deepEquals(this.plannedMaxZone, other.plannedMaxZone) && PlatformApiPigeonUtils.deepEquals(this.plannedKind, other.plannedKind) && PlatformApiPigeonUtils.deepEquals(this.plannedMinutes, other.plannedMinutes)
   }
 
   override fun hashCode(): Int {
@@ -3542,6 +3553,8 @@ data class VoiceCoachConfig (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bandSecPerKm)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.zoneBottomsBpm)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedMaxZone)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedKind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedMinutes)
     return result
   }
 }

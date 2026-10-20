@@ -24,7 +24,14 @@ abstract final class VoiceCoachPlan {
   /// Target status: a goal's pace, or a plan session's True Pace estimate
   /// (interval reps, goal, easy, long). Easy and long paces are "or slower",
   /// so slow counts as on target there. Zone drift: plan easy sessions only,
-  /// planned zone 2 (and Home's warned "Start Easy run", [warnedEasy]). Everything else gets the next-step line and nothing else.
+  /// planned zone 2 (and Home's warned "Start Easy run", [warnedEasy]).
+  ///
+  /// Planned time: an easy or long plan session with minutes also carries
+  /// them ([VoiceCoachConfig.plannedKind], [VoiceCoachConfig.plannedMinutes]),
+  /// so the recorder says "Halfway." (planned 20 minutes or more) and
+  /// "5 minutes to go." (15 or more) on the run screen's clock, and nothing
+  /// past the planned time. Free, goal, interval and trail runs carry neither.
+  /// Everything else gets the next-step line and nothing else.
   static VoiceCoachConfig build({
     required AppSettings settings,
     required engine.HrZones zones,
@@ -48,6 +55,8 @@ abstract final class VoiceCoachPlan {
     // Home's warned "Start Easy run" is an easy run with no plan session:
     // no pace, but heart rate is held to zone 2 like a plan easy session.
     final easy = kind == engine.BlockKind.easy || warnedEasy;
+    final minutes = planned?.minutes;
+    final timed = _ceiling(kind) && minutes != null && minutes > 0;
     return VoiceCoachConfig(
       enabled: on,
       full: full,
@@ -57,6 +66,8 @@ abstract final class VoiceCoachPlan {
           ? [for (var z = 2; z <= 5; z++) zones.bottom(z).toDouble()]
           : null,
       plannedMaxZone: on && full && easy ? 2 : null,
+      plannedKind: on && full && timed ? kind!.name : null,
+      plannedMinutes: on && full && timed ? minutes : null,
     );
   }
 
