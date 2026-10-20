@@ -4,6 +4,7 @@ import 'event_names.dart';
 import 'goal.dart';
 import 'leaderboards.dart';
 import 'live_plan.dart';
+import 'effort_note.dart';
 import 'predictor.dart';
 
 /// Every prediction input the index holds (PD2): one run's inputs from its
@@ -19,6 +20,7 @@ List<PredictionInput> predictionInputsOf(Iterable<LiveCandidate> runs) => [
       efforts: c.derived.bestEfforts,
       heatFraction: c.input.heatFraction,
       gradeFactor: c.input.gradeFactor,
+      trailCounts: c.input.trailMovingMs != null,
     ),
 ];
 
@@ -161,6 +163,7 @@ class HomeEstimates {
     required EventNames names,
     bool includeEvent = false,
   }) {
+    final note = EffortNote.latest(runs, now: now);
     final inputs = predictionInputsOf(runs);
     final predictor = Predictor(names: names);
     final all = predictor.predictAll(
@@ -173,13 +176,16 @@ class HomeEstimates {
         (i) => i.distanceM >= Predictor.minInputM,
       );
       if (qualifying.isEmpty) {
-        return const HomeEstimates._(message: emptyLine);
+        return HomeEstimates._(
+          message: note == null ? emptyLine : '${note.line}. $emptyLine',
+        );
       }
       final last = qualifying
           .map((i) => i.date)
           .reduce((a, b) => a.isAfter(b) ? a : b);
+      final stale = staleLine(now.difference(last).inDays ~/ 7);
       return HomeEstimates._(
-        message: staleLine(now.difference(last).inDays ~/ 7),
+        message: note == null ? stale : '${note.line}. $stale',
       );
     }
     final order = [
@@ -197,6 +203,11 @@ class HomeEstimates {
       if (p == null) continue;
       final s = homeSourceLine(p);
       if (!sources.contains(s)) sources.add(s);
+    }
+    // A newer run that did not count says why, under the source line.
+    if (note != null &&
+        all.values.every((p) => note.date.isAfter(p.source.date))) {
+      sources.add('${note.line}.');
     }
     return HomeEstimates._(rows: rows, sourceLines: sources);
   }

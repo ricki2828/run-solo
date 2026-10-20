@@ -141,8 +141,13 @@ abstract final class IdentityScores {
         } else if (lane == IdentityLane.mid) {
           // A real clean 5K/10K GPS window counts despite an INT mode pick.
           // The finder still rejects indoor/noisy tracks and cuts pauses,
-          // recording gaps and GPS jumps. Cooper is a 12-minute test.
-          if (input.mode == RunMode.cooper || input.mode == RunMode.trail) {
+          // recording gaps and GPS jumps (a 5K/10K goal run is bridged over
+          // a short one). Cooper is a 12-minute test. A Trail run counts
+          // like it does for LONG: only with barometer elevation
+          // ([BoardInput.trailMovingMs]), at the window's own hills factor
+          // (True Pace), never at its hilly pace.
+          if (input.mode == RunMode.cooper) continue;
+          if (input.mode == RunMode.trail && input.trailMovingMs == null) {
             continue;
           }
           for (final d in [BestEffortDistance.k5, BestEffortDistance.k10]) {

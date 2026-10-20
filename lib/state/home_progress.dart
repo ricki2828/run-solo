@@ -387,6 +387,7 @@ class Recommendation {
     required ProfileSex sex,
     required int? age,
     Map<String, PresetEdit> presetEdits = const {},
+    String? midNote,
   }) {
     final waits = <engine.IdentityLane, int>{};
     for (final lane in engine.IdentityLane.values) {
@@ -425,6 +426,7 @@ class Recommendation {
       missing: s == null,
       stalledWeeks: stalledWeeks,
       presetEdits: presetEdits,
+      midNote: midNote,
     );
   }
 
@@ -462,6 +464,7 @@ class Recommendation {
     required bool missing,
     required int? stalledWeeks,
     required Map<String, PresetEdit> presetEdits,
+    String? midNote,
   }) {
     final name = lane.name.toUpperCase();
     // The name Start shows, with the runner's edits to the preset.
@@ -495,13 +498,16 @@ class Recommendation {
         'a 15K+ run this week keeps it climbing',
       ),
     };
+    // Why the latest long run did not count beats the generic hint.
+    final why = lane == engine.IdentityLane.mid ? midNote : null;
     final String reason;
     if (missing) {
-      reason = unlock;
+      reason = why == null ? unlock : '$why. A clean 5K sets MID.';
     } else if (stalledWeeks != null) {
-      reason =
-          '$name hasn\'t moved in $stalledWeeks weeks. Try '
-          '${lane == engine.IdentityLane.long ? 'a 15K+ run' : session}.';
+      reason = why == null
+          ? '$name hasn\'t moved in $stalledWeeks weeks. Try '
+                '${lane == engine.IdentityLane.long ? 'a 15K+ run' : session}.'
+          : '$name hasn\'t moved in $stalledWeeks weeks. $why.';
     } else {
       reason = '$name: $keep.';
     }

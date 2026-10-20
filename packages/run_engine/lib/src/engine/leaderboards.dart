@@ -29,6 +29,7 @@ class BoardInput {
     this.headlineGradeFactor = 1,
     this.trailDistanceM,
     this.trailMovingMs,
+    this.runDistanceM = 0,
   });
 
   final String runId;
@@ -83,6 +84,10 @@ class BoardInput {
   /// predictions never do.
   final double? trailDistanceM;
   final int? trailMovingMs;
+
+  /// The run's recorded distance, for telling the runner why a long run did
+  /// not count ([EffortNote]); 0 when unknown.
+  final double runDistanceM;
 
   /// True Pace factors for a stretch of this run with its own hills factor.
   TruePaceFactors factorsFor([double? grade]) => TruePace.factors(

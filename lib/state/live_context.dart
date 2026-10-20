@@ -268,6 +268,13 @@ class LiveContextSource {
       ? const {}
       : engine.IdentityScores.of(_cached, now: now(), hero: fitnessHero());
 
+  /// Why the latest 5 km+ run did not count for MID ("Your 5K on 20 Oct
+  /// didn't count: paused at 3.2 km"), from the last prepare; null when it
+  /// counted, nothing explains it, or never prepared.
+  engine.EffortNote? effortNote() => _cachedVersion == null
+      ? null
+      : engine.EffortNote.latest(_cached, now: now());
+
   engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
       _cachedVersion == null
       ? null

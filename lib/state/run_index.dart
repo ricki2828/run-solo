@@ -148,6 +148,7 @@ class RunIndexEntry {
       headlineGradeFactor: row?.workGradeFactor ?? 1,
       trailDistanceM: trailMovingMs == null ? null : distanceM,
       trailMovingMs: trailMovingMs,
+      runDistanceM: distanceM,
     );
   }
 
