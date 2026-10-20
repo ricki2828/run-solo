@@ -251,6 +251,8 @@ def test_the_one_output_still_over_the_cap_is_rejected():
     "Let the first stretch feel almost too easy.",
     "Nice and gentle from the first step.",
     "Start easy at first.",
+    "Pick the easy ones.",
+    "Make each one count, then settle.",
 ])
 def test_harmless_one_and_first_are_allowed(text):
     assert bf.check_template(text, ALLOWED) is None
@@ -272,6 +274,19 @@ def test_harmless_one_and_first_are_allowed(text):
     "Hold {pace} on the second rep.",
     "Easy for the first twenty.",
     "Do a one.",
+    # review of #353: invented extra reps through the pronoun path
+    "Hold {pace} on the last rep, then do that one again.",
+    "Then add a bonus one if you feel good.",
+    "Finish with an additional one.",
+    "Do a further one.",
+    "Add a spare one at the end.",
+    "Remember that one interval is plenty.",
+    "Stay with that one hard effort.",
+    "Take this one kilo at a time.",
+    "Run a few kms easy.",
+    "Go for two hrs.",
+    "Another bonus rep.",
+    "A further rep at the end.",
 ])
 def test_invented_quantities_with_one_or_first_are_still_rejected(text):
     assert bf.check_template(text, ALLOWED) is not None
@@ -290,10 +305,19 @@ def test_eval_push_pattern_passes_negated_and_fails_affirmative(eval_mod):
     easy = sc["easy-never-push"]
     base = "This is an easy run, {minutes} of relaxed running. Keep it conversational. "
     for ok in ("and never push.", "and don't push anything.", "so don’t push at all.", "you should not push it.",
-               "You won't push today."):
+               "You won't push today.", "You do not push anywhere.", "You must not push it."):
         assert eval_mod.check(easy, base + ok) == [], ok
-    for bad in ("Push the pace a little.", "Now push it.", "Never rush, but push the last bit.", "Don't dawdle, push on."):
+    for bad in ("Push the pace a little.", "Now push it.", "Never rush, but push the last bit.", "Don't dawdle, push on.",
+                "Why not push the last bit?", "There is no reason not to push.", "Keep pushing to the end."):
         assert any("forbidden" in m for m in eval_mod.check(easy, base + bad)), bad
+
+
+def test_eval_pushing_is_caught_in_quality_and_long_scenarios(eval_mod):
+    sc = {s["id"]: s for s in _eval_scenarios()}
+    for sid in ("quality-norwegian", "long-run-patient"):
+        rx = sc[sid]["never"]
+        assert any(__import__("re").search(x, "keep pushing to the end") for x in rx), sid
+        assert not any(__import__("re").search(x, "never push the start") for x in rx), sid
 
 
 def test_eval_ice_pattern_is_a_word_boundary(eval_mod):
@@ -301,6 +325,7 @@ def test_eval_ice_pattern_is_a_word_boundary(eval_mod):
     base = "This is an easy run, about {minutes} today. Keep it relaxed and conversational. "
     assert not any("forbidden" in m for m in eval_mod.check(med, base + "Nice and gentle, never push it."))
     assert any("forbidden" in m for m in eval_mod.check(med, base + "Put ice on it afterwards."))
+    assert any("forbidden" in m for m in eval_mod.check(med, base + "Some icing helps."))
 
 
 def test_every_slot_has_a_worst_case_and_a_doc():
