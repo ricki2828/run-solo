@@ -86,6 +86,7 @@ class RecordingSnapshot {
     this.hadFix = false,
     this.repPaces = const [],
     this.zone = 0,
+    this.zonePosition = 0.5,
     this.fault,
     this.notice,
     this.discarded = false,
@@ -148,6 +149,10 @@ class RecordingSnapshot {
   /// HR zone 0–5 from the engine tracker (plan §18.1): hysteresis and dwell
   /// applied, so the background never flashes. 0 = no HR.
   final int zone;
+
+  /// Where HR sits within [zone]: 0 = bottom of the zone, 1 = top. Drives the
+  /// ladder pointer's height; 0.5 when there is no HR.
+  final double zonePosition;
 
   /// Journal / storage faults the runner must see; null when fine.
   final String? fault;
@@ -333,6 +338,7 @@ class RecordingSnapshot {
     bool? hadFix,
     List<double>? repPaces,
     int? zone,
+    double? zonePosition,
     String? fault,
     bool clearFault = false,
     String? notice,
@@ -384,6 +390,7 @@ class RecordingSnapshot {
     hadFix: hadFix ?? this.hadFix,
     repPaces: repPaces ?? this.repPaces,
     zone: zone ?? this.zone,
+    zonePosition: zonePosition ?? this.zonePosition,
     fault: clearFault ? null : (fault ?? this.fault),
     notice: notice ?? this.notice,
     discarded: discarded ?? this.discarded,
@@ -889,6 +896,9 @@ class RecordingController extends ChangeNotifier {
       stepRemainingM: t.stepRemainingM,
       clearStepRemainingM: t.stepRemainingM == null,
       zone: zone,
+      zonePosition: hr != null && zone > 0
+          ? _zones().positionInZone(zone, hr)
+          : null,
       autoPaused: t.autoPaused ?? false,
       elevGainM: t.elevGainM,
       elevLossM: t.elevLossM,

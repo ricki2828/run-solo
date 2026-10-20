@@ -4,7 +4,7 @@ import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/zone_ladder.dart';
 
-Widget host(int zone) => MaterialApp(
+Widget host(int zone, {double position = 0.5}) => MaterialApp(
   theme: runSoloTheme(brightness: Brightness.dark),
   home: Scaffold(
     body: Align(
@@ -12,7 +12,7 @@ Widget host(int zone) => MaterialApp(
       child: SizedBox(
         width: ZoneLadder.width + ZoneLadder.pointer,
         height: 500,
-        child: ZoneLadder(zone: zone),
+        child: ZoneLadder(zone: zone, position: position),
       ),
     ),
   ),
@@ -63,5 +63,27 @@ void main() {
     await tester.pumpWidget(host(0));
     expect(find.byKey(const ValueKey('ladder-rung-1')), findsNothing);
     expect(find.byKey(const ValueKey('ladder-pointer')), findsNothing);
+  });
+
+  testWidgets('pointer sits higher on the rung for a higher position', (
+    tester,
+  ) async {
+    // The painter is private; read its position field dynamically.
+    double posOf() {
+      final paint = tester.widget<CustomPaint>(
+        find.byKey(const ValueKey('ladder-pointer')),
+      );
+      final painter = paint.painter as dynamic;
+      return painter.position as double;
+    }
+
+    await tester.pumpWidget(host(3, position: 0.1));
+    final low = posOf();
+    await tester.pumpWidget(host(3, position: 0.9));
+    await tester.pumpAndSettle();
+    final high = posOf();
+    expect(low, closeTo(0.1, 1e-9));
+    expect(high, closeTo(0.9, 1e-9));
+    expect(high, greaterThan(low));
   });
 }

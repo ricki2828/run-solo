@@ -1046,7 +1046,10 @@ class _RecordingScreenState extends State<RecordingScreen>
                       56 +
                       Space.x12,
                   width: ZoneLadder.width + ZoneLadder.pointer,
-                  child: ZoneLadder(zone: s.hr == null ? 0 : s.zone),
+                  child: ZoneLadder(
+                    zone: s.hr == null ? 0 : s.zone,
+                    position: s.zonePosition,
+                  ),
                 ),
                 CompareCardLayer(
                   link: _page == 1 ? _mapCardLink : _cardLink,
