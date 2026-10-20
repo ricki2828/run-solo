@@ -20,7 +20,15 @@ class SpeechClock {
         busyUntil = maxOf(busyUntil, nowMs) + words * MS_PER_WORD
     }
 
+    /** The speech queued so far was cut off at [nowMs] (a flush): nothing is queued any more. */
+    fun interrupt(nowMs: Long) {
+        busyUntil = minOf(busyUntil, nowMs)
+    }
+
     companion object {
+        /** True when a briefing estimated to end at [endsAt] is still being said at [nowMs] (and [endsAt] is set). */
+        fun interrupts(endsAt: Long, nowMs: Long): Boolean = endsAt > 0L && nowMs < endsAt
+
         const val STALE_MS = 3_000L
         const val MS_PER_WORD = 375L
     }

@@ -77,6 +77,9 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     /** A summary line asked for before TTS finished starting; said once it is ready (or toned if it never is). */
     private var pendingLine: String? = null
     private var releaseWhenIdle = false
+
+    /** When the start briefing is estimated to end (session clock); 0 = none in flight. A step boundary before it flushes it. */
+    private var briefingEndsAt = 0L
     private var pendingQuiet: String? = null
 
     fun init() {
@@ -191,6 +194,11 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
             dropped = true
             return null
         }
+        // A step boundary (go, rep end) inside the start briefing cuts it off, so the cue is on time.
+        if ((kind == CueKind.start || kind == CueKind.phaseEnd) && SpeechClock.interrupts(briefingEndsAt, t)) {
+            briefingEndsAt = 0L
+            flushSpeech(t)
+        }
         vibrate(kind ?: CueKind.minuteMark)
         val words = offered.text
         speech.queued(t, CueComposer.words(words))
@@ -287,7 +295,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
      * is done (the end-of-run player has nothing else to say).
      */
     @Synchronized
-    fun announceSummary(text: String, thenRelease: Boolean = false) {
+    fun announceSummary(text: String, thenRelease: Boolean = false, briefing: Boolean = false) {
         if (!enabled) {
             if (thenRelease) release()
             return
@@ -296,6 +304,7 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         followUp.cancel()
         budget.record(TalkLine(CueSlot.structure, "summary:${seq++}", text), now(), speech.busyUntil)
         speech.queued(now(), CueComposer.words(text))
+        if (briefing) briefingEndsAt = speech.busyUntil
         if (ttsReady || tts == null) say(null, text) else pendingLine = text
         if (thenRelease) main.postDelayed({ release() }, RELEASE_SAFETY_MS)
     }
@@ -357,6 +366,15 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
         }
         if (!spoke) done()
         return spoke
+    }
+
+    /** Stops what is being said and forgets what was queued behind it; the next line starts now. */
+    private fun flushSpeech(t: Long) {
+        try {
+            tts?.stop()
+        } catch (_: Exception) {
+        }
+        speech.interrupt(t)
     }
 
     private fun countdown() {

@@ -215,14 +215,14 @@ abstract final class StartBriefing {
 
   // ---------------------------------------------------------------------------------------------- slot values
 
-  /// `{reps}`: an NxM in the template id or name (the server's rule), else the session's own rep count.
+  /// `{reps}`: the reps the plan actually runs for this session (they change week to week: 3, 4 or 5 for a
+  /// Norwegian 4x4), else the catalogue default for the preset. NOT the NxM in the name: [repsFrom] is only for the
+  /// fingerprint (the server contract). The recorder re-reads the reps from the session it records.
   static int? _repsOf(engine.BlockSession s) {
-    final t = companionTemplateFacts(s);
-    final fromName = repsFrom(
-      t['session_id'] as String?,
-      t['session_name'] as String?,
-    );
-    final reps = fromName ?? s.reps;
+    final id = s.presetId;
+    final reps =
+        s.reps ??
+        (id == null ? null : engine.SessionCatalogue.byId(id)?.defaultReps);
     return reps != null && reps > 0 ? reps : null;
   }
 
@@ -249,7 +249,12 @@ abstract final class StartBriefing {
         .replaceAll(RegExp(r'[/_-]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (s.length > 40) s = s.substring(0, 40).trim();
+    if (s.length > 40) {
+      // At a word boundary, like the recorder's own speakable().
+      final cut = s.substring(0, 40);
+      final space = cut.lastIndexOf(' ');
+      s = (space > 0 ? cut.substring(0, space) : cut).trim();
+    }
     return RegExp(r'[A-Za-z0-9]').hasMatch(s) ? s : null;
   }
 }

@@ -497,7 +497,7 @@ class RecordingSession(
         if (!startSpoken.claim(runId)) return
         val path = follower?.path
         val text = plannedBriefing() ?: SummaryWords.start(mode, spec, units, followRoute?.name, path?.totalM, path?.totalClimbM) ?: return
-        cues.announceSummary(text)
+        cues.announceSummary(text, briefing = true)
     }
 
     private val startSpoken = StartSpoken(
@@ -520,7 +520,10 @@ class RecordingSession(
             else -> false
         }
         if (!planned) return null
-        val slots = StartBriefing.Slots(c.sessionName, c.targetPaceSecPerKm, c.plannedMinutes, c.plannedDistanceM, c.reps)
+        // {reps} is what this run will actually do: the work steps of the spec being recorded (the plan's reps change
+        // by week and the runner may edit them after picking); the config's count only when the run has no steps.
+        val reps = StartBriefing.repsFor(spec?.reps, c.reps)
+        val slots = StartBriefing.Slots(c.sessionName, c.targetPaceSecPerKm, c.plannedMinutes, c.plannedDistanceM, reps)
         return StartBriefing.line(c.briefingTemplate, c.briefingFallback, slots, units)
     }
 

@@ -179,6 +179,42 @@ void main() {
       expect(p.fallback, contains('{pace}'));
     });
 
+    test('reps are the plan\'s for the week, not the NxM in the name', () {
+      for (final n in [3, 4, 5]) {
+        final p = StartBriefing.plan(
+          _session(
+            engine.BlockKind.interval,
+            presetId: engine.SessionSpec.norwegian4x4Id,
+            reps: n,
+          ),
+          hasPace: true,
+        )!;
+        expect(p.reps, n);
+        // The fingerprint still reads the name (the server contract).
+        expect(
+          StartBriefing.fingerprintOf(
+            _session(
+              engine.BlockKind.interval,
+              presetId: engine.SessionSpec.norwegian4x4Id,
+              reps: n,
+            ),
+          ),
+          StartBriefing.fingerprint(kind: 'quality', reps: 4),
+        );
+      }
+      expect(
+        StartBriefing.plan(
+          _session(
+            engine.BlockKind.interval,
+            presetId: engine.SessionSpec.norwegian4x4Id,
+          ),
+          hasPace: true,
+        )!.reps,
+        4,
+        reason: 'no plan reps: the catalogue default',
+      );
+    });
+
     test('easy and long name the run first and say one pacing line', () {
       final easy = StartBriefing.plan(
         _session(engine.BlockKind.easy, minutes: 40),
@@ -353,6 +389,11 @@ void main() {
       expect(StartBriefing.spoken('1 km repeats'), '1 kilometre repeats');
       expect(StartBriefing.spoken('1-minute reps'), '1 minute reps');
       expect(StartBriefing.spoken('---'), isNull);
+      final long = StartBriefing.spoken(
+        'Mount Wellington summit via the old pipe track',
+      )!;
+      expect(long.length, lessThanOrEqualTo(40));
+      expect(long, 'Mount Wellington summit via the old');
     });
   });
 

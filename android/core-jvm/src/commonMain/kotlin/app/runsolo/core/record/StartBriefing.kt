@@ -42,6 +42,12 @@ object StartBriefing {
         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
     )
 
+    /**
+     * `{reps}` for the run being recorded: the work steps of its spec ([specReps], what it will really do: the plan's
+     * reps change by week and the runner may edit them after picking), the config's count only when the run has none.
+     */
+    fun repsFor(specReps: Int?, configReps: Int?): Int? = specReps?.takeIf { it > 0 } ?: configReps
+
     /** "four reps", "one rep", "24 reps"; null for a count that is not positive. */
     fun repsWords(n: Int): String? = when {
         n <= 0 -> null

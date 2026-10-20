@@ -6,6 +6,7 @@ import app.runsolo.core.live.SpeechClock
 import app.runsolo.core.live.TalkBudget
 import app.runsolo.core.live.TalkLine
 import app.runsolo.core.live.VoiceLevel
+import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,6 +58,22 @@ class StartBriefingTest {
         assertEquals("24 reps", StartBriefing.repsWords(24))
         assertNull(StartBriefing.repsWords(0))
         assertEquals("Then six reps, hard.", render("Then {reps}, hard.", nor.copy(reps = 6)))
+    }
+
+    @Test
+    fun `reps come from the spec being recorded not the catalogue name`() {
+        val t = "Then {reps}, hard but even."
+        for ((n, words) in listOf(3 to "three", 4 to "four", 5 to "five")) {
+            val spec = SessionSpec.norwegian4x4(reps = n)
+            val reps = StartBriefing.repsFor(spec.reps, 4)
+            assertEquals("Then $words reps, hard but even.", render(t, nor.copy(reps = reps)))
+        }
+        // The runner edited the reps after the plan picked 4: the edit is what is said.
+        assertEquals(6, StartBriefing.repsFor(SessionSpec.norwegian4x4(reps = 6).reps, 4))
+        // No steps (a Free run): the config's count, else none.
+        assertEquals(4, StartBriefing.repsFor(null, 4))
+        assertEquals(4, StartBriefing.repsFor(0, 4))
+        assertNull(StartBriefing.repsFor(null, null))
     }
 
     @Test
