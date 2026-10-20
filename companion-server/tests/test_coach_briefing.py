@@ -148,6 +148,28 @@ ALLOWED = {"session", "pace", "minutes", "distance", "reps"}
     ("Go a few metres easy.", "number_word"),
     ("Go 1 rep.", "digit"),
     ("Do the first rep gently.", None),
+    # round 3: quantity words that change the workout without a number
+    ("Add another rep today.", "number_word"),
+    ("An extra rep at the end.", "number_word"),
+    ("A single rep extra.", "number_word"),
+    ("Run once around.", "number_word"),
+    ("A trio of strides.", "number_word"),
+    ("Finish with more strides.", "number_word"),
+    ("Finish with additional sets.", "number_word"),
+    ("Hold it for a few seconds.", "number_word"),
+    ("Hold it for ten secs.", "number_word"),
+    ("Take a sec between reps.", "unit"),
+    ("Jog for a minute.", "unit"),
+    ("Run the full k.", "unit"),
+    ("OK, easy run, relaxed.", None),
+    # NFKC: fullwidth letters, vulgar fractions, roman numeral signs
+    ("ｔｗｏ reps at {pace}.", "number_word"),
+    ("Run ⅕ of it hard.", "digit"),
+    ("Ⅳ reps at {pace}.", "number_word"),
+    ("Do Ⅱ of them.", "number_word"),
+    ("Run the ｋ easy.", "unit"),
+    ("Hold {pace} ／ｋｍ.", "abbrev"),
+    ("Easy run １０ minutes.", "digit"),
 ])
 def test_validator_rejects_each_class(text, why):
     got = bf.check_template(text, ALLOWED)

@@ -55,6 +55,7 @@ import logging
 import math
 import re
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -155,8 +156,12 @@ ORDINALS = ("second third fourth fifth sixth seventh eighth ninth tenth eleventh
 _STEM_ALT = "|".join(sorted(STEMS, key=len, reverse=True))
 NUMBERISH_RE = re.compile(rf"^(?:(?:{_STEM_ALT})+|(?:twent|thirt|fort|fift|sixt|sevent|eight|ninet)(?:ies|ieth))(?:s|th|ths)?$")
 QUANTITY = frozenset(("twice thrice double doubles triple triples couple couples pair pairs few several handful bunch "
-                      "half halves quarter quarters").split())
-UNITS = frozenset(("hour hours minute minutes min mins mile miles metre metres meter meters yard yards lap laps").split())
+                      "half halves quarter quarters another extra single once trio quartet duo").split())
+# Roman numerals (a fullwidth or compatibility form such as U+2163 folds to "IV"). "i" alone is a pronoun and stays allowed.
+ROMAN = frozenset("ii iii iv v vi vii viii ix xi xii xiii xiv xv xvi xvii xviii xix xx".split())
+EXTRA_REP_RE = re.compile(r"\b(?:more|extra|another|additional)\s+(?:reps?|strides?|sets?)\b", re.I)
+UNITS = frozenset(("hour hours minute minutes min mins second seconds sec secs mile miles metre metres meter meters yard yards "
+                   "lap laps k").split())
 SLOT_RE = re.compile(r"\{([A-Za-z_]+)\}")
 ABBREV_RE = re.compile(r"(?<![A-Za-z])(?:x|km|bpm|hr)(?![A-Za-z])|/km", re.I)   # Z2 is caught as a digit
 ZONE_ONE_RE = re.compile(r"\bzone\s+one\b", re.I)
@@ -164,7 +169,7 @@ REPS_UNIT_RE = re.compile(r"\{reps\}\W*([A-Za-z]+)")
 
 
 def number_word(tok: str) -> bool:
-    return tok in ORDINALS or tok in QUANTITY or bool(NUMBERISH_RE.match(tok))
+    return tok in ORDINALS or tok in QUANTITY or tok in ROMAN or bool(NUMBERISH_RE.match(tok))
 
 
 def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
@@ -172,7 +177,8 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
     unit | abbrev | cap. Numbers and units exist only inside slots (a slot speaks its own unit, {reps} says "four reps"), so
     outside a slot there is no digit, no number word (one, twenty-five, fours, tens, dozens, twice, half, a few, several,
     a pair, a quarter), and no unit word (hour, minute, mile, kilometre, metre). The word cap is on the rendered text."""
-    if not text or not text.strip():
+    text = unicodedata.normalize("NFKC", text or "")   # fullwidth letters, vulgar fractions and roman numeral signs fold first
+    if not text.strip():
         return "empty"
     if len(text) > MAX_CHARS:
         return "length"
@@ -186,7 +192,7 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
         return "digit"
     if any(ch in text for ch in "\u2014\u2013\u2012\u2015\u2212"):
         return "dash"
-    if ZONE_ONE_RE.search(bare):
+    if ZONE_ONE_RE.search(bare) or EXTRA_REP_RE.search(bare):
         return "number_word"
     toks = re.findall(r"[a-z]+", bare.lower())
     if any(number_word(t) for t in toks):
@@ -211,7 +217,7 @@ def rendered_words(text: str) -> int:
 
 
 def tidy(raw: str) -> str:
-    t = " ".join(raw.split())
+    t = " ".join(unicodedata.normalize("NFKC", raw).split())
     if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'":
         t = t[1:-1].strip()
     return t
