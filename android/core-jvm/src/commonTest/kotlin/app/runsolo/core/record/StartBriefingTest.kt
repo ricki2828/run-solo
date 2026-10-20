@@ -181,7 +181,7 @@ class StartBriefingTest {
             val budget = TalkBudget(level)
             val clock = SpeechClock()
             speakBriefing(budget, clock, StartBriefing.MAX_WORDS, 0L)
-            // About 10 s of speech is queued; the first step boundary lands at t = 5 s.
+            // About 15 s of speech is queued; the first step boundary lands at t = 5 s.
             assertTrue(clock.busyUntil > 5_000L)
             assertNotNull(budget.offer(TalkLine(CueSlot.structure, "step:1", "Go. Rep 1 of 4"), 5_000L, clock.busyUntil), "$level")
             assertNotNull(budget.offer(TalkLine(CueSlot.structure, "step:2", "Recover"), 5_100L, clock.busyUntil), "$level")
@@ -192,11 +192,11 @@ class StartBriefingTest {
     fun `the briefing is exempt from the talk budget but resets its last spoke clock`() {
         val budget = TalkBudget(VoiceLevel.coach)
         val clock = SpeechClock()
-        // 28 words are well over the 16 word cue budget and the 30 word window with anything else: still recorded, never refused.
+        // 40 words are well over the 16 word cue budget and the 30 word window with anything else: still recorded, never refused.
         speakBriefing(budget, clock, StartBriefing.MAX_WORDS, 0L)
-        // The briefing ends at 28 * 375 = 10.5 s; a km line then keeps the 25 s gap after it, not before.
+        // The briefing ends at 40 * 375 = 15 s; a km line then keeps the 25 s gap after it, not before.
         assertNull(budget.offer(TalkLine(CueSlot.km, "km:1", "1 k."), 5_000L, clock.busyUntil))
         assertNull(budget.offer(TalkLine(CueSlot.km, "km:2", "1 k."), 35_000L, clock.busyUntil))
-        assertNotNull(budget.offer(TalkLine(CueSlot.km, "km:3", "1 k."), 36_000L, clock.busyUntil))
+        assertNotNull(budget.offer(TalkLine(CueSlot.km, "km:3", "1 k."), 41_000L, clock.busyUntil))
     }
 }

@@ -67,7 +67,7 @@
     "as long as you like"
    ],
    "never": [
-    "\\bpush\\b",
+    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!not )\\bpush\\b",
     "\\ball.?out\\b",
     "\\brace pace\\b",
     "doctor",
@@ -168,7 +168,7 @@
     "nice and"
    ],
    "never": [
-    "\\bpush",
+    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bpick it up\\b",
@@ -216,7 +216,7 @@
     "loose"
    ],
    "never": [
-    "\\bpush",
+    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bsurge",
@@ -269,7 +269,7 @@
     "even"
    ],
    "never": [
-    "\\bpush\\b",
+    "(?<!n't )(?<!n\\u2019t )(?<!never )(?<!not )\\bpush\\b",
     "\\ball.?out\\b",
     "\\brace\\b",
     "doctor",
@@ -315,7 +315,7 @@
     "pain",
     "injur",
     "stretch",
-    "ice\\b",
+    "\\bice\\b",
     "ibuprofen",
     "medic",
     "diagnos",

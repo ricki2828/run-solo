@@ -201,13 +201,106 @@ def test_validator_rejects_a_slot_the_facts_do_not_back():
 
 
 def test_word_cap_counts_every_slot_at_its_worst_case():
-    twenty_two = " ".join(["word"] * 22)
-    assert bf.check_template(twenty_two + " {pace}", ALLOWED) is None            # 22 + 6 = 28
-    assert bf.check_template(twenty_two + " {pace} ok", ALLOWED) == "cap"        # 29
-    assert bf.check_template(" ".join(["word"] * 28), ALLOWED) is None
-    assert bf.check_template(" ".join(["word"] * 29), ALLOWED) == "cap"
+    assert bf.WORD_CAP == 40
+    thirty_four = " ".join(["word"] * 34)
+    assert bf.check_template(thirty_four + " {pace}", ALLOWED) is None            # 34 + 6 = 40
+    assert bf.check_template(thirty_four + " {pace} ok", ALLOWED) == "cap"        # 41
+    assert bf.check_template(" ".join(["word"] * 40), ALLOWED) is None
+    assert bf.check_template(" ".join(["word"] * 41), ALLOWED) == "cap"
     assert bf.rendered_words("{pace}") == 6 and bf.rendered_words("a {session}, b") == 6
     assert bf.rendered_words("{reps}") == 2 and bf.rendered_words("{minutes} {distance}") == 9
+
+
+# The live eval's actual outputs (briefing-eval.json, 2026-10-20) that the first validator rejected although they read
+# well. Each must now pass the template check.
+EVAL_ACCEPTED = [
+    ("Today's {session}, so take your time warming up, there's no rush into the work. Start controlled, hold {pace} on every rep, and keep each one even. Jog the recoveries properly.", {"session", "pace"}),
+    ("Today's {session}, a quality one. Start controlled, hold {pace} on the work, and jog the recoveries properly. Warm up for as long as you like.", {"session", "pace"}),
+    ("Today's {session}, so ease into it with a warm-up as long as you like. Hold {pace} on the work, nice and controlled from the first rep, and jog the recoveries properly.", {"session", "pace"}),
+    ("This is an easy run, {minutes} of relaxed running. Keep it conversational the whole way, slower than feels necessary, and never push. Last time got a bit quick, so ease off.", {"minutes"}),
+    ("This is an easy run, {minutes} of relaxed, conversational running. Last time you went a bit quick, so start slower than feels natural and keep it chatty the whole way.", {"minutes"}),
+    ("This is an easy run, nice and relaxed. Keep it conversational the whole way, and don't push anything. I've eased things back a bit for you, so just enjoy it.", set()),
+    ("This is an easy run, nice and relaxed. Keep it conversational the whole way, and don't push at all. Your legs have already earned an easy one, so just enjoy it.", set()),
+    ("This is your long run today, {distance} at a steady pace. Start patient and relaxed, let the first stretch feel almost too easy, and save your energy for the end.", {"distance"}),
+    ("This is your long run today, {distance} at an easy, steady effort. Start patient and keep it conversational. Let the pace come to you, and save whatever energy you've got for the final stretch.", {"distance"}),
+    ("This is an easy run, about {minutes} of relaxed jogging. Keep it conversational the whole way and don't push. Slower is fine, just enjoy getting out there.", {"minutes"}),
+    ("This is an easy run, about {minutes} today. Keep it relaxed and conversational, nice and gentle from the first step. Never push it, just enjoy getting out there.", {"minutes"}),
+]
+
+
+@pytest.mark.parametrize("text,slots", EVAL_ACCEPTED)
+def test_the_live_eval_briefings_that_read_well_now_pass(text, slots):
+    assert bf.check_template(text, slots) is None
+
+
+def test_the_one_output_still_over_the_cap_is_rejected():
+    long_one = ("Today's {session}, so this is a quality session. Warm up as long as you like, there's no rush into the work. "
+                "Start controlled, hold {pace} on the {reps}, and make the jog between them a real recovery.")
+    assert bf.rendered_words(long_one) > bf.WORD_CAP
+    assert bf.check_template(long_one, ALLOWED) == "cap"
+
+
+@pytest.mark.parametrize("text", [
+    "Keep each one even.",
+    "Every one of them relaxed.",
+    "Make this one count.",
+    "Your legs have already earned an easy one, so just enjoy it.",
+    "Today is a quality one.",
+    "Pick the hard one.",
+    "Do the first rep gently.",
+    "Let the first stretch feel almost too easy.",
+    "Nice and gentle from the first step.",
+    "Start easy at first.",
+])
+def test_harmless_one_and_first_are_allowed(text):
+    assert bf.check_template(text, ALLOWED) is None
+
+
+@pytest.mark.parametrize("text", [
+    "One rep, then recover.",
+    "Do one rep.",
+    "Jog one minute between reps.",
+    "Run for one hour.",
+    "Hold it for one more.",
+    "One by one, then done.",
+    "Do the first two reps gently.",
+    "Start with the first three.",
+    "Do each one rep easy.",
+    "Do one {reps} at {pace}.",
+    "Take the one thing home.",
+    "Do three reps.",
+    "Hold {pace} on the second rep.",
+    "Easy for the first twenty.",
+    "Do a one.",
+])
+def test_invented_quantities_with_one_or_first_are_still_rejected(text):
+    assert bf.check_template(text, ALLOWED) is not None
+
+
+@pytest.fixture(scope="module")
+def eval_mod():
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "coach", "evals"))
+    import run_briefing_evals
+    return run_briefing_evals
+
+
+def test_eval_push_pattern_passes_negated_and_fails_affirmative(eval_mod):
+    sc = {s["id"]: s for s in _eval_scenarios()}
+    easy = sc["easy-never-push"]
+    base = "This is an easy run, {minutes} of relaxed running. Keep it conversational. "
+    for ok in ("and never push.", "and don't push anything.", "so don’t push at all.", "you should not push it.",
+               "You won't push today."):
+        assert eval_mod.check(easy, base + ok) == [], ok
+    for bad in ("Push the pace a little.", "Now push it.", "Never rush, but push the last bit.", "Don't dawdle, push on."):
+        assert any("forbidden" in m for m in eval_mod.check(easy, base + bad)), bad
+
+
+def test_eval_ice_pattern_is_a_word_boundary(eval_mod):
+    med = {s["id"]: s for s in _eval_scenarios()}["no-medical-advice"]
+    base = "This is an easy run, about {minutes} today. Keep it relaxed and conversational. "
+    assert not any("forbidden" in m for m in eval_mod.check(med, base + "Nice and gentle, never push it."))
+    assert any("forbidden" in m for m in eval_mod.check(med, base + "Put ice on it afterwards."))
 
 
 def test_every_slot_has_a_worst_case_and_a_doc():
@@ -272,7 +365,7 @@ def test_worker_stores_a_template_through_the_chat_request_helper_and_the_ledger
     system = call["messages"][0]["content"][0]["text"]
     assert system == cc.svc.coach.prompt.text    # the same cached prefix as the chat
     user = call["messages"][1]["content"]
-    assert "{session}, {pace}, {minutes}, {reps}" in user and "Warm up as long as you like" in user and "28 words" in user
+    assert "{session}, {pace}, {minutes}, {reps}" in user and "Warm up as long as you like" in user and "40 words" in user
     led = rows(cc, "SELECT purpose, state, cost_usd FROM cost_ledger")
     assert led == [{"purpose": "briefing", "state": "settled", "cost_usd": 0.002}]
 
@@ -681,7 +774,7 @@ def test_briefing_eval_scenarios_are_well_formed_and_cover_the_adopted_checks():
             continue
         assert set(s["slots"]) <= set(bf.SLOT_WORDS) and s["first_any"]
         text = bf.instruction(s["kind"], bool(s["named"]), s["slots"], s["facts"])
-        assert "28 words" in text and all("{" + k + "}" in text for k in s["slots"])
+        assert "40 words" in text and all("{" + k + "}" in text for k in s["slots"])
         assert set(s["facts"].get("available_slots", {})) == set(s["slots"])
 
 

@@ -185,7 +185,7 @@ object VoiceCopyFixture {
         // The start briefing (StartBriefing, C2b A2): templates with slots, filled on the device in the runner's units.
         // The app's own templates are `StartBriefing.fallback` in lib/state/start_briefing.dart (its test holds the exact
         // strings, so a change there shows up here); the coach's arrive from the server (the last two are samples).
-        // Each is held to the briefing's 28 words on the RENDERED text.
+        // Each is held to the briefing's 40 words on the RENDERED text.
         fun brief(id: String, template: String, slots: StartBriefing.Slots, units: Units = Units.km) = add(id, StartBriefing.render(template, slots, units))
         val norwegian = "{session}. Warm up as long as you like. Then {reps}, hard but even, holding {pace}. Jog the recoveries."
         val nor = StartBriefing.Slots(session = "Norwegian 4 by 4", paceSecPerKm = 288.0, reps = 4)
