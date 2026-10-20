@@ -7,6 +7,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
 import 'settings.dart';
+import 'start_briefing.dart';
 
 abstract final class VoiceCoachPlan {
   /// The config for the run about to start.
@@ -30,8 +31,17 @@ abstract final class VoiceCoachPlan {
   /// them ([VoiceCoachConfig.plannedKind], [VoiceCoachConfig.plannedMinutes]),
   /// so the recorder says "Halfway." (planned 20 minutes or more) and
   /// "5 minutes to go." (15 or more) on moving time (pauses excluded), and nothing
-  /// past the planned time. Free, goal, interval and trail runs carry neither.
+  /// past the planned time. Free, goal, interval and trail runs carry no planned kind
+  /// (an interval session's minutes ride along only for the start briefing).
   /// Any other run gets the next-step line only.
+  ///
+  /// Start briefing: a plan session (easy, long or intervals; never a goal run) at full detail also carries
+  /// the app's own briefing template ([VoiceCoachConfig.briefingFallback]) and what its slots speak
+  /// (minutes, a long run's distance, reps, the spoken session name; the pace is [targetPaceSecPerKm]), so the
+  /// recorder says it in the runner's units. [briefingTemplate] is the coach's own template for that session,
+  /// already matched to it by the caller (null until the app fetches one): it is spoken first, the app's own
+  /// when it does not render. Nothing here waits for the network: both are plain strings already in hand.
+  /// Free, goal, event, Cooper, laps and trail runs carry none and keep their usual start line.
   static VoiceCoachConfig build({
     required AppSettings settings,
     required engine.HrZones zones,
@@ -41,6 +51,7 @@ abstract final class VoiceCoachPlan {
     double? goalPaceSecPerKm,
     double? sessionPaceSecPerKm,
     engine.TargetPaces? paces,
+    String? briefingTemplate,
   }) {
     final on = settings.cues && settings.voiceCoaching;
     final full = settings.coachingDetail == CoachingDetail.full;
@@ -57,6 +68,9 @@ abstract final class VoiceCoachPlan {
     final easy = kind == engine.BlockKind.easy || warnedEasy;
     final minutes = planned?.minutes;
     final timed = _ceiling(kind) && minutes != null && minutes > 0;
+    final briefing = on && full
+        ? StartBriefing.plan(planned, hasPace: pace != null)
+        : null;
     return VoiceCoachConfig(
       enabled: on,
       full: full,
@@ -67,7 +81,14 @@ abstract final class VoiceCoachPlan {
           : null,
       plannedMaxZone: on && full && easy ? 2 : null,
       plannedKind: on && full && timed ? kind!.name : null,
-      plannedMinutes: on && full && timed ? minutes : null,
+      // Intervals carry their minutes too, for the briefing's {minutes}: with no plannedKind the recorder
+      // has no planned-time lines for them.
+      plannedMinutes: on && full && timed ? minutes : briefing?.minutes,
+      briefingTemplate: briefing == null ? null : briefingTemplate,
+      briefingFallback: briefing?.fallback,
+      plannedDistanceM: briefing?.distanceM,
+      reps: briefing?.reps,
+      sessionName: briefing?.sessionName,
     );
   }
 

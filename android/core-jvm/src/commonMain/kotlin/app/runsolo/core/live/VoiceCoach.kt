@@ -20,6 +20,9 @@ class VoiceCoach(private val config: Config) {
      * the bottoms of zones 2..5 (as `HrZones`); with [plannedMaxZone] it turns drift on.
      * [plannedKind] (`easy` or `long`) and [plannedMinutes] turn on [PlannedTimeCues]; null (a
      * config persisted before they existed, or any other run) = no planned-time lines.
+     * The start briefing ([app.runsolo.core.record.StartBriefing]): [briefingTemplate] (the coach's) and
+     * [briefingFallback] (the app's own) are templates with slots; [sessionName], [plannedMinutes],
+     * [plannedDistanceM], [reps] and [targetPaceSecPerKm] fill them. Both templates null = the usual start line.
      */
     data class Config(
         val full: Boolean,
@@ -30,6 +33,11 @@ class VoiceCoach(private val config: Config) {
         val plannedMaxZone: Int? = null,
         val plannedKind: String? = null,
         val plannedMinutes: Int? = null,
+        val briefingTemplate: String? = null,
+        val briefingFallback: String? = null,
+        val plannedDistanceM: Double? = null,
+        val reps: Int? = null,
+        val sessionName: String? = null,
     ) {
         init {
             require(zoneBottomsBpm == null || zoneBottomsBpm.size == 4) { "zoneBottomsBpm is zones 2..5" }

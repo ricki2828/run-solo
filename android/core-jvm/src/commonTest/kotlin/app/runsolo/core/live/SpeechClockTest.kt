@@ -15,4 +15,17 @@ class SpeechClockTest {
         c.queued(10_000, 4) // the queue had drained; starts now
         assertTrue(c.freshAt(10_500))
     }
+
+    @Test
+    fun `a flush clears the queue so the next line starts now and only a briefing in flight is interrupted`() {
+        val c = SpeechClock()
+        c.queued(0, 28) // the start briefing, 10.5 s
+        assertTrue(SpeechClock.interrupts(c.busyUntil, 5_000L))
+        assertFalse(SpeechClock.interrupts(c.busyUntil, 11_000L), "already finished")
+        assertFalse(SpeechClock.interrupts(0L, 5_000L), "no briefing in flight")
+        c.interrupt(5_000L)
+        assertTrue(c.freshAt(5_000L))
+        c.queued(5_000L, 6) // Go. Rep 1 of 4
+        assertTrue(c.busyUntil == 5_000L + 6 * SpeechClock.MS_PER_WORD)
+    }
 }

@@ -3634,6 +3634,11 @@ class VoiceCoachConfig {
     this.plannedMaxZone,
     this.plannedKind,
     this.plannedMinutes,
+    this.briefingTemplate,
+    this.briefingFallback,
+    this.plannedDistanceM,
+    this.reps,
+    this.sessionName,
   });
 
   bool enabled;
@@ -3657,6 +3662,22 @@ class VoiceCoachConfig {
 
   int? plannedMinutes;
 
+  /// The start briefing (C2b A2, eng-review #1): TEMPLATES with slots ({session}, {pace}, {minutes},
+  /// {distance}, {reps}) that the recorder fills on the device, in the runner's units. [briefingTemplate]
+  /// is the coach's own (null until the app fetches it); [briefingFallback] is the app's own template
+  /// for a plan session. Both null = the usual start line. [plannedDistanceM], [reps] and
+  /// [sessionName] are what the slots speak ({pace} is [targetPaceSecPerKm], {minutes} is
+  /// [plannedMinutes]). Persisted like the rest: a config saved before these reads them as null.
+  String? briefingTemplate;
+
+  String? briefingFallback;
+
+  double? plannedDistanceM;
+
+  int? reps;
+
+  String? sessionName;
+
   List<Object?> _toList() {
     return <Object?>[
       enabled,
@@ -3668,6 +3689,11 @@ class VoiceCoachConfig {
       plannedMaxZone,
       plannedKind,
       plannedMinutes,
+      briefingTemplate,
+      briefingFallback,
+      plannedDistanceM,
+      reps,
+      sessionName,
     ];
   }
 
@@ -3686,6 +3712,11 @@ class VoiceCoachConfig {
       plannedMaxZone: result[6] as int?,
       plannedKind: result[7] as String?,
       plannedMinutes: result[8] as int?,
+      briefingTemplate: result[9] as String?,
+      briefingFallback: result[10] as String?,
+      plannedDistanceM: result[11] as double?,
+      reps: result[12] as int?,
+      sessionName: result[13] as String?,
     );
   }
 
@@ -3698,7 +3729,7 @@ class VoiceCoachConfig {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(enabled, other.enabled) && _deepEquals(full, other.full) && _deepEquals(slowerIsFine, other.slowerIsFine) && _deepEquals(targetPaceSecPerKm, other.targetPaceSecPerKm) && _deepEquals(bandSecPerKm, other.bandSecPerKm) && _deepEquals(zoneBottomsBpm, other.zoneBottomsBpm) && _deepEquals(plannedMaxZone, other.plannedMaxZone) && _deepEquals(plannedKind, other.plannedKind) && _deepEquals(plannedMinutes, other.plannedMinutes);
+    return _deepEquals(enabled, other.enabled) && _deepEquals(full, other.full) && _deepEquals(slowerIsFine, other.slowerIsFine) && _deepEquals(targetPaceSecPerKm, other.targetPaceSecPerKm) && _deepEquals(bandSecPerKm, other.bandSecPerKm) && _deepEquals(zoneBottomsBpm, other.zoneBottomsBpm) && _deepEquals(plannedMaxZone, other.plannedMaxZone) && _deepEquals(plannedKind, other.plannedKind) && _deepEquals(plannedMinutes, other.plannedMinutes) && _deepEquals(briefingTemplate, other.briefingTemplate) && _deepEquals(briefingFallback, other.briefingFallback) && _deepEquals(plannedDistanceM, other.plannedDistanceM) && _deepEquals(reps, other.reps) && _deepEquals(sessionName, other.sessionName);
   }
 
   @override

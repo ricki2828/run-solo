@@ -22,6 +22,7 @@ import app.runsolo.core.model.TargetKind
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
+import app.runsolo.core.record.StartBriefing
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.testio.File
@@ -180,6 +181,34 @@ object VoiceCopyFixture {
         add("summary.end.verdict-trail-faster", SummaryWords.end(6_210.0, 2_460_000, Units.km, climbM = 231.0, verdict = "Faster on this trail, 2 minutes 10 quicker than last time."))
         add("summary.end.verdict-no-change", SummaryWords.end(5_000.0, 1_500_000, Units.km, verdict = "No real change."))
         add("summary.end.verdict-4x4-best", SummaryWords.end(5_200.0, 2_460_000, Units.km, verdict = "Faster. New best Norwegian 4x4."))
+
+        // The start briefing (StartBriefing, C2b A2): templates with slots, filled on the device in the runner's units.
+        // The app's own templates are `StartBriefing.fallback` in lib/state/start_briefing.dart (its test holds the exact
+        // strings, so a change there shows up here); the coach's arrive from the server (the last two are samples).
+        // Each is held to the briefing's 28 words on the RENDERED text.
+        fun brief(id: String, template: String, slots: StartBriefing.Slots, units: Units = Units.km) = add(id, StartBriefing.render(template, slots, units))
+        val norwegian = "{session}. Warm up as long as you like. Then {reps}, hard but even, holding {pace}. Jog the recoveries."
+        val nor = StartBriefing.Slots(session = "Norwegian 4 by 4", paceSecPerKm = 288.0, reps = 4)
+        val norFast = nor.copy(paceSecPerKm = 235.0)
+        val longLine = "Start patient and steady, and save something for the last third."
+        val easyLine = "Keep it relaxed and conversational. If you cannot chat, ease off."
+        val qualityLine = "{session}. Today is {reps}. Hold {pace} on each one and jog the recoveries."
+        brief("briefing.norwegian-4x4", norwegian, nor)
+        brief("briefing.norwegian-4x4-miles", norwegian, nor, Units.mi)
+        brief("briefing.norwegian-4x4-pace-under-4", norwegian, norFast)
+        brief("briefing.norwegian-4x4-pace-under-4-miles", norwegian, norFast, Units.mi)
+        brief("briefing.norwegian-4x4-no-pace", "{session}. Warm up as long as you like. Then {reps}, hard but even. Jog the recoveries.", nor)
+        brief("briefing.reps-and-pace", qualityLine, StartBriefing.Slots(session = "6 by 400 metres", paceSecPerKm = 288.0, reps = 6))
+        brief("briefing.pace-only-whole-minutes", "{session}. Hold {pace} on each one and jog the recoveries.", StartBriefing.Slots(session = "Tempo intervals", paceSecPerKm = 300.0))
+        brief("briefing.no-numbers", "{session}. Run each one hard but even and jog the recoveries.", StartBriefing.Slots(session = "Pyramid"))
+        brief("briefing.easy-minutes", "Easy run, {minutes}. $easyLine", StartBriefing.Slots(minutes = 40))
+        brief("briefing.easy", "Easy run. $easyLine", StartBriefing.Slots())
+        brief("briefing.long-minutes", "Long run, {minutes}. $longLine", StartBriefing.Slots(minutes = 90))
+        brief("briefing.long-distance", "Long run, {distance} or more. $longLine", StartBriefing.Slots(distanceM = 15_000.0))
+        brief("briefing.long-distance-miles", "Long run, {distance} or more. $longLine", StartBriefing.Slots(distanceM = 15_000.0), Units.mi)
+        brief("briefing.long", "Long run. $longLine", StartBriefing.Slots())
+        brief("briefing.coach-template", "Easy day, {minutes} at a relaxed effort. Nice and conversational, and settle in.", StartBriefing.Slots(minutes = 40))
+        brief("briefing.coach-template-quality", "Today is {session}. Warm up as long as you like, then {reps} at {pace}. Recover well.", nor)
 
         // Nudges (engine-owned lines, as packed into the LiveContext).
         add("nudge.fast-start", ReplayScenarios.T4.FAST_START_5K)

@@ -3338,6 +3338,17 @@ struct VoiceCoachConfig: Hashable {
   /// `SessionSpec` step: the run stays a Free run.
   var plannedKind: String? = nil
   var plannedMinutes: Int64? = nil
+  /// The start briefing (C2b A2, eng-review #1): TEMPLATES with slots ({session}, {pace}, {minutes},
+  /// {distance}, {reps}) that the recorder fills on the device, in the runner's units. [briefingTemplate]
+  /// is the coach's own (null until the app fetches it); [briefingFallback] is the app's own template
+  /// for a plan session. Both null = the usual start line. [plannedDistanceM], [reps] and
+  /// [sessionName] are what the slots speak ({pace} is [targetPaceSecPerKm], {minutes} is
+  /// [plannedMinutes]). Persisted like the rest: a config saved before these reads them as null.
+  var briefingTemplate: String? = nil
+  var briefingFallback: String? = nil
+  var plannedDistanceM: Double? = nil
+  var reps: Int64? = nil
+  var sessionName: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -3351,6 +3362,11 @@ struct VoiceCoachConfig: Hashable {
     let plannedMaxZone: Int64? = nilOrValue(pigeonVar_list[6])
     let plannedKind: String? = nilOrValue(pigeonVar_list[7])
     let plannedMinutes: Int64? = nilOrValue(pigeonVar_list[8])
+    let briefingTemplate: String? = nilOrValue(pigeonVar_list[9])
+    let briefingFallback: String? = nilOrValue(pigeonVar_list[10])
+    let plannedDistanceM: Double? = nilOrValue(pigeonVar_list[11])
+    let reps: Int64? = nilOrValue(pigeonVar_list[12])
+    let sessionName: String? = nilOrValue(pigeonVar_list[13])
 
     return VoiceCoachConfig(
       enabled: enabled,
@@ -3361,7 +3377,12 @@ struct VoiceCoachConfig: Hashable {
       zoneBottomsBpm: zoneBottomsBpm,
       plannedMaxZone: plannedMaxZone,
       plannedKind: plannedKind,
-      plannedMinutes: plannedMinutes
+      plannedMinutes: plannedMinutes,
+      briefingTemplate: briefingTemplate,
+      briefingFallback: briefingFallback,
+      plannedDistanceM: plannedDistanceM,
+      reps: reps,
+      sessionName: sessionName
     )
   }
   func toList() -> [Any?] {
@@ -3375,13 +3396,18 @@ struct VoiceCoachConfig: Hashable {
       plannedMaxZone,
       plannedKind,
       plannedMinutes,
+      briefingTemplate,
+      briefingFallback,
+      plannedDistanceM,
+      reps,
+      sessionName,
     ]
   }
   static func == (lhs: VoiceCoachConfig, rhs: VoiceCoachConfig) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.enabled, rhs.enabled) && deepEqualsPlatformApi(lhs.full, rhs.full) && deepEqualsPlatformApi(lhs.slowerIsFine, rhs.slowerIsFine) && deepEqualsPlatformApi(lhs.targetPaceSecPerKm, rhs.targetPaceSecPerKm) && deepEqualsPlatformApi(lhs.bandSecPerKm, rhs.bandSecPerKm) && deepEqualsPlatformApi(lhs.zoneBottomsBpm, rhs.zoneBottomsBpm) && deepEqualsPlatformApi(lhs.plannedMaxZone, rhs.plannedMaxZone) && deepEqualsPlatformApi(lhs.plannedKind, rhs.plannedKind) && deepEqualsPlatformApi(lhs.plannedMinutes, rhs.plannedMinutes)
+    return deepEqualsPlatformApi(lhs.enabled, rhs.enabled) && deepEqualsPlatformApi(lhs.full, rhs.full) && deepEqualsPlatformApi(lhs.slowerIsFine, rhs.slowerIsFine) && deepEqualsPlatformApi(lhs.targetPaceSecPerKm, rhs.targetPaceSecPerKm) && deepEqualsPlatformApi(lhs.bandSecPerKm, rhs.bandSecPerKm) && deepEqualsPlatformApi(lhs.zoneBottomsBpm, rhs.zoneBottomsBpm) && deepEqualsPlatformApi(lhs.plannedMaxZone, rhs.plannedMaxZone) && deepEqualsPlatformApi(lhs.plannedKind, rhs.plannedKind) && deepEqualsPlatformApi(lhs.plannedMinutes, rhs.plannedMinutes) && deepEqualsPlatformApi(lhs.briefingTemplate, rhs.briefingTemplate) && deepEqualsPlatformApi(lhs.briefingFallback, rhs.briefingFallback) && deepEqualsPlatformApi(lhs.plannedDistanceM, rhs.plannedDistanceM) && deepEqualsPlatformApi(lhs.reps, rhs.reps) && deepEqualsPlatformApi(lhs.sessionName, rhs.sessionName)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -3395,6 +3421,11 @@ struct VoiceCoachConfig: Hashable {
     deepHashPlatformApi(value: plannedMaxZone, hasher: &hasher)
     deepHashPlatformApi(value: plannedKind, hasher: &hasher)
     deepHashPlatformApi(value: plannedMinutes, hasher: &hasher)
+    deepHashPlatformApi(value: briefingTemplate, hasher: &hasher)
+    deepHashPlatformApi(value: briefingFallback, hasher: &hasher)
+    deepHashPlatformApi(value: plannedDistanceM, hasher: &hasher)
+    deepHashPlatformApi(value: reps, hasher: &hasher)
+    deepHashPlatformApi(value: sessionName, hasher: &hasher)
   }
 }
 
