@@ -41,6 +41,7 @@ abstract final class VoiceCoachPlan {
   /// recorder says it in the runner's units. [briefingTemplate] is the coach's own template for that session,
   /// already matched to it by the caller (null until the app fetches one): it is spoken first, the app's own
   /// when it does not render. Nothing here waits for the network: both are plain strings already in hand.
+  /// [suppressBriefing] (a fresh suppress marker, see `BriefingCache`) drops both: the plain start line.
   /// Free, goal, event, Cooper, laps and trail runs carry none and keep their usual start line.
   static VoiceCoachConfig build({
     required AppSettings settings,
@@ -52,6 +53,7 @@ abstract final class VoiceCoachPlan {
     double? sessionPaceSecPerKm,
     engine.TargetPaces? paces,
     String? briefingTemplate,
+    bool suppressBriefing = false,
   }) {
     final on = settings.cues && settings.voiceCoaching;
     final full = settings.coachingDetail == CoachingDetail.full;
@@ -68,7 +70,9 @@ abstract final class VoiceCoachPlan {
     final easy = kind == engine.BlockKind.easy || warnedEasy;
     final minutes = planned?.minutes;
     final timed = _ceiling(kind) && minutes != null && minutes > 0;
-    final briefing = on && full
+    // A suppress marker from the coach (a safety block) means NO briefing at all: not the coach's, not the app's
+    // own. The recorder then says the plain start line.
+    final briefing = on && full && !suppressBriefing
         ? StartBriefing.plan(planned, hasPace: pace != null)
         : null;
     return VoiceCoachConfig(

@@ -43,6 +43,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/format.dart';
 import '../platform/transfer_gateway.dart';
+import 'coach_briefing.dart';
 import 'history_store.dart';
 import 'intervals_icu.dart' show SecretStore;
 import 'send_runs.dart';
@@ -370,6 +371,18 @@ class CompanionClient {
     CompanionRequest(
       method: 'GET',
       uri: _uri(['v1', 'me', 'next-session']),
+      headers: _headers(token),
+    ),
+  );
+
+  /// `GET /v1/me/briefing`: the coach's start-briefing template for the next
+  /// planned session (C2b). 200 with a template, 200 `{status: suppress}`,
+  /// 202 pending, 204 nothing. Called on Home load and after a run upload,
+  /// never on the Start path.
+  Future<CompanionReply> getBriefing(String token) => http.send(
+    CompanionRequest(
+      method: 'GET',
+      uri: _uri(['v1', 'me', 'briefing']),
       headers: _headers(token),
     ),
   );
@@ -969,6 +982,10 @@ class CompanionController extends ChangeNotifier {
   /// between fetches. Holds no check-in answer, only the plan and the line.
   static const String nextName = 'companion_next_session';
 
+  /// The last briefing answer (template for one session, or the suppress
+  /// marker), kept so Start can read it without waiting for the network.
+  static const String briefingName = 'companion_briefing';
+
   /// Set while the server has not yet confirmed "forget my areas". Retried
   /// on open and before the next send, so a switch-off made offline lands.
   static const String weatherForgetName = 'companion_weather_forget';
@@ -1021,6 +1038,9 @@ class CompanionController extends ChangeNotifier {
   CoachNext? _coachNext;
   bool _nextBusy = false;
   DateTime? _nextAt;
+  CachedBriefing? _briefing;
+  bool _briefingBusy = false;
+  DateTime? _briefingAt;
   bool _routeShape = true;
 
   /// "Weather in suggestions" (off until the runner turns it on). The run
@@ -1507,6 +1527,7 @@ class CompanionController extends ChangeNotifier {
           final j = jsonDecode(cached);
           if (j is Map<String, Object?>) _coachNext = CoachNext.parse(j);
         }
+        _briefing = CachedBriefing.decode(await store.read(briefingName));
       } catch (e) {
         companionLog('could not read the coach cache (${e.runtimeType})');
       }
@@ -2121,6 +2142,78 @@ class CompanionController extends ChangeNotifier {
     }
   }
 
+  /// What Start does with the cached briefing for the session it is starting.
+  /// SYNCHRONOUS: it reads only memory (filled by [load] and [refreshBriefing]), so
+  /// the Start path never waits on the network or on storage. [sessionRef] and
+  /// [fingerprint] are the started session's (see [companionSessionRef] and
+  /// `StartBriefing.fingerprintOf`); pass null for a run that is not today's plan
+  /// session. Nothing is used while the companion is off, not linked or not agreed.
+  BriefingChoice briefingChoice({
+    required String? sessionRef,
+    required String? fingerprint,
+  }) => enrolled && consentCurrent
+      ? BriefingCache.choose(
+          _briefing,
+          sessionRef: sessionRef,
+          fingerprint: fingerprint,
+          now: _now(),
+        )
+      : BriefingChoice.none;
+
+  /// Fetches the coach's start briefing (`GET /v1/me/briefing`) and updates
+  /// the cache. Quiet like [refreshNext]: never sets [problem]. Only on Home
+  /// load and after a run upload ([force] skips the one-a-minute limit), never
+  /// at Start. 200 with a template replaces the cache; 200 suppress keeps a
+  /// marker (no briefing at Start, not even the app's own); 202 pending keeps
+  /// the cache; 204 clears it; offline or an error keeps it.
+  Future<void> refreshBriefing({bool force = false}) async {
+    if (!enrolled || !consentCurrent || _briefingBusy) return;
+    final at = _briefingAt;
+    if (!force &&
+        at != null &&
+        _now().difference(at) < const Duration(minutes: 1)) {
+      return;
+    }
+    final t = await token();
+    if (t == null) return;
+    _briefingBusy = true;
+    _briefingAt = _now();
+    try {
+      final r = await client.getBriefing(t);
+      if (r.status == 401 || r.status == 403) {
+        await _wipe();
+        return;
+      }
+      if (r.status == 204) {
+        await _setBriefing(null);
+        return;
+      }
+      if (r.status == 202) return; // pending: keep the cache
+      if (r.status != 200) return; // 404 (older server), 429, 5xx: keep it
+      final c = CachedBriefing.fromReply(r.json, _now());
+      if (c != null) await _setBriefing(c);
+    } on CompanionNetworkError {
+      // Keep what we have.
+    } catch (e) {
+      companionLog('briefing failed (${e.runtimeType})', secrets: [t]);
+    } finally {
+      _briefingBusy = false;
+    }
+  }
+
+  Future<void> _setBriefing(CachedBriefing? c) async {
+    _briefing = c;
+    try {
+      if (c == null) {
+        await store.delete(briefingName);
+      } else {
+        await store.write(briefingName, c.encode());
+      }
+    } catch (e) {
+      companionLog('could not keep the briefing (${e.runtimeType})');
+    }
+  }
+
   Future<void> _setNext(CoachNext? next, String? raw) async {
     _coachNext = next;
     try {
@@ -2203,6 +2296,7 @@ class CompanionController extends ChangeNotifier {
       await store.delete(heartRateName);
       await store.delete(heartRateForgetName);
       await store.delete(nextName);
+      await store.delete(briefingName);
       // The route choice is the runner's and survives a wipe (a 401, a
       // re-enrol): an OFF stays off, and the new server record is told so as
       // soon as there is a token again.
@@ -2224,6 +2318,7 @@ class CompanionController extends ChangeNotifier {
     _coachAvailable = null;
     _coachLink = null;
     _coachNext = null;
+    _briefing = null;
     problem = null;
     notifyListeners();
   }
@@ -2334,6 +2429,7 @@ Map<String, Object?> companionPlanFacts(
         'week': nextWeek,
         'minutes': ?minutes,
         'distance_m': ?dist,
+        'session_ref': ?companionSessionRef(next.session),
         ...companionTemplateFacts(next.session),
         ...companionPaceFacts(next.session, paces),
       },
@@ -2365,6 +2461,16 @@ Map<String, Object?> companionPaceFacts(
     'target_pace_method': paces.sessionPaceMoved(session) ? 'moved' : 'vdot',
   };
 }
+
+final RegExp _sessionRef = RegExp(r'^[a-z0-9_]{1,16}$');
+
+/// The plan session's opaque ref, sent as `plan_next.session_ref` and compared
+/// at Start against the ref of a cached coach briefing (C2b A3). It is the
+/// plan slot id (`w1s1`, stable across swaps), which is what the server stores
+/// as `plan_next_session_ref` and keys its briefing on. Null when it is not in
+/// the shape the server accepts (the briefing then simply never matches).
+String? companionSessionRef(engine.BlockSession session) =>
+    _sessionRef.hasMatch(session.id) ? session.id : null;
 
 final RegExp _templateId = RegExp(r'^[a-z0-9_]{1,40}$');
 
@@ -2663,6 +2769,9 @@ class CompanionTarget extends ExportTarget {
       final o = await controller.client.postRun(token, summary);
       switch (o) {
         case RunSendOutcome.sent || RunSendOutcome.duplicate:
+          // The server now queues a briefing for the next session; ask for it
+          // (quietly, not awaited: the send does not wait on it).
+          unawaited(controller.refreshBriefing(force: true));
           return const SendResult.ok();
         case RunSendOutcome.unauthorized:
           return const SendResult.failed('Companion key not accepted');

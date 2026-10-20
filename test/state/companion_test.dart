@@ -546,6 +546,23 @@ void main() {
       expect(companionPlanFacts(null, 'x', runStart: at), isEmpty);
     });
 
+    test('plan_next.session_ref is the ref Start compares against', () {
+      // The server keys its briefing on plan_next_session_ref; Start looks the briefing up by
+      // companionSessionRef(today's session). They are the same function of the same session.
+      final p = plan();
+      final f = companionPlanFacts(view(p), 'y', runStart: at);
+      final next = f['plan_next']! as Map<String, Object?>;
+      final nextSession = p.sessions.firstWhere(
+        (x) => x.id == next['session_ref'],
+      );
+      expect(next['session_ref'], companionSessionRef(nextSession));
+      expect(next['week'], nextSession.week);
+      // Every session of a plan has a ref the server's pattern accepts, and the refs are distinct.
+      final refs = [for (final x in p.sessions) companionSessionRef(x)];
+      expect(refs, everyElement(matches(RegExp(r'^[a-z0-9_]{1,16}$'))));
+      expect(refs.toSet().length, refs.length);
+    });
+
     test('the run done as a planned session, and what is next', () {
       final f = companionPlanFacts(
         view(plan(), runs: [planRun('x')]),
@@ -563,6 +580,7 @@ void main() {
         'day': '2026-10-07',
         'week': 1,
         'minutes': 30,
+        'session_ref': 'w1s2', // the plan slot id, for the C2b briefing match
       });
       expect(f.keys.toSet().difference(wire), isEmpty);
     });
@@ -608,6 +626,7 @@ void main() {
           'distance_m',
           'session_id',
           'session_name',
+          'session_ref',
         }),
         isEmpty,
       );
@@ -672,7 +691,8 @@ void main() {
           File('companion-server/tests/fixtures/app_plan_next_pace.json')
               .readAsStringSync(),
         ) as Map<String, Object?>;
-        expect(next(fourByFour, moved), fixture);
+        // The server fixture predates the optional session_ref (C2b A3); everything else is unchanged.
+        expect(Map.of(next(fourByFour, moved))..remove('session_ref'), fixture);
       });
 
       test('the tables name their method; a move says so', () {
