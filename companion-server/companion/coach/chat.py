@@ -8,7 +8,7 @@ Flow (eng-review section 2):
   one worker thread (persisted jobs survive a restart)                                                    (B2)
     claim: per runner, messages within coach_merge_s answered as one turn; gate re-checked; daily caps;
            first spend reservation in the claim transaction                                              (B9)
-    agent: <= coach_max_tool_turns tool turns, 30 s per model call, 60 s per job, max_tokens 600
+    agent: <= coach_max_tool_turns tool turns, 30 s per model call, 60 s per job, max_tokens 2000 (thinking included)
     hard tier again on the merged turn, then the safety classifier (screen.py): a hit, or a soft regex
            hit with a classifier error, gets the safety template and no main model call
     chat validator -> template fallback on failure (counted, alert above 20% in 24 h)                     (B7)
@@ -554,8 +554,9 @@ class CoachChat:
             # for Sonnet 5.5 are Google and Bedrock, not Anthropic first-party.
             "provider": {"zdr": True, "data_collection": "deny", "allow_fallbacks": False, "require_parameters": True},
             "max_tokens": self.s.coach_max_tokens,
-            # No thinking: it counts against max_tokens and can leave no reply at all (seen on the screen call, 19-Oct).
-            "reasoning": {"enabled": False},
+            # Sonnet 5.5 refuses "thinking off" (HTTP 400 "Reasoning is mandatory", 20-Oct). Low effort keeps it short;
+            # it still counts against max_tokens, hence the 2000 default. `exclude`: the thinking text is not sent back.
+            "reasoning": {"effort": "low", "exclude": True},
             # No temperature: Sonnet 5.5 endpoints do not list it, and with require_parameters OpenRouter then has no
             # endpoint at all (HTTP 404, the first live message on 20-Oct).
             "usage": {"include": True},
