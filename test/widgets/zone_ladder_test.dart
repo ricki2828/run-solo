@@ -69,15 +69,14 @@ void main() {
     tester,
   ) async {
     // The painter is private; read its position field dynamically.
-    double posOf() =>
-        (tester
-                    .widget<CustomPaint>(
-                      find.byKey(const ValueKey('ladder-pointer')),
-                    )
-                    .painter
-                as dynamic)
-            .position
-            as double;
+    double posOf() {
+      final paint = tester.widget<CustomPaint>(
+        find.byKey(const ValueKey('ladder-pointer')),
+      );
+      final painter = paint.painter as dynamic;
+      return painter.position as double;
+    }
+
     await tester.pumpWidget(host(3, position: 0.1));
     final low = posOf();
     await tester.pumpWidget(host(3, position: 0.9));
