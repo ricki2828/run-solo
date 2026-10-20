@@ -1526,12 +1526,17 @@ class AuxFigure extends StatelessWidget {
     required this.labelColor,
     required this.valueColor,
     this.valueKey,
+    this.distance = false,
   });
   final String label;
   final String value;
   final Color labelColor;
   final Color valueColor;
   final Key? valueKey;
+
+  /// [value] is a distance ("0.40 km"): it rolls as an odometer when
+  /// [kOdometerDistance] is on.
+  final bool distance;
 
   static final TextStyle style = RunSoloType.display44.copyWith(
     fontSize: RunSoloType.runSize(36),
@@ -1546,12 +1551,18 @@ class AuxFigure extends StatelessWidget {
       FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
-        child: Text(
-          value,
-          key: valueKey,
-          softWrap: false,
-          style: style.copyWith(color: valueColor),
-        ),
+        child: distance && kOdometerDistance
+            ? OdometerDistance(
+                key: valueKey,
+                value: value,
+                style: style.copyWith(color: valueColor),
+              )
+            : Text(
+                value,
+                key: valueKey,
+                softWrap: false,
+                style: style.copyWith(color: valueColor),
+              ),
       ),
     ],
   );
@@ -3320,40 +3331,45 @@ class _EventStats extends StatelessWidget {
     final avg = s.totalDistanceM > 20 && activeMs > 0
         ? activeMs / 1000 / (s.totalDistanceM / 1000)
         : null;
-    // Three columns with gaps. The pace units move to the labels ("PACE /km")
-    // because "4:44/km" at the 36 sp floor is as wide as a third of the row,
-    // which ran the three values together.
-    const gap = SizedBox(width: Space.x12);
+    // The intervals-block pattern (founder 20-Oct, Goal run: "speedo for
+    // current pace, odo for current distance"): COVERED and AVG on the left,
+    // the speedo on the right. The snapshot carries no goal target pace, so
+    // the dial's reference is the run average.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          flex: 9,
-          child: AuxFigure(
-            label: 'COVERED',
-            value: Fmt.distance(s.totalDistanceM, units),
-            labelColor: secondary,
-            valueColor: t.inkPrimary,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AuxFigure(
+                label: 'COVERED',
+                value: Fmt.distance(s.totalDistanceM, units),
+                distance: true,
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+              ),
+              const SizedBox(height: Space.x4),
+              AuxFigure(
+                label: 'AVG',
+                value: avg == null ? '--' : Fmt.pace(avg, units),
+                labelColor: secondary,
+                valueColor: t.inkPrimary,
+              ),
+            ],
           ),
         ),
-        gap,
-        Expanded(
-          flex: 5,
-          child: AuxFigure(
-            label: 'PACE',
-            value: Fmt.pace(s.livePaceSecPerKm, units),
-            labelColor: secondary,
-            valueColor: t.inkPrimary,
-          ),
-        ),
-        gap,
-        Expanded(
-          flex: 5,
-          child: AuxFigure(
-            label: 'AVG',
-            value: avg == null ? '--' : Fmt.pace(avg, units),
-            labelColor: secondary,
-            valueColor: t.inkPrimary,
+        const SizedBox(width: Space.x16),
+        SizedBox(
+          width: 136,
+          child: PaceDial(
+            currentSecPerKm: s.livePaceSecPerKm,
+            referenceSecPerKm: avg,
+            units: units,
+            onZone: true,
+            label: 'CURRENT PACE',
+            paceStyle: RunSoloType.display44,
           ),
         ),
       ],
@@ -3388,29 +3404,43 @@ class EventBlock extends StatelessWidget {
     final last = eventLastStretch(s);
     final toGoText = eventToGoText(s, ctl, units);
     final finishText = eventFinishText(s, ctl, units);
-    Widget number(String key, String text, String label, {required bool big}) {
+    Widget number(
+      String key,
+      String text,
+      String label, {
+      required bool big,
+      bool odo = false,
+    }) {
       final dashed = text == '--';
+      final style = primaryStyle(
+        compact,
+        secondary: !big,
+      ).copyWith(color: big && !dashed ? t.inkPrimary : muted);
       return Column(
         key: ValueKey(key),
         mainAxisSize: MainAxisSize.min,
         children: [
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              text,
-              softWrap: false,
-              style: primaryStyle(
-                compact,
-                secondary: !big,
-              ).copyWith(color: big && !dashed ? t.inkPrimary : muted),
-            ),
+            child: odo && kOdometerDistance && !dashed
+                ? OdometerDistance(value: text, style: style)
+                : Text(text, softWrap: false, style: style),
           ),
           Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
         ],
       );
     }
 
-    final toGo = number('event-to-go', toGoText, 'to go', big: !last);
+    // A distance to go rolls like the Free run's odometer; a time goal's
+    // clock stays plain text.
+    final toGoIsDistance = s.distanceStep || s.metresToGo != null;
+    final toGo = number(
+      'event-to-go',
+      toGoText,
+      'to go',
+      big: !last,
+      odo: toGoIsDistance,
+    );
     final finish = CompareSlot(
       link: last ? null : card,
       child: SizedBox(
