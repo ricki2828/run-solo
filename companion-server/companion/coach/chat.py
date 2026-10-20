@@ -556,7 +556,8 @@ class CoachChat:
             "max_tokens": self.s.coach_max_tokens,
             # No thinking: it counts against max_tokens and can leave no reply at all (seen on the screen call, 19-Oct).
             "reasoning": {"enabled": False},
-            "temperature": 0.5,
+            # No temperature: Sonnet 5.5 endpoints do not list it, and with require_parameters OpenRouter then has no
+            # endpoint at all (HTTP 404, the first live message on 20-Oct).
             "usage": {"include": True},
         }
         return body

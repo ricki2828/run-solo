@@ -197,6 +197,7 @@ def test_request_is_sonnet_zdr_no_fallbacks_cached_prefix_read_tools_only(cc, fa
     assert body["provider"]["zdr"] is True and body["provider"]["data_collection"] == "deny"
     assert body["provider"]["allow_fallbacks"] is False and "order" not in body["provider"]
     assert body["reasoning"] == {"enabled": False}   # thinking counts against max_tokens
+    assert "temperature" not in body                  # unsupported on Sonnet 5.5 + require_parameters = 404
     assert body["max_tokens"] == 600
     sys_msg = body["messages"][0]
     assert sys_msg["role"] == "system" and sys_msg["content"][0]["cache_control"] == {"type": "ephemeral"}
