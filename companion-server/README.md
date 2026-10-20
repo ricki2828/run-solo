@@ -85,9 +85,10 @@ fact that a session moved: no reason, no readiness, no skip. The same resolver f
 A TEMPLATE for the runner's next planned session, with slots and never a number. The app (Kotlin) renders the slots on the device, in the
 runner's units, from the same values the in-run cues use. The server never renders a number. `Cache-Control: no-store`. Never calls a model.
 
-- `200` `{"session_ref", "fingerprint", "template", "generated_at", "prompt_hash"}`: serve it only to the session whose fingerprint matches.
+- `200` `{"session_ref", "fingerprint", "template", "generated_at", "prompt_hash"}`: serve it only to the session whose fingerprint matches. (A `200` without `template` is the suppress answer below.)
 - `202` `{"status":"pending"}`: a job is queued or running. Keep the cache.
-- `204`: nothing to say (gate closed, a health flag is active, no session, nothing generated, expired after 36 h). Clear the cache and speak the app's own start line.
+- `200 {"status":"suppress"}` (no `template`, no reason, never a flag kind): the gates pass but a safety block is on (an active health flag, a sore/ill check-in window, or an injury the chat screen saw in the last 7 days). Clear the cache and speak NO briefing at all, the app's own offline briefing included: use the plain start line (`SummaryWords.start`).
+- `204`: nothing to say, and nothing is implied about why (gate closed: kill switch off, flag off, not allowlisted, no consent, paused; or no session, nothing generated, expired after 36 h). Clear the cache; the app's own offline briefing may still be spoken.
 
 Every gate is re-read on every call: `COMPANION_COACH_CHAT`, the allowlist, consent at or above 3, not paused, and no active `urgent`, `wellbeing`
 (self-harm), `injury` or `ill` flag (injury is a plain 204, the review's simplest option; `ill` is added for the same reason). Nothing writes an `injury` or `ill` flag row today, so the rule also fires on what exists: a check-in that says ill or sore (a skip because ill or sore, or a sore answer, until its window ends), or the chat safety classifier seeing an injury in the last 7 days (`coach_jobs.screen = 'clear:injury'`). `niggle_area` memory is never sent to the model. Withdrawing consent deletes the rows. Off by default behind `COMPANION_COACH_BRIEFING=1` (needs the chat gates too).

@@ -252,6 +252,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
     def get_briefing(uid: str = Depends(current_user)):
         """C2b: the coach's spoken briefing TEMPLATE for the runner's next session (slots, no numbers; the app renders them).
         Every gate is re-checked on every call. 200 {session_ref, fingerprint, template, generated_at, prompt_hash};
+        200 {"status": "suppress"} when the gates pass but a safety block is on (the app speaks no briefing at all);
         202 {"status": "pending"} while a job is queued or running (the app keeps its cache); 204 otherwise (the app clears
         its cache and uses its own start line). Never calls a model."""
         status, body = svc.coach.briefing.serve(uid)

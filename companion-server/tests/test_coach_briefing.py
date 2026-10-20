@@ -82,6 +82,12 @@ def get(c, token=None):
     return c.get("/v1/me/briefing", headers=auth(token or c.token))
 
 
+def assert_suppress(r):
+    """The gates pass but a safety block is on: 200 {"status": "suppress"}, nothing else (no reason, no flag kind), so the app
+    drops its own offline briefing too. Distinct from 204 (gate closed: the app keeps its fallback)."""
+    assert r.status_code == 200 and r.json() == {"status": "suppress"}
+
+
 def flag(c, kind):
     with db.tx(c.svc.s.db_path) as con:
         con.execute("INSERT OR REPLACE INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?)",
@@ -502,7 +508,7 @@ def test_an_active_health_flag_means_no_briefing_at_all(cc, fakes, kind):
     ready(cc, fakes)
     assert get(cc).status_code == 200
     flag(cc, kind)
-    assert get(cc).status_code == 204                    # served-row is not shown either
+    assert_suppress(get(cc))                             # a stored row is not shown either
     n = len(fakes.coach_calls)
     assert cc.svc.coach.briefing.enqueue(cc.uid, T0 + timedelta(minutes=1)) is False
     upload(cc, "r2", now=T0 + timedelta(hours=1), plan={**PLAN, "minutes": 35})
@@ -511,6 +517,45 @@ def test_an_active_health_flag_means_no_briefing_at_all(cc, fakes, kind):
     with db.tx(cc.svc.s.db_path) as c:                   # cleared by the operator: the flag no longer blocks
         c.execute("UPDATE health_flags SET state='cleared'")
     assert get(cc).status_code in (202, 204)
+
+
+@pytest.mark.parametrize("kind", ["urgent", "wellbeing", "injury", "ill"])
+def test_suppress_needs_no_stored_row_and_leaks_no_flag_kind(cc, fakes, kind):
+    flag(cc, kind)                                         # before any upload or briefing
+    r = get(cc)
+    assert_suppress(r)
+    assert kind not in r.text and "flag" not in r.text and "health" not in r.text
+    upload(cc)
+    assert_suppress(get(cc))                               # still suppress, never 202 pending
+
+
+def test_suppress_only_when_the_gates_pass_a_closed_gate_stays_204(cc, fakes):
+    flag(cc, "injury")
+    assert_suppress(get(cc))
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_briefing=False)
+    assert get(cc).status_code == 204                      # kill switch off: not eligible, the reason is never hinted
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_briefing=True, coach_chat=False)
+    assert get(cc).status_code == 204                      # chat flag off
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_chat=True, coach_allowlist=frozenset({"T999"}))
+    assert get(cc).status_code == 204                      # not allowlisted
+    cc.svc.coach.s = cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.s, coach_allowlist=frozenset({f"telegram:{OWNER}"}))
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("UPDATE users SET checkin_consent=2")
+    assert get(cc).status_code == 204                      # no consent
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("UPDATE users SET checkin_consent=3, paused=1")
+    assert get(cc).status_code == 204                      # paused
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("UPDATE users SET paused=0")
+    assert_suppress(get(cc))                               # gates open again: the block shows
+
+
+def test_a_cleared_block_returns_to_the_normal_states(cc, fakes):
+    flag(cc, "injury")
+    assert_suppress(get(cc))
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("UPDATE health_flags SET state='cleared'")
+    assert get(cc).status_code == 204                      # no session yet: plain 204 again
 
 
 def test_a_flag_raised_between_enqueue_and_claim_cancels_the_job_before_any_model_call(cc, fakes):
@@ -673,7 +718,7 @@ def test_a_sore_or_ill_checkin_means_no_briefing(cc, fakes, answers):
     assert get(cc).status_code == 200
     for k, d, v in answers:
         checkin(cc, k, d, v)
-    assert get(cc).status_code == 204                      # a stored briefing is not shown either
+    assert_suppress(get(cc))                               # a stored briefing is not shown either
     n = len(fakes.coach_calls)
     assert cc.svc.coach.briefing.enqueue(cc.uid, T0 + timedelta(minutes=1)) is False
     work(cc, T0 + timedelta(minutes=2))
@@ -710,7 +755,7 @@ def test_a_chat_screen_injury_sighting_blocks_for_seven_days(cc, fakes):
     say(cc, "my knee has been grumbling on the hills", now=T0 + timedelta(minutes=2))
     work(cc, T0 + timedelta(minutes=3))
     assert rows(cc, "SELECT screen FROM coach_jobs WHERE kind='chat'") == [{"screen": "clear:injury"}]
-    assert get(cc).status_code == 204
+    assert_suppress(get(cc))
     assert cc.svc.coach.briefing.enqueue(cc.uid, T0 + timedelta(minutes=4)) is False
     # 7 days later (the pinned clock moves on) the sighting has aged out
     with db.ro(cc.svc.s.db_path) as c:

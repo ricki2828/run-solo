@@ -553,13 +553,18 @@ class Briefings:
 
     # -------------------------------------------------------------------------------------- GET /v1/me/briefing
     def serve(self, uid: str, now: datetime | None = None) -> tuple[int, dict | None]:
-        """(200, body) | (202, {"status": "pending"}) | (204, None). Every gate is read fresh on every call (#3): flag,
-        allowlist, consent at least 3, not paused, no blocking health flag. A stored briefing is served only while it matches
+        """(200, body) | (200, {"status": "suppress"}) | (202, {"status": "pending"}) | (204, None). Every gate is read fresh
+        on every call (#3). A closed gate (flag off, not allowlisted, no consent, paused) is 204. With the gates open but a
+        safety block (health flag, sore/ill check-in window, injury seen by the chat screen) it is 200 {"status": "suppress"},
+        with no reason and no flag kind, so the app also drops its own offline briefing and speaks its plain start line.
+        A stored briefing is served only while it matches
         the runner's session as it stands now (same ref and fingerprint) and is younger than the TTL."""
         now = now or now_utc()
         with db.ro(self.s.db_path) as c:
-            if self.gate(c, uid) is not None or self.blocked(c, uid, now):
+            if self.gate(c, uid) is not None:
                 return 204, None
+            if self.blocked(c, uid, now):
+                return 200, {"status": "suppress"}
             user = self._user(c, uid)
             spec = self.spec_for(c, user, now) if user else None
             if spec is None:
