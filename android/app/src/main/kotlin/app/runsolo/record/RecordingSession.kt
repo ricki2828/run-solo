@@ -353,7 +353,7 @@ class RecordingSession(
             if (replayed.tipsMuted) it.muted = true
         }
         var cumActive = 0L
-        plannedCues?.restoredAt(core.status(t).elapsedMs)
+        plannedCues?.restoredAt(core.status(t).activeMs)
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
         trailMoments.resumeAt(ticker.distanceM)
@@ -1006,6 +1006,7 @@ class RecordingSession(
         }
 
     /** "Halfway." / "5 minutes to go." for a plan easy or long run; null for any other run. Rebuilt on a resume from the clock. */
+    @Volatile
     private var plannedCues: PlannedTimeCues? = null
 
     private var coachLines: VoiceCoach? = null
@@ -1147,8 +1148,8 @@ class RecordingSession(
         val grade = liveElev.grade
         val truePace = LiveTruePace.apply(pace, grade, coachSlowdown, ticker.distanceM)
         // A distance rep has no time left to read: estimate it from the metres to go at the current pace, and treat the last 100 m as the end.
-        // Planned minutes (plan easy/long): on the run screen's elapsed clock, behind any queued km line. It takes this second, so coaching holds off.
-        val planned = if (recording) plannedCues?.tick(st.elapsedMs, t, if (cues.nudgePending) t + 1 else cues.speechBusyUntil) else null
+        // Planned minutes (plan easy/long): on active (moving, pause-excluded) time, behind any queued km line. It takes this second, so coaching holds off.
+        val planned = if (recording) plannedCues?.tick(st.activeMs, t, if (cues.nudgePending) t + 1 else cues.speechBusyUntil) else null
         if (planned != null) {
             Log.i(TAG, "coach planned: $planned")
             cues.announce(planned, CueSlot.structure)

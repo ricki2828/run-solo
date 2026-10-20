@@ -29,9 +29,9 @@ abstract final class VoiceCoachPlan {
   /// Planned time: an easy or long plan session with minutes also carries
   /// them ([VoiceCoachConfig.plannedKind], [VoiceCoachConfig.plannedMinutes]),
   /// so the recorder says "Halfway." (planned 20 minutes or more) and
-  /// "5 minutes to go." (15 or more) on the run screen's clock, and nothing
+  /// "5 minutes to go." (15 or more) on moving time (pauses excluded), and nothing
   /// past the planned time. Free, goal, interval and trail runs carry neither.
-  /// Everything else gets the next-step line and nothing else.
+  /// Any other run gets the next-step line only.
   static VoiceCoachConfig build({
     required AppSettings settings,
     required engine.HrZones zones,

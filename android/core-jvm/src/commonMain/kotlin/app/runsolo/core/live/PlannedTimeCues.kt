@@ -6,8 +6,8 @@ import app.runsolo.core.record.CueWords
  * "Halfway." and "5 minutes to go." for a plan easy or long run, on the planned minutes the app
  * carried in `VoiceCoachConfig` (the run itself stays a Free run: no duration step, not a goal).
  *
- * Time is the recorder's elapsed time, the clock the run screen shows (it runs through pauses; a
- * restore after a kill counts the dark gap). Halfway only when planned is [HALFWAY_MIN_MINUTES] or
+ * Time is the recorder's ACTIVE time (`Status.activeMs`: moving, pauses and auto-pauses excluded),
+ * the time plan completion scores, so a stop at the lights never brings a cue forward or drops it. Halfway only when planned is [HALFWAY_MIN_MINUTES] or
  * more, at planned / 2; 5 to go only when planned is [TO_GO_MIN_MINUTES] or more. Nothing at or
  * past the planned time. Each line is said once: a cue that falls while speech is still queued
  * (a km line) waits for it, and one more than [LATE_MS] late (a pause, a long km line) is dropped
@@ -29,20 +29,20 @@ class PlannedTimeCues(kind: String?, minutes: Int?) {
     /** True when this run has any planned-time line to say. */
     val active: Boolean get() = cues.isNotEmpty()
 
-    /** A resume after a kill: every cue already due at [elapsedMs] is done, never said again. */
-    fun restoredAt(elapsedMs: Long) {
-        for (c in cues) if (elapsedMs >= c.atMs) c.done = true
+    /** A resume after a kill: every cue already due at [activeMs] is done, never said again. */
+    fun restoredAt(activeMs: Long) {
+        for (c in cues) if (activeMs >= c.atMs) c.done = true
     }
 
     /**
-     * One tick while recording. [elapsedMs] is the run screen's clock, [t] the session clock and
+     * One tick while recording. [activeMs] is the active time, [t] the session clock and
      * [busyUntil] when queued speech ends on it. Returns the line to say now, or null.
      */
-    fun tick(elapsedMs: Long, t: Long, busyUntil: Long): String? {
-        if (plannedMs == 0L || elapsedMs >= plannedMs) return null
+    fun tick(activeMs: Long, t: Long, busyUntil: Long): String? {
+        if (plannedMs == 0L || activeMs >= plannedMs) return null
         for (c in cues) {
-            if (c.done || elapsedMs < c.atMs) continue
-            if (elapsedMs - c.atMs > LATE_MS) {
+            if (c.done || activeMs < c.atMs) continue
+            if (activeMs - c.atMs > LATE_MS) {
                 c.done = true
                 continue
             }

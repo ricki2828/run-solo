@@ -107,6 +107,23 @@ class PlannedTimeCuesTest {
     }
 
     @Test
+    fun `an auto-pause spanning halfway still says halfway after resume`() {
+        val c = PlannedTimeCues("easy", 30)
+        // Active time stalls at 14:50 for 90 s of session time (t keeps running), then moves on.
+        assertNull(c.tick(min(14, 50), min(14, 50), 0))
+        for (s in 1..90) assertNull(c.tick(min(14, 50), min(14, 50) + s * 1_000L, 0))
+        assertEquals("Halfway.", c.tick(min(15), min(14, 50) + 100_000L, 0))
+    }
+
+    @Test
+    fun `stopped minutes do not bring 5 to go forward`() {
+        val c = PlannedTimeCues("easy", 30)
+        // 10 minutes of session time pass while active time sits at 20:00: nothing is said.
+        for (s in 0..600) assertNull(c.tick(min(20), min(20) + s * 1_000L, 0).takeIf { s > 0 })
+        assertEquals("5 minutes to go.", c.tick(min(25), min(30), 0))
+    }
+
+    @Test
     fun `a resume does not re-fire what already passed`() {
         val c = PlannedTimeCues("easy", 30)
         assertEquals("Halfway.", c.tick(min(15), min(15), 0))
