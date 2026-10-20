@@ -154,7 +154,7 @@ class Settings:
     # Per runner, per UTC day, counted from the database (a restart does not reset them, eng-review B9).
     coach_daily_msgs: int = 40
     coach_daily_usd: float = 1.5
-    coach_max_tokens: int = 600
+    coach_max_tokens: int = 2000   # Sonnet 5.5 thinking is mandatory and counts here
     coach_max_tool_turns: int = 6
     coach_turn_timeout_s: float = 30.0
     coach_job_deadline_s: float = 60.0
@@ -238,7 +238,7 @@ class Settings:
             coach_card_reserve_usd=_posfloat(e.get("COMPANION_COACH_CARD_RESERVE_USD"), 5.0),
             coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
             coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
-            coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 600),
+            coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 2000),
             coach_screen_model=(e.get("COMPANION_COACH_SCREEN_MODEL") or "anthropic/claude-haiku-5.5").strip(),
             coach_max_tool_turns=min(_posint(e.get("COMPANION_COACH_MAX_TOOL_TURNS"), 6), 6),
             coach_dir=os.path.expanduser(e.get("COMPANION_COACH_DIR") or default_coach_dir()),
