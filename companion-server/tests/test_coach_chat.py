@@ -794,3 +794,11 @@ def test_screen_model_comes_from_config():
     from companion.config import Settings
     assert Settings.from_env({"COMPANION_PEPPER": "x" * 20}).coach_screen_model == "anthropic/claude-haiku-5.5"
     assert Settings.from_env({"COMPANION_PEPPER": "x" * 20, "COMPANION_COACH_SCREEN_MODEL": "x/y"}).coach_screen_model == "x/y"
+
+
+def test_error_reason_is_short_and_names_the_problem():
+    from companion.coach.chat import error_reason
+    body = {"error": {"message": "thinking: cannot be disabled", "metadata": {"provider_name": "Google", "raw": "x" * 900}}}
+    why = error_reason(httpx.Response(400, json=body))
+    assert why.startswith("thinking: cannot be disabled | provider=Google") and len(why) == 300
+    assert error_reason(httpx.Response(400, text="<html>")) == "(no JSON body)"
