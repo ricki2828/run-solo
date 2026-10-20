@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from companion.coach import briefing as bf
 from companion import checkin_copy as cc
 from companion import checkins as ci
 from companion import db
@@ -826,7 +827,9 @@ def test_next_session_returns_the_plan_then_the_moved_session_with_the_latest_co
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert n == {"date": "2026-10-15", "type": "quality", "kind": "quality", "name": "Quality session",
                  "session_id": "quality", "name_source": "none", "minutes": None, "distance_m": 6000, "week": 3, "weeks": 4,
-                 "moved": False, "original_date": None, "label": "Quality session, 6 km"}
+                 "moved": False, "original_date": None, "label": "Quality session, 6 km",
+                 # the briefing match key and start inputs (this plan carried no ref and no pace)
+                 "session_ref": None, "fingerprint": bf.fingerprint("quality", None, 6000), "reps": None, "pace_lo": None, "pace_hi": None}
     put(env, "today", "2026-10-15", "skip", at(2026, 10, 15, 7, 0))
     put(env, "why", "2026-10-15", "ill", at(2026, 10, 15, 7, 1))
     moved = env.svc.next_session(env.uid, at(2026, 10, 15, 8, 0))
@@ -1148,7 +1151,7 @@ def test_old_plan_next_payloads_still_validate_and_unknown_keys_stay_loud():
         planned_run(mood="x")
 
 
-def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_card_but_the_ref_is_never_shown(env, client):
+def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_card_but_the_ref_is_never_in_a_message(env, client):
     env.svc.ingest_run(env.uid, planned_run(session_name="Norwegian 4x4", session_ref="w1s1", distance_m=6000), now=at(2026, 10, 13, 20, 0))
     assert env.q("SELECT plan_next_session_ref r, plan_next_session_name n FROM runs WHERE run_id='p1'") == [
         {"r": "w1s1", "n": "Norwegian 4x4"}]
@@ -1158,9 +1161,11 @@ def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_
     n = out["next_session"]
     assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "Norwegian 4x4", "norwegian_4x4", "plan", "Norwegian 4x4, 6 km")
-    assert "w1s1" not in json.dumps(out)
+    assert n["session_ref"] == "w1s1"   # returned since C2b: the app's own opaque id, its key for matching a briefing
+    assert n["fingerprint"] == bf.fingerprint("quality", None, 6000, 4)   # reps from the 4x4 in the session id
     env.step(at(2026, 10, 15, 6, 45))
     assert any("Today: Norwegian 4x4" in b.get("text", "") for b in env.sends())
+    assert not any("w1s1" in json.dumps(b) for b in env.sends())   # the ref is the app's id: never in a message to the runner
 
 
 def test_the_apps_exact_payload_is_accepted_over_http_and_the_name_reaches_next_session(env, client):

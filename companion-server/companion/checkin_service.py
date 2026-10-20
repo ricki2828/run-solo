@@ -26,6 +26,7 @@ from . import checkin_copy as cc
 from . import checkins as ci
 from . import db
 from . import default_week as dw
+from .coach import briefing as cbf
 from . import heat
 from . import quest as cv_quest
 from .channels import ChannelError
@@ -813,6 +814,7 @@ class CheckinMixin:
             user = dict(u)
             ans, planned, _usual, today, res = self._ci_state(c, user, now)
             name_ = self._ci_session_name(planned, res.type) if res else None
+            spec = cbf.spec_from(self, c, uid, planned, res, require_ref=False)   # the briefing's own spec (same function)
             quest = cv_quest.view_for_app(c, uid, today)
             care_weeks = ci.care_weeks(ans, today) if self._ci_consented(c, uid) else []
             line = c.execute(
@@ -832,6 +834,9 @@ class CheckinMixin:
                                                  planned.distance_m if not res.easier else None, name_)}
         if session is not None and planned is not None and planned.derived:
             session["derived"] = True   # the coach's default week, not a plan built in the app
+        if session is not None:   # the app's match key for a briefing, and what it needs to start the session (same spec as coach/briefing.py)
+            session.update({"session_ref": spec.ref, "fingerprint": cbf.spec_fingerprint(spec), "reps": spec.reps,
+                            "pace_lo": spec.pace_lo, "pace_hi": spec.pace_hi})
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),

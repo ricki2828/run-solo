@@ -28,7 +28,7 @@ API: `POST /v1/enrol/start` (returns nonce + poll_secret), `POST /v1/enrol/statu
 
 ### `GET /v1/me/next-session` (read-only, device token, same as `POST /v1/runs`)
 
-With no 4-week plan on the newest run, the session comes from the default coach week (`default_week.py`: usual days, runs a week, recent distances, one quality and one long run) and `next_session` carries `"derived": true` and `week`/`weeks` null. A real plan always wins; the key is absent then.
+With no 4-week plan on the newest run, the session comes from the default coach week (`default_week.py`: usual days, runs a week, recent distances, one quality and one long run) and `next_session` carries `"derived": true` and `week`/`weeks` null. A real plan always wins; the key is absent then. The five C2b keys below are present for both kinds of session, so the app can start a coach-week session and match its briefing: for a derived session `session_ref` is `cw<YYYYMMDD><first letter of type>` and the other four come from the same spec (`coach/briefing.py spec_from`) the briefing is generated from.
 
 For the app's Home (stream S3). `Cache-Control: no-store`. A server without check-ins answers 404: treat that as "nothing".
 
@@ -48,7 +48,11 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
     "week": 3, "weeks": 4,          // the plan's week, when the app sent it
     "moved": true,                  // true: "moved by your coach"
     "original_date": "2026-10-15",  // null unless moved
-    "label": "Quality session, 6 km"
+    "label": "Quality session, 6 km",
+    "session_ref": "w3s2",          // C2b: the briefing's own key (plan: the app's plan_next.session_ref; coach week: "cw20261019q" = cw + date + kind's first letter); null for a plan session the app sent no ref for
+    "fingerprint": "d2b9422c9591009b", // C2b: hash of kind, minutes/distance, reps, pace band (see GET /v1/me/briefing); equals the fingerprint of the briefing stored for this session
+    "reps": 4,                      // C2b: work reps when the session id or name carries NxM, else null
+    "pace_lo": 288.0, "pace_hi": 292.0 // C2b: the work-pace band in s/km the briefing facts use, quality sessions with a pace only, else null
   },
   "coach_line": { "kind": "run", "headline": "...", "body": "...", "sent_at": "2026-10-15T05:46:00Z" },
   "quest": { "id": "q_2026-11_trail_visits_ab12", "state": "accepted", "accepted_at": "2026-11-02T10:04:00Z" },
@@ -69,7 +73,7 @@ The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes t
   else (a custom or typed name, a homoglyph, hidden or control characters, a link or handle, ASCII "x") drops the name.
 - `session_id`: a hint, `^[a-z0-9_]{1,40}$`, the app's template id with hyphens as underscores (e.g. `norwegian_4x4`). It is kept
   only together with an accepted `session_name` and returned as `next_session.session_id`; without a hint the id is the name as a slug.
-- `session_ref`: the app's opaque plan id, `^[a-z0-9_]{1,16}$` (e.g. `w1s1`), stored for dedupe only and never shown or returned.
+- `session_ref`: the app's opaque plan id, `^[a-z0-9_]{1,16}$` (e.g. `w1s1`), stored for dedupe, never shown to the runner (no card or message carries it). Since C2b it is returned to the app, and only to the app, as `next_session.session_ref`, its key for matching a briefing.
 
 An invalid key is dropped on its own and the plan still counts; old payloads without them pass unchanged; any other unknown key
 is still a 422. `name_source` is "plan" when a name was accepted. A session the coach made easy loses the name (it is a different

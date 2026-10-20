@@ -100,7 +100,7 @@ REPS_RE = re.compile(r"(?<!\d)(\d{1,2})\s*x\s*\d", re.I)
 # ------------------------------------------------------------------------------------------------- spec + fingerprint
 @dataclass(frozen=True)
 class Spec:
-    ref: str
+    ref: str | None   # None only in the next-session view, for a plan session whose app sent no ref
     kind: str                 # easy | long | quality
     minutes: int | None
     distance_m: int | None
@@ -144,6 +144,33 @@ def reps_from(session_id: str | None, name: str | None) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+def spec_from(svc: Any, c, uid: str, planned: Any, res: Any, *, require_ref: bool = True) -> Spec | None:
+    """THE one place the runner's next session becomes a Spec: the briefing (session_ref, fingerprint, facts) and
+    GET /v1/me/next-session (session_ref, fingerprint, reps, pace) both call this, so the app's match key is the server's.
+    `planned`/`res` come from svc._ci_state. The ref is the app's plan_next_session_ref for a plan session and
+    cw<YYYYMMDD><first letter of the kind> for the coach week. A plan session with no ref has none: with `require_ref`
+    (the briefing) that is "nothing to brief" (None); without it the Spec carries ref None (the next-session view)."""
+    if res is None or planned is None:
+        return None
+    if planned.derived:
+        ref = f"cw{res.day.strftime('%Y%m%d')}{res.type[0]}"
+    else:
+        ref = (svc._ci_latest_run(c, uid) or {}).get("plan_next_session_ref") or None
+        if not ref and require_ref:   # the app sent no ref: it has nothing to match a briefing against
+            return None
+    kind = res.type
+    easier = bool(res.easier)
+    name = None if easier else svc._ci_session_name(planned, kind)
+    quality_pace = kind == "quality" and planned.type == "quality" and not easier \
+        and planned.pace_lo_s is not None and planned.pace_hi_s is not None
+    return Spec(ref=ref, kind=kind, minutes=None if easier else planned.minutes,
+                distance_m=None if easier else planned.distance_m,
+                reps=reps_from(planned.session_id, planned.session_name) if kind == "quality" and not easier else None,
+                pace_lo=planned.pace_lo_s if quality_pace else None, pace_hi=planned.pace_hi_s if quality_pace else None,
+                name=name, session_id=None if easier else planned.session_id, day=res.day.isoformat(),
+                week=planned.week, weeks=planned.weeks, moved=bool(res.moved), easier=easier)
 
 
 # ------------------------------------------------------------------------------------------------- validator (#8, #9)
@@ -291,27 +318,7 @@ class Briefings:
         """The runner's next session as it stands: the latest upload's plan_next_*, else the coach week. A session the
         check-ins made easy is easy (no minutes, no pace). None: nothing to brief."""
         _ans, planned, _usual, _today, res = self.svc._ci_state(c, user, now)
-        if res is None or planned is None:
-            return None
-        uid = user["id"]
-        if planned.derived:
-            ref = f"cw{res.day.strftime('%Y%m%d')}{res.type[0]}"
-        else:
-            latest = self.svc._ci_latest_run(c, uid) or {}
-            ref = latest.get("plan_next_session_ref")
-            if not ref:   # the app sent no ref: it has nothing to match a briefing against
-                return None
-        kind = res.type
-        easier = bool(res.easier)
-        name = None if easier else self.svc._ci_session_name(planned, kind)
-        quality_pace = kind == "quality" and planned.type == "quality" and not easier \
-            and planned.pace_lo_s is not None and planned.pace_hi_s is not None
-        return Spec(ref=ref, kind=kind, minutes=None if easier else planned.minutes,
-                    distance_m=None if easier else planned.distance_m,
-                    reps=reps_from(planned.session_id, planned.session_name) if kind == "quality" and not easier else None,
-                    pace_lo=planned.pace_lo_s if quality_pace else None, pace_hi=planned.pace_hi_s if quality_pace else None,
-                    name=name, session_id=None if easier else planned.session_id, day=res.day.isoformat(),
-                    week=planned.week, weeks=planned.weeks, moved=bool(res.moved), easier=easier)
+        return spec_from(self.svc, c, user["id"], planned, res)
 
     @staticmethod
     def slots_for(spec: Spec) -> list[str]:
