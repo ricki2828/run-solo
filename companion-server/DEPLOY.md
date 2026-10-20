@@ -285,6 +285,10 @@ allowlist never bypasses consent).
   `COMPANION_COACH_CARD_RESERVE_USD` kept back for cards), `COMPANION_COACH_DAILY_MSGS` (40) and `COMPANION_COACH_DAILY_USD`
   (1.5) per runner per UTC day, counted from the database. Alerts at 50/80/100% of the coach cap and when more than 20% of
   replies in 24 hours fall back to the template.
+- Session briefing (C2b): `GET /v1/me/briefing`, a slot template written by the same model through the same request helper (no tools, at most
+  one retry, both calls in the ledger). Same gate as chat plus no active urgent, wellbeing, injury or illness flag. `COMPANION_COACH_BRIEFING_DAILY`
+  (8 model calls per runner per day). Rows live in `coach_briefings` (30 days, deleted on consent withdrawal and with the runner, not in backups). The briefing
+  evals are `coach/evals/run_briefing_evals.py` (needs `OPENROUTER_API_KEY`): run them before widening the allowlist or changing the skill or the briefing instruction.
 - Red flags, two layers. (1) Regex, hard tier (unambiguous: chest pain, collapsed, suicide, overdose): the fixed reply at
   once, in the webhook, before any cap or model; also on the merged turn, notes, Tell Ricki feedback and a paused runner's
   text. (2) Every other coach turn goes to a safety classifier first (`COMPANION_COACH_SCREEN_MODEL`, default

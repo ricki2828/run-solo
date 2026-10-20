@@ -33,6 +33,7 @@ from ..notes import clean as clean_text
 from ..rails import add_alert, tag
 from ..timeutil import iso, now_utc, parse_iso
 from . import budget, prompt as coach_prompt, redflag, screen, validator
+from .briefing import Briefings
 from .tools import ReadTools
 
 log = logging.getLogger("companion")
@@ -119,6 +120,7 @@ class CoachChat:
         self.prompt: coach_prompt.CoachPrompt | None = None
         self.wake = threading.Event()
         self._last_typing: dict[str, float] = {}
+        self.briefing = Briefings(self)   # C2b: the spoken session briefing; shares the gate, the worker and the ledger
         if self.s.coach_chat:
             try:
                 self.prompt = coach_prompt.load(self.s.coach_dir)
@@ -234,9 +236,10 @@ class CoachChat:
     def withdraw(self, c, uid: str) -> None:
         """Consent dropped below the coach version (W6): the chat history goes and nothing queued is answered."""
         c.execute("DELETE FROM coach_messages WHERE user_id=?", (uid,))
+        c.execute("DELETE FROM coach_briefings WHERE user_id=?", (uid,))   # C2b: the briefing came from check-in data too
         c.execute("UPDATE coach_jobs SET reply=NULL WHERE user_id=?", (uid,))
         c.execute("UPDATE coach_jobs SET state='cancelled', outcome='withdrawn' "
-                  "WHERE user_id=? AND state IN ('pending','running','merged','replied','sending')", (uid,))
+                  "WHERE user_id=? AND state IN ('pending','running','merged','replied','sending')", (uid,))   # briefing jobs too
 
     # ------------------------------------------------------------------------------------------ Telegram out
     def _typing(self, ch: Any, ref: str, force: bool = False) -> None:
@@ -318,7 +321,7 @@ class CoachChat:
         with db.tx(self.s.db_path) as c:
             budget.release_stale(c, now)
             n += c.execute("UPDATE coach_jobs SET state='replied' WHERE state='sending' AND COALESCE(sending_at, '') < ?", (cut,)).rowcount
-            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND COALESCE(claimed_at, '') < ?",
+            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND kind<>'briefing' AND COALESCE(claimed_at, '') < ?",
                                (cut,)).fetchall():
                 n += 1
                 if j["attempts"] >= 2:
@@ -329,6 +332,8 @@ class CoachChat:
                     c.execute("UPDATE coach_jobs SET state='pending', claimed_at=NULL WHERE id=?", (j["id"],))
                     c.execute("UPDATE coach_jobs SET state='pending', merged_into=NULL WHERE merged_into=? AND state='merged'",
                               (j["id"],))
+        if not stale_only:
+            n += self.briefing.recover(now + timedelta(days=1))
         return n
 
     def step(self, now: datetime) -> bool:
@@ -343,7 +348,7 @@ class CoachChat:
                 if self.send_job(j["id"]):
                     return True
                 break
-        return self._claim_and_run(now)
+        return self._claim_and_run(now) or self.briefing.step(now)
 
     def _claim_and_run(self, now: datetime) -> bool:
         claimed = self._claim(now)

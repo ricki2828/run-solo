@@ -80,6 +80,39 @@ session). Without a name, `name` is the kind name ("Quality session", "Easy run"
 before the first card. `kind` is one of `run`, `evening`, `recap`, `monthly`. Nothing here holds a check-in answer, only the
 fact that a session moved: no reason, no readiness, no skip. The same resolver feeds the evening rules and the morning card.
 
+### `GET /v1/me/briefing` (C2b: the coach's spoken session briefing, device token)
+
+A TEMPLATE for the runner's next planned session, with slots and never a number. The app (Kotlin) renders the slots on the device, in the
+runner's units, from the same values the in-run cues use. The server never renders a number. `Cache-Control: no-store`. Never calls a model.
+
+- `200` `{"session_ref", "fingerprint", "template", "generated_at", "prompt_hash"}`: serve it only to the session whose fingerprint matches.
+- `202` `{"status":"pending"}`: a job is queued or running. Keep the cache.
+- `204`: nothing to say (gate closed, a health flag is active, no session, nothing generated, expired after 36 h). Clear the cache and speak the app's own start line.
+
+Every gate is re-read on every call: `COMPANION_COACH_CHAT`, the allowlist, consent at or above 3, not paused, and no active `urgent`, `wellbeing`
+(self-harm), `injury` or `ill` flag (injury is a plain 204, the review's simplest option; `ill` is added for the same reason). Withdrawing consent deletes the rows.
+Generation: queued after a run upload or a check-in answer, run by the coach worker (same gate again at claim, per-runner daily cap
+`COMPANION_COACH_BRIEFING_DAILY` default 8 model calls, the shared cost ledger, at most one retry), coalesced on a hash of the facts.
+
+Slots (each speaks as words; worst-case length is what the 28-word cap counts):
+
+| slot | spoken as | worst case | present when |
+|---|---|---|---|
+| `{session}` | "Norwegian four by four" | 4 words | the plan names the session |
+| `{pace}` | "five ten per kilometre" (or per mile), the same value as `VoiceCoachConfig.targetPaceSecPerKm` | 6 | a quality session with a target pace |
+| `{minutes}` | "forty five minutes" | 4 | the plan holds minutes |
+| `{distance}` | "ten point five kilometres" | 5 | the plan holds a distance |
+| `{reps}` | "four" | 1 | the session id or name carries `NxM` |
+
+A template only uses slots its session has. Kotlin renders, re-counts words (cap 28), and on any problem (unknown slot, over cap) uses the Dart template, then
+`SummaryWords.start`; it never truncates. Only "one" and "half" are allowed as number words.
+
+Fingerprint (the app matches the session it actually starts against it): the SHA-256 of
+`v1|kind=<easy|long|quality>|min=<int>|dist_m=<int>|reps=<int>|pace_lo=<int>|pace_hi=<int>`, first 16 hex characters. Fields in exactly that order, an absent value
+is empty, paces are whole seconds per km rounded half up (`floor(x + 0.5)`). Shared fixture, tested here and for the Dart side to test against the same file:
+`companion-server/tests/fixtures/briefing_fingerprint.json`. `plan_next` carries no rep count, so the server takes `reps` from an `NxM` in the session id or name
+(`norwegian_4x4` gives 4); the Dart side must derive it the same way for a plan session, or the match is simply missed and the app's own line is spoken.
+
 ### Quest block (`POST /v1/runs`, optional `quest`)
 
 The app owns quests (history, trail grouping, True Pace); the server keeps what it last said so it can issue the month's Telegram card, add the

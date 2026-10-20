@@ -1,0 +1,98 @@
+{
+  "spec": "companion-server/companion/coach/briefing.py, module docstring, section FINGERPRINT",
+  "version": "v1",
+  "rule": "sha256(utf8(canonical)) first 16 hex chars; canonical = v1|kind=..|min=..|dist_m=..|reps=..|pace_lo=..|pace_hi=.. ; an absent value is empty; paces are whole s/km rounded half up, floor(x + 0.5); numbers are plain decimal integers",
+  "cases": [
+    {
+      "name": "norwegian 4x4, pace band",
+      "input": {
+        "kind": "quality",
+        "minutes": 30,
+        "distance_m": null,
+        "reps": 4,
+        "pace_lo": 288.0,
+        "pace_hi": 288.0
+      },
+      "canonical": "v1|kind=quality|min=30|dist_m=|reps=4|pace_lo=288|pace_hi=288",
+      "fingerprint": "d2b9422c9591009b"
+    },
+    {
+      "name": "tempo with a pace range and a distance",
+      "input": {
+        "kind": "quality",
+        "minutes": null,
+        "distance_m": 6000,
+        "reps": null,
+        "pace_lo": 301.0,
+        "pace_hi": 309.0
+      },
+      "canonical": "v1|kind=quality|min=|dist_m=6000|reps=|pace_lo=301|pace_hi=309",
+      "fingerprint": "caca6968ca36c1b0"
+    },
+    {
+      "name": "easy run, minutes only",
+      "input": {
+        "kind": "easy",
+        "minutes": 40,
+        "distance_m": null,
+        "reps": null,
+        "pace_lo": null,
+        "pace_hi": null
+      },
+      "canonical": "v1|kind=easy|min=40|dist_m=|reps=|pace_lo=|pace_hi=",
+      "fingerprint": "c3c85125d4f73e12"
+    },
+    {
+      "name": "long run, distance only",
+      "input": {
+        "kind": "long",
+        "minutes": null,
+        "distance_m": 14000,
+        "reps": null,
+        "pace_lo": null,
+        "pace_hi": null
+      },
+      "canonical": "v1|kind=long|min=|dist_m=14000|reps=|pace_lo=|pace_hi=",
+      "fingerprint": "9c4a8106cb3d8d91"
+    },
+    {
+      "name": "nothing planned beyond the kind",
+      "input": {
+        "kind": "easy",
+        "minutes": null,
+        "distance_m": null,
+        "reps": null,
+        "pace_lo": null,
+        "pace_hi": null
+      },
+      "canonical": "v1|kind=easy|min=|dist_m=|reps=|pace_lo=|pace_hi=",
+      "fingerprint": "168cf96e1d94eece"
+    },
+    {
+      "name": "pace rounds half up (287.5 -> 288, 288.5 -> 289)",
+      "input": {
+        "kind": "quality",
+        "minutes": 25,
+        "distance_m": null,
+        "reps": null,
+        "pace_lo": 287.5,
+        "pace_hi": 288.5
+      },
+      "canonical": "v1|kind=quality|min=25|dist_m=|reps=|pace_lo=288|pace_hi=289",
+      "fingerprint": "90b23213ac04459b"
+    },
+    {
+      "name": "a fraction below the half rounds down",
+      "input": {
+        "kind": "quality",
+        "minutes": 25,
+        "distance_m": null,
+        "reps": null,
+        "pace_lo": 287.49,
+        "pace_hi": 300.0
+      },
+      "canonical": "v1|kind=quality|min=25|dist_m=|reps=|pace_lo=287|pace_hi=300",
+      "fingerprint": "041e47541bfc021d"
+    }
+  ]
+}

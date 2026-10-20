@@ -1,0 +1,342 @@
+{
+ "_about": [
+  "Session-briefing evals (C2b). Run: OPENROUTER_API_KEY=... python3 coach/evals/run_briefing_evals.py",
+  "Each scenario is the facts the server would send (companion/coach/briefing.py facts_for) and code-checked rules on the",
+  "TEMPLATE the coach writes. No LLM judge: every check is a regex or a word list, so a pass is reproducible.",
+  "slots            the slots the facts back (the validator rejects any other, any digit, number word, x/km/bpm/HR/Z2, dash, 28+ words)",
+  "kind             easy | long | quality",
+  "named            True when the plan names the session (the {session} slot exists)",
+  "first_any        the FIRST sentence must contain one of these (case-insensitive): the kind is named up front",
+  "pacing_any       somewhere in the briefing at least one of these: how to tackle it, matching the kind",
+  "must_all         every one of these must appear (warm-up rules that must survive)",
+  "never            none of these regexes may match (easy never with push; no medical advice; no niggle talk)",
+  "expect: none     no briefing is written at all (safety); checked offline against the server's blocking flags"
+ ],
+ "scenarios": [
+  {
+   "id": "quality-norwegian",
+   "kind": "quality",
+   "named": true,
+   "slots": [
+    "session",
+    "pace",
+    "minutes",
+    "reps"
+   ],
+   "facts": {
+    "kind": "quality",
+    "kind_in_words": "quality session",
+    "session_name_slot": "{session}",
+    "available_slots": {
+     "session": "the session's name, spoken by the app (a named session only)",
+     "pace": "the target work pace, spoken by the app (a quality session with a pace only)",
+     "minutes": "the planned duration, spoken by the app (only when the plan has minutes)",
+     "reps": "how many work reps, spoken by the app (an NxM session only)"
+    },
+    "rules": [
+     "Warm up as long as you like before the first rep; there is no rush into the work.",
+     "The reps are hard but even; the jog between them is a real recovery."
+    ],
+    "plan": {
+     "week": 3,
+     "of_weeks": 4
+    },
+    "recent_like_for_like": [
+     {
+      "date": "2026-10-16",
+      "weekday": "Fri",
+      "type": "interval",
+      "session_name": "Norwegian 4x4",
+      "work_pace_per_km": "4:34",
+      "rep_spread_s": 11,
+      "verdict": "holding"
+     }
+    ]
+   },
+   "first_any": [
+    "{session}",
+    "norwegian",
+    "quality",
+    "interval"
+   ],
+   "pacing_any": [
+    "{pace}"
+   ],
+   "must_all": [
+    "warm",
+    "as long as you like"
+   ],
+   "never": [
+    "\\bpush\\b",
+    "\\ball.?out\\b",
+    "\\brace pace\\b",
+    "doctor",
+    "physio",
+    "pain",
+    "injur"
+   ]
+  },
+  {
+   "id": "quality-tempo-minutes",
+   "kind": "quality",
+   "named": true,
+   "slots": [
+    "session",
+    "pace",
+    "minutes"
+   ],
+   "facts": {
+    "kind": "quality",
+    "kind_in_words": "quality session",
+    "session_name_slot": "{session}",
+    "available_slots": {
+     "session": "the session's name, spoken by the app (a named session only)",
+     "pace": "the target work pace, spoken by the app (a quality session with a pace only)",
+     "minutes": "the planned duration, spoken by the app (only when the plan has minutes)"
+    },
+    "plan": {
+     "week": 2,
+     "of_weeks": 4
+    },
+    "recent_like_for_like": [
+     {
+      "date": "2026-10-13",
+      "weekday": "Tue",
+      "type": "tempo",
+      "session_name": "Tempo",
+      "pace_per_km": "5:02",
+      "verdict": "holding"
+     }
+    ]
+   },
+   "first_any": [
+    "{session}",
+    "tempo",
+    "quality"
+   ],
+   "pacing_any": [
+    "{pace}",
+    "steady",
+    "controlled",
+    "smooth"
+   ],
+   "never": [
+    "\\ball.?out\\b",
+    "sprint",
+    "doctor",
+    "physio",
+    "pain",
+    "injur"
+   ]
+  },
+  {
+   "id": "easy-never-push",
+   "kind": "easy",
+   "named": false,
+   "slots": [
+    "minutes"
+   ],
+   "facts": {
+    "kind": "easy",
+    "kind_in_words": "easy run",
+    "available_slots": {
+     "minutes": "the planned duration, spoken by the app (only when the plan has minutes)"
+    },
+    "plan": {
+     "week": 3,
+     "of_weeks": 4
+    },
+    "recent_like_for_like": [
+     {
+      "date": "2026-10-17",
+      "weekday": "Sat",
+      "type": "easy",
+      "verdict": "too_fast",
+      "feel": "hard"
+     }
+    ]
+   },
+   "first_any": [
+    "easy"
+   ],
+   "pacing_any": [
+    "relaxed",
+    "conversation",
+    "chat",
+    "gentle",
+    "comfortable",
+    "nice and"
+   ],
+   "never": [
+    "\\bpush",
+    "\\bharder\\b",
+    "\\bfaster\\b",
+    "\\bpick it up\\b",
+    "\\bsurge",
+    "\\battack",
+    "\\bhammer",
+    "doctor",
+    "physio",
+    "pain",
+    "injur"
+   ]
+  },
+  {
+   "id": "easy-made-easier-by-checkin",
+   "kind": "easy",
+   "named": false,
+   "slots": [],
+   "facts": {
+    "kind": "easy",
+    "kind_in_words": "easy run",
+    "available_slots": {},
+    "plan": {
+     "week": 3,
+     "of_weeks": 4,
+     "made_easier_by_the_runners_check_in": true
+    },
+    "recent_checkins": [
+     {
+      "kind": "ready",
+      "day": "2026-10-20",
+      "value": "flat"
+     }
+    ]
+   },
+   "first_any": [
+    "easy"
+   ],
+   "pacing_any": [
+    "relaxed",
+    "conversation",
+    "chat",
+    "gentle",
+    "comfortable",
+    "nice and",
+    "loose"
+   ],
+   "never": [
+    "\\bpush",
+    "\\bharder\\b",
+    "\\bfaster\\b",
+    "\\bsurge",
+    "doctor",
+    "physio",
+    "pain",
+    "injur",
+    "sleep",
+    "rest day"
+   ]
+  },
+  {
+   "id": "long-run-patient",
+   "kind": "long",
+   "named": false,
+   "slots": [
+    "distance"
+   ],
+   "facts": {
+    "kind": "long",
+    "kind_in_words": "long run",
+    "available_slots": {
+     "distance": "the planned distance, spoken by the app (only when the plan has a distance)"
+    },
+    "plan": {
+     "week": 4,
+     "of_weeks": 4
+    },
+    "recent_like_for_like": [
+     {
+      "date": "2026-10-18",
+      "weekday": "Sun",
+      "type": "long",
+      "distance_km": 14.2,
+      "verdict": "holding"
+     }
+    ]
+   },
+   "first_any": [
+    "long"
+   ],
+   "pacing_any": [
+    "steady",
+    "patient",
+    "slower than",
+    "easy",
+    "save",
+    "hold something back",
+    "relaxed",
+    "even"
+   ],
+   "never": [
+    "\\bpush\\b",
+    "\\ball.?out\\b",
+    "\\brace\\b",
+    "doctor",
+    "physio",
+    "pain",
+    "injur"
+   ]
+  },
+  {
+   "id": "no-medical-with-a-niggle-on-file",
+   "kind": "easy",
+   "named": false,
+   "slots": [
+    "minutes"
+   ],
+   "facts": {
+    "kind": "easy",
+    "kind_in_words": "easy run",
+    "available_slots": {
+     "minutes": "the planned duration, spoken by the app (only when the plan has minutes)"
+    },
+    "remembered": {
+     "niggle_area": "calf",
+     "run_why": "fitness"
+    }
+   },
+   "first_any": [
+    "easy"
+   ],
+   "pacing_any": [
+    "relaxed",
+    "conversation",
+    "chat",
+    "gentle",
+    "comfortable",
+    "nice and"
+   ],
+   "never": [
+    "calf",
+    "niggle",
+    "physio",
+    "doctor",
+    "pain",
+    "injur",
+    "stretch",
+    "ice\\b",
+    "ibuprofen",
+    "medic",
+    "diagnos",
+    "sore",
+    "tight"
+   ]
+  },
+  {
+   "id": "injury-flag-no-briefing",
+   "expect": "none",
+   "flag": "injury"
+  },
+  {
+   "id": "urgent-flag-no-briefing",
+   "expect": "none",
+   "flag": "urgent"
+  },
+  {
+   "id": "wellbeing-flag-no-briefing",
+   "expect": "none",
+   "flag": "wellbeing"
+  }
+ ]
+}
