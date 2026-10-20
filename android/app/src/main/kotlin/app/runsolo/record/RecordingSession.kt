@@ -42,6 +42,7 @@ import app.runsolo.core.live.MomentInput
 import app.runsolo.core.live.QuestBeat
 import app.runsolo.core.live.QuestInput
 import app.runsolo.core.live.TrailMoments
+import app.runsolo.core.live.PlannedTimeCues
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.live.VoiceLevel
 import app.runsolo.core.record.CueWords
@@ -352,6 +353,7 @@ class RecordingSession(
             if (replayed.tipsMuted) it.muted = true
         }
         var cumActive = 0L
+        plannedCues?.restoredAt(core.status(t).activeMs)
         coach.restoreReps(replayed.events, core, laps.map { l -> cumActive += l.activeMs; l.distanceM to cumActive })
         coach.resumeAt(ticker.distanceM)
         trailMoments.resumeAt(ticker.distanceM)
@@ -999,7 +1001,13 @@ class RecordingSession(
         set(value) {
             field = value
             coachLines = value?.let { VoiceCoach(it) }
+            // Minimal detail is the next-step line only: no planned-time lines either.
+            plannedCues = value?.takeIf { it.full }?.let { PlannedTimeCues(it.plannedKind, it.plannedMinutes) }?.takeIf { it.active }
         }
+
+    /** "Halfway." / "5 minutes to go." for a plan easy or long run; null for any other run. Rebuilt on a resume from the clock. */
+    @Volatile
+    private var plannedCues: PlannedTimeCues? = null
 
     private var coachLines: VoiceCoach? = null
 
@@ -1140,6 +1148,12 @@ class RecordingSession(
         val grade = liveElev.grade
         val truePace = LiveTruePace.apply(pace, grade, coachSlowdown, ticker.distanceM)
         // A distance rep has no time left to read: estimate it from the metres to go at the current pace, and treat the last 100 m as the end.
+        // Planned minutes (plan easy/long): on active (moving, pause-excluded) time, behind any queued km line. It takes this second, so coaching holds off.
+        val planned = if (recording) plannedCues?.tick(st.activeMs, t, if (cues.nudgePending) t + 1 else cues.speechBusyUntil) else null
+        if (planned != null) {
+            Log.i(TAG, "coach planned: $planned")
+            cues.announce(planned, CueSlot.structure)
+        }
         val toEndMs = st.stepRemainingMs ?: st.stepRemainingM?.let { m -> if (m <= COACH_LAST_M) 0L else pace?.let { (m * it).toLong() } }
         // The sample's HR is null once the strap's last reading is over 2 s old (HrJoin.hrAt), so a dropped strap reaches the coach as null.
         val line = vc.tick(
@@ -1150,7 +1164,7 @@ class RecordingSession(
                 paceSecPerKm = truePace,
                 hr = hr?.toDouble(),
                 msToPhaseEnd = toEndMs,
-                busyUntil = if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
+                busyUntil = if (planned != null) Long.MAX_VALUE else if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
             ),
         ) ?: return

@@ -79,6 +79,9 @@ object VoiceCopyFixture {
         add("cue.minute-mark.11", cue(CueKind.minuteMark, SessionSpec.COOPER, Phase.work, 0, value = 11.0))
         add("cue.projection.target", cue(CueKind.projection, ReplayScenarios.PARKRUN, Phase.work, 0, value = 7_199_000.0, index = 4))
         add("cue.projection.cooper", CooperProjection.cue(11, 9_999.0))
+        // A plan easy or long run's planned-minutes lines (PlannedTimeCues).
+        add("cue.planned.halfway", CueWords.PLANNED_HALFWAY)
+        add("cue.planned.to-go", CueWords.plannedToGo(5))
 
         // Free run km splits (LiveWords.kmSplit).
         add("km.split", LiveWords.kmSplit(3, 920_000, 307_000))

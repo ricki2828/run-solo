@@ -1542,6 +1542,8 @@ class VoiceCoachConfig {
     this.bandSecPerKm,
     this.zoneBottomsBpm,
     this.plannedMaxZone,
+    this.plannedKind,
+    this.plannedMinutes,
   });
   bool enabled;
   bool full;
@@ -1550,6 +1552,12 @@ class VoiceCoachConfig {
   double? bandSecPerKm;
   List<double>? zoneBottomsBpm;
   int? plannedMaxZone;
+
+  /// The plan session being run, `easy` or `long` (null for any other run), and its
+  /// planned minutes: "Halfway." and "5 minutes to go." on the run screen's clock. Not a
+  /// `SessionSpec` step: the run stays a Free run.
+  String? plannedKind;
+  int? plannedMinutes;
 }
 
 /// The workout write. Android: Health Connect (`androidx.health.connect`).

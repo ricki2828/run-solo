@@ -3632,6 +3632,8 @@ class VoiceCoachConfig {
     this.bandSecPerKm,
     this.zoneBottomsBpm,
     this.plannedMaxZone,
+    this.plannedKind,
+    this.plannedMinutes,
   });
 
   bool enabled;
@@ -3648,6 +3650,13 @@ class VoiceCoachConfig {
 
   int? plannedMaxZone;
 
+  /// The plan session being run, `easy` or `long` (null for any other run), and its
+  /// planned minutes: "Halfway." and "5 minutes to go." on the run screen's clock. Not a
+  /// `SessionSpec` step: the run stays a Free run.
+  String? plannedKind;
+
+  int? plannedMinutes;
+
   List<Object?> _toList() {
     return <Object?>[
       enabled,
@@ -3657,6 +3666,8 @@ class VoiceCoachConfig {
       bandSecPerKm,
       zoneBottomsBpm,
       plannedMaxZone,
+      plannedKind,
+      plannedMinutes,
     ];
   }
 
@@ -3673,6 +3684,8 @@ class VoiceCoachConfig {
       bandSecPerKm: result[4] as double?,
       zoneBottomsBpm: (result[5] as List<Object?>?)?.cast<double>(),
       plannedMaxZone: result[6] as int?,
+      plannedKind: result[7] as String?,
+      plannedMinutes: result[8] as int?,
     );
   }
 
@@ -3685,7 +3698,7 @@ class VoiceCoachConfig {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(enabled, other.enabled) && _deepEquals(full, other.full) && _deepEquals(slowerIsFine, other.slowerIsFine) && _deepEquals(targetPaceSecPerKm, other.targetPaceSecPerKm) && _deepEquals(bandSecPerKm, other.bandSecPerKm) && _deepEquals(zoneBottomsBpm, other.zoneBottomsBpm) && _deepEquals(plannedMaxZone, other.plannedMaxZone);
+    return _deepEquals(enabled, other.enabled) && _deepEquals(full, other.full) && _deepEquals(slowerIsFine, other.slowerIsFine) && _deepEquals(targetPaceSecPerKm, other.targetPaceSecPerKm) && _deepEquals(bandSecPerKm, other.bandSecPerKm) && _deepEquals(zoneBottomsBpm, other.zoneBottomsBpm) && _deepEquals(plannedMaxZone, other.plannedMaxZone) && _deepEquals(plannedKind, other.plannedKind) && _deepEquals(plannedMinutes, other.plannedMinutes);
   }
 
   @override
