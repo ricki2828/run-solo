@@ -388,6 +388,11 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             .putInt(RecorderService.PREF_VC_ZONE, config.plannedMaxZone?.toInt() ?: 0)
             .putString(RecorderService.PREF_VC_PLAN_KIND, config.plannedKind)
             .putInt(RecorderService.PREF_VC_PLAN_MINUTES, config.plannedMinutes?.toInt() ?: 0)
+            .putString(RecorderService.PREF_VC_BRIEFING, config.briefingTemplate)
+            .putString(RecorderService.PREF_VC_BRIEFING_FALLBACK, config.briefingFallback)
+            .putString(RecorderService.PREF_VC_PLAN_DIST, config.plannedDistanceM?.toString())
+            .putInt(RecorderService.PREF_VC_REPS, config.reps?.toInt() ?: 0)
+            .putString(RecorderService.PREF_VC_SESSION, config.sessionName)
             .commit()
     }
 
@@ -409,6 +414,12 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             // Prefs written before these existed read as absent: no planned-time lines.
             plannedKind = prefs.getString(RecorderService.PREF_VC_PLAN_KIND, null),
             plannedMinutes = prefs.getInt(RecorderService.PREF_VC_PLAN_MINUTES, 0).takeIf { it > 0 },
+            // The start briefing: prefs written before it existed read as absent (the usual start line).
+            briefingTemplate = prefs.getString(RecorderService.PREF_VC_BRIEFING, null),
+            briefingFallback = prefs.getString(RecorderService.PREF_VC_BRIEFING_FALLBACK, null),
+            plannedDistanceM = prefs.getString(RecorderService.PREF_VC_PLAN_DIST, null)?.toDoubleOrNull(),
+            reps = prefs.getInt(RecorderService.PREF_VC_REPS, 0).takeIf { it > 0 },
+            sessionName = prefs.getString(RecorderService.PREF_VC_SESSION, null),
         )
     }
 

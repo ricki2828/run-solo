@@ -46,6 +46,8 @@ import app.runsolo.core.live.PlannedTimeCues
 import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.live.VoiceLevel
 import app.runsolo.core.record.CueWords
+import app.runsolo.core.record.StartBriefing
+import app.runsolo.core.record.StartSpoken
 import app.runsolo.core.record.SummaryWords
 import app.runsolo.core.record.LapDispatch
 import app.runsolo.core.record.LiveRoute
@@ -491,9 +493,35 @@ class RecordingSession(
      */
     private fun speakStart() {
         if (!spokenSummary || resumed || replay != null) return
+        // Persisted: a restored or resumed session (any process) never speaks its start again.
+        if (!startSpoken.claim(runId)) return
         val path = follower?.path
-        val text = SummaryWords.start(mode, spec, units, followRoute?.name, path?.totalM, path?.totalClimbM) ?: return
+        val text = plannedBriefing() ?: SummaryWords.start(mode, spec, units, followRoute?.name, path?.totalM, path?.totalClimbM) ?: return
         cues.announceSummary(text)
+    }
+
+    private val startSpoken = StartSpoken(
+        load = { context.getSharedPreferences(RecorderService.PREFS, Context.MODE_PRIVATE).getString(RecorderService.PREF_START_SPOKEN, null) },
+        store = { context.getSharedPreferences(RecorderService.PREFS, Context.MODE_PRIVATE).edit().putString(RecorderService.PREF_START_SPOKEN, it).commit() },
+    )
+
+    /**
+     * The briefing for a planned session's start (C2b A2): the coach's template, else the app's own, with its slots
+     * spoken in the runner's units; null when there is none or neither renders within [StartBriefing.MAX_WORDS], and
+     * the usual [SummaryWords.start] is spoken. Only a run the plan starts as a Free run (easy, long) or as an intervals
+     * session: a trail, goal, event, Cooper or Laps run keeps its own line whatever the config holds.
+     */
+    private fun plannedBriefing(): String? {
+        val c = voiceCoach ?: return null
+        if (c.briefingTemplate == null && c.briefingFallback == null) return null
+        val planned = when (mode) {
+            RunMode.free -> spec == null
+            RunMode.intervals -> spec != null && !spec.isEvent && !spec.isGoal
+            else -> false
+        }
+        if (!planned) return null
+        val slots = StartBriefing.Slots(c.sessionName, c.targetPaceSecPerKm, c.plannedMinutes, c.plannedDistanceM, c.reps)
+        return StartBriefing.line(c.briefingTemplate, c.briefingFallback, slots, units)
     }
 
     /** 1 Hz timer on the recorder thread; replay mode ticks per delivered fix instead. */

@@ -180,6 +180,14 @@ class RecorderService : Service() {
         const val PREF_VC_ZONE = "voiceCoachZone"
         const val PREF_VC_PLAN_KIND = "voiceCoachPlanKind"
         const val PREF_VC_PLAN_MINUTES = "voiceCoachPlanMinutes"
+        const val PREF_VC_BRIEFING = "voiceCoachBriefing"
+        const val PREF_VC_BRIEFING_FALLBACK = "voiceCoachBriefingFallback"
+        const val PREF_VC_PLAN_DIST = "voiceCoachPlanDistance"
+        const val PREF_VC_REPS = "voiceCoachReps"
+        const val PREF_VC_SESSION = "voiceCoachSession"
+
+        /** The run id whose start line has been spoken (see `StartSpoken`): a restored or resumed session never speaks it again. */
+        const val PREF_START_SPOKEN = "startSpokenRun"
 
         /** Session handed from the Activity to the service on ACTION_START. Main thread only. */
         @Volatile

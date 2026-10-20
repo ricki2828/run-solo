@@ -84,6 +84,22 @@ summary.start.trail-emoji-name	11	Trail run. Following Kastro loop, 6.2 kilometr
 summary.end.verdict-trail-faster	27	Run saved. 6 kilometres 21, 41 minutes, 6 minutes 36 per kilometre, 231 metres of climb. Faster on this trail, 2 minutes 10 quicker than last time.
 summary.end.verdict-no-change	13	Run saved. 5 kilometres, 25 minutes, 5 minutes per kilometre. No real change.
 summary.end.verdict-4x4-best	17	Run saved. 5 kilometres 20, 41 minutes, 7 minutes 53 per kilometre. Faster. New best Norwegian 4x4.
+briefing.norwegian-4x4	26	Norwegian 4 by 4. Warm up as long as you like. Then four reps, hard but even, holding 4 minutes 48 per kilometre. Jog the recoveries.
+briefing.norwegian-4x4-miles	26	Norwegian 4 by 4. Warm up as long as you like. Then four reps, hard but even, holding 7 minutes 43 per mile. Jog the recoveries.
+briefing.norwegian-4x4-pace-under-4	26	Norwegian 4 by 4. Warm up as long as you like. Then four reps, hard but even, holding 3 minutes 55 per kilometre. Jog the recoveries.
+briefing.norwegian-4x4-pace-under-4-miles	26	Norwegian 4 by 4. Warm up as long as you like. Then four reps, hard but even, holding 6 minutes 18 per mile. Jog the recoveries.
+briefing.norwegian-4x4-no-pace	20	Norwegian 4 by 4. Warm up as long as you like. Then four reps, hard but even. Jog the recoveries.
+briefing.reps-and-pace	21	6 by 400 metres. Today is six reps. Hold 4 minutes 48 per kilometre on each one and jog the recoveries.
+briefing.pace-only-whole-minutes	14	Tempo intervals. Hold 5 minutes per kilometre on each one and jog the recoveries.
+briefing.no-numbers	11	Pyramid. Run each one hard but even and jog the recoveries.
+briefing.easy-minutes	15	Easy run, 40 minutes. Keep it relaxed and conversational. If you cannot chat, ease off.
+briefing.easy	13	Easy run. Keep it relaxed and conversational. If you cannot chat, ease off.
+briefing.long-minutes	17	Long run, 1 hour 30 minutes. Start patient and steady, and save something for the last third.
+briefing.long-distance	17	Long run, 15 kilometres or more. Start patient and steady, and save something for the last third.
+briefing.long-distance-miles	17	Long run, 9.3 miles or more. Start patient and steady, and save something for the last third.
+briefing.long	13	Long run. Start patient and steady, and save something for the last third.
+briefing.coach-template	14	Easy day, 40 minutes at a relaxed effort. Nice and conversational, and settle in.
+briefing.coach-template-quality	24	Today is Norwegian 4 by 4. Warm up as long as you like, then four reps at 4 minutes 48 per kilometre. Recover well.
 nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.

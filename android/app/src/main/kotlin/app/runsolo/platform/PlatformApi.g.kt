@@ -3503,7 +3503,20 @@ data class VoiceCoachConfig (
    * `SessionSpec` step: the run stays a Free run.
    */
   val plannedKind: String? = null,
-  val plannedMinutes: Long? = null
+  val plannedMinutes: Long? = null,
+  /**
+   * The start briefing (C2b A2, eng-review #1): TEMPLATES with slots ({session}, {pace}, {minutes},
+   * {distance}, {reps}) that the recorder fills on the device, in the runner's units. [briefingTemplate]
+   * is the coach's own (null until the app fetches it); [briefingFallback] is the app's own template
+   * for a plan session. Both null = the usual start line. [plannedDistanceM], [reps] and
+   * [sessionName] are what the slots speak ({pace} is [targetPaceSecPerKm], {minutes} is
+   * [plannedMinutes]). Persisted like the rest: a config saved before these reads them as null.
+   */
+  val briefingTemplate: String? = null,
+  val briefingFallback: String? = null,
+  val plannedDistanceM: Double? = null,
+  val reps: Long? = null,
+  val sessionName: String? = null
 )
  {
   companion object {
@@ -3517,7 +3530,12 @@ data class VoiceCoachConfig (
       val plannedMaxZone = pigeonVar_list[6] as Long?
       val plannedKind = pigeonVar_list[7] as String?
       val plannedMinutes = pigeonVar_list[8] as Long?
-      return VoiceCoachConfig(enabled, full, slowerIsFine, targetPaceSecPerKm, bandSecPerKm, zoneBottomsBpm, plannedMaxZone, plannedKind, plannedMinutes)
+      val briefingTemplate = pigeonVar_list[9] as String?
+      val briefingFallback = pigeonVar_list[10] as String?
+      val plannedDistanceM = pigeonVar_list[11] as Double?
+      val reps = pigeonVar_list[12] as Long?
+      val sessionName = pigeonVar_list[13] as String?
+      return VoiceCoachConfig(enabled, full, slowerIsFine, targetPaceSecPerKm, bandSecPerKm, zoneBottomsBpm, plannedMaxZone, plannedKind, plannedMinutes, briefingTemplate, briefingFallback, plannedDistanceM, reps, sessionName)
     }
   }
   fun toList(): List<Any?> {
@@ -3531,6 +3549,11 @@ data class VoiceCoachConfig (
       plannedMaxZone,
       plannedKind,
       plannedMinutes,
+      briefingTemplate,
+      briefingFallback,
+      plannedDistanceM,
+      reps,
+      sessionName,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -3541,7 +3564,7 @@ data class VoiceCoachConfig (
       return true
     }
     val other = other as VoiceCoachConfig
-    return PlatformApiPigeonUtils.deepEquals(this.enabled, other.enabled) && PlatformApiPigeonUtils.deepEquals(this.full, other.full) && PlatformApiPigeonUtils.deepEquals(this.slowerIsFine, other.slowerIsFine) && PlatformApiPigeonUtils.deepEquals(this.targetPaceSecPerKm, other.targetPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bandSecPerKm, other.bandSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.zoneBottomsBpm, other.zoneBottomsBpm) && PlatformApiPigeonUtils.deepEquals(this.plannedMaxZone, other.plannedMaxZone) && PlatformApiPigeonUtils.deepEquals(this.plannedKind, other.plannedKind) && PlatformApiPigeonUtils.deepEquals(this.plannedMinutes, other.plannedMinutes)
+    return PlatformApiPigeonUtils.deepEquals(this.enabled, other.enabled) && PlatformApiPigeonUtils.deepEquals(this.full, other.full) && PlatformApiPigeonUtils.deepEquals(this.slowerIsFine, other.slowerIsFine) && PlatformApiPigeonUtils.deepEquals(this.targetPaceSecPerKm, other.targetPaceSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.bandSecPerKm, other.bandSecPerKm) && PlatformApiPigeonUtils.deepEquals(this.zoneBottomsBpm, other.zoneBottomsBpm) && PlatformApiPigeonUtils.deepEquals(this.plannedMaxZone, other.plannedMaxZone) && PlatformApiPigeonUtils.deepEquals(this.plannedKind, other.plannedKind) && PlatformApiPigeonUtils.deepEquals(this.plannedMinutes, other.plannedMinutes) && PlatformApiPigeonUtils.deepEquals(this.briefingTemplate, other.briefingTemplate) && PlatformApiPigeonUtils.deepEquals(this.briefingFallback, other.briefingFallback) && PlatformApiPigeonUtils.deepEquals(this.plannedDistanceM, other.plannedDistanceM) && PlatformApiPigeonUtils.deepEquals(this.reps, other.reps) && PlatformApiPigeonUtils.deepEquals(this.sessionName, other.sessionName)
   }
 
   override fun hashCode(): Int {
@@ -3555,6 +3578,11 @@ data class VoiceCoachConfig (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedMaxZone)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedKind)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedMinutes)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.briefingTemplate)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.briefingFallback)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.plannedDistanceM)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.reps)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.sessionName)
     return result
   }
 }

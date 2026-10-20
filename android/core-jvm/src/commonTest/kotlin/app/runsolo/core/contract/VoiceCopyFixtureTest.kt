@@ -1,6 +1,7 @@
 package app.runsolo.core.contract
 
 import app.runsolo.core.live.CueComposer
+import app.runsolo.core.record.StartBriefing
 import app.runsolo.core.testio.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,12 +18,17 @@ class VoiceCopyFixtureTest {
     }
 
     @Test
-    fun `every line fits its word budget 16 a run summary 32 has no em dash and every id is unique`() {
+    fun `every line fits its word budget 16 a run summary 32 a briefing 28 has no em dash and every id is unique`() {
         val lines = VoiceCopyFixture.lines()
         assertEquals(lines.map { it.first }.distinct(), lines.map { it.first })
         for ((id, text) in lines) {
             // A run summary is read once, at the start or the finish, not a cue: the end stats plus the verdict get 32 words.
-            val budget = if (id.startsWith("summary.end")) 32 else CueComposer.MAX_WORDS
+            // The start briefing is read once too, on the rendered text: its own 28.
+            val budget = when {
+                id.startsWith("summary.end") -> 32
+                id.startsWith("briefing.") -> StartBriefing.MAX_WORDS
+                else -> CueComposer.MAX_WORDS
+            }
             assertTrue(CueComposer.words(text) <= budget, "$id: $text")
             assertFalse(text.contains('—'), "$id: $text")
             assertFalse(text.isBlank(), id)

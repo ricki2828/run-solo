@@ -144,52 +144,62 @@ void main() {
     }
   });
 
-  test(
-    'free, warned easy, goal, interval, no minutes and Minimal carry none',
-    () {
-      final cases = <VoiceCoachConfig>[
-        VoiceCoachPlan.build(settings: const AppSettings(), zones: zones),
-        VoiceCoachPlan.build(
-          settings: const AppSettings(),
-          zones: zones,
-          warnedEasy: true,
-        ),
-        VoiceCoachPlan.build(
-          settings: const AppSettings(),
-          zones: zones,
-          planned: _session(engine.BlockKind.goal, minutes: 30),
-          goalPaceSecPerKm: 295,
-        ),
-        VoiceCoachPlan.build(
-          settings: const AppSettings(),
-          zones: zones,
-          planned: _session(
-            engine.BlockKind.interval,
-            presetId: 'tempo',
-            minutes: 30,
-          ),
-          vdot: vdot,
-        ),
-        VoiceCoachPlan.build(
-          settings: const AppSettings(),
-          zones: zones,
-          planned: _session(engine.BlockKind.easy),
-          vdot: vdot,
-        ),
-        VoiceCoachPlan.build(
-          settings: const AppSettings(coachingDetail: CoachingDetail.minimal),
-          zones: zones,
-          planned: _session(engine.BlockKind.long, minutes: 60),
-          vdot: vdot,
-        ),
-        VoiceCoachPlan.off,
-      ];
-      for (final c in cases) {
-        expect(c.plannedKind, isNull);
-        expect(c.plannedMinutes, isNull);
-      }
-    },
-  );
+  test('free, warned easy, goal, no minutes and Minimal carry no planned-time cues', () {
+    final cases = <VoiceCoachConfig>[
+      VoiceCoachPlan.build(settings: const AppSettings(), zones: zones),
+      VoiceCoachPlan.build(
+        settings: const AppSettings(),
+        zones: zones,
+        warnedEasy: true,
+      ),
+      VoiceCoachPlan.build(
+        settings: const AppSettings(),
+        zones: zones,
+        planned: _session(engine.BlockKind.goal, minutes: 30),
+        goalPaceSecPerKm: 295,
+      ),
+      VoiceCoachPlan.build(
+        settings: const AppSettings(),
+        zones: zones,
+        planned: _session(engine.BlockKind.easy),
+        vdot: vdot,
+      ),
+      VoiceCoachPlan.build(
+        settings: const AppSettings(coachingDetail: CoachingDetail.minimal),
+        zones: zones,
+        planned: _session(engine.BlockKind.long, minutes: 60),
+        vdot: vdot,
+      ),
+      VoiceCoachPlan.off,
+    ];
+    for (final c in cases) {
+      expect(c.plannedKind, isNull);
+      expect(c.plannedMinutes, isNull);
+    }
+  });
+
+  test('an interval start has no planned-time cues; its minutes are for the briefing', () {
+    final c = VoiceCoachPlan.build(
+      settings: const AppSettings(),
+      zones: zones,
+      planned: _session(
+        engine.BlockKind.interval,
+        presetId: 'tempo',
+        minutes: 30,
+      ),
+      vdot: vdot,
+    );
+    expect(
+      c.plannedKind,
+      isNull,
+      reason: 'the recorder says no halfway to intervals',
+    );
+    expect(
+      c.plannedMinutes,
+      30,
+      reason: 'only so the briefing can say {minutes}',
+    );
+  });
 
   test('a goal run uses its own pace, not the plan estimate', () {
     final c = VoiceCoachPlan.build(

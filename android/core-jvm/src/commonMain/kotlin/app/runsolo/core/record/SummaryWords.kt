@@ -142,6 +142,17 @@ object SummaryWords {
         }
     }
 
+    /**
+     * A pace as TTS says it, in the runner's units: "4 minutes 45 per kilometre", "5 minutes per mile". The one
+     * pace formatter ([end] and the start briefing's `{pace}` slot). Null for a pace that is not a positive number.
+     */
+    fun pace(secPerKm: Double, units: Units): String? {
+        if (!secPerKm.isFinite() || secPerKm <= 0) return null
+        val miles = units == Units.mi
+        val s = (if (miles) secPerKm * (M_PER_MI / 1_000.0) else secPerKm).roundToLong()
+        return "${minutesSeconds(s)} per ${if (miles) "mile" else "kilometre"}"
+    }
+
     /** "4 minutes 45", "5 minutes", "45 seconds". */
     private fun minutesSeconds(s: Long): String {
         val m = s / 60

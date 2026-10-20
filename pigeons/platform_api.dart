@@ -1544,6 +1544,11 @@ class VoiceCoachConfig {
     this.plannedMaxZone,
     this.plannedKind,
     this.plannedMinutes,
+    this.briefingTemplate,
+    this.briefingFallback,
+    this.plannedDistanceM,
+    this.reps,
+    this.sessionName,
   });
   bool enabled;
   bool full;
@@ -1558,6 +1563,18 @@ class VoiceCoachConfig {
   /// `SessionSpec` step: the run stays a Free run.
   String? plannedKind;
   int? plannedMinutes;
+
+  /// The start briefing (C2b A2, eng-review #1): TEMPLATES with slots ({session}, {pace}, {minutes},
+  /// {distance}, {reps}) that the recorder fills on the device, in the runner's units. [briefingTemplate]
+  /// is the coach's own (null until the app fetches it); [briefingFallback] is the app's own template
+  /// for a plan session. Both null = the usual start line. [plannedDistanceM], [reps] and
+  /// [sessionName] are what the slots speak ({pace} is [targetPaceSecPerKm], {minutes} is
+  /// [plannedMinutes]). Persisted like the rest: a config saved before these reads them as null.
+  String? briefingTemplate;
+  String? briefingFallback;
+  double? plannedDistanceM;
+  int? reps;
+  String? sessionName;
 }
 
 /// The workout write. Android: Health Connect (`androidx.health.connect`).
