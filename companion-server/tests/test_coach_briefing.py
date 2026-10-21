@@ -954,3 +954,15 @@ def test_briefing_spend_shares_the_runners_daily_usd_cap_with_the_chat(cc, fakes
     say(cc, "how did my run go?", now=T0 + timedelta(minutes=2))
     work(cc, T0 + timedelta(minutes=3))
     assert rows(cc, "SELECT outcome FROM coach_jobs WHERE kind='chat'")[0]["outcome"] == "daily_usd"
+
+
+def test_instruction_bans_one_and_states_word_budget():
+    text = bf.instruction("quality", True, ["session", "pace"], {"kind": "quality"})
+    assert 'Never use the word "one" or "ones"' in text and '"each rep"' in text
+    assert "aim for about 30 words; never over 40" in text
+
+
+def test_norwegian_rules_are_short_and_keep_the_key_phrase():
+    rules = next(r for rx, r in bf.SESSION_RULES if rx.search("norwegian_4x4"))
+    assert "as long as you like" in rules[0].lower()
+    assert sum(len(r.split()) for r in rules) <= 16
