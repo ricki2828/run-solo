@@ -50,7 +50,7 @@ class BriefingPlan {
 
 abstract final class StartBriefing {
   /// Words, counted on the RENDERED text. The recorder re-counts and falls back; it never truncates.
-  static const maxWords = 28;
+  static const maxWords = 40;
 
   static const fingerprintVersion = 'v1';
 

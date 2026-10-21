@@ -18,12 +18,12 @@ class VoiceCopyFixtureTest {
     }
 
     @Test
-    fun `every line fits its word budget 16 a run summary 32 a briefing 28 has no em dash and every id is unique`() {
+    fun `every line fits its word budget 16 a run summary 32 a briefing 40 has no em dash and every id is unique`() {
         val lines = VoiceCopyFixture.lines()
         assertEquals(lines.map { it.first }.distinct(), lines.map { it.first })
         for ((id, text) in lines) {
             // A run summary is read once, at the start or the finish, not a cue: the end stats plus the verdict get 32 words.
-            // The start briefing is read once too, on the rendered text: its own 28.
+            // The start briefing is read once too, on the rendered text: its own 40.
             val budget = when {
                 id.startsWith("summary.end") -> 32
                 id.startsWith("briefing.") -> StartBriefing.MAX_WORDS

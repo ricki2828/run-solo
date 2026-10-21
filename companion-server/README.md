@@ -95,7 +95,7 @@ Every gate is re-read on every call: `COMPANION_COACH_CHAT`, the allowlist, cons
 Generation: queued after a run upload or a check-in answer, run by the coach worker (same gate again at claim, per-runner daily cap
 `COMPANION_COACH_BRIEFING_DAILY` default 8 model calls, the shared cost ledger, at most one retry), coalesced on a hash of the facts.
 
-Slots (each speaks as words; worst-case length is what the 28-word cap counts):
+Slots (each speaks as words; worst-case length is what the 40-word cap counts):
 
 | slot | spoken as | worst case | present when |
 |---|---|---|---|
@@ -105,7 +105,7 @@ Slots (each speaks as words; worst-case length is what the 28-word cap counts):
 | `{distance}` | "ten point five kilometres" | 5 | the plan holds a distance |
 | `{reps}` | "four reps" (spoken WITH the word reps) | 2 | the session id or name carries `NxM` |
 
-A template only uses slots its session has. Kotlin renders, re-counts words (cap 28), and on any problem (unknown slot, over cap) uses the Dart template, then
+A template only uses slots its session has. Kotlin renders, re-counts words (cap 40), and on any problem (unknown slot, over cap) uses the Dart template, then
 `SummaryWords.start`; it never truncates. Outside a slot a template has no digit, no number word at all (one, twenty five, fours, tens, dozens, twice, half, a few, several, a pair, a quarter) and no unit word (hour, minute, mile, kilometre, metre): each slot speaks its own unit, so the template never writes one, and never writes "reps" next to `{reps}`.
 
 Fingerprint (the app matches the session it actually starts against it): the SHA-256 of

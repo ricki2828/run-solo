@@ -3,7 +3,7 @@
   "Session-briefing evals (C2b). Run: OPENROUTER_API_KEY=... python3 coach/evals/run_briefing_evals.py",
   "Each scenario is the facts the server would send (companion/coach/briefing.py facts_for) and code-checked rules on the",
   "TEMPLATE the coach writes. No LLM judge: every check is a regex or a word list, so a pass is reproducible.",
-  "slots            the slots the facts back (the validator rejects any other, any digit, number word, x/km/bpm/HR/Z2, dash, 28+ words)",
+  "slots            the slots the facts back (the validator rejects any other, any digit, number word, x/km/bpm/HR/Z2, dash, 41+ words)",
   "kind             easy | long | quality",
   "named            True when the plan names the session (the {session} slot exists)",
   "first_any        the FIRST sentence must contain one of these (case-insensitive): the kind is named up front",
@@ -67,7 +67,7 @@
     "as long as you like"
    ],
    "never": [
-    "\\bpush\\b",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\ball.?out\\b",
     "\\brace pace\\b",
     "doctor",
@@ -168,7 +168,7 @@
     "nice and"
    ],
    "never": [
-    "\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bpick it up\\b",
@@ -216,7 +216,7 @@
     "loose"
    ],
    "never": [
-    "\\bpush",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\bharder\\b",
     "\\bfaster\\b",
     "\\bsurge",
@@ -269,7 +269,7 @@
     "even"
    ],
    "never": [
-    "\\bpush\\b",
+    "(?<!\\bdon't )(?<!\\bdon\\u2019t )(?<!\\bdo not )(?<!\\bnever )(?<!\\bmust not )(?<!\\bshould not )\\bpush",
     "\\ball.?out\\b",
     "\\brace\\b",
     "doctor",
@@ -315,7 +315,7 @@
     "pain",
     "injur",
     "stretch",
-    "ice\\b",
+    "\\bic(?:e|ing)\\b",
     "ibuprofen",
     "medic",
     "diagnos",

@@ -22,8 +22,8 @@ import app.runsolo.core.model.Units
  * `TalkBudget` yet resets its last-spoke clock, and every step and "go" cue queues behind it (P0, never dropped).
  */
 object StartBriefing {
-    /** Words, counted on the rendered text (about 10 s at the TTS rate). Matches the server's cap (`briefing.py` WORD_CAP). */
-    const val MAX_WORDS = 28
+    /** Words, counted on the rendered text (about 15 s at the TTS rate). Matches the server's cap (`briefing.py` WORD_CAP). */
+    const val MAX_WORDS = 40
 
     /** What the slots speak. A null value means the run does not have it. */
     data class Slots(

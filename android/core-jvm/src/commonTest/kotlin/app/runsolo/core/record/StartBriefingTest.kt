@@ -117,8 +117,8 @@ class StartBriefingTest {
 
     @Test
     fun `over the cap once rendered falls back and never truncates`() {
-        // 22 words plus a 5 word pace and a 2 word reps = 29 once spoken: one over.
-        val words = List(22) { "word" }.joinToString(" ")
+        // 34 words plus a 5 word pace and a 2 word reps = 41 once spoken: one over.
+        val words = List(34) { "word" }.joinToString(" ")
         val tooLong = "$words {pace} {reps}"
         val rendered = render(tooLong)!!
         assertEquals(StartBriefing.MAX_WORDS + 1, CueComposer.words(rendered))
@@ -126,7 +126,7 @@ class StartBriefingTest {
         // With no fallback it is not spoken at all (the caller says the usual start line): never cut short.
         assertNull(StartBriefing.line(tooLong, null, nor, Units.km))
         // One word fewer fits exactly.
-        val fits = "${List(21) { "word" }.joinToString(" ")} {pace} {reps}"
+        val fits = "${List(33) { "word" }.joinToString(" ")} {pace} {reps}"
         assertEquals(StartBriefing.MAX_WORDS, CueComposer.words(render(fits)!!))
         assertEquals(render(fits), StartBriefing.line(fits, "Own line.", nor, Units.km))
     }
@@ -136,9 +136,9 @@ class StartBriefingTest {
         // Every slot spoken in full is 15 words; the template itself has none of its own.
         val t = "{session} {pace} {minutes} {distance} {reps}"
         assertEquals(15, CueComposer.words(render(t)!!))
-        // 13 more words make exactly the cap, 14 make one over: the template word count never decides.
-        val fits = "${List(13) { "word" }.joinToString(" ")} $t"
-        val over = "${List(14) { "word" }.joinToString(" ")} $t"
+        // 25 more words make exactly the cap, 26 make one over: the template word count never decides.
+        val fits = "${List(25) { "word" }.joinToString(" ")} $t"
+        val over = "${List(26) { "word" }.joinToString(" ")} $t"
         assertEquals(StartBriefing.MAX_WORDS, CueComposer.words(render(fits)!!))
         assertNotNull(StartBriefing.line(fits, null, nor, Units.km))
         assertNull(StartBriefing.line(over, null, nor, Units.km))
@@ -181,7 +181,7 @@ class StartBriefingTest {
             val budget = TalkBudget(level)
             val clock = SpeechClock()
             speakBriefing(budget, clock, StartBriefing.MAX_WORDS, 0L)
-            // About 10 s of speech is queued; the first step boundary lands at t = 5 s.
+            // About 15 s of speech is queued; the first step boundary lands at t = 5 s.
             assertTrue(clock.busyUntil > 5_000L)
             assertNotNull(budget.offer(TalkLine(CueSlot.structure, "step:1", "Go. Rep 1 of 4"), 5_000L, clock.busyUntil), "$level")
             assertNotNull(budget.offer(TalkLine(CueSlot.structure, "step:2", "Recover"), 5_100L, clock.busyUntil), "$level")
@@ -192,11 +192,11 @@ class StartBriefingTest {
     fun `the briefing is exempt from the talk budget but resets its last spoke clock`() {
         val budget = TalkBudget(VoiceLevel.coach)
         val clock = SpeechClock()
-        // 28 words are well over the 16 word cue budget and the 30 word window with anything else: still recorded, never refused.
+        // 40 words are well over the 16 word cue budget and the 30 word window with anything else: still recorded, never refused.
         speakBriefing(budget, clock, StartBriefing.MAX_WORDS, 0L)
-        // The briefing ends at 28 * 375 = 10.5 s; a km line then keeps the 25 s gap after it, not before.
+        // The briefing ends at 40 * 375 = 15 s; a km line then keeps the 25 s gap after it, not before.
         assertNull(budget.offer(TalkLine(CueSlot.km, "km:1", "1 k."), 5_000L, clock.busyUntil))
         assertNull(budget.offer(TalkLine(CueSlot.km, "km:2", "1 k."), 35_000L, clock.busyUntil))
-        assertNotNull(budget.offer(TalkLine(CueSlot.km, "km:3", "1 k."), 36_000L, clock.busyUntil))
+        assertNotNull(budget.offer(TalkLine(CueSlot.km, "km:3", "1 k."), 41_000L, clock.busyUntil))
     }
 }

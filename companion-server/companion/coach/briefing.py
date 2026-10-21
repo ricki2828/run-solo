@@ -31,8 +31,8 @@ SLOT SET (the contract for the Kotlin renderer; every slot renders as spoken wor
               distance. Worst case 5 words.
   {reps}      the work reps, spoken WITH the word reps ("four reps"). Present only for a session whose name or id carries
               "NxM". Worst case 2 words. The template must not add a unit or the word rep(s) after it.
-A template only ever uses slots listed in its facts (`available_slots`); the validator rejects any other. Cap: 28 words
-rendered (about 10 s). Kotlin re-counts after rendering and falls back (never truncates).
+A template only ever uses slots listed in its facts (`available_slots`); the validator rejects any other. Cap: 40 words
+rendered (about 15 s). Kotlin re-counts after rendering and falls back (never truncates).
 ---------------------------------------------------------------------------------------------------------------------
 FINGERPRINT (#2): the app matches a cached briefing to the session it actually starts with a content hash.
   canonical string  "v1|kind=<easy|long|quality>|min=<int or empty>|dist_m=<int or empty>|reps=<int or empty>|
@@ -69,7 +69,10 @@ from .tools import MEMORY_KEYS, ReadTools
 
 log = logging.getLogger("companion")
 
-WORD_CAP = 28
+# 40 rendered words is about 15 s at the app's TTS rate (SpeechClock: 375 ms a word). The first live eval (briefing-eval.json)
+# showed natural, on-spec briefings run 25 to 37 words before slots; the old 28 (10 s) rejected every one of them. The app's own
+# cap (StartBriefing.MAX_WORDS in Kotlin, maxWords in Dart) must match, or the app discards what the server accepts.
+WORD_CAP = 40
 # Worst-case spoken length of each slot, in words. The validator counts a slot at this length (#9).
 SLOT_WORDS = {"session": 4, "pace": 6, "minutes": 4, "distance": 5, "reps": 2}
 SLOT_DOC = {
@@ -156,14 +159,14 @@ ORDINALS = ("second third fourth fifth sixth seventh eighth ninth tenth eleventh
 _STEM_ALT = "|".join(sorted(STEMS, key=len, reverse=True))
 NUMBERISH_RE = re.compile(rf"^(?:(?:{_STEM_ALT})+|(?:twent|thirt|fort|fift|sixt|sevent|eight|ninet)(?:ies|ieth))(?:s|th|ths)?$")
 QUANTITY = frozenset(("twice thrice double doubles triple triples couple couples pair pairs few several handful bunch "
-                      "half halves quarter quarters another extra single once trio quartet duo").split())
+                      "half halves quarter quarters another extra additional further bonus spare single once trio quartet duo").split())
 # Roman numerals (a fullwidth or compatibility form such as U+2163 folds to "IV"). "i" alone is a pronoun and stays allowed.
 ROMAN = frozenset("ii iii iv v vi vii viii ix xi xii xiii xiv xv xvi xvii xviii xix xx".split())
-EXTRA_REP_RE = re.compile(r"\b(?:more|extra|another|additional)\s+(?:reps?|strides?|sets?)\b", re.I)
+EXTRA_REP_RE = re.compile(r"\b(?:more|extra|another|additional|further|bonus|spare)\s+(?:reps?|strides?|sets?)\b", re.I)
 UNITS = frozenset(("hour hours minute minutes min mins second seconds sec secs mile miles metre metres meter meters yard yards "
-                   "lap laps k").split())
+                   "lap laps k kilo kilos kms hrs klick klicks").split())
 SLOT_RE = re.compile(r"\{([A-Za-z_]+)\}")
-ABBREV_RE = re.compile(r"(?<![A-Za-z])(?:x|km|bpm|hr)(?![A-Za-z])|/km", re.I)   # Z2 is caught as a digit
+ABBREV_RE = re.compile(r"(?<![A-Za-z])(?:x|km|kms|bpm|hr|hrs)(?![A-Za-z])|/km", re.I)   # Z2 is caught as a digit
 ZONE_ONE_RE = re.compile(r"\bzone\s+one\b", re.I)
 REPS_UNIT_RE = re.compile(r"\{reps\}\W*([A-Za-z]+)")
 
@@ -172,11 +175,44 @@ def number_word(tok: str) -> bool:
     return tok in ORDINALS or tok in QUANTITY or tok in ROMAN or bool(NUMBERISH_RE.match(tok))
 
 
+# One harmless use of a number word: "one" (or "ones") as a pronoun ("each one even", "a quality one.", "the easy ones").
+# It follows each/every/this/that/which, or a/an/the plus one describing word (never a number word), AND it ends the
+# clause (punctuation or end of text) or is followed by one of a short allowlist: of, even, count, so, and, then, today, at.
+# Anything else ("that one again", "one interval", "a bonus one if", "that one hard effort") may be an invented quantity.
+# ("first" is not a number word here, so "first rep" passes and "first two" is caught by "two"; "second" and later
+# ordinals stay rejected.)
+ONE_DET = frozenset("each every this that which".split())
+ONE_ART = frozenset("a an the".split())
+ONE_LEAD = frozenset("is s was earned deserve deserves deserved".split())
+AGAIN = frozenset(("again", "repeat", "repeating", "repeated"))
+REPEATABLE = frozenset("one ones rep reps set sets".split())
+ONE_NEXT_OK = frozenset("of even count so and then today at".split()) | frozenset(".,;:!?")
+
+
+def _harmless(toks: list[str], i: int) -> bool:
+    tok = toks[i]
+    if tok not in ("one", "ones"):
+        return False
+    nxt = toks[i + 1] if i + 1 < len(toks) else "."
+    prev = toks[i - 1] if i else ""
+    if nxt not in ONE_NEXT_OK:
+        return False
+    if not prev.isalpha():
+        return False
+    if tok == "one" and prev in ONE_DET:
+        return True
+    # "a quality one" only as the complement of is / earned / deserve ("Today is a quality one", "earned an easy one"):
+    # "throw in a hard one", "add a quick one" invent an extra effort.
+    return (i >= 3 and toks[i - 2] in ONE_ART and toks[i - 3] in ONE_LEAD
+            and prev not in ONE_ART and not number_word(prev) and prev != "slotx"
+            and not (i >= 4 and toks[i - 4] in ("there", "here")))   # "there's a hard one at the end" adds one
+
+
 def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
     """None when the template is acceptable, else the reject class: empty | length | slot | digit | dash | number_word |
     unit | abbrev | cap. Numbers and units exist only inside slots (a slot speaks its own unit, {reps} says "four reps"), so
-    outside a slot there is no digit, no number word (one, twenty-five, fours, tens, dozens, twice, half, a few, several,
-    a pair, a quarter), and no unit word (hour, minute, mile, kilometre, metre). The word cap is on the rendered text."""
+    outside a slot there is no digit, no number word (twenty-five, fours, tens, dozens, twice, half, a few, several,
+    a pair, a quarter; "one" only as a pronoun, see below), and no unit word (hour, minute, mile, kilometre, metre). The word cap is on the rendered text."""
     text = unicodedata.normalize("NFKC", text or "")   # fullwidth letters, vulgar fractions and roman numeral signs fold first
     if not text.strip():
         return "empty"
@@ -194,8 +230,10 @@ def check_template(text: str, allowed: set[str] | frozenset[str]) -> str | None:
         return "dash"
     if ZONE_ONE_RE.search(bare) or EXTRA_REP_RE.search(bare):
         return "number_word"
-    toks = re.findall(r"[a-z]+", bare.lower())
-    if any(number_word(t) for t in toks):
+    toks = re.findall(r"[a-z]+|[.,;:!?]", SLOT_RE.sub(" slotx ", text).lower())   # a slot is one token so its neighbours can be judged
+    if any(t in REPEATABLE and AGAIN & set(toks[i + 1:i + 4]) for i, t in enumerate(toks)):   # "do that one again": an extra rep
+        return "number_word"
+    if any(number_word(t) and not _harmless(toks, i) for i, t in enumerate(toks) if t != "slotx"):
         return "number_word"
     if any(t in UNITS or t.startswith("kilomet") for t in toks):
         return "unit"
@@ -229,7 +267,8 @@ INSTRUCTION = """Write the spoken briefing this runner hears through their earbu
 How it must read:
 - One short paragraph, plain words for text to speech. First sentence names the kind of run ({kind_say}), so they know what they are about to do.
 - Then, in a sentence or two, how to tackle it. It must match the targets in the facts: easy means relaxed and conversational, never push; long means steady, patient start, save it for the end; quality means controlled start, hold the target on the work, jog the recoveries.
-- Keep every rule in `rules` (for example a warm-up that is as long as they like).
+- Keep every rule in `rules`, worded as given or very close (the check looks for its key phrase, for example "as long as you like").
+- Aim for about 30 words; the cap below is a limit, not a target.
 - Informal and warm, the voice from your skill. No emoji, no hype, no markdown.
 - Never give medical advice and never mention pain, injury or illness.
 
