@@ -1070,21 +1070,35 @@ class Service(CheckinMixin, MeasureMixin):
         if wipe_wal:  # old page images of the deleted outlines must not wait in the WAL
             db.checkpoint_truncate(self.s.db_path)
 
-    def set_checkin_consent(self, uid: str, version: int, c=None, source: str = "app") -> None:
-        """Record the consent version the app says the runner agreed to (latest report wins, so a downgrade counts).
-        `source` is only for the log line: "app" (PUT or run upload) or "cli" (operator seeding)."""
+    def set_checkin_consent(self, uid: str, version: int, c=None, source: str = "app") -> bool:
+        """Record the consent version the runner agreed to. Returns False when an app report was ignored.
+        An app report is a routine re-statement of the version its consent screen shows (every run upload repeats it),
+        so a positive report BELOW the stored version never lowers it: the operator may have seeded a higher one (v3,
+        the coach). Only a real withdrawal (version 0) lowers it from the app; the app's Turn off is DELETE /v1/me,
+        which removes the record. `source="cli"` (operator seeding) keeps full control, lowering included."""
+        ignored = False
         def go(c):
-            if not c.execute("UPDATE users SET checkin_consent=? WHERE id=?", (version, uid)).rowcount:
+            nonlocal ignored
+            cur = c.execute("SELECT checkin_consent FROM users WHERE id=?", (uid,)).fetchone()
+            if cur is None:
                 raise NotFound()
+            stored = cur["checkin_consent"]
+            if source != "cli" and 0 < version and stored is not None and version < stored:
+                ignored = True
+                log.info("consent report version=%s ignored, stored=%s user=%s via %s", version, stored, uid, source)
+                return
+            c.execute("UPDATE users SET checkin_consent=? WHERE id=?", (version, uid))
             if version < self.s.coach_consent_required:
                 self.coach.withdraw(c, uid)   # below the coach version: chat history purged, nothing queued is answered
             log.info("consent version=%s set user=%s via %s", version, uid, source)
         if c is not None:
-            return go(c)   # inside the caller's transaction: it calls _ci_unpin_weeks after the commit
+            go(c)   # inside the caller's transaction: it calls _ci_unpin_weeks after the commit
+            return not ignored
         with db.tx(self.s.db_path) as c:
             go(c)
-        if version < self.s.checkin_consent_required:
+        if not ignored and version < self.s.checkin_consent_required:
             self._ci_unpin_weeks(uid)
+        return not ignored
 
     def set_timezone(self, uid: str, zone_id: str, now: datetime | None = None) -> dict:
         """Move the user to `zone_id` (already validated). Scheduling reads users.zone_id; weekly caps stay pinned
@@ -1114,7 +1128,10 @@ class Service(CheckinMixin, MeasureMixin):
     def ingest_run(self, uid: str, run: RunIn, now: datetime | None = None, *, replay: bool = False) -> dict:
         out = self._ingest_run(uid, run, now, replay=replay)
         if run.consent_version is not None and run.consent_version < self.s.checkin_consent_required:
-            self._ci_unpin_weeks(uid)
+            with db.ro(self.s.db_path) as c:
+                row = c.execute("SELECT checkin_consent FROM users WHERE id=?", (uid,)).fetchone()
+            if row is not None and (row["checkin_consent"] or 0) < self.s.checkin_consent_required:   # not for an ignored report
+                self._ci_unpin_weeks(uid)
         if not replay and self.coach.enabled:
             self.coach.briefing.enqueue(uid, now)   # C2b: never raises, never calls a model; the worker generates
         return out

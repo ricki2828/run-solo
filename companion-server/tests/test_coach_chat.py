@@ -539,13 +539,52 @@ def test_consent_withdrawal_purges_the_chat_and_cancels_queued_jobs(cc, fakes):
     say(cc, "first")
     run_worker(cc)
     say(cc, "second", now=T0 + timedelta(minutes=1))
-    assert cc.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(cc.token)).status_code == 200
+    assert cc.put("/v1/me/consent", json={"consent_version": 0}, headers=auth(cc.token)).status_code == 200
     assert rows(cc, "SELECT COUNT(*) AS n FROM coach_messages")[0]["n"] == 0
     assert rows(cc, "SELECT state FROM coach_jobs ORDER BY id")[-1]["state"] == "cancelled"
     run_worker(cc, T0 + timedelta(minutes=2))
     assert len(fakes.coach_calls) == 1
     say(cc, "third", now=T0 + timedelta(minutes=3))
     assert last_text(fakes).startswith("I only send run recaps")
+
+
+def test_an_app_rereport_of_a_lower_consent_keeps_v3_and_the_chat(cc, fakes):
+    say(cc, "first")
+    run_worker(cc)
+    assert rows(cc, "SELECT COUNT(*) AS n FROM coach_messages")[0]["n"] == 2
+    assert cc.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(cc.token)).status_code == 200
+    assert rows(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 3
+    assert rows(cc, "SELECT COUNT(*) AS n FROM coach_messages")[0]["n"] == 2          # history kept
+    say(cc, "second", now=T0 + timedelta(minutes=1))
+    run_worker(cc, T0 + timedelta(minutes=2))
+    assert len(fakes.coach_calls) == 2                                                 # the chat gate stayed open
+
+
+def test_a_run_upload_reporting_v2_does_not_lower_v3(cc, fakes):
+    start = T0 - timedelta(hours=3)
+    body = {"run_id": "u1", "type": "easy", "start_utc": start.isoformat(), "utc_offset_min": 720, "zone_id": "Pacific/Auckland",
+            "duration_s": 2400, "distance_m": 7000, "consent_version": 2}
+    r = cc.post("/v1/runs", json=body, headers=auth(cc.token))
+    assert r.status_code in (200, 202), r.text
+    assert rows(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 3
+
+
+def test_the_cli_can_lower_consent_and_it_purges(cc, fakes):
+    say(cc, "first")
+    run_worker(cc)
+    cc.svc.set_checkin_consent(rows(cc, "SELECT id FROM users")[0]["id"], 2, source="cli")
+    assert rows(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
+    assert rows(cc, "SELECT COUNT(*) AS n FROM coach_messages")[0]["n"] == 0
+
+
+def test_a_first_app_report_of_v2_on_a_fresh_user_is_recorded(fakes, tmp_path):
+    s = coach_settings(tmp_path)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        t = enrol(c)
+        assert c.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(t)).status_code == 200
+        with db.ro(app.state.svc.s.db_path) as q:
+            assert q.execute("SELECT checkin_consent FROM users").fetchone()["checkin_consent"] == 2
 
 
 def test_consent_withdrawn_between_enqueue_and_claim_cancels(cc, fakes):
@@ -627,7 +666,7 @@ def test_withdrawal_clears_replied_and_sent_replies(cc, fakes):
     say(cc, "hi")
     run_worker(cc)
     assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "replied"}]
-    cc.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(cc.token))
+    cc.put("/v1/me/consent", json={"consent_version": 0}, headers=auth(cc.token))
     assert rows(cc, "SELECT state, reply FROM coach_jobs") == [{"state": "cancelled", "reply": None}]
     cc.svc.coach.drain(T0 + timedelta(minutes=5))
     assert "Keep the next one easy" not in " ".join(fakes.tg_texts())
