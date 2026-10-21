@@ -267,7 +267,10 @@ class _BurstPainter extends CustomPainter {
       canvas
         ..drawRect(
           Offset.zero & size,
-          Paint()..color = Color.lerp(fill, const Color(0xFF000000), 0.45)!,
+          Paint()
+            ..color = HSLColor.fromColor(fill)
+                .withLightness(HSLColor.fromColor(fill).lightness * 0.55)
+                .toColor(),
         )
         ..drawCircle(
           centre,
