@@ -34,7 +34,7 @@ class Split:
 
 @dataclass
 class Verdict:
-    kind: str  # faster | slower | holding | pb
+    kind: str  # faster | slower | holding | pb | done (neutral)
     hero: float  # the number that counts up (e.g. seconds per km gained)
     decimals: int = 0
     unit: str = "S/KM"
@@ -162,7 +162,8 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
         flood_zone=flood, signoff=signoff, reps=reps)
 
 
-WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB"}
+# "done" is the neutral kind for a run with no comparison: it claims nothing about pace against last time
+WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB", "done": "DONE"}
 
 
 def _star(cx, cy, r):
@@ -188,7 +189,7 @@ class RunVideo:
         v = spec.verdict
         self.word = v.word or WORDS[v.kind]
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
-                     "pb": th.ink}[v.kind]
+                     "pb": th.ink, "done": th.ink}[v.kind]
         self.vrule = brand.ARC if v.kind == "pb" else self.vcol
         sp = [x.pace_s for x in spec.splits]
         self.bars = spec.reps or spec.splits
@@ -396,6 +397,9 @@ class RunVideo:
         elif v.kind == "holding":
             for dy in (-isz * 0.22, isz * 0.22):
                 cv.rect(ix - isz / 2, iy + dy - isz * 0.09, ix + isz / 2, iy + dy + isz * 0.09, ic, r=6)
+        elif v.kind == "done":
+            cv.line([(ix - isz * 0.45, iy), (ix - isz * 0.1, iy + isz * 0.35), (ix + isz * 0.5, iy - isz * 0.4)],
+                    max(8, int(isz * 0.2)), ic)
         else:
             cv.poly(_star(ix, iy, isz * 0.62), ic)
         cv.text((M + icon_w, wbase + (1 - clamp(e, 0, 1)) * 30), self.word, wf, th.fade(self.vcol, al), anchor="ls")

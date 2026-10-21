@@ -276,12 +276,31 @@ def test_video_facts_need_a_shape_splits_and_a_verdict_the_video_has_a_word_for(
     assert ok and ok["title"] == "Easy run" and ok["verdict"] == "faster"
     assert video_facts(run_facts(stored(route=None), "h")) is None
     assert video_facts(run_facts(stored(splits=None), "h")) is None
-    assert video_facts(run_facts({**stored(), "verdict": "baselineSet"}, "h")) is None
-    assert video_facts(run_facts({**stored(), "verdict": None}, "h")) is None
     assert video_facts(run_facts({**stored(), "verdict": "noRealChange"}, "h"))["verdict"] == "holding"
     # the server never holds the old best a PB layout needs, so a PB run uses its ordinary verdict
     pb = video_facts(run_facts({**stored("race"), "pb": "5k"}, "h"))
     assert pb and "pb" not in pb and "pb_detail" not in pb
+
+
+@pytest.mark.parametrize("verdict", [None, "baselineSet", "indoorRun", "bogus"])
+def test_a_run_without_a_pace_verdict_still_gets_a_neutral_video(verdict):
+    from render.motion.run_video import RunVideo, WORDS, spec_from_facts
+    vf = video_facts(run_facts({**stored(), "verdict": verdict}, "h"))
+    assert vf and vf["verdict"] == "done"
+    spec = spec_from_facts(vf)
+    assert RunVideo(spec).word == "DONE"
+    assert not {"FASTER", "SLOWER", "HOLDING"} & {WORDS["done"]}
+
+
+def test_a_failed_share_picture_is_logged_before_the_older_card(caplog):
+    from companion.media import MediaRenderer
+
+    def boom(f, m):
+        raise RuntimeError("x")
+    r = MediaRenderer(card_fns={"share": boom}, video_fns={})
+    with caplog.at_level("WARNING", logger="companion"):
+        assert r._share_picture({"type": "easy"}) is None
+    assert "share picture failed" in caplog.text
 
 
 def test_the_video_spec_accepts_what_the_server_builds():

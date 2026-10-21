@@ -114,11 +114,12 @@ def share_optins(facts: Mapping[str, Any]) -> dict[str, bool]:
 
 
 def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape, no splits, or a
-    verdict the video has no word for). A PB run uses its ordinary verdict: the server never holds the old best time
+    """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape or no splits). A run
+    whose verdict is missing or has no faster/slower/holding word (free, goal and trail runs have no comparison) gets the
+    neutral "done" treatment: the session name and its own stats, never a pace claim. A PB run uses its ordinary verdict: the server never holds the old best time
     that the PB layout needs, so it is not drawn."""
-    verdict = VIDEO_VERDICT.get(str(facts.get("verdict")))
-    if not facts.get("route_xy") or not facts.get("splits") or verdict is None:
+    verdict = VIDEO_VERDICT.get(str(facts.get("verdict")), "done")
+    if not facts.get("route_xy") or not facts.get("splits"):
         return None
     out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
     out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
@@ -347,6 +348,8 @@ class MediaRenderer:
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
+        if plan.get("video") and vfacts is None:
+            log.warning("planned video dropped for %s run %s: no route shape or splits", kind, card.get("run_id"))
         video = self._video(vkind, vfacts) if plan.get("video") and vfacts is not None else None
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
 
@@ -357,7 +360,8 @@ class MediaRenderer:
         cards" switch controls (switching it off forgets every stored shape), so the opt-in is the shape's presence."""
         try:
             photo = self.cards["share"]({**facts, "share": share_optins(facts)}, {})
-        except Exception:
+        except Exception as e:
+            log.warning("share picture failed, falling back to the older card: %s", type(e).__name__)
             return None
         return photo if photo and len(photo) <= PHOTO_MAX_BYTES else None
 
