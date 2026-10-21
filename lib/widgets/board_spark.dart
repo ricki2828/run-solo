@@ -80,6 +80,8 @@ class BoardSparkPainter extends CustomPainter {
     final gWorst = good.reduce(math.min);
     final span = gBest - gWorst;
     final paint = Paint()..style = PaintingStyle.fill;
+    // Cyan means "best": a level pile of more than two keeps it for none.
+    final bestHeld = values.where((v) => v == best).length <= 2;
     for (var i = 0; i < n; i++) {
       // Cropped baseline: the worst entry keeps 10% of the height, the best
       // stops 6% short of the top. All-equal results sit mid-height.
@@ -87,7 +89,7 @@ class BoardSparkPainter extends CustomPainter {
       final h = math.max(2.0, size.height * frac);
       final x = slot * i + (slot - barW) / 2;
       final rect = Rect.fromLTWH(x, size.height - h, barW, h);
-      paint.color = values[i] == best
+      paint.color = bestHeld && values[i] == best
           ? bestColor
           : i == n - 1
           ? newestColor

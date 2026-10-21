@@ -7,10 +7,11 @@ import '../platform/gateway.dart' show RecordMode;
 import '../theme/theme.dart';
 
 /// The run-type colour a chart's bars take: free ice, intervals magenta,
-/// the 12-minute test lime, and so on. The PB bar is ink with a cyan tag.
+/// the 12-minute test lime, and so on. The PB bar is cyan with a cyan tag.
 extension RunTypeBarColour on RunSoloTokens {
-  /// The PB bar: ink, so no run-type colour (or its tint) can look like it.
-  Color get pbBarColour => inkPrimary;
+  /// The PB bar: cyan, the colour that means "best" everywhere. A run type
+  /// that is itself cyan (laps) is dimmed on the other bars so the PB stands.
+  Color get pbBarColour => accentArc;
 
   Color barColourFor(RecordMode m) => switch (m) {
     RecordMode.free => typeFree,
@@ -162,6 +163,19 @@ class RecentBarsChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Boards own their selection; every other chart keeps its own, so a bar
+    // is always tappable for its date and value.
+    if (onSelect != null) return _build(context, selected, onSelect!);
+    return _LocalSelection(
+      builder: (context, sel, set) => _build(context, sel, set),
+    );
+  }
+
+  Widget _build(
+    BuildContext context,
+    int? selected,
+    ValueChanged<int?> onSelect,
+  ) {
     if (points.length < 2) {
       return ChartEmptyState(title: emptyTitle, body: emptyBody);
     }
@@ -209,7 +223,9 @@ class RecentBarsChart extends StatelessWidget {
         maxBars: maxBars,
         showTwins: showTwins,
         selected: selected,
-        selectedLabel: selectedLabel,
+        selectedLabel:
+            selectedLabel ??
+            (i) => '${Fmt.dayDate(shown[i].date)} · ${format(shown[i].value)}',
         growT: growT,
         moveT: moveT,
         previousBest: previousBest,
@@ -251,16 +267,14 @@ class RecentBarsChart extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, box) => GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapDown: onSelect == null
-                  ? null
-                  : (d) {
-                      final slot = (box.maxWidth - _gutter) / maxBars;
-                      final dx = d.localPosition.dx;
-                      final i = dx < 0 || dx >= slot * shown.length
-                          ? null
-                          : (dx / slot).floor();
-                      onSelect!(i == selected ? null : i);
-                    },
+              onTapDown: (d) {
+                final slot = (box.maxWidth - _gutter) / maxBars;
+                final dx = d.localPosition.dx;
+                final i = dx < 0 || dx >= slot * shown.length
+                    ? null
+                    : (dx / slot).floor();
+                onSelect(i == selected ? null : i);
+              },
               child: SizedBox(
                 key: chartKey,
                 height: kHeight,
@@ -322,6 +336,22 @@ class RecentBarsChart extends StatelessWidget {
       ],
     );
   }
+}
+
+class _LocalSelection extends StatefulWidget {
+  const _LocalSelection({required this.builder});
+  final Widget Function(BuildContext, int?, ValueChanged<int?>) builder;
+
+  @override
+  State<_LocalSelection> createState() => _LocalSelectionState();
+}
+
+class _LocalSelectionState extends State<_LocalSelection> {
+  int? _sel;
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _sel, (i) => setState(() => _sel = i));
 }
 
 /// Shared by 0 and 1 attempt on every chart: three faint outline bars and
@@ -512,7 +542,7 @@ class _BarsPainter extends CustomPainter {
   final RunSoloTokens tokens;
 
   static const _gutter = RecentBarsChart._gutter;
-  static const _top = 32.0, _bottom = 24.0;
+  static const _top = 40.0, _bottomOne = 24.0, _bottomTwo = 38.0;
 
   TextPainter _tp(
     String s,
@@ -533,6 +563,18 @@ class _BarsPainter extends CustomPainter {
     textDirection: TextDirection.ltr,
   )..layout();
 
+  /// A run type that is itself cyan (laps) is dimmed so the PB bar stands.
+  Color get _otherBar {
+    final c = barColor ?? tokens.inkMuted;
+    final p = tokens.pbBarColour;
+    final d = math.sqrt(
+      math.pow((c.r - p.r) * 255, 2) +
+          math.pow((c.g - p.g) * 255, 2) +
+          math.pow((c.b - p.b) * 255, 2),
+    );
+    return d < 60 ? c.withValues(alpha: 0.4) : c;
+  }
+
   void _dashed(Canvas canvas, double y, double x1, Paint paint) {
     for (var x = 0.0; x < x1; x += 7) {
       canvas.drawLine(Offset(x, y), Offset(math.min(x + 3, x1), y), paint);
@@ -542,10 +584,21 @@ class _BarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final plotW = size.width - _gutter;
-    final bottom = size.height - _bottom;
+    final slot = plotW / maxBars;
+    // Every date shows: one line when they all fit, else day over month.
+    final oneLine = [
+      for (final p in points) _tp(Fmt.dayMonth(p.date), tokens.inkSecondary),
+    ];
+    final allFit =
+        dateLabelSlots(
+          widths: [for (final l in oneLine) l.width],
+          slot: slot,
+          pb: pb,
+        ).length ==
+        points.length;
+    final bottom = size.height - (allFit ? _bottomOne : _bottomTwo);
     double y(double v) => bottom - (bottom - _top) * scale.frac(v);
     final n = points.length;
-    final slot = plotW / maxBars;
     final barW = math.min(24.0, slot * 0.6);
     final by = y(bestValue);
 
@@ -610,8 +663,7 @@ class _BarsPainter extends CustomPainter {
           topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
-        Paint()
-          ..color = isPb ? tokens.pbBarColour : (barColor ?? tokens.inkMuted),
+        Paint()..color = isPb ? tokens.pbBarColour : _otherBar,
       );
       if (showTwins) {
         final twin = points[i].twin;
@@ -654,11 +706,17 @@ class _BarsPainter extends CustomPainter {
           ? y(points[i].twin!)
           : null;
       if (twinY != null) labelTop = math.min(vy, twinY);
-      if (!isPb || growT >= 1) {
+      // Past 12 bars, or when a wide value would touch its neighbour, every
+      // second one (the PB and the picked bar always).
+      final probe = _tp(tick(points[i].value), tokens.inkSecondary, size: 12);
+      final tight = probe.width > slot - 2;
+      final show = !tight || isPb || selected == i || (n - 1 - i) % 2 == 0;
+      if (show && (!isPb || growT >= 1)) {
         final vl = _tp(
           tick(points[i].value),
           isPb ? tokens.inkPrimary : tokens.inkSecondary,
-          size: 10,
+          w: isPb ? FontWeight.w700 : FontWeight.w500,
+          size: 12,
         );
         vl.paint(
           canvas,
@@ -670,7 +728,7 @@ class _BarsPainter extends CustomPainter {
         labelTop -= vl.height + 3;
       }
       if (isPb && growT >= 1) {
-        final pl = _tp('PB', tokens.accentArc, w: FontWeight.w700);
+        final pl = _tp('PB', tokens.accentArc, w: FontWeight.w800, size: 12);
         pl.paint(
           canvas,
           Offset(x + barW / 2 - pl.width / 2, labelTop - pl.height - 2),
@@ -678,18 +736,23 @@ class _BarsPainter extends CustomPainter {
       }
     }
 
-    // Single-line dates, thinned so none sit closer than [kLabelGap].
-    final labels = [
-      for (final p in points) _tp(Fmt.dayMonth(p.date), tokens.inkSecondary),
-    ];
-    final keep = dateLabelSlots(
-      widths: [for (final l in labels) l.width],
-      slot: slot,
-      pb: pb,
-    );
-    for (final i in keep) {
-      final tp = labels[i];
-      tp.paint(canvas, Offset(i * slot + slot / 2 - tp.width / 2, bottom + 6));
+    if (allFit) {
+      for (var i = 0; i < n; i++) {
+        final tp = oneLine[i];
+        tp.paint(
+          canvas,
+          Offset(i * slot + slot / 2 - tp.width / 2, bottom + 6),
+        );
+      }
+    } else {
+      for (var i = 0; i < n; i++) {
+        final d = points[i].date;
+        final day = _tp('${d.day}', tokens.inkSecondary);
+        final mon = _tp(Fmt.dayMonth(d).split(' ').last, tokens.inkSecondary);
+        final cx = i * slot + slot / 2;
+        day.paint(canvas, Offset(cx - day.width / 2, bottom + 5));
+        mon.paint(canvas, Offset(cx - mon.width / 2, bottom + 5 + day.height));
+      }
     }
 
     // The Best line; in the PB moment it moves up from the old best,

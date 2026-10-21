@@ -147,4 +147,22 @@ void main() {
     await tester.pumpWidget(hostWith(two, minSpan: 180));
     expect(find.text('Axis starts at 2550 s'), findsOneWidget);
   });
+
+  testWidgets(
+    'tapping a bar with no owner-supplied handler shows its readout',
+    (tester) async {
+      await tester.pumpWidget(host(pts(6)));
+      expect(find.byType(CustomPaint), findsWidgets);
+      final box = tester.getTopLeft(
+        find.descendant(
+          of: find.byType(RecentBarsChart),
+          matching: find.byType(GestureDetector),
+        ),
+      );
+      // Second slot of the plot: no throw, chart repaints with a selection.
+      await tester.tapAt(box + const Offset(60, 100));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
