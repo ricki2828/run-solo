@@ -276,12 +276,80 @@ def test_video_facts_need_a_shape_splits_and_a_verdict_the_video_has_a_word_for(
     assert ok and ok["title"] == "Easy run" and ok["verdict"] == "faster"
     assert video_facts(run_facts(stored(route=None), "h")) is None
     assert video_facts(run_facts(stored(splits=None), "h")) is None
-    assert video_facts(run_facts({**stored(), "verdict": "baselineSet"}, "h")) is None
-    assert video_facts(run_facts({**stored(), "verdict": None}, "h")) is None
     assert video_facts(run_facts({**stored(), "verdict": "noRealChange"}, "h"))["verdict"] == "holding"
     # the server never holds the old best a PB layout needs, so a PB run uses its ordinary verdict
     pb = video_facts(run_facts({**stored("race"), "pb": "5k"}, "h"))
     assert pb and "pb" not in pb and "pb_detail" not in pb
+
+
+@pytest.mark.parametrize("verdict", [None, "baselineSet", "indoorRun", "bogus"])
+def test_a_run_without_a_pace_verdict_still_gets_a_neutral_video(verdict):
+    from render.motion.run_video import RunVideo, WORDS, spec_from_facts
+    vf = video_facts(run_facts({**stored(), "verdict": verdict}, "h"))
+    assert vf and vf["verdict"] == "done"
+    spec = spec_from_facts(vf)
+    v = spec.verdict
+    assert v.kind == "done" and v.old is None and v.new is None
+    assert v.hero == 7.0 and v.unit == "KM" and v.context == "DISTANCE" and v.decimals == 2
+    rv = RunVideo(spec)
+    assert rv.word == "EASY RUN" and rv.vcol == rv.accent == rv.vrule   # run-type colour, never ink
+    assert rv.word not in {WORDS["faster"], WORDS["slower"], WORDS["holding"]}
+
+
+def test_a_known_session_name_titles_the_neutral_video_and_a_custom_code_does_not():
+    f = run_facts({**stored("interval"), "verdict": None}, "h")
+    assert video_facts(f, "Norwegian 4x4")["title"] == "Norwegian 4x4"
+    assert video_facts(f, "custom:0123456789abcdef")["title"] == "Intervals"
+    assert "session_name" not in f
+
+
+def test_goal_and_free_runs_take_their_brand_colour_in_the_neutral_video():
+    from render.motion.run_video import RunVideo, spec_from_facts
+    f = run_facts({**stored(), "verdict": None}, "h")
+    goal = video_facts(f, "5K goal", "free")
+    assert goal["title"] == "5K goal"
+    free = video_facts(f, None, "free")
+    assert free["title"] == "Free run"
+    th = RunVideo(spec_from_facts(goal)).th
+    assert RunVideo(spec_from_facts(goal)).accent == th.scores["MID"]
+    assert RunVideo(spec_from_facts(free)).accent == th.scores["LONG"]
+
+
+def test_the_run_name_is_not_shown_twice_in_the_neutral_video():
+    from render.motion.run_video import RunVideo, spec_from_facts
+    rv = RunVideo(spec_from_facts(video_facts(run_facts({**stored(), "verdict": None}, "h"))))
+    assert rv.head[0] == rv.s.date_label and rv.word == "EASY RUN" and rv.word not in rv.head
+
+
+@pytest.mark.parametrize("session,app_type,run_type", [("Norwegian 4x4", None, "interval"), ("5K goal", "free", "easy"),
+                                                       (None, "free", "easy")])
+def test_the_real_protocol_accepts_every_neutral_run_card_and_video(session, app_type, run_type):
+    row = {**stored(run_type), "verdict": None, "session_name": session, "app_type": app_type}
+    f = run_facts(row, "h")
+    for kind in ("light", "flood", "pb"):
+        P.encode_request("card", kind, f)
+    P.encode_request("card", "share", {**f, "share": {"route": True, "time": True, "climb": True, "reps": True, "pace": True}})
+    P.encode_request("video", "run", video_facts(f, session, app_type))
+
+
+def test_a_dropped_planned_video_is_logged(caplog):
+    from companion.media import MediaRenderer
+    r = MediaRenderer(card_fns={k: (lambda f, m: b"png") for k in ("run", "share", "light", "flood", "pb")}, video_fns={})
+    row = {**stored(), "_shape": None, "user_id": "u"}
+    with caplog.at_level("WARNING", logger="companion"):
+        r.render({"card": "light", "video": True}, {"run_id": "r", "headline": "h"}, [row])
+    assert "planned video dropped" in caplog.text
+
+
+def test_a_failed_share_picture_is_logged_before_the_older_card(caplog):
+    from companion.media import MediaRenderer
+
+    def boom(f, m):
+        raise RuntimeError("x")
+    r = MediaRenderer(card_fns={"share": boom}, video_fns={})
+    with caplog.at_level("WARNING", logger="companion"):
+        assert r._share_picture({"type": "easy"}) is None
+    assert "share picture failed" in caplog.text
 
 
 def test_the_video_spec_accepts_what_the_server_builds():

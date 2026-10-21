@@ -34,7 +34,7 @@ class Split:
 
 @dataclass
 class Verdict:
-    kind: str  # faster | slower | holding | pb
+    kind: str  # faster | slower | holding | pb | done (neutral)
     hero: float  # the number that counts up (e.g. seconds per km gained)
     decimals: int = 0
     unit: str = "S/KM"
@@ -145,6 +145,9 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
         pbd = f["pb_detail"]
         v = Verdict("pb", abs(pbd["delta_s"]), 0, "SEC", context=str(pbd["label"]).upper(),
                     caption=f.get("headline", ""), old=pbd["previous_s"], new=dur)
+    elif f["verdict"] == "done":
+        # no comparison to draw: the distance is the hero, and the word is the session, never a pace claim
+        v = Verdict("done", dist, 2, "KM", context="DISTANCE", caption=f.get("headline", ""), word=f["title"].upper())
     else:
         h = f.get("hero")
         if h:
@@ -162,7 +165,8 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
         flood_zone=flood, signoff=signoff, reps=reps)
 
 
-WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB"}
+# "done" is the neutral kind for a run with no comparison: it claims nothing about pace against last time
+WORDS = {"faster": "FASTER", "slower": "SLOWER", "holding": "HOLDING", "pb": "NEW PB", "done": "DONE"}
 
 
 def _star(cx, cy, r):
@@ -187,8 +191,10 @@ class RunVideo:
         self.line_col = brand.BONE if th.flood else self.accent
         v = spec.verdict
         self.word = v.word or WORDS[v.kind]
+        # a neutral ending shows the run name big, so the small header is the date alone and nothing repeats
+        self.head = (spec.date_label, "") if v.kind == "done" else (spec.kind_label, spec.date_label)
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
-                     "pb": th.ink}[v.kind]
+                     "pb": th.ink, "done": self.accent}[v.kind]   # done: the run type's colour
         self.vrule = brand.ARC if v.kind == "pb" else self.vcol
         sp = [x.pace_s for x in spec.splits]
         self.bars = spec.reps or spec.splits
@@ -210,7 +216,7 @@ class RunVideo:
             if t >= BARS0 - 0.1:
                 self._bars(cv, t, a1)
         if t >= EXIT1[1]:
-            header(cv, th, s.kind_label, s.date_label, self._a_hdr(t))
+            header(cv, th, *self.head, self._a_hdr(t))
         if t >= WORD_T - 0.05 and t < EXIT2[1]:
             self._verdict(cv, t, 1 - in_out_cubic(seg(t, *EXIT2)))
         if t >= SIGN_T:
@@ -231,7 +237,7 @@ class RunVideo:
         cv.add_glow(gcol, 0.30 * a, 2.5)
         cv.add_glow(gcol, 0.30 * a, 7.0)
         cv.apply_glow()
-        header(cv, th, s.kind_label, s.date_label, min(self._a_hdr(t), clamp(seg(t, 0.0, 0.4))))
+        header(cv, th, *self.head, min(self._a_hdr(t), clamp(seg(t, 0.0, 0.4))))
         # ghost track guides the eye
         cv.line(pts, wid * 0.8, th.fade(th.hair, a))
         cv.line(h, wid, col)
@@ -375,11 +381,11 @@ class RunVideo:
         q = seg(t, WORD_T, WORD_T + 0.5)
         e = out_back(q, 1.7)
         al = clamp(q * 2.2) * a
-        if v.context:
+        if v.context and v.kind != "done":
             cv.text((M, 290), v.context, grot(40, 700), th.fade(th.quiet, al), tracking=5)
         # icon + word, sized to fit the width
         size = lerp(0.82, 1.0, clamp(e, 0, 1.15))
-        icon_w = 190
+        icon_w = 0 if v.kind == "done" else 190   # the session name stands alone, no icon
         wpx = 340
         while cv.text_width(self.word, saira(wpx)) > RIGHT - M - icon_w and wpx > 120:
             wpx -= 10
@@ -396,6 +402,8 @@ class RunVideo:
         elif v.kind == "holding":
             for dy in (-isz * 0.22, isz * 0.22):
                 cv.rect(ix - isz / 2, iy + dy - isz * 0.09, ix + isz / 2, iy + dy + isz * 0.09, ic, r=6)
+        elif v.kind == "done":
+            pass
         else:
             cv.poly(_star(ix, iy, isz * 0.62), ic)
         cv.text((M + icon_w, wbase + (1 - clamp(e, 0, 1)) * 30), self.word, wf, th.fade(self.vcol, al), anchor="ls")
@@ -422,8 +430,16 @@ class RunVideo:
         hf = saira(hpx)
         w = cv.digits((M - 6, hbase), txt, hf, th.fade(self.vcol if v.kind != "pb" else th.ink, ha))
         cv.text((M + w + 28, hbase), v.unit, unit_f(hpx), th.fade(th.quiet, ha))
+        if v.kind == "done" and v.context:   # the label sits right on the number it names
+            cv.text((M, hbase - hpx * 0.35 - 44), v.context, grot(40, 700), th.fade(th.quiet, ha), tracking=5)
+        cy = hbase + 78
+        if v.kind == "done":   # time is the secondary stat
+            d = int(round(self.s.duration_s))
+            clock = f"{d // 3600}:{d % 3600 // 60:02d}:{d % 60:02d}" if d >= 3600 else f"{d // 60}:{d % 60:02d}"
+            cv.text((M, cy - 8), clock, grot(54, 700), th.fade(th.ink, ha))
+            cy += 62
         if v.caption:
-            cv.text((M, hbase + 78), v.caption, grot(46, 500),
+            cv.text((M, cy), v.caption, grot(46, 500),
                     th.fade(th.ink, a * clamp(seg(t, HERO[1] - 0.6, HERO[1] - 0.1))))
 
     def frames(self):

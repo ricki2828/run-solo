@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .convo.touches import _zone_minutes
+from .facts import GOAL_PURPOSE, known_session
 from render import protocol as P
 
 from .render_client import RenderClient
@@ -63,7 +64,8 @@ def _zone_s(row: Mapping[str, Any]) -> list[float]:
     return [round(z.get(i, 0.0) * 60, 1) for i in range(1, 6)]
 
 
-TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race"}
+TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race",
+         "cooper": "Cooper test", "trail": "Trail run"}
 VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
 
 
@@ -113,15 +115,31 @@ def share_optins(facts: Mapping[str, Any]) -> dict[str, bool]:
     return {"route": bool(facts.get("route_xy")), "time": True, "climb": True, "reps": True, "pace": True}
 
 
-def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape, no splits, or a
-    verdict the video has no word for). A PB run uses its ordinary verdict: the server never holds the old best time
-    that the PB layout needs, so it is not drawn."""
-    verdict = VIDEO_VERDICT.get(str(facts.get("verdict")))
-    if not facts.get("route_xy") or not facts.get("splits") or verdict is None:
+NEUTRAL_RUN_TYPE = {"goal": "tempo", "free": "long"}   # the colour a no-verdict run takes: goal violet (MID), free ice (LONG)
+
+
+def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
+                app_type: str | None = None) -> dict[str, Any] | None:
+    """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape or no splits). A run
+    whose verdict is missing or has no faster/slower/holding word (free, goal and trail runs have no comparison) gets the
+    neutral "done" treatment: its name, distance and time, never a pace claim. The name is the built-in session name
+    (`session_name`; a custom code is not one) else the run type, and goes out only as the allowed `title`. A goal or free
+    run takes its brand colour through `type`. A PB run uses its ordinary verdict: the server never holds the old best
+    time that the PB layout needs, so it is not drawn, and a PB with no verdict is neutral too."""
+    verdict = VIDEO_VERDICT.get(str(facts.get("verdict")), "done")
+    if not facts.get("route_xy") or not facts.get("splits"):
         return None
     out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
     out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
+    if verdict == "done":
+        known = known_session(session_name)
+        if known and len(known[0]) <= P.TITLE_MAX:
+            out["title"] = known[0]
+        elif app_type in ("free", "laps"):
+            out["title"] = "Free run"
+        kind = "goal" if known and known[1] == GOAL_PURPOSE else app_type
+        if kind in NEUTRAL_RUN_TYPE and facts.get("type") not in ("interval", "race"):   # keep a hard run's flood
+            out["type"] = NEUTRAL_RUN_TYPE[kind]
     return out
 
 
@@ -337,7 +355,7 @@ class MediaRenderer:
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])
-                vkind, vfacts = "run", video_facts(facts)
+                vkind, vfacts = "run", video_facts(facts, run.get("session_name"), run.get("app_type"))
             photo = None
             if kind in SHARE_PICTURE_KINDS:
                 photo = self._share_picture(facts)
@@ -347,6 +365,8 @@ class MediaRenderer:
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
+        if plan.get("video") and vfacts is None:
+            log.warning("planned video dropped for %s run %s: no route shape or splits", kind, card.get("run_id"))
         video = self._video(vkind, vfacts) if plan.get("video") and vfacts is not None else None
         return Media(photo=photo, video=video, duration_s=13 if video else 0)
 
@@ -357,7 +377,8 @@ class MediaRenderer:
         cards" switch controls (switching it off forgets every stored shape), so the opt-in is the shape's presence."""
         try:
             photo = self.cards["share"]({**facts, "share": share_optins(facts)}, {})
-        except Exception:
+        except Exception as e:
+            log.warning("share picture failed, falling back to the older card: %s", type(e).__name__)
             return None
         return photo if photo and len(photo) <= PHOTO_MAX_BYTES else None
 
