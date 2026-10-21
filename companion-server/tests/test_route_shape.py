@@ -288,8 +288,26 @@ def test_a_run_without_a_pace_verdict_still_gets_a_neutral_video(verdict):
     vf = video_facts(run_facts({**stored(), "verdict": verdict}, "h"))
     assert vf and vf["verdict"] == "done"
     spec = spec_from_facts(vf)
-    assert RunVideo(spec).word == "DONE"
-    assert not {"FASTER", "SLOWER", "HOLDING"} & {WORDS["done"]}
+    v = spec.verdict
+    assert v.kind == "done" and v.old is None and v.new is None
+    assert v.hero == 7.0 and v.unit == "KM" and v.context == "DISTANCE" and v.decimals == 2
+    rv = RunVideo(spec)
+    assert rv.word == "EASY RUN" and rv.vcol == rv.accent == rv.vrule   # run-type colour, never ink
+    assert rv.word not in {WORDS["faster"], WORDS["slower"], WORDS["holding"]}
+
+
+def test_a_session_name_beats_the_run_type_in_the_neutral_video():
+    row = {**stored("interval"), "verdict": None, "session_name": "4x4 VO2 max"}
+    assert video_facts(run_facts(row, "h"))["title"] == "4x4 VO2 max"
+
+
+def test_a_dropped_planned_video_is_logged(caplog):
+    from companion.media import MediaRenderer
+    r = MediaRenderer(card_fns={k: (lambda f, m: b"png") for k in ("run", "share", "light", "flood", "pb")}, video_fns={})
+    row = {**stored(), "_shape": None, "user_id": "u"}
+    with caplog.at_level("WARNING", logger="companion"):
+        r.render({"card": "light", "video": True}, {"run_id": "r", "headline": "h"}, [row])
+    assert "planned video dropped" in caplog.text
 
 
 def test_a_failed_share_picture_is_logged_before_the_older_card(caplog):

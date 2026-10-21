@@ -145,6 +145,9 @@ def spec_from_facts(f: dict, signoff: str = "Same time next run.") -> "RunVideoS
         pbd = f["pb_detail"]
         v = Verdict("pb", abs(pbd["delta_s"]), 0, "SEC", context=str(pbd["label"]).upper(),
                     caption=f.get("headline", ""), old=pbd["previous_s"], new=dur)
+    elif f["verdict"] == "done":
+        # no comparison to draw: the distance is the hero, and the word is the session, never a pace claim
+        v = Verdict("done", dist, 2, "KM", context="DISTANCE", caption=f.get("headline", ""), word=f["title"].upper())
     else:
         h = f.get("hero")
         if h:
@@ -189,7 +192,7 @@ class RunVideo:
         v = spec.verdict
         self.word = v.word or WORDS[v.kind]
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
-                     "pb": th.ink, "done": th.ink}[v.kind]
+                     "pb": th.ink, "done": self.accent}[v.kind]   # done: the run type's colour
         self.vrule = brand.ARC if v.kind == "pb" else self.vcol
         sp = [x.pace_s for x in spec.splits]
         self.bars = spec.reps or spec.splits
@@ -380,7 +383,7 @@ class RunVideo:
             cv.text((M, 290), v.context, grot(40, 700), th.fade(th.quiet, al), tracking=5)
         # icon + word, sized to fit the width
         size = lerp(0.82, 1.0, clamp(e, 0, 1.15))
-        icon_w = 190
+        icon_w = 0 if v.kind == "done" else 190   # the session name stands alone, no icon
         wpx = 340
         while cv.text_width(self.word, saira(wpx)) > RIGHT - M - icon_w and wpx > 120:
             wpx -= 10
@@ -398,8 +401,7 @@ class RunVideo:
             for dy in (-isz * 0.22, isz * 0.22):
                 cv.rect(ix - isz / 2, iy + dy - isz * 0.09, ix + isz / 2, iy + dy + isz * 0.09, ic, r=6)
         elif v.kind == "done":
-            cv.line([(ix - isz * 0.45, iy), (ix - isz * 0.1, iy + isz * 0.35), (ix + isz * 0.5, iy - isz * 0.4)],
-                    max(8, int(isz * 0.2)), ic)
+            pass
         else:
             cv.poly(_star(ix, iy, isz * 0.62), ic)
         cv.text((M + icon_w, wbase + (1 - clamp(e, 0, 1)) * 30), self.word, wf, th.fade(self.vcol, al), anchor="ls")
@@ -426,8 +428,14 @@ class RunVideo:
         hf = saira(hpx)
         w = cv.digits((M - 6, hbase), txt, hf, th.fade(self.vcol if v.kind != "pb" else th.ink, ha))
         cv.text((M + w + 28, hbase), v.unit, unit_f(hpx), th.fade(th.quiet, ha))
+        cy = hbase + 78
+        if v.kind == "done":   # time is the secondary stat
+            d = int(round(self.s.duration_s))
+            clock = f"{d // 3600}:{d % 3600 // 60:02d}:{d % 60:02d}" if d >= 3600 else f"{d // 60}:{d % 60:02d}"
+            cv.text((M, cy - 8), clock, grot(54, 700), th.fade(th.ink, ha))
+            cy += 62
         if v.caption:
-            cv.text((M, hbase + 78), v.caption, grot(46, 500),
+            cv.text((M, cy), v.caption, grot(46, 500),
                     th.fade(th.ink, a * clamp(seg(t, HERO[1] - 0.6, HERO[1] - 0.1))))
 
     def frames(self):

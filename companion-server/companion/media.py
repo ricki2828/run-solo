@@ -63,7 +63,8 @@ def _zone_s(row: Mapping[str, Any]) -> list[float]:
     return [round(z.get(i, 0.0) * 60, 1) for i in range(1, 6)]
 
 
-TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race"}
+TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "Intervals", "race": "Race",
+         "cooper": "Cooper test", "trail": "Trail run"}
 VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
 
 
@@ -89,6 +90,8 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["place_note"] = run["locality"]
     if run.get("verdict") in VERDICTS:
         facts["verdict"] = run["verdict"]
+    if run.get("session_name"):
+        facts["session_name"] = run["session_name"]
     if run.get("pb") in PB_LABEL:
         facts["pb"] = run["pb"]
         facts["pb_detail"] = {"label": PB_LABEL[run["pb"]]}
@@ -116,13 +119,15 @@ def share_optins(facts: Mapping[str, Any]) -> dict[str, bool]:
 def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
     """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape or no splits). A run
     whose verdict is missing or has no faster/slower/holding word (free, goal and trail runs have no comparison) gets the
-    neutral "done" treatment: the session name and its own stats, never a pace claim. A PB run uses its ordinary verdict: the server never holds the old best time
+    neutral "done" treatment: the session or run-type name, distance and time, never a pace claim. A PB run uses its ordinary verdict: the server never holds the old best time
     that the PB layout needs, so it is not drawn."""
     verdict = VIDEO_VERDICT.get(str(facts.get("verdict")), "done")
     if not facts.get("route_xy") or not facts.get("splits"):
         return None
     out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
     out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
+    if verdict == "done" and facts.get("session_name"):
+        out["title"] = str(facts["session_name"])
     return out
 
 
