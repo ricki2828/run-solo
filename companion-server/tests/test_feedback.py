@@ -194,7 +194,7 @@ def test_without_consent_v2_nothing_is_stored(client, fakes):
 
 def test_consent_withdrawn_between_the_prompt_and_the_text_stores_nothing(client, fakes, tok):
     say(client, "/feedback")
-    agree(client, tok, 1)                                # the runner now reports an older version
+    agree(client, tok, 0)                                # the runner withdraws
     say(client, "too late for this")
     assert last_text(fakes) == FEEDBACK_NO_CONSENT and not fb_rows(client) and not mode_rows(client)
 

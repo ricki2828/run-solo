@@ -1218,7 +1218,7 @@ def test_v2_gets_check_ins_and_the_same_runner_below_it_does_not(client, env_nc)
 def test_a_downgrade_stops_new_check_ins_and_old_buttons_record_nothing(env, client):
     now = at(2026, 10, 14, 20, 5)
     env.step(now)
-    agree(client, env.token, 1)                                  # e.g. the runner reinstalled an older build
+    agree(client, env.token, 0)                                  # e.g. the runner reinstalled an older build
     assert env.tap("r.flat", now + timedelta(minutes=1)) != [] and env.answers() == {}   # toast + keyboard cleared only
     assert env.step(at(2026, 10, 15, 6, 45)) == 0
     assert [m for m, _ in env.fakes.tg[env.base:] if m == "editMessageText"] == []
@@ -1229,7 +1229,7 @@ def test_a_downgrade_stops_new_check_ins_and_old_buttons_record_nothing(env, cli
 def test_a_queued_check_in_is_not_sent_if_consent_is_withdrawn_before_the_worker_runs(env, client):
     now = at(2026, 10, 14, 20, 5)
     env.svc.plan_checkins(now)
-    agree(client, env.token, 1)
+    agree(client, env.token, 0)
     env.svc.run_outbox(now)
     assert env.sends() == []
 
@@ -1277,7 +1277,9 @@ def test_the_run_upload_may_carry_the_consent_version_and_an_old_payload_still_p
     assert r.status_code in (200, 202), r.text
     assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2
     r = client.post("/v1/runs", json={**body, "run_id": "app3", "consent_version": 1}, headers=auth(env_nc.token))
-    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 1        # the latest report wins
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2        # a lower positive report is ignored
+    r = client.post("/v1/runs", json={**body, "run_id": "app3b", "consent_version": 0}, headers=auth(env_nc.token))
+    assert env_nc.q("SELECT checkin_consent FROM users")[0]["checkin_consent"] == 0        # only a withdrawal lowers it
     r = client.post("/v1/runs", json={**body, "run_id": "app4", "consent_version": -3}, headers=auth(env_nc.token))
     assert r.status_code == 422
     assert client.post("/v1/runs", json={**body, "run_id": "app5", "nope": 1}, headers=auth(env_nc.token)).status_code == 422
@@ -1322,7 +1324,7 @@ def test_a_real_relink_by_an_old_app_clears_the_consent_so_no_check_ins(env, cli
 def test_stored_answers_are_ignored_once_consent_is_withdrawn(env, client):
     put(env, "why", "2026-10-15", "ill", at(2026, 10, 15, 8, 0))
     put(env, "why", "2026-10-15", "sore", at(2026, 10, 15, 8, 1))
-    agree(client, env.token, 1)
+    agree(client, env.token, 0)
     start = at(2026, 10, 16, 7, 0)
     env.run("fri", start, now=start + timedelta(minutes=45), type="easy", verdict="slower")
     env.svc.run_outbox(start + timedelta(minutes=46))
@@ -1337,7 +1339,7 @@ def test_withdrawing_consent_unpins_the_week_card(penv, client):
     penv.svc.run_outbox(at(2026, 10, 15, 7, 47))
     [slot] = penv.q("SELECT message_id FROM checkin_slots WHERE slot='week'")
     assert not [m for m, _ in penv.fakes.tg if m == "unpinChatMessage"]
-    agree(client, penv.token, 1)
+    agree(client, penv.token, 0)
     assert [b["message_id"] for m, b in penv.fakes.tg if m == "unpinChatMessage"] == [int(slot["message_id"])]
 
 

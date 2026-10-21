@@ -618,7 +618,7 @@ def test_consent_revoked_purges_the_row_and_cancels_the_job(cc, fakes):
     ready(cc, fakes)
     upload(cc, "r2", now=T0 + timedelta(hours=1), plan={**PLAN, "minutes": 35})
     assert rows(cc, "SELECT state FROM coach_jobs WHERE kind='briefing' ORDER BY id")[-1]["state"] == "pending"
-    assert cc.put("/v1/me/consent", json={"consent_version": 2}, headers=auth(cc.token)).status_code == 200
+    assert cc.put("/v1/me/consent", json={"consent_version": 0}, headers=auth(cc.token)).status_code == 200
     assert rows(cc, "SELECT * FROM coach_briefings") == []
     assert rows(cc, "SELECT state, outcome FROM coach_jobs WHERE kind='briefing' ORDER BY id")[-1] == {"state": "cancelled", "outcome": "withdrawn"}
     calls = len(fakes.coach_calls)
