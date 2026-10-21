@@ -94,8 +94,8 @@ FINGERPRINT_VERSION = "v1"
 # Warm-up and structure rules that must survive into the briefing (review #10). Matched on the session id or name.
 SESSION_RULES = (
     (re.compile(r"norwegian|4x4", re.I),
-     ["Warm up as long as you like before the first rep; there is no rush into the work.",
-      "The reps are hard but even; the jog between them is a real recovery."]),
+     ["Warm up as long as you like.",
+      "Reps hard but even, jogs a real recovery."]),
 )
 REPS_RE = re.compile(r"(?<!\d)(\d{1,2})\s*x\s*\d", re.I)
 
@@ -268,11 +268,11 @@ How it must read:
 - One short paragraph, plain words for text to speech. First sentence names the kind of run ({kind_say}), so they know what they are about to do.
 - Then, in a sentence or two, how to tackle it. It must match the targets in the facts: easy means relaxed and conversational, never push; long means steady, patient start, save it for the end; quality means controlled start, hold the target on the work, jog the recoveries.
 - Keep every rule in `rules`, worded as given or very close (the check looks for its key phrase, for example "as long as you like").
-- Aim for about 30 words; the cap below is a limit, not a target.
+- With every slot this session uses counted at its longest, aim for about 30 words; never over {cap}. The cap is a limit, not a target.
 - Informal and warm, the voice from your skill. No emoji, no hype, no markdown.
 - Never give medical advice and never mention pain, injury or illness.
 
-Numbers and units: you may NOT write any digit, any number word at all ("one", "two", "ten", "twenty five", "fours", "tens", "dozens", "third", "twice", "a couple of", "a few", "several", "a pair", "half", "a quarter"), any unit word (hour, minute, mile, kilometre, metre), or x, km, /km, bpm, HR, Z2. The only way to say a number is a slot, written in curly braces. The slots you may use are exactly: {slots}. The app speaks each slot in the runner's own units and each slot already carries its own unit or word ("forty five minutes", "ten point five kilometres", "four reps", "five ten per kilometre"), so never write a unit or the word "reps" next to a slot. Never describe a number in other words and never use a slot that is not in the list.
+Numbers and units: you may NOT write any digit, any number word at all ("one", "two", "ten", "twenty five", "fours", "tens", "dozens", "third", "twice", "a couple of", "a few", "several", "a pair", "half", "a quarter"), any unit word (hour, minute, mile, kilometre, metre), or x, km, /km, bpm, HR, Z2. The only way to say a number is a slot, written in curly braces. The slots you may use are exactly: {slots}. The app speaks each slot in the runner's own units and each slot already carries its own unit or word ("forty five minutes", "ten point five kilometres", "four reps", "five ten per kilometre"), so never write a unit or the word "reps" next to a slot. Never describe a number in other words and never use a slot that is not in the list. Never use the word "one" or "ones" at all, even in "your last one" or "a gentler one"; say "it", "the run" or "each rep" instead.
 No dashes of any kind (use a comma or a full stop). At most {cap} words, counting each slot as its longest spoken form ({slot_cost}).
 
 Reply with the briefing text only.
