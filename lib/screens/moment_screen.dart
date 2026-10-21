@@ -11,16 +11,34 @@ import '../theme/theme.dart';
 
 /// The flat colour behind a moment: its lane, else one brand colour by kind.
 Color momentColour(RunSoloTokens t, Moment m) {
+  // A personal best is always cyan (PB meaning), whatever lane it came from.
+  if (m.kind == MomentKind.pb) return t.accentArc;
   final lane = m.lane;
   if (lane != null) return t.laneFill(lane);
   return switch (m.kind) {
     MomentKind.first => t.typeGoal,
-    MomentKind.pb => t.typeLaps,
+    MomentKind.pb => t.accentArc,
     MomentKind.levelUp => t.typeTests,
     MomentKind.story => t.typeIntervals,
     MomentKind.quest => t.typeTrail,
   };
 }
+
+/// [big] with every digit run counted up from zero by [t] (0..1). Runs keep
+/// their final width (zero padded), so the figure never reflows; at 1 it is
+/// exactly [big].
+String countUpFigure(String big, double t) {
+  if (t >= 1) return big;
+  return big.replaceAllMapped(RegExp(r'\d+'), (m) {
+    final end = int.parse(m[0]!);
+    final v = (end * t).floor();
+    return v.toString().padLeft(m[0]!.length, '0');
+  });
+}
+
+/// The band of the screen the text lives in; rays and confetti stay out of it.
+Rect momentSafeZone(Size size) =>
+    Rect.fromLTRB(0, size.height * 0.27, size.width, size.height * 0.64);
 
 /// Shows [moment] full screen. Rare by design: callers pass at most one.
 Future<void> showMoment(BuildContext context, Moment moment) =>
@@ -103,6 +121,7 @@ class _MomentScreenState extends State<MomentScreen>
         );
     final figure = beat(0.08, 0.6, Curves.easeOutBack);
     final figureFade = beat(0.08, 0.35);
+    final count = beat(0.12, 0.7, Curves.easeOutCubic);
     final rest = beat(0.45, 0.85);
     return Scaffold(
       key: ValueKey('moment-${m.id}'),
@@ -117,6 +136,7 @@ class _MomentScreenState extends State<MomentScreen>
                   painter: _BurstPainter(
                     progress: _c.value,
                     ink: ink,
+                    fill: fill,
                     confetti: m.kind != MomentKind.story,
                   ),
                 ),
@@ -141,9 +161,7 @@ class _MomentScreenState extends State<MomentScreen>
                       m.eyebrow.toUpperCase(),
                       key: const ValueKey('moment-eyebrow'),
                       textAlign: TextAlign.center,
-                      style: RunSoloType.runLabel.copyWith(
-                        color: ink.withValues(alpha: 0.85),
-                      ),
+                      style: RunSoloType.runLabel.copyWith(color: ink),
                     ),
                   ),
                   const SizedBox(height: Space.x12),
@@ -153,14 +171,17 @@ class _MomentScreenState extends State<MomentScreen>
                       scale: Tween<double>(begin: 0.6, end: 1).animate(figure),
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text(
-                          m.big.toUpperCase(),
-                          key: const ValueKey('moment-big'),
-                          maxLines: 1,
-                          textAlign: TextAlign.center,
-                          style: RunSoloType.display96.copyWith(
-                            fontSize: 220,
-                            color: ink,
+                        child: AnimatedBuilder(
+                          animation: count,
+                          builder: (_, _) => Text(
+                            countUpFigure(m.big.toUpperCase(), count.value),
+                            key: const ValueKey('moment-big'),
+                            maxLines: 1,
+                            textAlign: TextAlign.center,
+                            style: RunSoloType.display96.copyWith(
+                              fontSize: 220,
+                              color: ink,
+                            ),
                           ),
                         ),
                       ),
@@ -173,7 +194,11 @@ class _MomentScreenState extends State<MomentScreen>
                       m.detail,
                       key: const ValueKey('moment-detail'),
                       textAlign: TextAlign.center,
-                      style: RunSoloType.body17.copyWith(color: ink),
+                      style: RunSoloType.body17.copyWith(
+                        color: ink,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const Spacer(flex: 4),
@@ -182,11 +207,11 @@ class _MomentScreenState extends State<MomentScreen>
                     child: Row(
                       children: [
                         Expanded(
-                          child: FilledButton(
+                          child: OutlinedButton(
                             key: const ValueKey('moment-nice'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: ink,
-                              foregroundColor: fill,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: ink,
+                              side: BorderSide(color: ink, width: 2),
                             ),
                             onPressed: () => Navigator.of(context).maybePop(),
                             child: const CapsText('Nice'),
@@ -194,14 +219,14 @@ class _MomentScreenState extends State<MomentScreen>
                         ),
                         const SizedBox(width: Space.x12),
                         Expanded(
-                          child: OutlinedButton(
+                          child: FilledButton(
                             key: const ValueKey('moment-share'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: ink,
-                              side: BorderSide(color: ink, width: 1.5),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: ink,
+                              foregroundColor: fill,
                             ),
                             onPressed: () => _share(fill),
-                            child: const Text('Share'),
+                            child: const CapsText('Share'),
                           ),
                         ),
                       ],
@@ -217,23 +242,51 @@ class _MomentScreenState extends State<MomentScreen>
   }
 }
 
-/// Soft rays behind the figure and a few confetti pieces that drift down
-/// and rest. Seeded: the settled frame is identical every time.
+/// The entrance: a darker ground swept away by a circle of the moment's
+/// colour, a shock ring, soft rays and confetti that settle. Rays, ring and
+/// confetti never enter [momentSafeZone], so text sits on flat colour. Seeded:
+/// the settled frame is identical every time.
 class _BurstPainter extends CustomPainter {
   _BurstPainter({
     required this.progress,
     required this.ink,
+    required this.fill,
     required this.confetti,
   });
   final double progress;
   final Color ink;
+  final Color fill;
   final bool confetti;
 
   @override
   void paint(Canvas canvas, Size size) {
     final centre = Offset(size.width / 2, size.height * 0.42);
+    // Colour sweep: dark ground, the moment colour grows out of the centre.
+    final sweep = Curves.easeOutCubic.transform(math.min(1, progress / 0.4));
+    if (sweep < 1) {
+      canvas
+        ..drawRect(
+          Offset.zero & size,
+          Paint()..color = Color.lerp(fill, const Color(0xFF000000), 0.45)!,
+        )
+        ..drawCircle(
+          centre,
+          size.longestSide * 1.1 * sweep,
+          Paint()..color = fill,
+        );
+    }
+    final safe = momentSafeZone(size);
+    canvas
+      ..save()
+      ..clipPath(
+        Path.combine(
+          PathOperation.difference,
+          Path()..addRect(Offset.zero & size),
+          Path()..addRect(safe),
+        ),
+      );
     final fade = Curves.easeOut.transform(math.min(1, progress * 2));
-    final rays = Paint()..color = ink.withValues(alpha: 0.07 * fade);
+    final rays = Paint()..color = ink.withValues(alpha: 0.12 * fade);
     const n = 14;
     final r = size.longestSide;
     for (var i = 0; i < n; i++) {
@@ -254,29 +307,44 @@ class _BurstPainter extends CustomPainter {
         rays,
       );
     }
-    if (!confetti) return;
-    final rnd = math.Random(11);
-    final fall = Curves.easeOutCubic.transform(progress);
-    for (var i = 0; i < 26; i++) {
-      final x = rnd.nextDouble() * size.width;
-      final y0 = -40.0 - rnd.nextDouble() * 120;
-      final y1 = rnd.nextDouble() * size.height;
-      final s = 6 + rnd.nextDouble() * 8;
-      final rot = rnd.nextDouble() * math.pi + progress * 2;
-      final y = y0 + (y1 - y0) * fall;
-      canvas
-        ..save()
-        ..translate(x, y)
-        ..rotate(rot)
-        ..drawRect(
-          Rect.fromCenter(center: Offset.zero, width: s, height: s * 0.6),
-          Paint()..color = ink.withValues(alpha: i.isEven ? 0.55 : 0.3),
-        )
-        ..restore();
+    // One shock ring that leaves the screen early.
+    final ringT = math.min(1.0, progress / 0.55);
+    if (ringT < 1) {
+      canvas.drawCircle(
+        centre,
+        size.longestSide * 0.9 * Curves.easeOut.transform(ringT),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 10 * (1 - ringT) + 2
+          ..color = ink.withValues(alpha: 0.5 * (1 - ringT)),
+      );
     }
+    if (confetti) {
+      final rnd = math.Random(11);
+      final fall = Curves.easeOutCubic.transform(progress);
+      for (var i = 0; i < 36; i++) {
+        final x = rnd.nextDouble() * size.width;
+        final y0 = -40.0 - rnd.nextDouble() * 120;
+        final y1 = rnd.nextDouble() * size.height;
+        final s = 6 + rnd.nextDouble() * 8;
+        final rot = rnd.nextDouble() * math.pi + progress * 2;
+        final y = y0 + (y1 - y0) * fall;
+        // Resting pieces never land in the text band (clip handles the fall).
+        canvas
+          ..save()
+          ..translate(x, y)
+          ..rotate(rot)
+          ..drawRect(
+            Rect.fromCenter(center: Offset.zero, width: s, height: s * 0.6),
+            Paint()..color = ink.withValues(alpha: i.isEven ? 0.55 : 0.3),
+          )
+          ..restore();
+      }
+    }
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(_BurstPainter old) =>
-      old.progress != progress || old.ink != ink;
+      old.progress != progress || old.ink != ink || old.fill != fill;
 }

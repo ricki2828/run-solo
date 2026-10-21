@@ -7,6 +7,20 @@ import '../map/route_builder.dart';
 import '../platform/gateway.dart' show Units;
 import '../theme/theme.dart';
 
+/// True when [route] has at least two distinct points (about 1 m apart), so
+/// there is a line to draw; a stationary or one-fix track has none.
+bool routeHasShape(RouteGeometry route) {
+  final pts = route.points;
+  if (pts.length < 2) return false;
+  final first = pts.first;
+  for (final p in pts.skip(1)) {
+    if ((p.lat - first.lat).abs() > 1e-5 || (p.lon - first.lon).abs() > 1e-5) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// The map that leads a Home run card: full width, the route in the run
 /// colour, and the run's climb over the map's top left. The map credit
 /// stays bottom right, where the tile licence needs it. [maps] defaults to
@@ -35,6 +49,7 @@ class ActivityMapHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final climb = climbM;
+    if (!routeHasShape(route)) return const SizedBox.shrink();
     return SizedBox(
       height: 168,
       width: double.infinity,
