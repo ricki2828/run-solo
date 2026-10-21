@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .convo.touches import _zone_minutes
+from .facts import GOAL_PURPOSE, known_session
 from render import protocol as P
 
 from .render_client import RenderClient
@@ -90,8 +91,6 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["place_note"] = run["locality"]
     if run.get("verdict") in VERDICTS:
         facts["verdict"] = run["verdict"]
-    if run.get("session_name"):
-        facts["session_name"] = run["session_name"]
     if run.get("pb") in PB_LABEL:
         facts["pb"] = run["pb"]
         facts["pb_detail"] = {"label": PB_LABEL[run["pb"]]}
@@ -116,18 +115,31 @@ def share_optins(facts: Mapping[str, Any]) -> dict[str, bool]:
     return {"route": bool(facts.get("route_xy")), "time": True, "climb": True, "reps": True, "pace": True}
 
 
-def video_facts(facts: Mapping[str, Any]) -> dict[str, Any] | None:
+NEUTRAL_RUN_TYPE = {"goal": "tempo", "free": "long"}   # the colour a no-verdict run takes: goal violet (MID), free ice (LONG)
+
+
+def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
+                app_type: str | None = None) -> dict[str, Any] | None:
     """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape or no splits). A run
     whose verdict is missing or has no faster/slower/holding word (free, goal and trail runs have no comparison) gets the
-    neutral "done" treatment: the session or run-type name, distance and time, never a pace claim. A PB run uses its ordinary verdict: the server never holds the old best time
-    that the PB layout needs, so it is not drawn."""
+    neutral "done" treatment: its name, distance and time, never a pace claim. The name is the built-in session name
+    (`session_name`; a custom code is not one) else the run type, and goes out only as the allowed `title`. A goal or free
+    run takes its brand colour through `type`. A PB run uses its ordinary verdict: the server never holds the old best
+    time that the PB layout needs, so it is not drawn, and a PB with no verdict is neutral too."""
     verdict = VIDEO_VERDICT.get(str(facts.get("verdict")), "done")
     if not facts.get("route_xy") or not facts.get("splits"):
         return None
     out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
     out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
-    if verdict == "done" and facts.get("session_name"):
-        out["title"] = str(facts["session_name"])
+    if verdict == "done":
+        known = known_session(session_name)
+        if known and len(known[0]) <= P.TITLE_MAX:
+            out["title"] = known[0]
+        elif app_type in ("free", "laps"):
+            out["title"] = "Free run"
+        kind = "goal" if known and known[1] == GOAL_PURPOSE else app_type
+        if kind in NEUTRAL_RUN_TYPE and facts.get("type") not in ("interval", "race"):   # keep a hard run's flood
+            out["type"] = NEUTRAL_RUN_TYPE[kind]
     return out
 
 
@@ -343,7 +355,7 @@ class MediaRenderer:
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])
-                vkind, vfacts = "run", video_facts(facts)
+                vkind, vfacts = "run", video_facts(facts, run.get("session_name"), run.get("app_type"))
             photo = None
             if kind in SHARE_PICTURE_KINDS:
                 photo = self._share_picture(facts)

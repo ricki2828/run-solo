@@ -296,9 +296,40 @@ def test_a_run_without_a_pace_verdict_still_gets_a_neutral_video(verdict):
     assert rv.word not in {WORDS["faster"], WORDS["slower"], WORDS["holding"]}
 
 
-def test_a_session_name_beats_the_run_type_in_the_neutral_video():
-    row = {**stored("interval"), "verdict": None, "session_name": "4x4 VO2 max"}
-    assert video_facts(run_facts(row, "h"))["title"] == "4x4 VO2 max"
+def test_a_known_session_name_titles_the_neutral_video_and_a_custom_code_does_not():
+    f = run_facts({**stored("interval"), "verdict": None}, "h")
+    assert video_facts(f, "Norwegian 4x4")["title"] == "Norwegian 4x4"
+    assert video_facts(f, "custom:0123456789abcdef")["title"] == "Intervals"
+    assert "session_name" not in f
+
+
+def test_goal_and_free_runs_take_their_brand_colour_in_the_neutral_video():
+    from render.motion.run_video import RunVideo, spec_from_facts
+    f = run_facts({**stored(), "verdict": None}, "h")
+    goal = video_facts(f, "5K goal", "free")
+    assert goal["title"] == "5K goal"
+    free = video_facts(f, None, "free")
+    assert free["title"] == "Free run"
+    th = RunVideo(spec_from_facts(goal)).th
+    assert RunVideo(spec_from_facts(goal)).accent == th.scores["MID"]
+    assert RunVideo(spec_from_facts(free)).accent == th.scores["LONG"]
+
+
+def test_the_run_name_is_not_shown_twice_in_the_neutral_video():
+    from render.motion.run_video import RunVideo, spec_from_facts
+    rv = RunVideo(spec_from_facts(video_facts(run_facts({**stored(), "verdict": None}, "h"))))
+    assert rv.head[0] == rv.s.date_label and rv.word == "EASY RUN" and rv.word not in rv.head
+
+
+@pytest.mark.parametrize("session,app_type,run_type", [("Norwegian 4x4", None, "interval"), ("5K goal", "free", "easy"),
+                                                       (None, "free", "easy")])
+def test_the_real_protocol_accepts_every_neutral_run_card_and_video(session, app_type, run_type):
+    row = {**stored(run_type), "verdict": None, "session_name": session, "app_type": app_type}
+    f = run_facts(row, "h")
+    for kind in ("light", "flood", "pb"):
+        P.encode_request("card", kind, f)
+    P.encode_request("card", "share", {**f, "share": {"route": True, "time": True, "climb": True, "reps": True, "pace": True}})
+    P.encode_request("video", "run", video_facts(f, session, app_type))
 
 
 def test_a_dropped_planned_video_is_logged(caplog):

@@ -191,6 +191,8 @@ class RunVideo:
         self.line_col = brand.BONE if th.flood else self.accent
         v = spec.verdict
         self.word = v.word or WORDS[v.kind]
+        # a neutral ending shows the run name big, so the small header is the date alone and nothing repeats
+        self.head = (spec.date_label, "") if v.kind == "done" else (spec.kind_label, spec.date_label)
         self.vcol = {"faster": th.mint, "slower": th.verm, "holding": th.ink,
                      "pb": th.ink, "done": self.accent}[v.kind]   # done: the run type's colour
         self.vrule = brand.ARC if v.kind == "pb" else self.vcol
@@ -214,7 +216,7 @@ class RunVideo:
             if t >= BARS0 - 0.1:
                 self._bars(cv, t, a1)
         if t >= EXIT1[1]:
-            header(cv, th, s.kind_label, s.date_label, self._a_hdr(t))
+            header(cv, th, *self.head, self._a_hdr(t))
         if t >= WORD_T - 0.05 and t < EXIT2[1]:
             self._verdict(cv, t, 1 - in_out_cubic(seg(t, *EXIT2)))
         if t >= SIGN_T:
@@ -235,7 +237,7 @@ class RunVideo:
         cv.add_glow(gcol, 0.30 * a, 2.5)
         cv.add_glow(gcol, 0.30 * a, 7.0)
         cv.apply_glow()
-        header(cv, th, s.kind_label, s.date_label, min(self._a_hdr(t), clamp(seg(t, 0.0, 0.4))))
+        header(cv, th, *self.head, min(self._a_hdr(t), clamp(seg(t, 0.0, 0.4))))
         # ghost track guides the eye
         cv.line(pts, wid * 0.8, th.fade(th.hair, a))
         cv.line(h, wid, col)
@@ -379,7 +381,7 @@ class RunVideo:
         q = seg(t, WORD_T, WORD_T + 0.5)
         e = out_back(q, 1.7)
         al = clamp(q * 2.2) * a
-        if v.context:
+        if v.context and v.kind != "done":
             cv.text((M, 290), v.context, grot(40, 700), th.fade(th.quiet, al), tracking=5)
         # icon + word, sized to fit the width
         size = lerp(0.82, 1.0, clamp(e, 0, 1.15))
@@ -428,6 +430,8 @@ class RunVideo:
         hf = saira(hpx)
         w = cv.digits((M - 6, hbase), txt, hf, th.fade(self.vcol if v.kind != "pb" else th.ink, ha))
         cv.text((M + w + 28, hbase), v.unit, unit_f(hpx), th.fade(th.quiet, ha))
+        if v.kind == "done" and v.context:   # the label sits right on the number it names
+            cv.text((M, hbase - hpx * 0.35 - 44), v.context, grot(40, 700), th.fade(th.quiet, ha), tracking=5)
         cy = hbase + 78
         if v.kind == "done":   # time is the secondary stat
             d = int(round(self.s.duration_s))
