@@ -27,13 +27,16 @@ class _SwapSource extends LiveContextSource {
   }
 
   @override
-  engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
-      engine.HomeEstimates.of(
-        candidates,
-        now: now(),
-        names: kEventNames,
-        includeEvent: includeEvent,
-      );
+  engine.HomeEstimates? homeEstimates({
+    bool includeEvent = false,
+    engine.Units units = engine.Units.km,
+  }) => engine.HomeEstimates.of(
+    candidates,
+    now: now(),
+    names: kEventNames,
+    includeEvent: includeEvent,
+    units: units,
+  );
 }
 
 void main() {

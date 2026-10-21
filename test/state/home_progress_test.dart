@@ -338,6 +338,52 @@ void main() {
       expect(r.reason, 'LONG needs a 15K+ run to count.');
     });
 
+    test('a missing MID says why the latest run did not count', () {
+      final s = {...all()}..remove(engine.IdentityLane.mid);
+      const why = "Your 5K on 20 Oct didn't count: paused at 3.2 km";
+      final r = Recommendation.of(
+        s,
+        const [],
+        now: testNow,
+        sex: ProfileSex.male,
+        age: 44,
+        midNote: why,
+      );
+      expect(r.lane, engine.IdentityLane.mid);
+      expect(r.reason, '$why. A clean 5K sets MID.');
+      // Without a reason the generic hint stays.
+      expect(rec(s).reason, 'MID needs a 5K or 10K run to count.');
+    });
+
+    test('a stalled MID keeps its reason; other lanes ignore it', () {
+      final stalled = {
+        ...all(),
+        engine.IdentityLane.mid: score(engine.IdentityLane.mid, daysAgo: 30),
+      };
+      final r = Recommendation.of(
+        stalled,
+        const [],
+        now: testNow,
+        sex: ProfileSex.male,
+        age: 44,
+        midNote: 'Your 5K on 20 Oct didn\'t count: GPS dropped at 4.1 km',
+      );
+      expect(
+        r.reason,
+        "MID hasn't moved in 4 weeks. Your 5K on 20 Oct didn't count: GPS "
+        'dropped at 4.1 km.',
+      );
+      final long = Recommendation.of(
+        {...all()}..remove(engine.IdentityLane.long),
+        const [],
+        now: testNow,
+        sex: ProfileSex.male,
+        age: 44,
+        midNote: 'ignored',
+      );
+      expect(long.reason, 'LONG needs a 15K+ run to count.');
+    });
+
     test('nothing stalled or missing: keep the oldest climbing', () {
       final s = {
         ...all(),

@@ -103,6 +103,7 @@ class PredictionInput {
     required RunBestEfforts efforts,
     double? heatFraction,
     double gradeFactor = 1,
+    bool trailCounts = false,
   }) {
     final parkrun =
         mode == RunMode.intervals &&
@@ -115,7 +116,11 @@ class PredictionInput {
         mode == RunMode.intervals &&
         comparisonKey != null &&
         ComparisonKey.isGoal(comparisonKey);
-    if (!parkrun && !freeOrLaps && !goal) return const [];
+    // A Trail run offers its 5K and 10K windows only when it counts for MID
+    // ([trailCounts]: barometer elevation), at each window's own hills
+    // factor, so the estimate is the flat-ground time like LONG's.
+    final trail = mode == RunMode.trail && trailCounts;
+    if (!parkrun && !freeOrLaps && !goal && !trail) return const [];
     // [grade] is the stretch's own hills factor (a best effort carries its
     // own); the whole-run input uses the run's.
     int? adj(int ms, double grade) {
@@ -150,7 +155,7 @@ class PredictionInput {
               : PredictionSourceKind.bestEffort5k,
           k5.gradeFactor,
         ),
-      if (k10 != null && (freeOrLaps || goal))
+      if (k10 != null && (freeOrLaps || goal || trail))
         of(
           k10.distance.metres,
           k10.elapsedMs,

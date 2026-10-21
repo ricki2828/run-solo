@@ -172,7 +172,10 @@ class RunDerived {
   ///   rebuild old runs so MID can see valid evidence from those traces.
   /// - 6: True Pace: every best effort carries the hills factor of its
   ///   window, so boards rank hills and heat taken out; rebuild old runs.
-  static const int currentVersion = 6;
+  /// - 7: a 5K/10K goal run bridges a short pause or gap, Trail runs keep
+  ///   their 5K/10K windows for MID, and a run that went far enough but has
+  ///   no 5K/10K carries `RunBestEfforts.miss`; rebuild old runs.
+  static const int currentVersion = 7;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;

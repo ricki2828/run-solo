@@ -268,14 +268,25 @@ class LiveContextSource {
       ? const {}
       : engine.IdentityScores.of(_cached, now: now(), hero: fitnessHero());
 
-  engine.HomeEstimates? homeEstimates({bool includeEvent = false}) =>
+  /// Why the latest 5 km+ run did not count for MID ("Your 5K on 20 Oct
+  /// didn't count: paused at 3.2 km"), from the last prepare; null when it
+  /// counted, nothing explains it, or never prepared.
+  engine.EffortNote? effortNote({engine.Units units = engine.Units.km}) =>
       _cachedVersion == null
+      ? null
+      : engine.EffortNote.latest(_cached, now: now(), units: units);
+
+  engine.HomeEstimates? homeEstimates({
+    bool includeEvent = false,
+    engine.Units units = engine.Units.km,
+  }) => _cachedVersion == null
       ? null
       : engine.HomeEstimates.of(
           _cached,
           now: now(),
           names: names,
           includeEvent: includeEvent,
+          units: units,
         );
 
   /// Race times and VO2 for Progress and the Home line, from the last

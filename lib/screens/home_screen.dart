@@ -70,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<RunSummary>>? _runs;
   Future<engine.HomeEstimates?>? _estimates;
   Future<String?>? _raceLine;
+  Future<String?>? _midNote;
   Future<Map<engine.IdentityLane, engine.IdentityScore>?>? _scores;
   Future<_HomeData>? _data;
   PermissionSnapshot? _perms;
@@ -106,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _data = _load(
       runs,
       scores,
+      midNote: _midNote,
       now: _now,
       sex: settings.profileSex,
       birthYear: settings.birthYear,
@@ -126,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static Future<_HomeData> _load(
     Future<List<RunSummary>> runs,
     Future<Map<engine.IdentityLane, engine.IdentityScore>?>? scores, {
+    Future<String?>? midNote,
     required DateTime now,
     required ProfileSex sex,
     required int? birthYear,
@@ -136,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? const <engine.IdentityLane, engine.IdentityScore>{}
         : await scores;
     final q = await quests;
+    final note = midNote == null ? null : await midNote;
     final snap = buildProgressSnapshot(
       r,
       now: now,
@@ -145,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     return sc == null
         ? _HomeData(r, const {}, snap, failed: true, localPaused: q.localPaused)
-        : _HomeData(r, sc, snap, localPaused: q.localPaused);
+        : _HomeData(r, sc, snap, localPaused: q.localPaused, midNote: note);
   }
 
   void _loadEstimates() {
@@ -154,9 +158,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // lands.
     final live = AppServices.of(context).live;
     if (live != null) {
+      // Distances in a "didn't count" line follow the runner's units.
+      final units = AppServices.of(context).settings.settings.units == Units.mi
+          ? engine.Units.mi
+          : engine.Units.km;
       _estimates = live.prepare().then(
-        (_) => live.homeEstimates(includeEvent: _hasEventCourse(live)),
+        (_) => live.homeEstimates(
+          includeEvent: _hasEventCourse(live),
+          units: units,
+        ),
       );
+      // A failed read just means the generic hint stays.
+      _midNote = live
+          .prepare()
+          .then<String?>((_) => live.effortNote(units: units)?.line)
+          .catchError((_) => null);
       _raceLine = live
           .prepare()
           .then<String?>((_) => live.raceEstimates()?.homeLine)
@@ -170,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .catchError((_) => null);
     } else {
       _scores = null;
+      _midNote = null;
     }
   }
 
@@ -336,6 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               sex: settings.profileSex,
                               age: age,
                               presetEdits: settings.allPresetEdits,
+                              midNote: data.midNote,
                             );
                       // The running plan, if any: judged from History's index
                       // rows and the same scores as the hero.
@@ -621,8 +639,12 @@ class _HomeData {
     this.snapshot, {
     this.failed = false,
     this.localPaused = const {},
+    this.midNote,
   });
   final bool failed;
+
+  /// Why the latest long run did not count for MID, if known.
+  final String? midNote;
 
   /// The weeks the runner paused herself or himself (Undo can lift these).
   final Set<int> localPaused;

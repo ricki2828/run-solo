@@ -444,4 +444,209 @@ void main() {
     final perRun = sw.elapsedMilliseconds / 5;
     expect(perRun, lessThan(50), reason: '$perRun ms per 2 h run');
   });
+
+  group('a 5K goal run that reaches 5K counts despite a short break', () {
+    final goal5k = SessionSpec.goalDistance(5000, '5K');
+    // 800 s at 4 m/s (3.2 km), a break, then 453 s more: 5.012 km.
+    RunFile goalRun({
+      int? pause,
+      int? gap,
+      Map<int, double> jump = const {},
+      SessionSpec? session,
+      RunMode mode = RunMode.intervals,
+    }) => build(
+      [(800, 4.0), (453, 4.0)],
+      mode: mode,
+      session: session ?? goal5k,
+      pauseAfterPiece: {0: ?pause},
+      gapAfterPiece: {0: ?gap},
+      jumpAtSecond: jump,
+    );
+
+    test('a 30 s pause: counted, at moving time (the pause comes out)', () {
+      final r = find(goalRun(pause: 30));
+      final k5 = effort(r, BestEffortDistance.k5);
+      expect(
+        k5.elapsedMs,
+        closeTo(1250000, 5),
+        reason: '5000 m at 4 m/s, no pause time',
+      );
+      expect(r.miss, isNull);
+    });
+
+    test('a GPS drop with distance accrued is never bridged', () {
+      // 15 s of silence in which the position moved on: not a measured
+      // effort, so the clean-stretch rule applies.
+      final r = find(goalRun(gap: 15));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.gpsDropped);
+    });
+
+    test('a recording gap (kill and resume) is never bridged', () {
+      final run = goalRun();
+      final stopped = RunFile(
+        id: run.id,
+        device: run.device,
+        app: run.app,
+        start: run.start,
+        end: run.end,
+        tz: run.tz,
+        mode: run.mode,
+        session: goal5k,
+        units: run.units,
+        laps: run.laps,
+        gaps: [Span(799001, 801000)],
+        samples: run.samples,
+      );
+      final r = find(stopped);
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.recordingStopped);
+    });
+
+    test('a long pause is not bridged: no fake-fast effort', () {
+      final r = find(goalRun(pause: 120));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.pausedLong);
+      expect(r.miss!.reason, 'paused for over a minute');
+      expect(r.miss!.goalM, 5000);
+    });
+
+    test('pauses add up against the limit', () {
+      final r = find(
+        build(
+          [(500, 4.0), (500, 4.0), (253, 4.0)],
+          mode: RunMode.intervals,
+          session: goal5k,
+          pauseAfterPiece: {0: 35, 1: 35},
+        ),
+      );
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.pausedLong);
+    });
+
+    test('pauses after the goal distance do not count against it', () {
+      // 20 s pause at 2 km, 5 km reached at 1250 s of running, then a walk
+      // with 90 s of cool-down pauses: the 5K still counts.
+      final r = find(
+        build(
+          [(500, 4.0), (750, 4.0), (100, 1.0), (100, 1.0)],
+          mode: RunMode.intervals,
+          session: goal5k,
+          pauseAfterPiece: {0: 20, 1: 45, 2: 45},
+        ),
+      );
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('the bridged window sits on the run clock for grade and HR', () {
+      final r = find(goalRun(pause: 30));
+      final k5 = effort(r, BestEffortDistance.k5);
+      expect(k5.startMs, 0);
+      expect(k5.pausedMs, closeTo(30000, 5));
+      expect(k5.endMs, closeTo(1280000, 5), reason: 'moving time + pause');
+      final back = BestEffort.fromJson(BestEffortDistance.k5, k5.toJson());
+      expect(back.endMs, k5.endMs);
+      expect(back.pausedMs, k5.pausedMs);
+      // A clean effort carries no paused time.
+      final clean = find(build([(1300, 4.0)]));
+      expect(effort(clean, BestEffortDistance.k5).pausedMs, 0);
+    });
+
+    test('a GPS jump is never bridged', () {
+      final r = find(goalRun(pause: 20, jump: {300: 300}));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.gpsJump);
+    });
+
+    test('a run short of the goal distance has nothing to bridge', () {
+      final r = find(
+        build(
+          [(600, 4.0), (400, 4.0)],
+          mode: RunMode.intervals,
+          session: goal5k,
+          pauseAfterPiece: {0: 30},
+        ),
+      );
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss, isNull, reason: 'under 5 km: nothing to explain');
+    });
+
+    test('a 10K goal run bridges its 10K, not a 5K goal bridge', () {
+      final r = find(
+        build(
+          [(1000, 4.0), (1000, 4.0), (503, 4.0)],
+          mode: RunMode.intervals,
+          session: SessionSpec.goalDistance(10000, '10K'),
+          pauseAfterPiece: {0: 30},
+        ),
+      );
+      expect(effort(r, BestEffortDistance.k10).elapsedMs, closeTo(2500000, 5));
+    });
+
+    test('a Free run keeps the clean-stretch rule: no bridge', () {
+      final r = find(build([(800, 4.0), (453, 4.0)], pauseAfterPiece: {0: 30}));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.reason, 'paused at 3.2 km');
+      expect(r.miss!.goalM, isNull);
+    });
+  });
+
+  group('why a run of 5 km or more has no 5K', () {
+    RunFile free({int? pause, int? gap, Map<int, double> jump = const {}}) =>
+        build(
+          [(800, 4.0), (453, 4.0)],
+          pauseAfterPiece: {0: ?pause},
+          gapAfterPiece: {0: ?gap},
+          jumpAtSecond: jump,
+        );
+
+    test('pause', () {
+      expect(find(free(pause: 30)).miss!.reason, 'paused at 3.2 km');
+    });
+
+    test('GPS dropped', () {
+      final m = find(free(gap: 15)).miss!;
+      expect(m.kind, EffortMissKind.gpsDropped);
+      expect(m.reason, 'GPS dropped at 3.2 km');
+    });
+
+    test('GPS jump', () {
+      final m = find(free(jump: {300: 300})).miss!;
+      expect(m.kind, EffortMissKind.gpsJump);
+      expect(m.reason, startsWith('GPS jumped at '));
+    });
+
+    test('recording stopped (a declared gap)', () {
+      final run = free();
+      final stopped = RunFile(
+        id: run.id,
+        device: run.device,
+        app: run.app,
+        start: run.start,
+        end: run.end,
+        tz: run.tz,
+        mode: run.mode,
+        units: run.units,
+        laps: run.laps,
+        gaps: [Span(799001, 801000)],
+        samples: run.samples,
+      );
+      expect(find(stopped).miss!.reason, 'recording stopped at 3.2 km');
+    });
+
+    test('a clean run, or one under 5 km, has no miss', () {
+      expect(find(free()).miss, isNull);
+      expect(find(build([(600, 4.0)], pauseAfterPiece: {0: 30})).miss, isNull);
+    });
+
+    test('miss round-trips through the index JSON', () {
+      final r = find(free(pause: 30));
+      final back = RunBestEfforts.fromJson(
+        jsonDecode(jsonEncode(r.toJson())) as Map<String, Object?>,
+      );
+      expect(back.miss!.reason, 'paused at 3.2 km');
+      expect(RunBestEfforts.none.toJson().containsKey('miss'), isFalse);
+    });
+  });
 }

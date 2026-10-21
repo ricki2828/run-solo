@@ -269,7 +269,8 @@ void main() {
     });
 
     test(
-      'a trail run lifts AEROBIC only through the hero, never SPEED or MID',
+      'a trail run lifts AEROBIC only through the hero, never SPEED; with no '
+      '5K window it sets no MID',
       () {
         final scores = IdentityScores.of([hilly], now: now);
         expect(scores[IdentityLane.speed], isNull);
@@ -289,6 +290,88 @@ void main() {
       final scores = IdentityScores.of([short], now: now);
       expect(scores[IdentityLane.aerobic], isNotNull);
       expect(scores[IdentityLane.long], isNull);
+    });
+  });
+
+  group('MID: trail runs count at their hill-adjusted pace', () {
+    // A 5K trail window: 33:20 on the clock, hills worth 20% (0.8).
+    Map<BestEffortDistance, BestEffort> k5(int seconds) => {
+      BestEffortDistance.k5: best(BestEffortDistance.k5, seconds),
+    };
+
+    test('a hilly trail 5K scores at its true pace, like LONG does', () {
+      final trail = run(
+        'trail5k',
+        mode: RunMode.trail,
+        bests: k5(2000),
+        effortGrade: 0.8,
+        trailM: 5200,
+        trailMs: 2100 * 1000,
+      );
+      final mid = IdentityScores.of([trail], now: now)[IdentityLane.mid]!;
+      expect(mid.runId, 'trail5k');
+      expect(mid.source, '5K');
+      expect(
+        mid.vdot,
+        closeTo(FitnessHero.vdot(5000, (2000 * 0.8 * 1000).round()), 1e-9),
+      );
+      // The clock pace alone would score far lower.
+      expect(FitnessHero.vdot(5000, 2000 * 1000), lessThan(mid.vdot));
+    });
+
+    test('a flat road 5K of the same clock time beats nothing extra', () {
+      final road = run('road5k', bests: k5(1700), daysAgo: 2);
+      final trail = run(
+        'trail5k',
+        mode: RunMode.trail,
+        bests: k5(2000),
+        effortGrade: 0.8,
+        trailM: 5200,
+        trailMs: 2100 * 1000,
+      );
+      // 2000 s x 0.8 = 1600 s: the trail run is the faster reading.
+      expect(
+        IdentityScores.of([road, trail], now: now)[IdentityLane.mid]!.runId,
+        'trail5k',
+      );
+    });
+
+    test('a trail run with no barometer elevation does not count', () {
+      final noBaro = run(
+        'trail-nobaro',
+        mode: RunMode.trail,
+        bests: k5(1500),
+        // trailMs null: TrailScore.movingMs found no barometer.
+      );
+      expect(IdentityScores.of([noBaro], now: now)[IdentityLane.mid], isNull);
+    });
+
+    test('Cooper stays excluded from MID', () {
+      final cooper = run(
+        'cooper',
+        mode: RunMode.cooper,
+        key: ComparisonKey.cooper,
+        vo2: 51.5,
+        bests: k5(1400),
+      );
+      expect(IdentityScores.of([cooper], now: now)[IdentityLane.mid], isNull);
+    });
+
+    test('a trail 5K feeds the 5K estimate at true pace, not LONG-only', () {
+      final trail = run(
+        'trail5k',
+        mode: RunMode.trail,
+        bests: k5(2000),
+        effortGrade: 0.8,
+        trailM: 5200,
+        trailMs: 2100 * 1000,
+      );
+      final inputs = predictionInputsOf([trail]);
+      expect(inputs, hasLength(1));
+      expect(inputs.single.kind, PredictionSourceKind.bestEffort5k);
+      expect(inputs.single.effectiveMs, closeTo(1600000, 1));
+      final noBaro = run('nb', mode: RunMode.trail, bests: k5(2000));
+      expect(predictionInputsOf([noBaro]), isEmpty);
     });
   });
 }
