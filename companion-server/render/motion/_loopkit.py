@@ -124,7 +124,7 @@ class Hero:
         bb = font.getbbox(s, anchor="ls")   # relative to the anchor, at supersampled px
         self.ox, self.oy = int(x * SS + bb[0]), int(y * SS + bb[1])
         self.mask = Image.new("L", (bb[2] - bb[0], bb[3] - bb[1]), 0)
-        ImageDraw.Draw(self.mask).text((-bb[0], -bb[1]), s, font=font, fill=255)
+        ImageDraw.Draw(self.mask).text((-bb[0], -bb[1]), s, font=font, fill=255, anchor="ls")
         self.x0, self.x1 = self.ox / SS, (self.ox + self.mask.width) / SS
 
     @staticmethod
