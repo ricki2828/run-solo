@@ -753,6 +753,76 @@ void main() {
       expect(board.pbSplitsMs, [...marks, 3000000]);
     });
 
+    test('a 10K PB and an 8 km attempt that stopped at 6.6 km: the next 8 km '
+        'goal still races the 10K pace', () {
+      final spec = SessionSpec.goalDistance(8000, '8 km');
+      final stopped = LiveCandidate(
+        BoardInput(
+          runId: 'goal-stopped',
+          date: day0.add(const Duration(days: 20)),
+          mode: RunMode.intervals,
+          comparisonKey: ComparisonKey.of(spec),
+          goal: GoalResult(
+            kind: GoalKind.distance,
+            target: 8000,
+            name: '8 km',
+            reached: false,
+            stoppedAtM: 6600,
+          ),
+          goalBoardKey: GoalCatalogue.boardKeyOf(spec),
+        ),
+        const RunDerived(bestEfforts: RunBestEfforts.none),
+      );
+      final p = plan(spec, [tenKRun(1, 3000, marks), stopped]);
+      final board = p.boards.single;
+      expect(board.key, 'goal:d8000');
+      expect(board.entries, isEmpty, reason: 'nothing finished: no goal board');
+      expect(board.targetM, 8000);
+      expect(board.pbSplitsLabel, '10K');
+      expect(board.pbSplitsMs, [...marks, 3000000]);
+      expect(p.isEmpty, isFalse);
+    });
+
+    test('a 10K PB and no goal run at all still gives the goal its pace', () {
+      final spec = SessionSpec.goalDistance(7500, '7.5 km');
+      final p = plan(spec, [tenKRun(1, 3000, marks)]);
+      expect(p.boards.single.pbSplitsLabel, '10K');
+    });
+
+    test(
+      'a goal past its nearest standard PB, or past the marathon, has no pace',
+      () {
+        final halfRun = LiveCandidate(
+          BoardInput(
+            runId: 'half-1',
+            date: day0.add(const Duration(days: 1)),
+            mode: RunMode.free,
+            efforts: {
+              BestEffortDistance.half: BestEffort(
+                distance: BestEffortDistance.half,
+                elapsedMs: 6300000,
+                startMs: 0,
+                startOffsetM: 0,
+                splitsMs: [for (var k = 1; k <= 21; k++) k * 300000],
+              ),
+            },
+          ),
+          const RunDerived(bestEfforts: RunBestEfforts.none),
+        );
+        // 30 km is past the Half: the nearest standard board at or past it is the Marathon, which has no PB.
+        expect(
+          plan(SessionSpec.goalDistance(30000, '30 km'), [halfRun]).boards,
+          isEmpty,
+        );
+        expect(
+          plan(SessionSpec.goalDistance(45000, '45 km'), [halfRun]).boards,
+          isEmpty,
+        );
+        final p = plan(SessionSpec.goalDistance(15000, '15 km'), [halfRun]);
+        expect(p.boards.single.pbSplitsLabel, 'Half');
+      },
+    );
+
     test('no 10K PB, or none usable: silent, never a farther board', () {
       final spec = SessionSpec.goalDistance(8000, '8 km');
       final none = plan(spec, [goalRun(1, spec, 2500000)]);

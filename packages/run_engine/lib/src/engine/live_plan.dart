@@ -213,6 +213,28 @@ abstract final class LivePlanner {
           time ? null : Leaderboards.metresOf(key),
           goal: true,
         );
+        // A custom distance goal nobody has finished yet (or ever reached) has
+        // no board of its own, but its chase base never needed one: it comes
+        // straight from the standard PB boards. A runner with a 10K PB whose
+        // last 8 km attempt stopped at 6.6 km still hears the 10K pace on the
+        // next one. An empty board: nothing ranks, "new best" stays quiet.
+        if (out.isEmpty && !time && key.startsWith('goal:d')) {
+          final m = Leaderboards.metresOf(key);
+          final proxy = _proxyPbSplits(boards, byId, m);
+          if (proxy != null) {
+            out.add(
+              LiveBoardPlan(
+                key: key,
+                label: session.name,
+                kind: LiveBoardPlanKind.distance,
+                targetM: m,
+                entries: const [],
+                pbSplitsMs: proxy.$2,
+                pbSplitsLabel: proxy.$1,
+              ),
+            );
+          }
+        }
       case RunMode.intervals:
         if (session?.templateId == SessionSpec.parkrunId) {
           final course = courseKey;
