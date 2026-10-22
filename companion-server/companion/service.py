@@ -28,7 +28,7 @@ from .measure import MeasureMixin
 from . import measure as cv_measure
 from .config import Settings
 from .deeplink import run_link, web_twin, week_link
-from .media import GHOST_CLIP_S, Media, MediaError, from_settings
+from .media import GHOST_CLIP_S, LOOP_S, Media, MediaError, from_settings, thumbnail
 from . import feedback as cv_feedback
 from . import ops_send
 from . import notes as cv_notes
@@ -1804,7 +1804,7 @@ class Service(CheckinMixin, MeasureMixin):
         mid: str | None = None
         carries_text = False   # the delivered message holds the card's whole text and its buttons
         if media is not None:
-            out = OutCard(card_id, card["headline"], card["body"], buttons, media, links,
+            out = OutCard(card_id, card["headline"], "\n".join(x for x in (card["body"], media.caption_extra) if x), buttons, media, links,
                           short_caption=card["kind"] == "run",
                           neutral_caption=self._spoiler_caption(user["id"], card) if media.spoiler else "")
             try:
@@ -1815,7 +1815,7 @@ class Service(CheckinMixin, MeasureMixin):
                     with db.tx(self.s.db_path) as c:   # the clip's Telegram id; a run that was deleted meanwhile just fails the FK
                         try:
                             c.execute("INSERT OR REPLACE INTO media_file_ids (user_id, run_id, kind, file_id, created_at) VALUES (?,?,?,?,?)",
-                                      (user["id"], card.get("run_id"), "ghostclip", media.sent["file_id"], iso(now)))
+                                      (user["id"], card.get("run_id"), media.clip_kind, media.sent["file_id"], iso(now)))
                         except sqlite3.IntegrityError:
                             pass
             except ChannelError as e:
@@ -2082,6 +2082,19 @@ class Service(CheckinMixin, MeasureMixin):
                         log.warning("ghost clip cached still skipped: %s", type(e).__name__)
                     return dataclasses.replace(Media(), photo=still.photo if still else None, animation=True,
                                                animation_file_id=hit["file_id"], duration_s=GHOST_CLIP_S, spoiler=self.s.trail_spoiler)
+            if card["kind"] == "run" and plan.get("card") in ("light", "flood", "pb"):
+                # a run loop already sent for this run is one id, not another render and upload (an outbox retry); the still
+                # card beside it is the fallback and the thumbnail
+                with db.ro(self.s.db_path) as c:
+                    hit = c.execute("SELECT file_id FROM media_file_ids WHERE user_id=? AND run_id=? AND kind='run_loop'",
+                                    (user["id"], card.get("run_id"))).fetchone()
+                if hit:
+                    still = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs, loop=False)
+                    media = dataclasses.replace(still or Media(), animation=True, animation_file_id=hit["file_id"],
+                                                duration_s=LOOP_S, clip_kind="run_loop", thumbnail=thumbnail(still.photo if still else None))
+                    if self.s.trail_spoiler and runs and runs[0].get("app_type") == "trail":
+                        media = dataclasses.replace(media, spoiler=True)
+                    return media
             # the renderer gets the two fields it uses, never the whole card (whose body may quote a note)
             media = self.media.render(plan, {"run_id": card.get("run_id"), "headline": card["headline"]}, runs, clip=self.s.trail_clip)
             if media is not None and self.s.trail_spoiler and (

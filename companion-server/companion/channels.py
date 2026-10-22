@@ -318,7 +318,10 @@ class TelegramChannel:
                             body["reply_markup"] = {"inline_keyboard": kb}
                     attempts.append(("sendAnimation", body, None))
                 else:
-                    attempts.append(("sendAnimation", {**fields, **anim, **extra}, {"animation": ("ghost.mp4", m.video, "video/mp4")}))
+                    up = {"animation": ("moment.mp4", m.video, "video/mp4")}
+                    if m.thumbnail:   # the still card, shown before the loop plays
+                        up["thumbnail"] = ("thumb.jpg", m.thumbnail, "image/jpeg")
+                    attempts.append(("sendAnimation", {**fields, **anim, **extra}, up))
         elif m.video and len(m.video) <= VIDEO_MAX_BYTES:
             attempts.append(("sendVideo", {**fields, "supports_streaming": "true", "width": m.width, "height": m.height,
                                            "duration": m.duration_s, **({"has_spoiler": "true"} if m.spoiler else {})},

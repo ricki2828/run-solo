@@ -638,7 +638,7 @@ def transcript(m: Month, cards: list[dict], violations: list[str]) -> str:
         if buttons:
             out.append("")
             out.append("Buttons: " + " ".join(f"`[{b['label']}]`" for b in buttons))
-        vid = "VIDEO" if media.get("video") else "no video"
+        vid = "big day" if media.get("video") else "ordinary day"   # every run with splits is a loop either way
         out.append("")
         out.append(f"_Attach: card `{media.get('card')}`, {vid} (reason: {media.get('reason')})"
                    + (f"; touch `{mt['touch_kind']}`" if mt.get("touch_kind") else "") + "_")
