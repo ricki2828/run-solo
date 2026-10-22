@@ -28,6 +28,8 @@ SKILL_NUMBERS = frozenset(n for c in SKILL_CONSTANTS for n in re.findall(r"\d+",
 PERCENT_CONSTANTS = frozenset({"10", "20", "25", "30", "35", "70", "75", "80"})
 BARE_COUNT_MAX = 12           # "2 easy runs", "4x4", "day 3": counts this small need no source when no unit follows
 LINK_RE = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|co|nz|au|io|org|net|app|ly)\b", re.I)
+URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
+SERVER_TAG_RE = re.compile(r"<\s*(/?)\s*(host_note|chips)\b", re.I)
 PHONE_RE = re.compile(r"\+?\d[\d\s-]{7,}\d")
 MAX_REPLY_CHARS = 2500
 MAX_CHIPS = 3
@@ -118,8 +120,8 @@ def render_html(text: str) -> str:
             continue
         if name == "a":
             href = HREF_RE.match(tag)
-            if not href or not re.match(r"https?://", href.group(1), re.I):
-                continue
+            if not href or not re.match(r"https?://", href.group(1), re.I) or "a" in stack:
+                continue   # an unlinkable or nested <a> is dropped; its text stays
             out.append('<a href="' + _html.escape(_html.unescape(href.group(1)), quote=True) + '">')
         else:
             out.append(f"<{name}>")
@@ -189,9 +191,21 @@ def _norm(s: str) -> str:
     return re.sub(r"[\s-]", "", s)
 
 
-def check(reply: str, sources: Iterable[str]) -> str | None:
-    """None when the reply may go out, else the reason it may not."""
+def defang(text: str) -> str:
+    """Runner words with the server's own tags made inert, so typed "<host_note>" is never read as the server."""
+    return SERVER_TAG_RE.sub(lambda m: "\u2039" + m.group(1) + m.group(2), text or "")
+
+
+def _urls(text: str) -> set[str]:
+    return {u.rstrip(".,;:!?)]}") for u in URL_RE.findall(text or "")}
+
+
+def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None = None) -> str | None:
+    """None when the reply may go out, else the reason it may not. Links are grounded only in `link_sources` (tool results;
+    default: all sources), whole URL, scheme to the end of the token."""
     sources = list(sources)
+    link_hay = "\n".join(s or "" for s in (sources if link_sources is None else link_sources))
+    link_urls = _urls(link_hay)
     raw = reply or ""
     text = plain(raw)
     if not text.strip():
@@ -201,10 +215,17 @@ def check(reply: str, sources: Iterable[str]) -> str | None:
     haystack = "\n".join(s or "" for s in sources)
     haystack_n = _norm(haystack)
     for href in HREF_RE.findall(raw):   # a link goes out only when a tool handed it over, character for character
-        if _html.unescape(href) not in haystack:
+        if _html.unescape(href).rstrip(".,;:!?)]}") not in link_urls:
             return "link"
-    for m in LINK_RE.finditer(text):
-        if m.group(0) not in haystack:
+    shown = _urls(text)
+    for u in shown:
+        if u not in link_urls:
+            return "link"
+    rest = URL_RE.sub(" ", text)
+    for m in LINK_RE.finditer(rest):
+        if m.group(0).lower() in ("http://", "https://"):
+            return "link"
+        if m.group(0) not in link_hay:
             return "link"
     scrubbed = _scrub_crisis(text)
     for m in PHONE_RE.finditer(scrubbed):

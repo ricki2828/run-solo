@@ -261,6 +261,10 @@ class CoachChat:
         user = self.svc._user_by_ref(inb.channel, inb.ref)
         taken = bool(user) and self.accept(ch, replace(inb, text=inb.chip or "", chip=None), user, now)
         ack = getattr(ch, "ack_chip", None)
+        if user and not taken and self.gate_for(user["id"]) == "ops_paused":
+            if ack:
+                ack(inb, "")   # an ops-paused runner gets silence: no toast, as elsewhere
+            return
         if ack:
             ack(inb, (inb.chip or "") if taken else
                 (COACH_PAUSED if user and self.gate_for(user["id"]) == "paused" else "The coach chat isn't on right now."))
@@ -697,6 +701,7 @@ class CoachChat:
         """The model loop: tool turns, then a checked reply. A reply the validator refuses goes back to the model once with
         the reason (repair turn); a second miss is the template."""
         sources = [job.message] + [h["content"] for h in job.history]
+        tool_sources: list[str] = []   # the only place a link may come from: runner text and run notes never count
         res = AgentResult(None, [], "ok", sources)
         if not self.s.openrouter_key or self.prompt is None:
             self._settle(job.ledger_id, now, None, "no_key", None)
@@ -708,12 +713,12 @@ class CoachChat:
         registry = self.prompt.registry
         ctx = ToolContext(self.svc, job.user_id, now, job.job_id,
                           placeholder=(lambda text: self._send_placeholder(job, ch, ref, text)) if ch is not None else (lambda text: None))
-        history = [dict(h) for h in job.history]
+        history = [{**h, "content": validator.defang(h["content"])} for h in job.history]
         if history:   # second cache breakpoint: the earlier conversation is read from cache on the next turn
             last = history[-1]
             history[-1] = {"role": last["role"], "content": [{"type": "text", "text": last["content"],
                                                                "cache_control": {"type": "ephemeral"}}]}
-        turn_text = job.message
+        turn_text = validator.defang(job.message)
         extra = registry.context(ctx)
         if extra:
             sources.append(extra)
@@ -778,6 +783,7 @@ class CoachChat:
                     result = registry.call(name, fn.get("arguments"), ctx) if registry.has(name) else tools.call(name, fn.get("arguments"))
                     enc = tools.encode(result)
                     sources.append(enc)
+                    tool_sources.append(enc)
                     messages.append({"role": "tool", "tool_call_id": call_id, "content": enc})
                 continue
             content = msg.get("content")
@@ -787,10 +793,10 @@ class CoachChat:
                 res.outcome = "tool_loop" if final else "empty"
                 return res
             body, chips = validator.split_chips(validator.tidy(content))
-            bad = validator.check(body, sources)
+            bad = validator.check(body, sources, tool_sources)
             if bad is None:
                 res.reply, res.outcome = body, "repaired" if repairs else "ok"
-                res.chips = [c for c in chips if validator.check(c, sources) is None]
+                res.chips = [c for c in chips if validator.check(c, sources, tool_sources) is None]
                 return res
             res.outcome = f"rejected:{bad.split(':')[0]}"
             if repairs >= self.s.coach_repair_turns:
