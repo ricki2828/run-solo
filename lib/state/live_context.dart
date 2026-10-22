@@ -384,7 +384,7 @@ class LiveContextSource {
               LiveBoardKind.distanceInTime,
           },
           targetM: b.targetM,
-          bestMs: b.bestMs,
+          pbSplitsMs: b.pbSplitsMs,
           entries: [
             for (final e in b.entries)
               LiveEntry(

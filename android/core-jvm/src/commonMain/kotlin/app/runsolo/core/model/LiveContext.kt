@@ -173,8 +173,11 @@ data class LiveBoard(
     /** Distance boards: the board's distance in metres. */
     val targetM: Double? = null,
     val entries: List<LiveEntry>,
-    /** Distance boards: the best finish (ms) over every earlier run (the PB); null = unknown. */
-    val bestMs: Double? = null,
+    /**
+     * Distance boards: the PB window's own cumulative time at each whole km (km 1 .. the board's km, dropout-bridged),
+     * the pace "chase your best" races; null = unknown.
+     */
+    val pbSplitsMs: List<Long>? = null,
 ) {
     init {
         require(entries.size <= LiveContext.MAX_ENTRIES) { "at most ${LiveContext.MAX_ENTRIES} entries on $key" }
@@ -194,7 +197,7 @@ data class LiveBoard(
         "kind" to kind.name,
         "targetM" to targetM,
         "entries" to entries.map { it.toJson() },
-    ).also { if (bestMs != null) it["bestMs"] = bestMs }
+    ).also { if (pbSplitsMs != null) it["pbSplitsMs"] = pbSplitsMs }
 
     companion object {
         fun fromJson(m: Map<String, Any?>) = LiveBoard(
@@ -203,7 +206,7 @@ data class LiveBoard(
             kind = LiveBoardKind.valueOf(m.string("kind")),
             targetM = (m["targetM"] as? Number)?.toDouble(),
             entries = m.list("entries").map { LiveEntry.fromJson(it.asObj("entries[]")) },
-            bestMs = (m["bestMs"] as? Number)?.toDouble()?.takeIf { it.isFinite() },
+            pbSplitsMs = (m["pbSplitsMs"] as? List<*>)?.map { (it as? Number ?: throw IllegalArgumentException("pbSplitsMs")).toLong() },
         )
     }
 }
