@@ -99,6 +99,17 @@ def _day_word(d: date) -> str:
     return d.strftime("%A")
 
 
+def _day_taken(c, uid: str, to: date, zone_id) -> bool:
+    if c.execute("SELECT 1 FROM coach_proposals WHERE user_id=? AND state='confirmed' AND to_day=?", (uid, to.isoformat())).fetchone():
+        return True
+    lo = datetime.combine(to - timedelta(days=1), datetime.min.time()).isoformat() + "Z"
+    hi = datetime.combine(to + timedelta(days=2), datetime.min.time()).isoformat() + "Z"
+    for r in c.execute("SELECT start_utc FROM runs WHERE user_id=? AND start_utc BETWEEN ? AND ?", (uid, lo, hi)):
+        if to_local(parse_iso(r["start_utc"]), zone_id).date() == to:
+            return True
+    return False
+
+
 def label_for(change: str, name: str, frm: date, to: date | None) -> str:
     if change == "move" and to is not None:
         return f"Move {_day_word(frm)}'s {name} to {_day_word(to)}"
@@ -132,6 +143,8 @@ def call(name: str, args: dict, ctx) -> dict:
                 raise ValueError("pick a day within the next two weeks")
         elif res.type == "easy":
             raise ValueError("that session is already easy")
+        if to is not None and _day_taken(c, uid, to, u["zone_id"]):
+            raise ValueError("that day already has a run or a confirmed move: ask the runner whether to double up or pick another day")
         label = label_for(change, _session_name(planned, res), res.day, to)
         c.execute("UPDATE coach_proposals SET state='superseded', decided_at=? WHERE user_id=? AND state='pending'", (iso(now), uid))
         pid = c.execute("INSERT INTO coach_proposals (user_id, job_id, change, from_day, to_day, label, created_at) "
@@ -181,6 +194,9 @@ def after_reply(coach, ch, ref: str, uid: str, job_id: int) -> None:
             props = [dict(r) for r in c.execute("SELECT id, label FROM coach_proposals WHERE user_id=? AND job_id=? "
                                                  "AND state='pending' AND offered=0", (uid, job_id))]
             wait = c.execute("SELECT 1 FROM coach_loc_wait WHERE user_id=? AND job_id=? AND prompted=0", (uid, job_id)).fetchone()
+            old = c.execute("SELECT 1 FROM coach_loc_wait WHERE user_id=? AND job_id<>? AND prompted=1", (uid, job_id)).fetchone()
+            if old:   # the runner carried on in words (typed a place): the request is over, take its keyboard away
+                c.execute("DELETE FROM coach_loc_wait WHERE user_id=? AND job_id<>? AND prompted=1", (uid, job_id))
             for p in props:
                 c.execute("UPDATE coach_proposals SET offered=1 WHERE id=?", (p["id"],))
             if wait:
@@ -188,14 +204,20 @@ def after_reply(coach, ch, ref: str, uid: str, job_id: int) -> None:
         for p in props:
             _send_quiet(ch.send_text, ref, f"Proposed change: {p['label']}. Nothing changes until you confirm (this stays open for "
                         "24 hours).", buttons=[[("Confirm", f"cp:{p['id']}:y"), ("Decline", f"cp:{p['id']}:n")]])
+        if old and not wait and getattr(ch, "supports_html", False):
+            _send_quiet(ch.send_text, ref, "No need to share a location now.", remove_keyboard=True)
         if wait and getattr(ch, "supports_html", False):
             _send_quiet(ch.send_text, ref, "Tap the button to share where you are, or just type your suburb. I use it once to look "
                         "up places near you and don't keep it.", request_location=True)
     except Exception as e:
         log.warning("coach after_reply failed: %s", type(e).__name__)
+
+
+def refresh_memory(svc, uid: str) -> None:
+    """The rolling summary: a model call, so the coach worker runs it after the reply is out. Never raises."""
     try:
         from . import memory
-        memory.refresh_if_due(coach.svc, uid, now_utc())
+        memory.refresh_if_due(svc, uid, now_utc())
     except Exception as e:
         log.warning("coach memory refresh failed: %s", type(e).__name__)
 

@@ -289,7 +289,7 @@ def medical_check(text: str, mode: str | None = None) -> str | None:
 # "I've pulled Thursday's tempo", "I've taken the hard sessions off the plan": a first-person claim that the plan changed. It may only
 # go out when a matching write tool ran in this job. No write tool exists yet (PR4 adds propose_plan_change), so today every such
 # claim is refused; `check(..., wrote=...)` is the hook: pass the names of the write tools that returned ok this job.
-PLAN_WRITE_TOOLS = frozenset({"propose_plan_change"})
+PLAN_WRITE_TOOLS: frozenset[str] = frozenset()   # propose_plan_change only queues a proposal: it never licenses "I've moved it"
 _CLAIM_VERB = (r"(?:moved|pulled|swapped|swapt|removed|cancel+ed|rescheduled|re-?scheduled|taken|cleared|paused|dropped|changed|shifted|"
                r"switched|replaced|scrapped|cut|eased|adjusted|updated|bumped|pushed|deleted|postponed|called\s+off|put\s+back)")
 _CLAIM_OBJ = (r"(?:plans?|sessions?|runs?|tempo|long\s+run|intervals?|4x4|strides|schedule|week|workouts?|training|"

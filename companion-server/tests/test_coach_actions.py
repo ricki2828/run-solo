@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import timedelta
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -554,3 +554,66 @@ def test_parse_location_and_action_messages():
     assert a.action == "cp:12:y" and a.callback_id and a.card_id is None and a.chip is None
     assert TelegramChannel.parse(tg_callback(8, "cm:all")).action == "cm:all"
     assert TelegramChannel.parse(tg_callback(9, "cm:s")).action == "cm:s"
+
+
+# ---------------------------------------------------------------------------------------------------- review fixes
+def test_the_summary_runs_in_the_worker_after_the_reply_never_inside_send_job(cc, fakes, monkeypatch):
+    calls = []
+    monkeypatch.setattr(memory, "refresh_if_due", lambda svc, uid, now: calls.append(uid))
+    say(cc, "hello")
+    cc.svc.coach.step(T0 + timedelta(seconds=10))   # claims the job and runs it, which sends and then refreshes
+    assert len(calls) == 1
+    calls.clear()
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("INSERT INTO coach_jobs (user_id, msg_mac, kind, state, reply, reply_source, created_at, replied_at) "
+                    "VALUES (?,?,?,?,?,?,?,?)", (uid_of(cc), "m2", "chat", "replied", "Hi", "llm", "2026-10-21T01:00:00Z", "2026-10-21T01:00:00Z"))
+    jid = q(cc, "SELECT id FROM coach_jobs WHERE msg_mac='m2'")[0]["id"]
+    assert cc.svc.coach.send_job(jid) is True and calls == []   # a send alone (webhook or red-rail path) never calls the model
+
+
+def test_a_leftover_share_location_keyboard_is_removed_when_the_runner_types_instead(cc, fakes, osm):
+    fakes.coach_queue = [coach_tools(("find_care", {"kind": "physio"})), coach_text("Which suburb?")]
+    say(cc, "need a physio")
+    run_worker(cc)
+    fakes.coach_queue = [coach_text("Got it, thanks.")]
+    say(cc, "Tanjong Pagar", now=T0 + timedelta(minutes=3))
+    run_worker(cc, now=T0 + timedelta(minutes=3, seconds=10))
+    last = [b for m, b in fakes.tg if m == "sendMessage"][-1]
+    assert last["reply_markup"] == {"remove_keyboard": True}
+    assert q(cc, "SELECT * FROM coach_loc_wait") == []
+
+
+def test_a_false_alarm_unblocks_proposals_including_red72_followups(cc, fakes):
+    from companion.channels import Inbound
+    from companion.coach.chat import FALSE_ALARM
+    plan(cc)
+    uid = uid_of(cc)
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("INSERT INTO coach_jobs (user_id, msg_mac, kind, state, triage, outcome, created_at, replied_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (uid, "r1", "chat", "sent", "red", "triage:red:calf", "2026-10-21T00:30:00Z", "2026-10-21T00:30:00Z"))
+        con.execute("INSERT INTO coach_jobs (user_id, msg_mac, kind, state, triage, created_at) VALUES (?,?,?,?,?,?)",
+                    (uid, "r2", "chat", "sent", "red72", "2026-10-21T00:40:00Z"))
+    with db.ro(cc.svc.s.db_path) as con:
+        assert actions.in_triage_window(con, uid, T0)
+    user = dict(q(cc, "SELECT * FROM users WHERE id=?", uid)[0])
+    assert cc.svc.coach.false_alarm(cc.svc.channels["telegram"], Inbound("telegram", OWNER, "fa", chip=FALSE_ALARM), user, T0)
+    with db.ro(cc.svc.s.db_path) as con:
+        assert not actions.in_triage_window(con, uid, T0)
+    propose(cc, fakes)
+    assert q(cc, "SELECT state FROM coach_proposals") == [{"state": "pending"}]
+
+
+def test_no_move_onto_a_day_that_already_has_a_run_or_a_confirmed_move(cc, fakes):
+    plan(cc)
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, received_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)", (uid_of(cc), "fri", "2026-10-22T20:00:00Z", "2026-10-22T21:00:00Z", 780, "Pacific/Auckland", "easy", 3600, 9000, "2026-10-22T21:00:00Z"))
+        con.execute("UPDATE runs SET plan_next_type='quality', plan_next_day=?, plan_next_session_name='Tempo'", (THURSDAY,))
+    propose(cc, fakes, text="Friday is taken.")   # 20:00Z Thursday = Friday 9 am in Auckland
+    assert q(cc, "SELECT * FROM coach_proposals") == []
+    out = [json.loads(m["content"]) for m in fakes.coach_calls[-1]["messages"] if m["role"] == "tool"][0]
+    assert out["ok"] is False and "already has a run" in out["error"]
+    propose(cc, fakes, ("propose_plan_change", {"change": "move", "to_day": "saturday", "reason": "x"}), "Saturday?")
+    tap(cc, f"cp:{q(cc, 'SELECT id FROM coach_proposals')[0]['id']}:y")
+    with db.ro(cc.svc.s.db_path) as con:
+        assert actions._day_taken(con, uid_of(cc), date(2026, 10, 24), "Pacific/Auckland")

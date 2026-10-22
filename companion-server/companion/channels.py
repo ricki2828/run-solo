@@ -241,11 +241,13 @@ class TelegramChannel:
         return {"inline_keyboard": [[{"text": label[:40], "callback_data": data} for label, data in row] for row in buttons]}
 
     def send_text(self, ref: str, text: str, html: bool = False, buttons: list[list[tuple[str, str]]] | None = None,
-                  request_location: bool = False) -> str:
+                  request_location: bool = False, remove_keyboard: bool = False) -> str:
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         markup = self._markup(buttons)
         if markup:
             payload["reply_markup"] = markup
+        if remove_keyboard:   # takes a leftover "Share location" keyboard away (coach PR4)
+            payload["reply_markup"] = {"remove_keyboard": True}
         if request_location:   # a one-shot reply keyboard with a single "Share location" button (coach PR4)
             payload["reply_markup"] = {"keyboard": [[{"text": "Share location", "request_location": True}]],
                                        "one_time_keyboard": True, "resize_keyboard": True}

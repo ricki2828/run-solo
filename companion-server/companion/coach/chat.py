@@ -280,6 +280,8 @@ class CoachChat:
                               "WHERE user_id=? AND kind='injury' AND state='active' AND source='triage'", (iso(now), user["id"])).rowcount
             jobs = c.execute("UPDATE coach_jobs SET triage='red_cleared' WHERE user_id=? AND triage='red' "
                              "AND outcome LIKE 'triage:red:%'", (user["id"],)).rowcount
+            if jobs:   # PR4: the red72 follow-ups stop counting too, so plan proposals unblock
+                c.execute("UPDATE coach_jobs SET triage='red_cleared' WHERE user_id=? AND triage='red72'", (user["id"],))
             if jobs:
                 self._message(c, user["id"], None, "runner", FALSE_ALARM, now)
                 self._message(c, user["id"], None, "coach", FALSE_ALARM_REPLY, now)
@@ -706,6 +708,7 @@ class CoachChat:
             self._fallback_alert(c, now)
         log.info("coach job=%s source=%s outcome=%s", job.job_id, source, outcome)
         self.send_job(job.job_id)
+        coach_actions.refresh_memory(self.svc, job.user_id)   # PR4: the worker, after the reply is out; never the webhook
 
     def _fallback_alert(self, c, now: datetime) -> None:
         since = iso(now - timedelta(hours=24))
