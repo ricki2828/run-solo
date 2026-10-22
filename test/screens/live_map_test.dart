@@ -338,7 +338,7 @@ void main() {
     Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
     final size = fig('free-distance').style!.fontSize!;
     expect(size, greaterThanOrEqualTo(64));
-    expect(fig('timer').style!.fontSize, size);
+    expect(fig('timer').style!.fontSize, lessThan(size));
     // 21-Oct review: average pace is demoted; the current-pace dial is the
     // second-largest number.
     expect(fig('run-average').style!.fontSize, lessThan(size));

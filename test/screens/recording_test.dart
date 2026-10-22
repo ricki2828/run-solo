@@ -547,7 +547,7 @@ void main() {
   // Founder 3-Oct: distance and time are one size, distance first. 21-Oct UI
   // review reverses the average pace: it is demoted so the current-pace dial
   // is the second-largest number.
-  group('free and trail: distance and time equal, dial second', () {
+  group('free and trail: distance first, then the dial, then time', () {
     for (final mode in [RecordMode.free, RecordMode.trail]) {
       for (final h in [800, 640]) {
         testWidgets('${mode.name} at 360 x $h', (tester) async {
@@ -561,7 +561,7 @@ void main() {
           final pace = fig('run-average');
           final size = distance.style!.fontSize!;
           expect(size, greaterThanOrEqualTo(36));
-          expect(time.style!.fontSize, size);
+          expect(time.style!.fontSize, lessThan(size));
           expect(pace.style!.fontSize, lessThan(size));
           // Same ink on all three, in Bone.
           expect(distance.style!.color, RunSoloTokens.dark.inkPrimary);
@@ -582,6 +582,9 @@ void main() {
           );
           expect(dial.style!.fontSize, greaterThanOrEqualTo(56));
           expect(dial.style!.fontSize, lessThan(size));
+          if (h == 800) {
+            expect(dial.style!.fontSize, greaterThanOrEqualTo(72));
+          }
           expect(dial.style!.fontSize, greaterThan(pace.style!.fontSize!));
           expect(
             at('dial-pace').top,

@@ -4,14 +4,15 @@ import '../state/inrun_moments.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
 
-/// The in-run moment (21-Oct UI review, finding 2): a plate that scales in
-/// over the zone flood, glows, holds, and goes, in [shownFor]. Calm between
-/// moments, drama at one. Never takes a tap, never outlasts [shownFor], and
-/// with [reduced] it only appears and disappears (no scale, no glow).
+/// The in-run moment (21-Oct UI review, finding 2): a scrim over the whole
+/// run screen so the numbers underneath recede, and one full-width band with
+/// a big label and key figure that scales in, glows, holds, and goes, in
+/// [shownFor]. Calm between moments, drama at one. Never takes a tap, never
+/// outlasts [shownFor], and with [reduced] it only appears and disappears
+/// (no scale, no glow).
 ///
-/// Colours come from the flood theme: a plate of the flood's ink with the
-/// headline in the flood's own colour ([accent]) where that reads, else in
-/// the flood's background colour. Every figure is 64 sp or more.
+/// Colours: a deep shade of the zone flood ([accent]) for scrim and band,
+/// the zone colour itself for the key figure, bone for the label.
 class InrunMomentOverlay extends StatefulWidget {
   const InrunMomentOverlay({
     super.key,
@@ -32,7 +33,7 @@ class InrunMomentOverlay extends StatefulWidget {
   static const Duration shownFor = Duration(milliseconds: 1500);
 
   /// Headline and label sizes (sp): both clear the 36 sp number floor.
-  static const double headlineSize = 88;
+  static const double headlineSize = 96;
   static const double labelSize = 28;
 
   @override
@@ -80,100 +81,123 @@ class _InrunMomentOverlayState extends State<InrunMomentOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
     final m = widget.moment;
-    final plate = t.inkPrimary;
-    // The headline in the flood's own colour where it reads on the plate
-    // (3:1, large type), else the flood's base.
-    final headline = HrZones.contrast(widget.accent, plate) >= 3
+    final deep = Color.lerp(widget.accent, const Color(0xFF000000), 0.82)!;
+    const bone = Color(0xFFF3EFE6);
+    // The zone colour for the key figure where it reads on the deep band
+    // (a dark flood does not), else bone.
+    final figure = HrZones.contrast(widget.accent, deep) >= 4.5
         ? widget.accent
-        : t.bgBase;
+        : bone;
     final reduced = widget.reduced;
     return IgnorePointer(
       child: Semantics(
         liveRegion: true,
         label: '${m.label} ${m.headline}${m.sub == null ? '' : ', ${m.sub}'}',
         excludeSemantics: true,
-        child: Align(
-          alignment: const Alignment(0, -0.1),
-          child: AnimatedBuilder(
-            animation: _c,
-            builder: (context, child) {
-              final fade = reduced
-                  ? (_c.value < 0.96 ? 1.0 : 0.0)
-                  : _fade.value;
-              final scale = reduced ? 1.0 : _scale.value;
-              return Opacity(
-                opacity: fade,
-                child: Transform.scale(scale: scale, child: child),
-              );
-            },
-            child: Container(
-              key: ValueKey('inrun-moment-${m.kind.name}'),
-              margin: const EdgeInsets.symmetric(horizontal: Space.x24),
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.x24,
-                vertical: Space.x16,
-              ),
-              decoration: BoxDecoration(
-                color: plate,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: reduced
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: plate.withValues(alpha: 0.55),
-                          blurRadius: 48,
-                          spreadRadius: 6,
-                        ),
-                      ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final fade = reduced ? (_c.value < 0.96 ? 1.0 : 0.0) : _fade.value;
+            final scale = reduced ? 1.0 : _scale.value;
+            return SizedBox.expand(
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Text(
-                    m.label,
-                    key: const ValueKey('inrun-moment-label'),
-                    textAlign: TextAlign.center,
-                    style: RunSoloType.title28.copyWith(
-                      fontSize: InrunMomentOverlay.labelSize,
-                      color: t.bgBase,
+                  // Everything under the moment recedes: nothing peeks out
+                  // from behind the band.
+                  Opacity(
+                    opacity: fade,
+                    child: ColoredBox(
+                      key: const ValueKey('inrun-moment-scrim'),
+                      color: deep.withValues(alpha: 0.9),
                     ),
                   ),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      m.headline,
-                      key: const ValueKey('inrun-moment-headline'),
-                      softWrap: false,
-                      style: RunSoloType.display44.copyWith(
-                        fontSize: RunSoloType.runSize(
-                          InrunMomentOverlay.headlineSize,
+                  Center(
+                    child: Opacity(
+                      opacity: fade,
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Container(
+                          key: ValueKey('inrun-moment-${m.kind.name}'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Space.x16,
+                            vertical: Space.x24,
+                          ),
+                          decoration: BoxDecoration(
+                            color: deep,
+                            boxShadow: reduced
+                                ? null
+                                : [
+                                    BoxShadow(
+                                      color: widget.accent.withValues(
+                                        alpha: 0.6,
+                                      ),
+                                      blurRadius: 56,
+                                      spreadRadius: 8,
+                                    ),
+                                  ],
+                          ),
+                          child: _band(m, bone, figure),
                         ),
-                        fontWeight: FontWeight.w800,
-                        color: headline,
-                        height: 1.0,
                       ),
                     ),
                   ),
-                  if (m.sub != null) ...[
-                    const SizedBox(height: Space.x4),
-                    Text(
-                      m.sub!,
-                      key: const ValueKey('inrun-moment-sub'),
-                      textAlign: TextAlign.center,
-                      style: RunSoloType.title28.copyWith(
-                        fontSize: InrunMomentOverlay.labelSize,
-                        color: t.bgBase,
-                      ),
-                    ),
-                  ],
                 ],
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
   }
+
+  Widget _band(InrunMoment m, Color bone, Color figure) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          m.label,
+          key: const ValueKey('inrun-moment-label'),
+          softWrap: false,
+          style: RunSoloType.title28.copyWith(
+            fontSize: InrunMomentOverlay.labelSize,
+            fontWeight: FontWeight.w800,
+            color: bone,
+          ),
+        ),
+      ),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          m.headline,
+          key: const ValueKey('inrun-moment-headline'),
+          softWrap: false,
+          style: RunSoloType.display44.copyWith(
+            fontSize: RunSoloType.runSize(InrunMomentOverlay.headlineSize),
+            fontWeight: FontWeight.w800,
+            color: figure,
+            height: 1.0,
+          ),
+        ),
+      ),
+      if (m.sub != null) ...[
+        const SizedBox(height: Space.x4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            m.sub!,
+            key: const ValueKey('inrun-moment-sub'),
+            softWrap: false,
+            style: RunSoloType.title28.copyWith(
+              fontSize: InrunMomentOverlay.labelSize,
+              color: bone,
+            ),
+          ),
+        ),
+      ],
+    ],
+  );
 }

@@ -1975,7 +1975,8 @@ class _FreeRunBlock extends StatelessWidget {
   /// The current pace is the second-largest number on the screen (21-Oct UI
   /// review): 56 px numerals or more in every plan. Average pace is demoted
   /// to the small [AuxFigure] size.
-  static final double _dialPaceSize = RunSoloType.runSize(56);
+  static double _dialPaceSize(double size) =>
+      RunSoloType.runSize((size * 0.8).clamp(36.0, 72.0));
 
   static double _textH(TextStyle style) {
     final p = TextPainter(
@@ -2081,7 +2082,7 @@ class _FreeRunBlock extends StatelessWidget {
                         units: units,
                         onZone: true,
                         paceStyle: AuxFigure.style.copyWith(
-                          fontSize: _dialPaceSize,
+                          fontSize: _dialPaceSize(size),
                         ),
                       ),
                     ),
@@ -2094,7 +2095,7 @@ class _FreeRunBlock extends StatelessWidget {
                     beside: true,
                     dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
                     paceStyle: AuxFigure.style.copyWith(
-                      fontSize: _dialPaceSize,
+                      fontSize: _dialPaceSize(size),
                     ),
                   );
             final clusters = <Widget>[
@@ -2190,11 +2191,12 @@ class _FreeRunBlock extends StatelessWidget {
       pace =
           w / 2 +
           Space.x4 +
-          _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize)) +
+          _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize(size))) +
           label;
     } else {
       final paceCol =
-          label + _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize));
+          label +
+          _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize(size)));
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
     final ghost = trail == null
@@ -2204,7 +2206,11 @@ class _FreeRunBlock extends StatelessWidget {
   }
 }
 
-/// Free / Trail numbers: distance and time big and equal, the run's average
+class _FreeBlockSizes {
+  static double time(double size) => size * 0.88;
+}
+
+/// Free / Trail numbers: distance big, time a step down and equal, the run's average
 /// pace demoted to the small [AuxFigure] size so the current-pace dial under
 /// them is the second-largest read (21-Oct UI review, finding 3). [figures]
 /// is distance, time, average pace; [size] the shared big size.
@@ -2233,6 +2239,7 @@ class _FreeFigures extends StatelessWidget {
       fontWeight: FontWeight.w700,
       color: valueColor,
     );
+    final mid = big.copyWith(fontSize: _FreeBlockSizes.time(size));
     final small = AuxFigure.style.copyWith(color: valueColor);
     Widget one(int i, TextStyle style) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2259,14 +2266,14 @@ class _FreeFigures extends StatelessWidget {
         one(0, big),
         const SizedBox(height: Space.x4),
         if (stacked) ...[
-          one(1, big),
+          one(1, mid),
           const SizedBox(height: Space.x4),
           one(2, small),
         ] else
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(child: one(1, big)),
+              Expanded(child: one(1, mid)),
               const SizedBox(width: Space.x16),
               Expanded(child: one(2, small)),
             ],
@@ -3516,11 +3523,16 @@ class EventBlock extends StatelessWidget {
         key: ValueKey(key),
         mainAxisSize: MainAxisSize.min,
         children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: odo && kOdometerDistance && !dashed
-                ? OdometerDistance(value: text, style: style)
-                : Text(text, softWrap: false, style: style),
+          // 8 dp of clear air before the zone ladder: the headline scales to
+          // fit inside it (21-Oct review).
+          Padding(
+            padding: const EdgeInsets.only(right: Space.x8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: odo && kOdometerDistance && !dashed
+                  ? OdometerDistance(value: text, style: style)
+                  : Text(text, softWrap: false, style: style),
+            ),
           ),
           Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
         ],
