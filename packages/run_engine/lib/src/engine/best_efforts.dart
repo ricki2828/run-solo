@@ -461,7 +461,9 @@ class BestEffortFinder {
   /// is bridged for the 5K, 10K, half and marathon windows when it lasts no
   /// more than this, the speed across it is plausible ([maxStepMps] and
   /// [speedCaps]), and the dropouts a window holds add up to no more than
-  /// the larger of this and [bridgedGpsShare] of the window's time. A tunnel
+  /// the larger of [maxBridgedGpsTotalMs] and [bridgedGpsShare] of the
+  /// window's time. The total cap guards data quality, not fake PBs: the
+  /// chord can only make a time slower. A tunnel
   /// or an urban canyon changes a 5K by seconds; a long loss could hide a
   /// stop, so past this the window is cut as before.
   ///
@@ -478,8 +480,11 @@ class BestEffortFinder {
   /// a 3 to 5 minute effort and the 5% rule would not protect them.
   static const int maxBridgedGpsGapMs = 60000;
 
-  /// See [maxBridgedGpsGapMs].
-  static const double bridgedGpsShare = 0.05;
+  /// All dropouts one window may hold, at least (see [maxBridgedGpsGapMs]).
+  static const int maxBridgedGpsTotalMs = 180000;
+
+  /// ... or this share of the window's time, if that is more.
+  static const double bridgedGpsShare = 0.15;
 
   RunBestEfforts find(RunFile run, RunAnalysis analysis) {
     if (analysis.indoor || analysis.noisy) {
@@ -626,19 +631,29 @@ class BestEffortFinder {
     final out = <_Pt>[];
     int? prevT;
     var lastClock = 0;
-    for (final s in run.samples) {
+    var gapMs = 0;
+    for (final s in _withoutDropoutNoFix(run)) {
       if (inside(pauses, s.tMs) || inside(run.gaps, s.tMs)) continue;
       final t = moving(s.tMs);
+      gapMs = 0;
       if (prevT != null && out.isNotEmpty) {
         final dt = t - prevT;
-        if (dt > constants.sampleGapInterruptMs) return null;
+        if (dt > constants.sampleGapInterruptMs) {
+          // A short GPS dropout is bridged like in any run (the window check
+          // holds the total); a pause inside it or a long one is not.
+          if (dt > maxBridgedGpsGapMs ||
+              pauses.any((p) => p.overlaps(lastClock + 1, s.tMs))) {
+            return null;
+          }
+          gapMs = dt;
+        }
         if (dt > 0 && (s.distM - out.last.d) / (dt / 1000) > maxStepMps) {
           return null; // a GPS jump: not one honest effort
         }
       }
       if (run.gaps.any((g) => g.t1Ms <= s.tMs && out.isNotEmpty)) return null;
       final d = out.isEmpty || s.distM >= out.last.d ? s.distM : out.last.d;
-      out.add(_Pt(t.toDouble(), d, s.tMs.toDouble()));
+      out.add(_Pt(t.toDouble(), d, s.tMs.toDouble(), gapMs));
       prevT = t;
       lastClock = s.tMs;
       if (d - out.first.d >= goalM) break;
@@ -713,7 +728,7 @@ class BestEffortFinder {
       }
     }
     final shortMs = short.fold<int>(0, (a, d) => a + d.ms);
-    if (shortMs > maxBridgedGpsGapMs) {
+    if (shortMs > maxBridgedGpsTotalMs) {
       breaks.add(
         _Break(
           short.first.fromD - pts.first.d,
@@ -1060,7 +1075,7 @@ class BestEffortFinder {
   /// The fastest window of [d] across [pool]; ties keep the earliest. Null
   /// when [pool] has no window of [d]. With [bridged], a window must hold
   /// every bridged dropout it touches whole, and those must add up to no more
-  /// than the allowance (see [maxBridgedGpsGapMs]).
+  /// than the allowance (see [maxBridgedGpsTotalMs]).
   static (List<_Pt>, _Window)? _fastest(
     List<List<_Pt>> pool,
     BestEffortDistance d, {
@@ -1098,7 +1113,7 @@ class BestEffortFinder {
     }
     final allowance = w.elapsed * bridgedGpsShare;
     return total <=
-        (allowance > maxBridgedGpsGapMs ? allowance : maxBridgedGpsGapMs);
+        (allowance > maxBridgedGpsTotalMs ? allowance : maxBridgedGpsTotalMs);
   }
 
   /// Times at each split mark strictly inside the window.

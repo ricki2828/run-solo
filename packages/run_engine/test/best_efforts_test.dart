@@ -488,6 +488,46 @@ void main() {
       expect(r.miss, isNull);
     });
 
+    test('a pause and a GPS dropout combine their bridges', () {
+      // 30 s pause after 800 s, then 453 s with a 40 s dropout in it (no-fix
+      // samples, distance frozen, then the chord).
+      final base = goalRun(pause: 30);
+      final dropAt = 900000, dropMs = 40000;
+      final samples = <Sample>[];
+      for (final s in base.samples) {
+        if (s.tMs > dropAt && s.tMs < dropAt + dropMs) {
+          samples.add(Sample(tMs: s.tMs, distM: s.distM - 0));
+          continue;
+        }
+        samples.add(s);
+      }
+      // Freeze distance in the hole, then it is already the chord at its end.
+      final frozen = samples.firstWhere((s) => s.tMs == dropAt).distM;
+      for (var i = 0; i < samples.length; i++) {
+        final s = samples[i];
+        if (s.tMs > dropAt && s.tMs < dropAt + dropMs) {
+          samples[i] = Sample(tMs: s.tMs, distM: frozen);
+        }
+      }
+      final run = RunFile(
+        id: base.id,
+        device: base.device,
+        app: base.app,
+        start: base.start,
+        end: base.end,
+        tz: base.tz,
+        mode: base.mode,
+        session: goal5k,
+        units: base.units,
+        laps: base.laps,
+        pauses: base.pauses,
+        samples: samples,
+      );
+      final r = find(run);
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
     test('a recording gap (kill and resume) is never bridged', () {
       final run = goalRun();
       final stopped = RunFile(
@@ -727,12 +767,24 @@ void main() {
       expect(r.miss, isNull);
     });
 
-    test('20 s and 45 s dropouts in a run of exactly 5K add up past the '
-        'allowance (65 s over 62.5 s): not counted, and it says why', () {
+    test('20 s and 45 s dropouts in a run of exactly 5K count', () {
       final r = find(dropRun(1250, [(300, 20), (800, 45)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('3 x 55 s of dropouts in exactly 5K count', () {
+      final r = find(dropRun(1250, [(200, 55), (550, 55), (900, 55)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
+    test('4 min of dropouts in exactly 5K do not count, and it says why', () {
+      final r = find(
+        dropRun(1250, [(150, 60), (450, 60), (750, 60), (1050, 60)]),
+      );
       expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
       expect(r.miss!.kind, EffortMissKind.gpsDropped);
-      expect(r.miss!.reason, 'GPS dropped 2 times, 65 s in all');
+      expect(r.miss!.reason, 'GPS dropped 4 times, 4 min in all');
     });
 
     test('a single 45 s dropout in exactly 5K counts', () {
