@@ -596,6 +596,9 @@ struct LiveEntry: Hashable {
 ///
 /// Generated class from Pigeon that represents data sent in messages.
 struct LiveBoard: Hashable {
+  /// Distance boards: the best finish (ms) over every earlier run, the PB
+  /// Home shows. Null = unknown (the chase cue then says nothing).
+  var bestMs: Double? = nil
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   var key: String
   /// Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
@@ -609,13 +612,15 @@ struct LiveBoard: Hashable {
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> LiveBoard? {
-    let key = pigeonVar_list[0] as! String
-    let label = pigeonVar_list[1] as! String
-    let kind = pigeonVar_list[2] as! LiveBoardKind
-    let targetM: Double? = nilOrValue(pigeonVar_list[3])
-    let entries = pigeonVar_list[4] as! [LiveEntry]
+    let bestMs: Double? = nilOrValue(pigeonVar_list[0])
+    let key = pigeonVar_list[1] as! String
+    let label = pigeonVar_list[2] as! String
+    let kind = pigeonVar_list[3] as! LiveBoardKind
+    let targetM: Double? = nilOrValue(pigeonVar_list[4])
+    let entries = pigeonVar_list[5] as! [LiveEntry]
 
     return LiveBoard(
+      bestMs: bestMs,
       key: key,
       label: label,
       kind: kind,
@@ -625,6 +630,7 @@ struct LiveBoard: Hashable {
   }
   func toList() -> [Any?] {
     return [
+      bestMs,
       key,
       label,
       kind,
@@ -636,11 +642,12 @@ struct LiveBoard: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.key, rhs.key) && deepEqualsPlatformApi(lhs.label, rhs.label) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.targetM, rhs.targetM) && deepEqualsPlatformApi(lhs.entries, rhs.entries)
+    return deepEqualsPlatformApi(lhs.bestMs, rhs.bestMs) && deepEqualsPlatformApi(lhs.key, rhs.key) && deepEqualsPlatformApi(lhs.label, rhs.label) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.targetM, rhs.targetM) && deepEqualsPlatformApi(lhs.entries, rhs.entries)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("LiveBoard")
+    deepHashPlatformApi(value: bestMs, hasher: &hasher)
     deepHashPlatformApi(value: key, hasher: &hasher)
     deepHashPlatformApi(value: label, hasher: &hasher)
     deepHashPlatformApi(value: kind, hasher: &hasher)
@@ -913,6 +920,14 @@ struct LiveContext: Hashable {
   var trails: [TrailRef]? = nil
   /// The runner's active quest, for the in-run "quest done" beat. Null = none.
   var quest: LiveQuest? = nil
+  /// The pre-run choice at Start for a Free or goal run: `chase` (race your
+  /// best, say how you stand) or `steady` (no comparisons). Null = the runner
+  /// was not asked, so the run speaks as before. The run file records it.
+  var coachChoice: String? = nil
+  /// The furthest run (metres) the runner has done this calendar month so
+  /// far, the base of "furthest run this month". Null = no base: that line
+  /// never fires.
+  var monthFurthestM: Double? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -927,6 +942,8 @@ struct LiveContext: Hashable {
     let engineVersion = pigeonVar_list[7] as! Int64
     let trails: [TrailRef]? = nilOrValue(pigeonVar_list[8])
     let quest: LiveQuest? = nilOrValue(pigeonVar_list[9])
+    let coachChoice: String? = nilOrValue(pigeonVar_list[10])
+    let monthFurthestM: Double? = nilOrValue(pigeonVar_list[11])
 
     return LiveContext(
       boards: boards,
@@ -938,7 +955,9 @@ struct LiveContext: Hashable {
       builtAtMs: builtAtMs,
       engineVersion: engineVersion,
       trails: trails,
-      quest: quest
+      quest: quest,
+      coachChoice: coachChoice,
+      monthFurthestM: monthFurthestM
     )
   }
   func toList() -> [Any?] {
@@ -953,13 +972,15 @@ struct LiveContext: Hashable {
       engineVersion,
       trails,
       quest,
+      coachChoice,
+      monthFurthestM,
     ]
   }
   static func == (lhs: LiveContext, rhs: LiveContext) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.boards, rhs.boards) && deepEqualsPlatformApi(lhs.target, rhs.target) && deepEqualsPlatformApi(lhs.nudges, rhs.nudges) && deepEqualsPlatformApi(lhs.cooperCurve, rhs.cooperCurve) && deepEqualsPlatformApi(lhs.cooperHistory, rhs.cooperHistory) && deepEqualsPlatformApi(lhs.coachingMuted, rhs.coachingMuted) && deepEqualsPlatformApi(lhs.builtAtMs, rhs.builtAtMs) && deepEqualsPlatformApi(lhs.engineVersion, rhs.engineVersion) && deepEqualsPlatformApi(lhs.trails, rhs.trails) && deepEqualsPlatformApi(lhs.quest, rhs.quest)
+    return deepEqualsPlatformApi(lhs.boards, rhs.boards) && deepEqualsPlatformApi(lhs.target, rhs.target) && deepEqualsPlatformApi(lhs.nudges, rhs.nudges) && deepEqualsPlatformApi(lhs.cooperCurve, rhs.cooperCurve) && deepEqualsPlatformApi(lhs.cooperHistory, rhs.cooperHistory) && deepEqualsPlatformApi(lhs.coachingMuted, rhs.coachingMuted) && deepEqualsPlatformApi(lhs.builtAtMs, rhs.builtAtMs) && deepEqualsPlatformApi(lhs.engineVersion, rhs.engineVersion) && deepEqualsPlatformApi(lhs.trails, rhs.trails) && deepEqualsPlatformApi(lhs.quest, rhs.quest) && deepEqualsPlatformApi(lhs.coachChoice, rhs.coachChoice) && deepEqualsPlatformApi(lhs.monthFurthestM, rhs.monthFurthestM)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -974,6 +995,8 @@ struct LiveContext: Hashable {
     deepHashPlatformApi(value: engineVersion, hasher: &hasher)
     deepHashPlatformApi(value: trails, hasher: &hasher)
     deepHashPlatformApi(value: quest, hasher: &hasher)
+    deepHashPlatformApi(value: coachChoice, hasher: &hasher)
+    deepHashPlatformApi(value: monthFurthestM, hasher: &hasher)
   }
 }
 

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/settings.dart';
@@ -139,5 +140,35 @@ void main() {
     expect(AppSettings.fromJson({'reps': 4}).liveTopoMap, isFalse);
     // A phone that saved the old Topo choice still opens Google in a run.
     expect(AppSettings.fromJson({'topoMap': true}).liveTopoMap, isFalse);
+  });
+  test('the Start choice persists, defaults to chase, and an unknown name '
+      'falls back', () {
+    expect(const AppSettings().coachChoice, engine.CoachChoice.chase);
+    final steady = AppSettings(coachChoice: engine.CoachChoice.steady);
+    expect(steady.toJson()['coachChoice'], 'steady');
+    expect(
+      AppSettings.fromJson(steady.toJson()).coachChoice,
+      engine.CoachChoice.steady,
+    );
+    expect(
+      AppSettings.fromJson({...steady.toJson(), 'coachChoice': 'sprint'})
+          .coachChoice,
+      engine.CoachChoice.chase,
+    );
+    expect(AppSettings.fromJson({}).coachChoice, engine.CoachChoice.chase);
+  });
+
+  test('the Start choice is asked for a Free run and a distance goal only', () {
+    bool asked(AppSettings s) => s.coachChoiceAsked;
+    expect(asked(const AppSettings(lastMode: RecordMode.free)), isTrue);
+    expect(asked(const AppSettings(lastMode: RecordMode.laps)), isFalse);
+    expect(asked(const AppSettings(lastMode: RecordMode.trail)), isFalse);
+    expect(asked(const AppSettings(lastMode: RecordMode.cooper)), isFalse);
+    expect(asked(const AppSettings(lastMode: RecordMode.intervals)), isFalse);
+    expect(asked(const AppSettings(goalRun: true, goalId: 'd5000')), isTrue);
+    expect(asked(const AppSettings(goalRun: true, goalId: 'dcustom')), isTrue);
+    expect(asked(const AppSettings(goalRun: true, goalId: 't1800')), isFalse);
+    expect(asked(const AppSettings(goalRun: true, goalId: 'tcustom')), isFalse);
+    expect(asked(const AppSettings(goalRun: true)), isFalse, reason: 'event');
   });
 }

@@ -757,6 +757,11 @@ data class LiveEntry (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class LiveBoard (
+  /**
+   * Distance boards: the best finish (ms) over every earlier run, the PB
+   * Home shows. Null = unknown (the chase cue then says nothing).
+   */
+  val bestMs: Double? = null,
   /** The comparison key (`be:5000`, an intervals key, `cooper`, a course). */
   val key: String,
   /**
@@ -772,16 +777,18 @@ data class LiveBoard (
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): LiveBoard {
-      val key = pigeonVar_list[0] as String
-      val label = pigeonVar_list[1] as String
-      val kind = pigeonVar_list[2] as LiveBoardKind
-      val targetM = pigeonVar_list[3] as Double?
-      val entries = pigeonVar_list[4] as List<LiveEntry>
-      return LiveBoard(key, label, kind, targetM, entries)
+      val bestMs = pigeonVar_list[0] as Double?
+      val key = pigeonVar_list[1] as String
+      val label = pigeonVar_list[2] as String
+      val kind = pigeonVar_list[3] as LiveBoardKind
+      val targetM = pigeonVar_list[4] as Double?
+      val entries = pigeonVar_list[5] as List<LiveEntry>
+      return LiveBoard(bestMs, key, label, kind, targetM, entries)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
+      bestMs,
       key,
       label,
       kind,
@@ -797,11 +804,12 @@ data class LiveBoard (
       return true
     }
     val other = other as LiveBoard
-    return PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
+    return PlatformApiPigeonUtils.deepEquals(this.bestMs, other.bestMs) && PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bestMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.key)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.label)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
@@ -1092,7 +1100,19 @@ data class LiveContext (
    */
   val trails: List<TrailRef>? = null,
   /** The runner's active quest, for the in-run "quest done" beat. Null = none. */
-  val quest: LiveQuest? = null
+  val quest: LiveQuest? = null,
+  /**
+   * The pre-run choice at Start for a Free or goal run: `chase` (race your
+   * best, say how you stand) or `steady` (no comparisons). Null = the runner
+   * was not asked, so the run speaks as before. The run file records it.
+   */
+  val coachChoice: String? = null,
+  /**
+   * The furthest run (metres) the runner has done this calendar month so
+   * far, the base of "furthest run this month". Null = no base: that line
+   * never fires.
+   */
+  val monthFurthestM: Double? = null
 )
  {
   companion object {
@@ -1107,7 +1127,9 @@ data class LiveContext (
       val engineVersion = pigeonVar_list[7] as Long
       val trails = pigeonVar_list[8] as List<TrailRef>?
       val quest = pigeonVar_list[9] as LiveQuest?
-      return LiveContext(boards, target, nudges, cooperCurve, cooperHistory, coachingMuted, builtAtMs, engineVersion, trails, quest)
+      val coachChoice = pigeonVar_list[10] as String?
+      val monthFurthestM = pigeonVar_list[11] as Double?
+      return LiveContext(boards, target, nudges, cooperCurve, cooperHistory, coachingMuted, builtAtMs, engineVersion, trails, quest, coachChoice, monthFurthestM)
     }
   }
   fun toList(): List<Any?> {
@@ -1122,6 +1144,8 @@ data class LiveContext (
       engineVersion,
       trails,
       quest,
+      coachChoice,
+      monthFurthestM,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1132,7 +1156,7 @@ data class LiveContext (
       return true
     }
     val other = other as LiveContext
-    return PlatformApiPigeonUtils.deepEquals(this.boards, other.boards) && PlatformApiPigeonUtils.deepEquals(this.target, other.target) && PlatformApiPigeonUtils.deepEquals(this.nudges, other.nudges) && PlatformApiPigeonUtils.deepEquals(this.cooperCurve, other.cooperCurve) && PlatformApiPigeonUtils.deepEquals(this.cooperHistory, other.cooperHistory) && PlatformApiPigeonUtils.deepEquals(this.coachingMuted, other.coachingMuted) && PlatformApiPigeonUtils.deepEquals(this.builtAtMs, other.builtAtMs) && PlatformApiPigeonUtils.deepEquals(this.engineVersion, other.engineVersion) && PlatformApiPigeonUtils.deepEquals(this.trails, other.trails) && PlatformApiPigeonUtils.deepEquals(this.quest, other.quest)
+    return PlatformApiPigeonUtils.deepEquals(this.boards, other.boards) && PlatformApiPigeonUtils.deepEquals(this.target, other.target) && PlatformApiPigeonUtils.deepEquals(this.nudges, other.nudges) && PlatformApiPigeonUtils.deepEquals(this.cooperCurve, other.cooperCurve) && PlatformApiPigeonUtils.deepEquals(this.cooperHistory, other.cooperHistory) && PlatformApiPigeonUtils.deepEquals(this.coachingMuted, other.coachingMuted) && PlatformApiPigeonUtils.deepEquals(this.builtAtMs, other.builtAtMs) && PlatformApiPigeonUtils.deepEquals(this.engineVersion, other.engineVersion) && PlatformApiPigeonUtils.deepEquals(this.trails, other.trails) && PlatformApiPigeonUtils.deepEquals(this.quest, other.quest) && PlatformApiPigeonUtils.deepEquals(this.coachChoice, other.coachChoice) && PlatformApiPigeonUtils.deepEquals(this.monthFurthestM, other.monthFurthestM)
   }
 
   override fun hashCode(): Int {
@@ -1147,6 +1171,8 @@ data class LiveContext (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.engineVersion)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.trails)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.quest)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.coachChoice)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.monthFurthestM)
     return result
   }
 }

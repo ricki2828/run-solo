@@ -27,6 +27,7 @@ import '../state/voice_coach_plan.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/coach_choice_row.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/start_load_line.dart';
@@ -653,9 +654,21 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           // The compare is off, but a trail the runner knows still goes in (the
           // in-run ghost): trails alone, no boards, nothing said by the compare.
           : services.live?.trailsOnly(mode);
+      // The runner's Start choice (Free and distance-goal runs only) rides in with the furthest run of
+      // the month, so the voice follows it and the run file records it.
+      final choice = testMode == null && s.coachChoiceAsked
+          ? s.coachChoice
+          : null;
+      final chosen =
+          services.live?.withCoachChoice(
+            compare,
+            choice,
+            coachingMuted: !s.tipsSpoken,
+          ) ??
+          compare;
       // The active quest rides in too, for its in-run "quest done" (index rows only, 120 ms at most).
       final live = await withLiveQuest(
-        compare,
+        chosen,
         mode: mode,
         quests: services.quests,
         history: services.history,
@@ -1273,6 +1286,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                                 .then((_) => _syncProbe()),
                       ),
                       const SizedBox(height: Space.x24),
+                      // Free and distance-goal runs only: the voice follows the pick. Right under the run
+                      // types so a short phone sees it without scrolling.
+                      if (s.coachChoiceAsked) ...[
+                        CoachChoiceRow(
+                          selected: s.coachChoice,
+                          onSelect: (c) =>
+                              set((x) => x.copyWith(coachChoice: c)),
+                        ),
+                        const SizedBox(height: Space.x24),
+                      ],
                       // 29-Sep field test: the first time a run type is
                       // picked, say exactly how it runs. Gone once History
                       // has a run of the type.

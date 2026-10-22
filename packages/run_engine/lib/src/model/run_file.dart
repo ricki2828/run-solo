@@ -450,6 +450,7 @@ class RunFile {
     this.nudgesFired = const [],
     this.elevSrc,
     this.route,
+    this.coach,
     this.readSchema = schema,
   });
 
@@ -498,6 +499,10 @@ class RunFile {
   /// The route this run followed, null when it followed none. Optional key
   /// `route`.
   final FollowedRoute? route;
+
+  /// The pre-run choice and the chase lines said under it; null when the
+  /// runner was not asked. Optional key `coach`.
+  final CoachLog? coach;
   final List<Sample> samples;
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
@@ -517,6 +522,7 @@ class RunFile {
     List<FiredNudge>? nudgesFired,
     Object? elevSrc = _unset,
     Object? route = _unset,
+    Object? coach = _unset,
   }) => RunFile(
     id: id ?? this.id,
     device: device,
@@ -536,6 +542,7 @@ class RunFile {
     nudgesFired: nudgesFired ?? this.nudgesFired,
     elevSrc: identical(elevSrc, _unset) ? this.elevSrc : elevSrc as ElevSource?,
     route: identical(route, _unset) ? this.route : route as FollowedRoute?,
+    coach: identical(coach, _unset) ? this.coach : coach as CoachLog?,
   );
 
   Map<String, Object?> toJson() => {
@@ -557,6 +564,7 @@ class RunFile {
     if (nudgesFired.isNotEmpty)
       'nudges_fired': [for (final n in nudgesFired) n.toJson()],
     if (route != null) 'route': route!.toJson(),
+    if (coach != null) 'coach': coach!.toJson(),
   };
 
   /// Strict: unknown schema, unknown or missing keys, wrong types, naive
@@ -581,6 +589,7 @@ class RunFile {
     'elev_src',
     'nudges_fired',
     'route',
+    'coach',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -658,6 +667,7 @@ class RunFile {
       route: json['route'] == null
           ? null
           : FollowedRoute.fromJson(json['route']),
+      coach: json['coach'] == null ? null : CoachLog.fromJson(json['coach']),
       readSchema: schemaValue,
     );
   }
@@ -831,3 +841,91 @@ DateTime readDateTimeField(Map<String, Object?> json, String key) =>
 List<Object?> readListField(Map<String, Object?> json, String key) =>
     _readList(json, key);
 Map<String, Object?> asMapField(Object? v, String what) => _asMap(v, what);
+
+/// What the runner chose at Start for a Free or goal run and every chase line
+/// the recorder said under it (core-jvm `RunFile.CoachLog`). Optional key
+/// `coach`, written only when the run carried a choice. [cues] stays an open
+/// list of `[kind, km, tMs]` rows so the later mid-run buttons can log their
+/// prompts and answers beside the chase lines. `kind` is the chase kind
+/// (`ahead`, `behind`, `slipping`, `furthest`, `last2k`); `tMs` is run time.
+class CoachLog {
+  const CoachLog({required this.choice, this.cues = const []});
+
+  /// `chase` or `steady` (see `CoachChoice`); kept as the stored name so a
+  /// choice from a newer build survives a round trip.
+  final String choice;
+  final List<CoachCue> cues;
+
+  Map<String, Object?> toJson() => {
+    'choice': choice,
+    'cues': [for (final c in cues) c.toJson()],
+  };
+
+  static const Set<String> _keys = {'choice', 'cues'};
+
+  factory CoachLog.fromJson(Object? json) {
+    if (json is! Map<String, Object?>) {
+      throw RunFileFormatException('coach must be an object');
+    }
+    for (final k in json.keys) {
+      if (!_keys.contains(k)) {
+        throw RunFileNewerVersionException('unknown coach key "$k"');
+      }
+    }
+    final choice = json['choice'];
+    if (choice is! String || choice.isEmpty) {
+      throw RunFileFormatException('coach.choice must be a string');
+    }
+    final raw = json['cues'] ?? const <Object?>[];
+    if (raw is! List) {
+      throw RunFileFormatException('coach.cues must be a list');
+    }
+    return CoachLog(
+      choice: choice,
+      cues: [for (final c in raw) CoachCue.fromJson(c)],
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CoachLog &&
+      other.choice == choice &&
+      other.cues.length == cues.length &&
+      [for (var i = 0; i < cues.length; i++) cues[i] == other.cues[i]]
+          .every((e) => e);
+
+  @override
+  int get hashCode => Object.hash(choice, Object.hashAll(cues));
+}
+
+/// One logged cue: its [kind], the whole [km] it fell on and the run time.
+class CoachCue {
+  const CoachCue(this.kind, this.km, this.tMs);
+
+  final String kind;
+  final int km;
+  final int tMs;
+
+  List<Object> toJson() => [kind, km, tMs];
+
+  factory CoachCue.fromJson(Object? json) {
+    if (json is! List ||
+        json.length != 3 ||
+        json[0] is! String ||
+        json[1] is! int ||
+        json[2] is! int) {
+      throw RunFileFormatException('coach cue must be [kind, km, tMs]');
+    }
+    return CoachCue(json[0] as String, json[1] as int, json[2] as int);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CoachCue &&
+      other.kind == kind &&
+      other.km == km &&
+      other.tMs == tMs;
+
+  @override
+  int get hashCode => Object.hash(kind, km, tMs);
+}

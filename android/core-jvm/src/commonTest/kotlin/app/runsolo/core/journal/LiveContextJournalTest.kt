@@ -284,4 +284,24 @@ class LiveContextJournalTest {
         assertEquals("q_x", done.questDoneId)
         assertNull(plain.questDoneId)
     }
+    @Test
+    fun `the Start choice and the month base round trip and an old context carries neither`() {
+        val line = JournalLine.LiveContextLine(t0, w0, context.copy(coachChoice = "chase", monthFurthestM = 8_400.5))
+        val back = JournalCodec.decode(JournalCodec.encode(line)) as JournalLine.LiveContextLine
+        assertEquals("chase", back.context.coachChoice)
+        assertEquals(8_400.5, back.context.monthFurthestM)
+        val plain = Json.parseObject(JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, context)))
+        @Suppress("UNCHECKED_CAST")
+        val keys = (plain["ctx"] as? Map<String, Any?>)?.keys ?: plain.keys
+        assertTrue("coachChoice" !in keys && "monthFurthestM" !in keys, "$keys")
+        val old = JournalCodec.decode(JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, context))) as JournalLine.LiveContextLine
+        assertNull(old.context.coachChoice)
+        assertNull(old.context.monthFurthestM)
+    }
+
+    @Test
+    fun `a chase cue_fired line round trips`() {
+        val line = JournalLine.CueFired(5, 6, JournalLine.FiredKind.chase, "furthest", 9, 123_000)
+        assertEquals(line, JournalCodec.decode(JournalCodec.encode(line)))
+    }
 }

@@ -121,6 +121,7 @@ class AppSettings {
     this.voiceCoaching = true,
     this.coachingDetail = CoachingDetail.full,
     this.voiceDetail = kVoiceDetailDefault,
+    this.coachChoice = engine.CoachChoice.chase,
     this.autoPause = true,
     this.countdownSeconds = defaultCountdownSeconds,
     this.coachingTips = true,
@@ -183,6 +184,12 @@ class AppSettings {
   /// The week (its Monday, `2026-10-12`) whose "don't overdo it" warning
   /// the runner dismissed; a new week shows it again.
   final String? loadDismissedWeek;
+
+  /// The runner is asked "Chase your best or Steady run" for the run type
+  /// picked: a Free run, or a distance goal. Not the event, a time goal, a
+  /// plan session, laps, a trail or a test (nothing to chase there yet).
+  bool get coachChoiceAsked =>
+      goalRun ? (goalStep?.distance ?? false) : lastMode == RecordMode.free;
 
   /// The event (K1) is the picked goal.
   bool get eventRun => goalRun && goalId == GoalChoice.eventId;
@@ -267,6 +274,11 @@ class AppSettings {
   /// km, trail moments). Reaches Kotlin as [VoiceDetail.metricKey] on the
   /// check-in's metric list.
   final VoiceDetail voiceDetail;
+
+  /// Start → "Chase your best" or "Steady run": the choice a Free or goal run
+  /// is started with (the last one tapped is kept). Plan sessions, intervals
+  /// and tests are not asked and carry none.
+  final engine.CoachChoice coachChoice;
 
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
@@ -459,6 +471,7 @@ class AppSettings {
     bool? voiceCoaching,
     CoachingDetail? coachingDetail,
     VoiceDetail? voiceDetail,
+    engine.CoachChoice? coachChoice,
     bool? autoPause,
     int? countdownSeconds,
     bool? coachingTips,
@@ -513,6 +526,7 @@ class AppSettings {
     voiceCoaching: voiceCoaching ?? this.voiceCoaching,
     coachingDetail: coachingDetail ?? this.coachingDetail,
     voiceDetail: voiceDetail ?? this.voiceDetail,
+    coachChoice: coachChoice ?? this.coachChoice,
     autoPause: autoPause ?? this.autoPause,
     countdownSeconds: countdownSeconds ?? this.countdownSeconds,
     coachingTips: coachingTips ?? this.coachingTips,
@@ -569,6 +583,7 @@ class AppSettings {
     'voiceCoaching': voiceCoaching,
     'coachingDetail': coachingDetail.name,
     'voiceDetail': voiceDetail.name,
+    'coachChoice': coachChoice.key,
     'autoPause': autoPause,
     'countdownSeconds': countdownSeconds,
     'coachingTips': coachingTips,
@@ -677,6 +692,8 @@ class AppSettings {
       voiceDetail:
           VoiceDetail.values.asNameMap()[pick('voiceDetail', '')] ??
           d.voiceDetail,
+      coachChoice:
+          engine.CoachChoice.parse(pick('coachChoice', '')) ?? d.coachChoice,
       autoPause: pick('autoPause', d.autoPause),
       countdownSeconds:
           countdownChoices.contains(

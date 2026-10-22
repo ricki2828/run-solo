@@ -780,6 +780,21 @@ void main() {
       expect(r.miss, isNull);
     });
 
+    test('from-start splits go through a bridged dropout, so the run that '
+        'holds the PB still races from Start', () {
+      // 5 km at 4 m/s with a 20 s dropout at 300 s: the 5K counts at the
+      // true 1250 s, and the splits are the true times at every km.
+      final r = find(dropRun(1250, [(300, 20)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.fromStartSplitsMs, hasLength(5));
+      for (var k = 1; k <= 5; k++) {
+        expect(r.fromStartSplitsMs[k - 1], closeTo(k * 250000, 5));
+      }
+      // A 90 s dropout is still too long to bridge: splits stop before it.
+      final cut = find(dropRun(1500, [(300, 90)]));
+      expect(cut.fromStartSplitsMs, hasLength(1));
+    });
+
     test('the window records the dropout time it bridged', () {
       final r = find(dropRun(1250, [(300, 20), (800, 45)]));
       final k5 = effort(r, BestEffortDistance.k5);

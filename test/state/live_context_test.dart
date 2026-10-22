@@ -137,6 +137,73 @@ void main() {
     expect(kPerfDiagnostics, isTrue, reason: 'every build but play');
   });
 
+  group('the Start choice rides in', () {
+    // Free runs on 3, 5 and 7 Sep 2026 (06:00 UTC), 40 min at 6:00/km.
+    Future<LiveContextSource> sourceAt(DateTime now) async {
+      final store = await storeWithFreeRuns(3);
+      final src = LiveContextSource(indexFile: store.indexFile, now: () => now);
+      await src.prepare();
+      return src;
+    }
+
+    test('chase carries the month\'s furthest run so far', () async {
+      final src = await sourceAt(DateTime(2026, 9, 20, 7));
+      final base = await src.build(mode: RecordMode.free);
+      expect(base!.coachChoice, isNull, reason: 'not asked by default');
+      expect(base.monthFurthestM, isNull);
+      final ctx = src.withCoachChoice(base, engine.CoachChoice.chase)!;
+      expect(identical(ctx, base), isTrue, reason: 'the same context, filled');
+      expect(ctx.coachChoice, 'chase');
+      expect(ctx.monthFurthestM, closeTo(6667, 60));
+      expect(ctx.boards.single.key, 'be:5000', reason: 'boards untouched');
+    });
+
+    test('a month with no run has no base, and steady never has one', () async {
+      final oct = await sourceAt(DateTime(2026, 10, 2, 7));
+      final base = await oct.build(mode: RecordMode.free);
+      final chase = oct.withCoachChoice(base, engine.CoachChoice.chase)!;
+      expect(chase.coachChoice, 'chase');
+      expect(chase.monthFurthestM, isNull, reason: 'no run in October');
+      final sep = await sourceAt(DateTime(2026, 9, 20, 7));
+      final steady = sep.withCoachChoice(
+        await sep.build(mode: RecordMode.free),
+        engine.CoachChoice.steady,
+      )!;
+      expect(steady.coachChoice, 'steady');
+      expect(steady.monthFurthestM, isNull);
+    });
+
+    test('no choice leaves the context alone, null included', () async {
+      final src = await sourceAt(DateTime(2026, 9, 20, 7));
+      final base = await src.build(mode: RecordMode.free);
+      expect(identical(src.withCoachChoice(base, null), base), isTrue);
+      expect(src.withCoachChoice(null, null), isNull);
+    });
+
+    test('with nothing to compare the choice still goes, muted as Settings '
+        'says', () async {
+      final src = LiveContextSource.prepared(
+        const [],
+        now: () => DateTime(2026, 9, 20, 7),
+      );
+      final spoken = src.withCoachChoice(null, engine.CoachChoice.chase)!;
+      expect(spoken.boards, isEmpty);
+      expect(spoken.coachChoice, 'chase');
+      expect(
+        spoken.coachingMuted,
+        isFalse,
+        reason: 'tips on: 2 k to go speaks',
+      );
+      expect(spoken.monthFurthestM, isNull);
+      final off = src.withCoachChoice(
+        null,
+        engine.CoachChoice.steady,
+        coachingMuted: true,
+      )!;
+      expect(off.coachingMuted, isTrue);
+    });
+  });
+
   test('on by default now the Voice detail mute (Minimal) ships', () {
     expect(kLiveCompare, isTrue);
   });
@@ -155,6 +222,11 @@ void main() {
       expect(board.targetM, 5000);
       expect(board.entries, hasLength(2));
       expect(board.entries.first.fromStartSplitsMs, hasLength(5));
+      expect(
+        board.bestMs,
+        board.entries.map((e) => e.finalMetric).reduce((a, b) => a < b ? a : b),
+        reason: 'the board carries the PB finish for the chase cue',
+      );
       expect(ctx.nudges!.version, 0, reason: 'LC1 stub');
       expect(ctx.engineVersion, engine.engineVersion);
       expect(ctx.coachingMuted, isFalse);

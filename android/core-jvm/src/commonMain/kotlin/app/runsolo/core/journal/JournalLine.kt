@@ -107,7 +107,8 @@ sealed class JournalLine {
         val atMs: Long,
     ) : JournalLine()
 
-    enum class FiredKind { compare, nudge }
+    /** [chase] = a chase line was spoken ([key] = its `ChaseKind` name, [index] = the km); an older build cannot read the line and skips it. */
+    enum class FiredKind { compare, nudge, chase }
 
     /**
      * `tm`: "Mute tips" was tapped (notification or app, LV2). Restore keeps the run muted, so a

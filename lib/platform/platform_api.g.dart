@@ -542,12 +542,17 @@ class LiveEntry {
 /// goal's board may have 1 (a second Half can still be a new best, #78).
 class LiveBoard {
   LiveBoard({
+    this.bestMs,
     required this.key,
     required this.label,
     required this.kind,
     this.targetM,
     required this.entries,
   });
+
+  /// Distance boards: the best finish (ms) over every earlier run, the PB
+  /// Home shows. Null = unknown (the chase cue then says nothing).
+  double? bestMs;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;
@@ -565,6 +570,7 @@ class LiveBoard {
 
   List<Object?> _toList() {
     return <Object?>[
+      bestMs,
       key,
       label,
       kind,
@@ -579,11 +585,12 @@ class LiveBoard {
   static LiveBoard decode(Object result) {
     result as List<Object?>;
     return LiveBoard(
-      key: result[0]! as String,
-      label: result[1]! as String,
-      kind: result[2]! as LiveBoardKind,
-      targetM: result[3] as double?,
-      entries: (result[4]! as List<Object?>).cast<LiveEntry>(),
+      bestMs: result[0] as double?,
+      key: result[1]! as String,
+      label: result[2]! as String,
+      kind: result[3]! as LiveBoardKind,
+      targetM: result[4] as double?,
+      entries: (result[5]! as List<Object?>).cast<LiveEntry>(),
     );
   }
 
@@ -596,7 +603,7 @@ class LiveBoard {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
+    return _deepEquals(bestMs, other.bestMs) && _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
   }
 
   @override
@@ -899,6 +906,8 @@ class LiveContext {
     required this.engineVersion,
     this.trails,
     this.quest,
+    this.coachChoice,
+    this.monthFurthestM,
   });
 
   /// At most 3.
@@ -929,6 +938,16 @@ class LiveContext {
   /// The runner's active quest, for the in-run "quest done" beat. Null = none.
   LiveQuest? quest;
 
+  /// The pre-run choice at Start for a Free or goal run: `chase` (race your
+  /// best, say how you stand) or `steady` (no comparisons). Null = the runner
+  /// was not asked, so the run speaks as before. The run file records it.
+  String? coachChoice;
+
+  /// The furthest run (metres) the runner has done this calendar month so
+  /// far, the base of "furthest run this month". Null = no base: that line
+  /// never fires.
+  double? monthFurthestM;
+
   List<Object?> _toList() {
     return <Object?>[
       boards,
@@ -941,6 +960,8 @@ class LiveContext {
       engineVersion,
       trails,
       quest,
+      coachChoice,
+      monthFurthestM,
     ];
   }
 
@@ -960,6 +981,8 @@ class LiveContext {
       engineVersion: result[7]! as int,
       trails: (result[8] as List<Object?>?)?.cast<TrailRef>(),
       quest: result[9] as LiveQuest?,
+      coachChoice: result[10] as String?,
+      monthFurthestM: result[11] as double?,
     );
   }
 
@@ -972,7 +995,7 @@ class LiveContext {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(boards, other.boards) && _deepEquals(target, other.target) && _deepEquals(nudges, other.nudges) && _deepEquals(cooperCurve, other.cooperCurve) && _deepEquals(cooperHistory, other.cooperHistory) && _deepEquals(coachingMuted, other.coachingMuted) && _deepEquals(builtAtMs, other.builtAtMs) && _deepEquals(engineVersion, other.engineVersion) && _deepEquals(trails, other.trails) && _deepEquals(quest, other.quest);
+    return _deepEquals(boards, other.boards) && _deepEquals(target, other.target) && _deepEquals(nudges, other.nudges) && _deepEquals(cooperCurve, other.cooperCurve) && _deepEquals(cooperHistory, other.cooperHistory) && _deepEquals(coachingMuted, other.coachingMuted) && _deepEquals(builtAtMs, other.builtAtMs) && _deepEquals(engineVersion, other.engineVersion) && _deepEquals(trails, other.trails) && _deepEquals(quest, other.quest) && _deepEquals(coachChoice, other.coachChoice) && _deepEquals(monthFurthestM, other.monthFurthestM);
   }
 
   @override
