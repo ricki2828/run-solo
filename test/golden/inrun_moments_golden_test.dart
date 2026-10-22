@@ -73,7 +73,8 @@ void main() {
     expect(moment(InrunMomentKind.lastStretch), findsOneWidget);
     await shot(tester, 'inrun_moment_last400_360x800');
     await gone(tester);
-    await step(tester, fake, 120);
+    // Emitted inside the last 400 m: the fake ends the whole run at 5 km,
+    // which would navigate away before the shot.
     fake.emitGoal(
       GoalEvent(
         distanceGoal: true,
@@ -86,6 +87,7 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(moment(InrunMomentKind.goalReached), findsOneWidget);
     await shot(tester, 'inrun_moment_goal_360x800');
     await gone(tester);

@@ -544,9 +544,10 @@ void main() {
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
 
-  // Founder 3-Oct (reverses 30-Sep): distance, time and average pace are one
-  // size, distance first; none is a hero.
-  group('free and trail: distance, time and pace equal', () {
+  // Founder 3-Oct: distance and time are one size, distance first. 21-Oct UI
+  // review reverses the average pace: it is demoted so the current-pace dial
+  // is the second-largest number.
+  group('free and trail: distance and time equal, dial second', () {
     for (final mode in [RecordMode.free, RecordMode.trail]) {
       for (final h in [800, 640]) {
         testWidgets('${mode.name} at 360 x $h', (tester) async {
@@ -561,7 +562,7 @@ void main() {
           final size = distance.style!.fontSize!;
           expect(size, greaterThanOrEqualTo(36));
           expect(time.style!.fontSize, size);
-          expect(pace.style!.fontSize, size);
+          expect(pace.style!.fontSize, lessThan(size));
           // Same ink on all three, in Bone.
           expect(distance.style!.color, RunSoloTokens.dark.inkPrimary);
           expect(time.style!.color, distance.style!.color);
@@ -579,7 +580,9 @@ void main() {
           final dial = tester.widget<Text>(
             find.byKey(const ValueKey('dial-pace')),
           );
-          expect(dial.style!.fontSize, greaterThanOrEqualTo(36));
+          expect(dial.style!.fontSize, greaterThanOrEqualTo(56));
+          expect(dial.style!.fontSize, lessThan(size));
+          expect(dial.style!.fontSize, greaterThan(pace.style!.fontSize!));
           expect(
             at('dial-pace').top,
             greaterThan(at('run-average').bottom),
