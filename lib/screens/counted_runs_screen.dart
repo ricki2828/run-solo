@@ -193,7 +193,7 @@ class _CountedRunsScreenState extends State<CountedRunsScreen> {
     final live = AppServices.of(context).live;
     if (live == null) return const [];
     await live.prepare();
-    return live.candidates;
+    return live.preparedCandidates;
   }
 
   @override
