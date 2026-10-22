@@ -1286,6 +1286,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                                 .then((_) => _syncProbe()),
                       ),
                       const SizedBox(height: Space.x24),
+                      // Free and distance-goal runs only: the voice follows the pick. Right under the run
+                      // types so a short phone sees it without scrolling.
+                      if (s.coachChoiceAsked) ...[
+                        CoachChoiceRow(
+                          selected: s.coachChoice,
+                          onSelect: (c) =>
+                              set((x) => x.copyWith(coachChoice: c)),
+                        ),
+                        const SizedBox(height: Space.x24),
+                      ],
                       // 29-Sep field test: the first time a run type is
                       // picked, say exactly how it runs. Gone once History
                       // has a run of the type.
@@ -1436,16 +1446,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                             color: t.inkSecondary,
                           ),
                         ),
-                      ],
-                      // Free and distance-goal runs only: the voice follows the pick.
-                      if (s.coachChoiceAsked) ...[
-                        const SizedBox(height: Space.x16),
-                        CoachChoiceRow(
-                          selected: s.coachChoice,
-                          onSelect: (c) =>
-                              set((x) => x.copyWith(coachChoice: c)),
-                        ),
-                        const SizedBox(height: Space.x8),
                       ],
                       if (goal ||
                           mode == RecordMode.free ||

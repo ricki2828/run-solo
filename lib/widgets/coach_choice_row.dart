@@ -42,7 +42,7 @@ class CoachChoiceRow extends StatelessWidget {
                 child: _ChoiceButton(
                   key: chaseKey,
                   title: 'Chase your best',
-                  subtitle: 'Says how you stand against your best',
+                  subtitle: 'Voice says how you stand',
                   selected: selected == engine.CoachChoice.chase,
                   onTap: () => onSelect(engine.CoachChoice.chase),
                 ),
@@ -52,7 +52,7 @@ class CoachChoiceRow extends StatelessWidget {
                 child: _ChoiceButton(
                   key: steadyKey,
                   title: 'Steady run',
-                  subtitle: 'No comparisons, just the run',
+                  subtitle: 'No comparisons',
                   selected: selected == engine.CoachChoice.steady,
                   onTap: () => onSelect(engine.CoachChoice.steady),
                 ),
@@ -102,7 +102,7 @@ class _ChoiceButton extends StatelessWidget {
             ),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
