@@ -160,6 +160,18 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
                   "score": j.get("score", 0), "misses": misses}
 
 
+def load_scenarios() -> list[dict]:
+    """scenarios.yaml plus every evals/scenarios/*.json (one scenario per file, e.g. the medical_* set)."""
+    out = yaml.safe_load((HERE / "scenarios.yaml").read_text())
+    for f in sorted((HERE / "scenarios").glob("*.json")):
+        out.append(json.loads(f.read_text()))
+    ids = [s["id"] for s in out]
+    dupes = {i for i in ids if ids.count(i) > 1}
+    if dupes:
+        raise SystemExit(f"duplicate scenario ids: {sorted(dupes)}")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="haiku")
@@ -167,11 +179,16 @@ def main() -> int:
     ap.add_argument("--only", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--dry-run", action="store_true", help="load and check the scenarios, print the ids, call no model")
     a = ap.parse_args()
-    scenarios = yaml.safe_load((HERE / "scenarios.yaml").read_text())
+    scenarios = load_scenarios()
     if a.only:
         keep = set(a.only.split(","))
         scenarios = [s for s in scenarios if s["id"] in keep]
+    if a.dry_run:
+        bad = [s.get("id", "?") for s in scenarios if not (s.get("id") and s.get("message") and s.get("must"))]
+        print(f"{len(scenarios)} scenarios: " + ", ".join(s["id"] for s in scenarios))
+        return 1 if bad else 0
     system = build() + GUARD
     fixture = (HERE / "fixture_runner.json").read_text()
     with ThreadPoolExecutor(a.workers) as ex:

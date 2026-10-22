@@ -35,6 +35,7 @@ from ..notes import clean as clean_text
 from ..rails import add_alert, tag
 from ..timeutil import iso, now_utc, parse_iso
 from . import budget, prompt as coach_prompt, redflag, screen, validator
+from .ext import triage as coach_triage
 from .briefing import Briefings
 from .ext import ToolContext
 from .tools import ReadTools
@@ -55,6 +56,13 @@ SEND_BACKOFF_S = 30
 MAX_TOOL_CALLS_PER_TURN = 8
 TG_LIMIT = 4096
 TYPING_EVERY_S = 4.0   # Telegram's typing indicator lasts about 5 s
+TRIAGE_HOURS = 72
+INJURY_NOTES = {
+    "amber": "<host_note>The runner describes pain or an injury. Rest or modify only: no paces, no tempo, intervals or long-run "
+             "advice, no pushing on. Never diagnose or mention medicines. Suggest a physio or GP if it persists, offer find_care.</host_note>",
+    "red72": "<host_note>The runner reported a red-flag problem recently and has not been cleared. Give no training, pace, plan or "
+             "run suggestions at all. Never diagnose or mention medicines. You may help find care with find_care.</host_note>",
+}
 REPAIR_HINTS = {
     "empty": "it was empty",
     "too_long": f"it was too long (keep it well under {validator.MAX_REPLY_CHARS} characters)",
@@ -62,6 +70,9 @@ REPAIR_HINTS = {
     "phone_like": "it had a phone number that no tool returned",
     "spelled_measure": "it gave a measurement in words (use a figure from a tool, or leave the figure out)",
     "foreign_unit": "it used a unit the runner's data does not use (stick to km, minutes and m:ss pace)",
+    "dosing": "it gave a medicine, dose or tablets (never; say a pharmacist or doctor can advise)",
+    "diagnosis": "it named a condition as what the runner has (never diagnose; say what you can't tell and who can)",
+    "training_advice": "it gave pace, plan or intensity advice while the runner is hurt (rest or modify only, no paces)",
     "ungrounded": "the figure {detail} is not in any tool result or in what the runner said (call calc_pace for pace, time "
                   "or distance sums, or say it without that figure)",
 }
@@ -127,6 +138,7 @@ class Claimed:
     message: str = ""
     soft_kind: str | None = None     # a soft regex hit on the merged turn: a classifier error means the safety reply
     zone_id: str = "UTC"
+    triage: str | None = None        # the injury mode of this turn: "amber" (runner's words), "red72" (a red hit in the last 72 h)
 
 
 @dataclass
@@ -448,6 +460,7 @@ class CoachChat:
         """One unit of work. True when something was done (send, claim, cancel or a stuck job recovered)."""
         if self.recover(now, stale_only=True):
             return True
+        self._expire_triage_flags(now)
         with db.ro(self.s.db_path) as c:
             unsent = c.execute("SELECT id, send_attempts, replied_at FROM coach_jobs WHERE state='replied' AND send_attempts < ? "
                                "ORDER BY id LIMIT 20", (MAX_SEND_ATTEMPTS,)).fetchall()
@@ -457,6 +470,18 @@ class CoachChat:
                     return True
                 break
         return self._claim_and_run(now) or self.briefing.step(now)
+
+    def _expire_triage_flags(self, now: datetime) -> None:
+        """A red text triage pauses training suggestions for TRIAGE_HOURS: the `injury` health flag it set clears itself then
+        (the briefing and every other reader already treat an active injury flag as 'say nothing about training')."""
+        cut = iso(now - timedelta(hours=TRIAGE_HOURS))
+        with db.ro(self.s.db_path) as c:
+            due = c.execute("SELECT 1 FROM health_flags WHERE kind='injury' AND state='active' AND source='triage' AND set_at <= ? "
+                            "LIMIT 1", (cut,)).fetchone()
+        if due:
+            with db.tx(self.s.db_path) as c:
+                c.execute("UPDATE health_flags SET state='cleared', cleared_at=?, cleared_by='auto' WHERE kind='injury' "
+                          "AND state='active' AND source='triage' AND set_at <= ?", (iso(now), cut))
 
     def _claim_and_run(self, now: datetime) -> bool:
         claimed = self._claim(now)
@@ -527,6 +552,16 @@ class CoachChat:
                 self._safety_now(c, u, primary, kind, kind, now, "merged turn")
                 return True
             soft_kind = kind if level == redflag.SOFT else None
+            tri = coach_triage.classify_text(message)   # the runner's own words, before any cap or model (coach PR3)
+            if tri.level == "red":
+                self._triage_red_now(c, u, primary, tri, now)
+                return True
+            mode = "amber" if tri.level == "amber" else None
+            if c.execute("SELECT 1 FROM health_flags WHERE user_id=? AND kind='injury' AND state='active' AND source='triage' "
+                         "AND set_at > ?", (uid, iso(now - timedelta(hours=TRIAGE_HOURS)))).fetchone():
+                mode = "red72"
+            if mode:
+                c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode if mode == "amber" else "red", primary))
             over = None
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
             if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
@@ -542,7 +577,7 @@ class CoachChat:
                 else:
                     self._reply_now(c, uid, primary, over[0], over[1], now)
                 return True
-        return Claimed(primary, uid, batch, ledger_id, chars, history, message, soft_kind, u["zone_id"] or "UTC")
+        return Claimed(primary, uid, batch, ledger_id, chars, history, message, soft_kind, u["zone_id"] or "UTC", mode)
 
     def _safety_now(self, c, u: dict, job_id: int, kind: str, outcome: str, now: datetime, where: str) -> None:
         """The fixed safety reply on this job (no model), the flag and the deduped alert, in the caller's transaction."""
@@ -552,6 +587,24 @@ class CoachChat:
         self._message(c, u["id"], job_id, "coach", reply, now)
         self._flag(c, u, kind, now)
         log.warning("coach red flag (%s) kind=%s tester=%s job=%s", where, kind, tag(u["tester_no"]), job_id)
+
+    def _triage_red_now(self, c, u: dict, job_id: int, tri: "coach_triage.TextTriage", now: datetime) -> None:
+        """A red hit on the runner's words: the fixed reply (no model, no training), the level on the job, and for the next
+        TRIAGE_HOURS an active `injury` flag that every training reader honours. Emergency-type hits (chest, fainting, heat) use
+        the existing urgent safety reply and flag instead."""
+        if tri.call_emergency:
+            c.execute("UPDATE coach_jobs SET triage='red' WHERE id=?", (job_id,))
+            self._safety_now(c, u, job_id, redflag.URGENT, f"triage:red:{','.join(tri.codes)}", now, "text triage")
+            return
+        place = c.execute("SELECT 1 FROM convo_area WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
+        reply = coach_triage.red_reply(u["zone_id"], place)
+        c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, triage='red', "
+                  "replied_at=? WHERE id=?", (reply, f"triage:red:{','.join(tri.codes)}", iso(now), job_id))
+        self._message(c, u["id"], job_id, "coach", reply, now)
+        c.execute("INSERT INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?) "
+                  "ON CONFLICT(user_id, kind) DO UPDATE SET state='active', source='triage', set_at=excluded.set_at, "
+                  "cleared_at=NULL, cleared_by=NULL", (u["id"], "injury", "active", "triage", iso(now)))
+        log.warning("coach text triage red codes=%s tester=%s job=%s", ",".join(tri.codes), tag(u["tester_no"]), job_id)
 
     def _reply_now(self, c, uid: str, job_id: int, text: str, outcome: str, now: datetime) -> None:
         c.execute("UPDATE coach_jobs SET state='replied', reply=?, reply_source='template', outcome=?, replied_at=? WHERE id=?",
@@ -720,6 +773,9 @@ class CoachChat:
                                                                "cache_control": {"type": "ephemeral"}}]}
         turn_text = validator.defang(job.message)
         extra = registry.context(ctx)
+        if job.triage:   # the injury mode rules go in this turn, and the validator enforces them below
+            note = INJURY_NOTES["red72" if job.triage == "red72" else "amber"]
+            extra = (extra + "\n" if extra else "") + note
         if extra:
             sources.append(extra)
             turn_text = extra + "\n\n" + turn_text
@@ -797,7 +853,7 @@ class CoachChat:
                 res.outcome = "tool_loop" if final else "empty"
                 return res
             body, chips = validator.split_chips(validator.tidy(content))
-            bad = validator.check(body, sources, tool_sources)
+            bad = validator.check(body, sources, tool_sources, mode=job.triage)
             if bad is None:
                 res.reply, res.outcome = body, "repaired" if repairs else "ok"
                 res.chips = [c for c in chips if validator.check(c, sources, tool_sources) is None]

@@ -200,9 +200,54 @@ def _urls(text: str) -> set[str]:
     return {u.rstrip(".,;:!?)]}") for u in URL_RE.findall(text or "")}
 
 
-def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None = None) -> str | None:
+# ------------------------------------------------------------------------------------------------ medical safety (coach PR3)
+# Always on: no dosing, no diagnosis (coach plan section 4.3). `mode` "amber" / "red72" (an injury was reported in the runner's
+# words, or a red one in the last 72 h): also no pace figures and no push-on training advice beyond rest and modify.
+_DRUGS = (r"ibuprofen|nurofen|advil|brufen|paracetamol|acetaminophen|panadol|tylenol|naproxen|aleve|aspirin|diclofenac|voltaren|"
+          r"celecoxib|codeine|tramadol|cortisone|corticosteroids?|prednisone|prednisolone|steroids?|nsaids?|anti-?inflammator\w+|"
+          r"painkillers?|pain\s*killers?|voltarol|arnica")
+_DRUG_CONTEXT = re.compile(r"\b(?:take|taking|took|pop|popping|dose|doses|dosage|tablets?|pills?|capsules?|hourly|daily|twice|"
+                           r"every\s+\w+\s+hours?|with\s+food|before|after|\d+)\b|\d", re.I)
+_DOSE_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|\u00b5g|ug|milligrams?|micrograms?|ml|millilit\w+|iu)\b|"
+                      r"\b(?:one|two|three|four|five|six|a\s+couple\s+of|a\s+few|half(?:\s+a)?|\d+)\s+(?:\w+\s+)?"
+                      r"(?:tablets?|pills?|capsules?|caplets?|tabs|doses?|sachets?)\b", re.I)
+_COND = (r"(?:it\s*band|iliotibial\w*|itbs?|runner'?s\s+knee|patell\w+|plantar\s+fasci\w+|shin\s+splints?|stress\s+(?:fracture|reaction)|"
+         r"fractur\w+|tendin\w+|tendon\w*|achilles\s+\w+|dvt|deep\s+vein\s+thrombosis|thrombosis|blood\s+clot|sprain\w*|"
+         r"torn\s+\w+|tears?|ruptur\w+|menisc\w+|bursitis|sciatica|compartment\s+syndrome|hernia|osteo\w+|arthritis|gout|"
+         r"heat\s*stroke|concussion|infection|strains?|slipped\s+disc|pinched\s+nerve)")
+_DIAG_LEAD = (r"(?:you(?:'ve\s+got|'ve|\s+have|\s+got)|it(?:'s|\s+is)|this\s+is|that(?:'s|\s+is)|looks?\s+like|sounds?\s+like|"
+              r"(?:is|are)\s+(?:probably|likely|definitely|clearly)|diagnosis\s+(?:is|as)|probably|likely|definitely|clearly|classic|textbook)")
+_DIAG_RE = re.compile(_DIAG_LEAD + r"\s+(?:(?:probably|likely|just|a|an|the|some|your|classic|textbook|mild|slight|minor|clear|case\s+of)\s+)*"
+                      r"(?:\w+\s+)?" + _COND + r"\b", re.I)
+_PACE_FIG = re.compile(r"\b\d{1,2}:\d{2}\b|/\s?km\b|\bper\s+km\b|\bmin/km\b", re.I)
+_TRAIN_VERBS = (r"(?:run|do|try|go\s+for|aim\s+for|hit|add|include|schedule|keep|stick\s+(?:to|with)|carry\s+on\s+with|get)")
+_INTENSITY = re.compile(r"\b" + _TRAIN_VERBS + r"\b[^.!?\n]{0,25}?\b(?:tempo|intervals?|strides|fartlek|hill\s+(?:repeats|reps|sprints)|"
+                        r"threshold|race\s+pace|speed\s*work|4x4|reps|sprints?|long\s+run|workout)s?\b|"
+                        r"\b(?:increase|build|ramp|extend|boost|up)\w*\s+[^.!?\n]{0,20}?\b(?:mileage|volume|distance|km|intensity|pace|load)\b|"
+                        r"\bpush\s+(?:through|on|it|harder|yourself)\b|\brun\s+(?:through|it\s+off)\b|\brun\s+on\s+it\b", re.I)
+_RUN_SUGGEST = re.compile(r"\b(?:easy\s+(?:run|jog)s?|jog(?:ging)?|go\s+for\s+an?\s+(?:run|jog)|run\s+(?:today|tomorrow|tonight))\b", re.I)
+
+
+def medical_check(text: str, mode: str | None = None) -> str | None:
+    """-> "dosing" | "diagnosis" | "training_advice" | None."""
+    t = " ".join((text or "").replace("\u2019", "'").split())
+    if _DOSE_RE.search(t):
+        return "dosing"
+    drug = re.compile(r"\b(?:" + _DRUGS + r")\b", re.I)
+    for sent in re.split(r"(?<=[.!?\n])\s+", t):
+        if drug.search(sent) and _DRUG_CONTEXT.search(sent):
+            return "dosing"
+    if _DIAG_RE.search(t):
+        return "diagnosis"
+    if mode in ("amber", "red72"):
+        if _PACE_FIG.search(t) or _INTENSITY.search(t) or (mode == "red72" and _RUN_SUGGEST.search(t)):
+            return "training_advice"
+    return None
+
+
+def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None = None, mode: str | None = None) -> str | None:
     """None when the reply may go out, else the reason it may not. Links are grounded only in `link_sources` (tool results;
-    default: all sources), whole URL, scheme to the end of the token."""
+    default: all sources), whole URL, scheme to the end of the token. `mode` is the injury mode of the turn (see medical_check)."""
     sources = list(sources)
     link_hay = "\n".join(s or "" for s in (sources if link_sources is None else link_sources))
     link_urls = _urls(link_hay)
@@ -212,6 +257,9 @@ def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None
         return "empty"
     if len(text) > MAX_REPLY_CHARS:
         return "too_long"
+    bad = medical_check(text, mode)
+    if bad:
+        return bad
     haystack = "\n".join(s or "" for s in sources)
     haystack_n = _norm(haystack)
     for href in HREF_RE.findall(raw):   # a link goes out only when a tool handed it over, character for character

@@ -231,3 +231,66 @@ def test_the_ten_medical_scenarios_are_well_formed():
         assert s["id"] == os.path.basename(f)[:-5] and s["message"] and s["must"] and s["must_not"]
         levels.append(s["expected_level"])
     assert {"red", "amber", "green"} <= set(levels) and levels.count("red") == 5
+
+
+# ---------------------------------------------------------------------------------------------------- OSM text is untrusted
+def _one(**tags):
+    return places._parse({"elements": [{"type": "node", "id": 1, "lat": TANJONG_PAGAR[0], "lon": TANJONG_PAGAR[1],
+                                        "tags": {"name": "Clinic", "healthcare": "physiotherapist", **tags}}]}, TANJONG_PAGAR)
+
+
+def test_overlong_names_and_hours_are_capped_and_markup_and_control_chars_stripped():
+    [r] = _one(name="A" * 300 + "\x00", opening_hours="Mo-Fr " + "9" * 200,
+               **{"addr:street": "<script>alert(1)</script> Road\n\t`x`"})
+    assert len(r["name"]) <= places.MAX_FIELD and len(r["opening_hours"]) <= places.MAX_FIELD
+    assert "<" not in r["address"] and ">" not in r["address"] and "\n" not in r["address"] and "`" not in r["address"]
+    [r] = _one(name="Dr *Bold* <b>Physio</b> [x](http://evil) ‮")
+    assert not any(ch in r["name"] for ch in "<>*[]‮")
+
+
+@pytest.mark.parametrize("site", ["javascript:alert(1)", "data:text/html;base64,AAAA", "ftp://x.example/a", "https://", "http:///nohost",
+                                  "https://exa mple.com", "https://x.example/\"onload=1", "not a url", "https://" + "a" * 300 + ".com",
+                                  "https://localhost", "//x.example"])
+def test_only_http_s_websites_with_a_host_survive(site):
+    [r] = _one(website=site)
+    assert "website" not in r
+
+
+def test_good_websites_survive_and_www_gets_https():
+    assert _one(website="https://physio.example/book?a=1")[0]["website"] == "https://physio.example/book?a=1"
+    assert _one(website="http://physio.example")[0]["website"] == "http://physio.example"
+    assert _one(website="www.physio.example")[0]["website"] == "https://www.physio.example"
+
+
+def test_phone_must_look_like_a_phone():
+    assert _one(phone="+65 6000 0001")[0]["phone"] == "+65 6000 0001"
+    assert "phone" not in _one(phone="call <b>now</b>")[0] and "phone" not in _one(phone="javascript:1")[0]
+
+
+def test_cache_is_an_lru_of_512(env):
+    places._cache.clear()
+    env.osm.overpass = {"elements": []}
+    for i in range(places.CACHE_MAX + 5):
+        places._search(env.ctx.http, "physio", (round(1.0 + i * 0.01, 2), 103.0))
+    assert len(places._cache) == places.CACHE_MAX
+    assert ("physio", 1.0, 103.0) not in places._cache                      # the oldest went first
+    first_kept = next(iter(places._cache))
+    places._search(env.ctx.http, "physio", (first_kept[1], first_kept[2]))      # a hit refreshes it
+    assert next(reversed(places._cache)) == first_kept
+
+
+# ---------------------------------------------------------------------------------------------------- the eval gate loads the medical set
+def test_run_evals_loads_the_medical_scenarios_without_any_model_call():
+    import importlib.util
+    import subprocess
+    import sys
+    pytest.importorskip("yaml")
+    path = os.path.join(COACH_DIR, "evals", "run_evals.py")
+    spec = importlib.util.spec_from_file_location("run_evals_shape", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    ids = [s["id"] for s in mod.load_scenarios()]
+    assert len(ids) == len(set(ids)) and sum(i.startswith("medical_") for i in ids) == 10 and "knee-sharp" in ids
+    out = subprocess.run([sys.executable, "-I", path, "--dry-run", "--only", "medical_red_calf_dvt,knee-sharp"],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and "2 scenarios" in out.stdout and "medical_red_calf_dvt" in out.stdout

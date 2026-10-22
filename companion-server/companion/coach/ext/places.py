@@ -9,8 +9,11 @@ there while they opted in, already rounded to 0.1 degree); else a `need_place` r
 from __future__ import annotations
 
 import math
+import re
 import threading
 import time
+from collections import OrderedDict
+from urllib.parse import urlparse
 
 from .. import redflag
 from ... import db
@@ -26,6 +29,10 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 USER_AGENT = "RunSupremeCoach/1.0 (+https://github.com/ricki2828/run-solo; coach care finder)"
 MIN_GAP_S = 1.0          # at most one request a second to OSM services
 CACHE_TTL_S = 24 * 3600
+CACHE_MAX = 512           # least recently used goes first
+MAX_FIELD = 80            # name, hours
+MAX_ADDRESS = 120
+MAX_URL = 200
 RADII_M = (5000, 10000)  # widen once if fewer than WIDEN_BELOW results
 WIDEN_BELOW = 3
 MAX_RESULTS = 5
@@ -36,7 +43,7 @@ _clock = time.monotonic
 _sleep = time.sleep
 _lock = threading.Lock()
 _last_request = [-1e9]
-_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_cache: "OrderedDict[tuple, tuple[float, list[dict]]]" = OrderedDict()
 
 # kind -> Overpass selector fragments applied to nodes, ways and relations
 _SELECTORS = {
@@ -99,26 +106,61 @@ def _query(kind: str, lat: float, lon: float, radius: int) -> str:
     return f"[out:json][timeout:20];({parts});out center tags 60;"
 
 
+# OSM text is written by anyone, so it is cleaned before the model or Telegram sees it: control characters and markup characters
+# out, whitespace collapsed, capped; a website must be http(s) with a host; a phone number only digits and phone punctuation.
+_BAD_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2064<>`*_\[\]{}\\|]")
+_PHONE_OK = re.compile(r"^\+?[0-9][0-9 ()./-]{4,28}$")
+
+
+def _clean(value, limit: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    t = " ".join(_BAD_CHARS.sub(" ", value).split())
+    return t[:limit].rstrip() or None
+
+
+def _website(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if v.lower().startswith("www."):
+        v = "https://" + v
+    if len(v) > MAX_URL or re.search(r"[\s\x00-\x1f\x7f<>\"'`\\]", v):
+        return None
+    try:
+        u = urlparse(v)
+        host = u.hostname
+    except ValueError:
+        return None
+    return v if u.scheme in ("http", "https") and host and "." in host else None
+
+
+def _phone(value) -> str | None:
+    v = value.strip() if isinstance(value, str) else ""
+    return v if _PHONE_OK.match(v) else None
+
+
 def _address(t: dict) -> str | None:
     street = " ".join(x for x in (t.get("addr:housenumber"), t.get("addr:street")) if x)
     bits = [b for b in (street, t.get("addr:unit") and f"#{t['addr:unit']}", t.get("addr:suburb") or t.get("addr:city"),
                         t.get("addr:postcode")) if b]
-    return ", ".join(bits) or t.get("addr:full")
+    return _clean(", ".join(bits) or t.get("addr:full"), MAX_ADDRESS)
 
 
 def _parse(data: dict, centre: tuple[float, float]) -> list[dict]:
     out, seen = [], set()
     for el in data.get("elements", []):
         t = el.get("tags") or {}
-        name = (t.get("name") or "").strip()
+        name = _clean(t.get("name"), MAX_FIELD) or ""
         pt = (el.get("lat"), el.get("lon")) if "lat" in el else ((el.get("center") or {}).get("lat"), (el.get("center") or {}).get("lon"))
         if not name or pt[0] is None or pt[1] is None or (name.lower(), round(pt[0], 3), round(pt[1], 3)) in seen:
             continue
         seen.add((name.lower(), round(pt[0], 3), round(pt[1], 3)))
         row = {"name": name, "distance_km": round(_haversine_km(centre, (pt[0], pt[1])), 1), "address": _address(t),
-               "phone": t.get("phone") or t.get("contact:phone"), "website": t.get("website") or t.get("contact:website"),
-               "opening_hours": t.get("opening_hours")}
-        out.append({k: v for k, v in row.items() if v})
+               "phone": _phone(t.get("phone") or t.get("contact:phone")),
+               "website": _website(t.get("website") or t.get("contact:website")),
+               "opening_hours": _clean(t.get("opening_hours"), MAX_FIELD)}
+        out.append({k: v for k, v in row.items() if v is not None and v != ""})
     out.sort(key=lambda r: r["distance_km"])
     return out[:MAX_RESULTS]
 
@@ -127,6 +169,7 @@ def _search(http, kind: str, centre: tuple[float, float]) -> list[dict]:
     key = (kind, centre[0], centre[1])
     hit = _cache.get(key)
     if hit and _clock() - hit[0] < CACHE_TTL_S:
+        _cache.move_to_end(key)
         return hit[1]
     results: list[dict] = []
     for radius in RADII_M:
@@ -135,6 +178,9 @@ def _search(http, kind: str, centre: tuple[float, float]) -> list[dict]:
         if len(results) >= WIDEN_BELOW:
             break
     _cache[key] = (_clock(), results)
+    _cache.move_to_end(key)
+    while len(_cache) > CACHE_MAX:
+        _cache.popitem(last=False)
     return results
 
 
