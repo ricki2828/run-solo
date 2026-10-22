@@ -677,9 +677,9 @@ def test_a_job_stuck_running_is_recovered_by_the_worker_without_a_restart(cc, fa
     say(cc, "hi")
     with db.tx(cc.svc.s.db_path) as c:
         c.execute("UPDATE coach_jobs SET state='running', attempts=2, claimed_at=?", (db_ts(T0),))
-    cc.svc.coach.drain(T0 + timedelta(seconds=30))   # inside the deadline + 30 s: left alone
+    cc.svc.coach.drain(T0 + timedelta(seconds=30))   # inside the longest deadline (90 s) + 30 s: left alone
     assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "running"}]
-    cc.svc.coach.drain(T0 + timedelta(seconds=95))
+    cc.svc.coach.drain(T0 + timedelta(seconds=125))
     assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "recovered"}]
     assert last_text(fakes) == coach_chat.FALLBACK_TEXT
 

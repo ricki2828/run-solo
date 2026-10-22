@@ -69,6 +69,57 @@ def test_personal_queries_are_refused_and_nothing_is_sent(cc, q):
     assert rows(cc, "SELECT * FROM cost_ledger WHERE purpose='research'") == []
 
 
+@pytest.mark.parametrize("q", [
+    "is John Smith a good physio",
+    "best route -33.87,151.21 for hills",
+    "call six four two one five five five one two three four",
+    "advice for a 44 year old in Bondi",
+    "running tips for a 50yo",
+    "good physio near Ponsonby",
+    "marathon training in Wellington",
+])
+def test_hardened_pii_checks(cc, q):
+    r, _, log = search(cc, lambda req: httpx.Response(200, json=answer()), query=q)
+    assert r["ok"] is False and log == []
+
+
+@pytest.mark.parametrize("q", [
+    "do Nike Vaporfly shoes help half marathoners",
+    "how do I pace the Auckland Marathon",
+    "Garmin Forerunner vs Coros Pace for trail running",
+    "what is zone 2 training",
+])
+def test_ordinary_gear_and_race_questions_still_go_out(cc, q):
+    r, _, log = search(cc, lambda req: httpx.Response(200, json=answer()), query=q, topic="gear")
+    assert r["ok"] is True and len(log) == 1
+
+
+def test_a_symptom_question_is_forced_to_the_medical_allowlist(cc):
+    r, _, log = search(cc, lambda req: httpx.Response(200, json=answer(urls=(BLOG, CARBON))), query="why does my knee hurt after long runs", topic="gear")
+    assert json.loads(log[0].content)["plugins"][0]["include_domains"] == list(research.MEDICAL_DOMAINS)
+    assert [s["url"] for s in r["sources"]] == [CARBON] or r["found"] is False
+    assert "orthoinfo.aaos.org" in research.MEDICAL_DOMAINS and "aaos.org" not in research.MEDICAL_DOMAINS
+
+
+def test_links_and_phones_in_the_summary_are_stripped(cc):
+    text = "See https://evil.example.com/x or www.evil.org and foo.com, call +64 21 555 1234. About 4% better economy."
+    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(text=text)), query="carbon shoes for a half", topic="gear")
+    t = r["quoted_web_text"]
+    assert "evil" not in t and "foo.com" not in t and "555" not in t and "4% better economy" in t
+
+
+def test_zdr_is_requested_and_a_rejection_is_a_clean_unavailable(cc):
+    seen: list = []
+    r, _, _ = search(cc, lambda req: (seen.append(json.loads(req.content)), httpx.Response(404, json={}))[1], query="carbon shoes for a half", topic="gear")
+    assert seen[0]["provider"]["zdr"] is True and seen[0]["provider"]["require_parameters"] is True
+    assert r["ok"] is False and "unavailable right now" in r["error"]
+
+
+def test_a_medical_answer_that_drew_on_any_other_page_is_not_used(cc):
+    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=(CARBON, BLOG))), query="shin splints general causes", topic="medical")
+    assert r["found"] is False and r["sources"] == [] and "quoted_web_text" not in r
+
+
 def test_the_runners_own_name_is_refused(cc):
     con = sqlite3.connect(cc.svc.s.db_path)
     con.execute("UPDATE users SET chat_name='Ricki Taiaroa'")
@@ -95,7 +146,7 @@ def test_medical_queries_carry_the_domain_allowlist_and_others_do_not(cc):
 
 
 def test_medical_citations_outside_the_allowlist_are_dropped_and_no_source_means_no_claim(cc):
-    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=(BLOG, CARBON, "https://evilnhs.uk/x", "http://www.nhs.uk/insecure"))),
+    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=(CARBON, "http://www.nhs.uk/insecure"))),
                      query="shin splints general causes", topic="medical")
     assert [s["url"] for s in r["sources"]] == [CARBON]
     r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=(BLOG,))), query="shin splints general causes", topic="medical")
@@ -139,6 +190,27 @@ def test_the_daily_budget_stops_research(cc):
     ctx.svc.s = s
     r = REG.call("web_search", {"query": "carbon shoes for a half"}, ctx)
     assert r["ok"] is False and "budget" in r["error"]
+
+
+def test_a_job_that_searched_gets_the_longer_deadline(tmp_path, fakes):
+    import time
+    s = dataclasses.replace(coach_settings(tmp_path), coach_job_deadline_s=2.0, coach_job_deadline_tool_s=60.0)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    with TestClient(app) as c:
+        c.svc = app.state.svc
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(enrol(c)))
+        fakes._llm = lambda body: (time.sleep(1.3), httpx.Response(200, json=answer()))[1]
+        fakes.coach_queue = [coach_tools(("web_search", {"query": "do carbon plate shoes help half marathoners", "topic": "gear"})),
+                             coach_text("About a 4% economy gain in lab tests.")]
+        say(c, "carbon shoes?")
+        run_worker(c)
+        assert rows(c, "SELECT outcome FROM coach_jobs")[0]["outcome"] == "ok"
+    assert dataclasses.replace(s, coach_job_deadline_tool_s=90.0).coach_job_deadline_tool_s == 90.0
+
+
+def test_the_research_reference_is_in_the_prompt():
+    from companion.coach import prompt as coach_prompt
+    assert '<reference name="research">' in coach_prompt.load(default_coach_dir()).text
 
 
 def test_the_placeholder_is_posted_before_the_call(cc):

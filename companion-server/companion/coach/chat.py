@@ -424,7 +424,7 @@ class CoachChat:
         """A job left 'running' (a restart, or a crash in the worker) gets one more try, then the template (B3). With
         stale_only, only jobs claimed longer ago than the job deadline + 30 s (the worker calls this every step, review of
         #341 P2-2). A send left 'sending' goes back to 'replied'. Stale reservations go. -> jobs touched."""
-        cut = iso(now - timedelta(seconds=self.s.coach_job_deadline_s + STALE_GRACE_S)) if stale_only else iso(now + timedelta(days=1))
+        cut = iso(now - timedelta(seconds=max(self.s.coach_job_deadline_s, self.s.coach_job_deadline_tool_s) + STALE_GRACE_S)) if stale_only else iso(now + timedelta(days=1))
         n = 0
         with db.tx(self.s.db_path) as c:
             budget.release_stale(c, now)
@@ -725,7 +725,8 @@ class CoachChat:
             turn_text = extra + "\n\n" + turn_text
         messages: list[dict] = [self.system_message(), *history, {"role": "user", "content": turn_text}]
         base = len(messages)
-        deadline = time.monotonic() + self.s.coach_job_deadline_s
+        started = time.monotonic()
+        deadline = started + self.s.coach_job_deadline_s
         ledger_id: int | None = job.ledger_id
         tool_turn, repairs = 0, 0
         for _ in range(self.s.coach_max_tool_turns + 1 + self.s.coach_repair_turns):
@@ -781,6 +782,8 @@ class CoachChat:
                     fn = call.get("function") if isinstance(call.get("function"), dict) else {}
                     name = str(fn.get("name", ""))
                     result = registry.call(name, fn.get("arguments"), ctx) if registry.has(name) else tools.call(name, fn.get("arguments"))
+                    if registry.has(name) and ctx.calls:   # a tool that called a model is slow: the job gets the longer deadline
+                        deadline = max(deadline, started + self.s.coach_job_deadline_tool_s)
                     res.cost_usd, res.calls, ctx.cost_usd, ctx.calls = res.cost_usd + ctx.cost_usd, res.calls + ctx.calls, 0.0, 0
                     enc = tools.encode(result)
                     sources.append(enc)
