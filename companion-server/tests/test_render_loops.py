@@ -218,3 +218,23 @@ def test_a_short_zone_list_is_padded_not_an_error():
     r._img(2.0)
     run = {**F.milos_trail(), "zone_s": [100.0, 200.0]}
     assert len(loop.run_loop_from_facts(run).zone_s) == 5
+
+
+@pytest.mark.parametrize("label,km,secs,time_hero", [
+    ("5 KM BEST", 5.0, 1301, True),
+    ("10 KM BEST", 10.0, 2700, True),
+    ("HALF MARATHON BEST", 21.1, 5900, True),
+    ("5 KM BEST", 10.0, 3000, False),        # a 5 K inside a 10 km run: not the whole-run time
+    ("FASTEST KM", 8.0, 2500, False),
+    ("LONGEST RUN", 18.4, 6500, False),
+])
+def test_a_label_only_pb_never_shows_a_mislabelled_time(label, km, secs, time_hero):
+    f = _real_pb_facts()
+    f.update(distance_km=km, duration_s=secs, pace_s_per_km=secs / km, pb_detail={"label": label},
+             splits=[{"km": 1.0, "pace_s": secs / km, "zone": 3}] * int(km) + ([{"km": km % 1, "pace_s": secs / km, "zone": 3}] if km % 1 else []))
+    s = loop.run_loop_from_facts(f)
+    assert s.label == f"NEW {label}" and s.pb and s.label_col == brand.ARC
+    if time_hero:
+        assert s.hero == loop.fmt_dur(secs) and s.unit == ""
+    else:
+        assert s.hero == f"{km:.1f}" and s.unit == "KM" and [lab for _, lab in s.stats] == ["TIME", "/KM"]

@@ -113,6 +113,15 @@ def _pad5(zs) -> list[float]:
     return zs + [0.0] * (5 - len(zs))
 
 
+PB_RACE_KM = {"5 KM BEST": 5.0, "10 KM BEST": 10.0, "HALF MARATHON BEST": 21.0975}   # media.PB_LABEL's distance bests
+
+
+def _pb_time_is_run_time(label, km: float) -> bool:
+    """A distance best's time is the run's time only when the run is that distance; FASTEST KM and LONGEST RUN never are."""
+    target = PB_RACE_KM.get(str(label or "").upper())
+    return target is not None and abs(km - target) <= 0.05 * target
+
+
 def run_loop_from_facts(f: dict) -> RunLoop:
     has_route = bool(f.get("route_xy") or f.get("route"))
     pbd = f.get("pb_detail") or {}
@@ -143,8 +152,12 @@ def run_loop_from_facts(f: dict) -> RunLoop:
     pb = bars = avg = None
     if label_only_pb:
         pb = {"old_s": None, "new_s": float(spec.duration_s), "delta": None}
-        hero, unit = fmt_dur(spec.duration_s), ""
-        stats = [(pace, "/KM"), (f"{km:.1f}", "KM")]
+        if _pb_time_is_run_time(pbd.get("label"), km):
+            hero, unit = fmt_dur(spec.duration_s), ""
+            stats = [(pace, "/KM"), (f"{km:.1f}", "KM")]
+        else:   # the PB's time is not this run's time (fastest km, longest run, a 5 K inside a longer run): the distance leads
+            hero, unit = f"{km:.1f}", "KM"
+            stats = [(fmt_dur(spec.duration_s), "TIME"), (pace, "/KM")]
     elif spec.verdict.kind == "pb":
         v = spec.verdict
         pb = {"old_s": float(v.old), "new_s": float(spec.duration_s), "delta": f"{int(round(v.hero))} S"}
