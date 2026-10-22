@@ -49,6 +49,10 @@ def _render_one(op: str, kind: str, facts: dict, out: Path) -> None:
     elif kind == "ghostclip":
         from .motion.ghost_clip import render_ghost_clip, spec_from_facts
         render_ghost_clip(spec_from_facts(facts), out)
+    elif kind in ("run_loop", "week_loop", "milestone_loop"):
+        from .motion import loop
+        {"run_loop": loop.render_run_loop, "week_loop": loop.render_week_loop,
+         "milestone_loop": loop.render_milestone_loop}[kind](facts, out)
     elif kind == "run":
         from .motion import render_run_video
         from .motion.run_video import spec_from_facts
