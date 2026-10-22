@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -244,7 +245,7 @@ class _MomentScreenState extends State<MomentScreen>
 
 /// The entrance: a darker ground swept away by a circle of the moment's
 /// colour, a shock ring, soft rays and confetti that settle. Rays, ring and
-/// confetti never enter [momentSafeZone], so text sits on flat colour. Seeded:
+/// confetti fade out softly over [momentSafeZone], so text sits on flat colour. Seeded:
 /// the settled frame is identical every time.
 class _BurstPainter extends CustomPainter {
   _BurstPainter({
@@ -279,15 +280,9 @@ class _BurstPainter extends CustomPainter {
         );
     }
     final safe = momentSafeZone(size);
-    canvas
-      ..save()
-      ..clipPath(
-        Path.combine(
-          PathOperation.difference,
-          Path()..addRect(Offset.zero & size),
-          Path()..addRect(safe),
-        ),
-      );
+    // Rays, ring and confetti draw into a layer that an elliptical fade then
+    // thins to nothing over the text band, so there is no hard edge.
+    canvas.saveLayer(Offset.zero & size, Paint());
     final fade = Curves.easeOut.transform(math.min(1, progress * 2));
     final rays = Paint()..color = ink.withValues(alpha: 0.12 * fade);
     const n = 14;
@@ -344,7 +339,32 @@ class _BurstPainter extends CustomPainter {
           ..restore();
       }
     }
-    canvas.restore();
+    // Soft mask: clear (alpha 0) through the whole text band, easing back to
+    // full strength outside it. An ellipse around the band, not a box.
+    final bandCentre = safe.center;
+    final rx = safe.width * 0.85;
+    final ry = safe.height * 0.85;
+    final mask = Paint()
+      ..blendMode = BlendMode.dstIn
+      ..shader = ui.Gradient.radial(
+        Offset.zero,
+        1,
+        [
+          ink.withValues(alpha: 0),
+          ink.withValues(alpha: 0),
+          ink.withValues(alpha: 1),
+        ],
+        const [0, 0.9, 1.35],
+        TileMode.clamp,
+        Matrix4.translationValues(
+          bandCentre.dx,
+          bandCentre.dy,
+          0,
+        ).multiplied(Matrix4.diagonal3Values(rx, ry, 1)).storage,
+      );
+    canvas
+      ..drawRect(Offset.zero & size, mask)
+      ..restore();
   }
 
   @override

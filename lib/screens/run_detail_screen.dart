@@ -12,6 +12,7 @@ import '../state/history_store.dart';
 import '../state/send_runs.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
+import '../widgets/activity_map.dart' show routeHasShape;
 import '../widgets/chrome.dart';
 import '../widgets/coaching.dart';
 import '../widgets/elevation_profile.dart';
@@ -151,7 +152,7 @@ class RunDetailBody extends StatelessWidget {
       runEnd: d.run.end,
       now: services.now(),
     );
-    final hasRoute = !a.indoor && !route.isEmpty;
+    final hasRoute = !a.indoor && !route.isEmpty && routeHasShape(route);
     // Null for a run with no elevation (indoor, an import, one recorded
     // before the phone fused its barometer).
     final elev = engine.RunElevation.of(d.run);
