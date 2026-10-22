@@ -54,6 +54,24 @@ void main() {
     expect(line([c]), "Your 5K on 20 Oct didn't count: paused at 3.2 km");
   });
 
+  test('a long GPS drop says for how long', () {
+    final c = run(
+      'goal',
+      mode: RunMode.intervals,
+      key: 'goal:d5000',
+      miss: const EffortMiss(
+        EffortMissKind.gpsDropped,
+        atM: 3200,
+        goalM: 5000,
+        durationMs: 120000,
+      ),
+    );
+    expect(
+      line([c]),
+      "Your 5K on 20 Oct didn't count: GPS dropped for 2 min at 3.2 km",
+    );
+  });
+
   test('a GPS drop, a jump, a stop and a noisy track each have words', () {
     for (final (miss, words) in [
       (

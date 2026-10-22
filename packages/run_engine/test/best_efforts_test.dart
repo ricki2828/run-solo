@@ -150,9 +150,9 @@ void main() {
     expect(r.fromStartSplitsMs, [250000, 500000, 750000, 1000000]);
   });
 
-  test('a sample gap over 10 s breaks windows; 10 s does not', () {
+  test('a sample gap over a minute breaks windows; 10 s does not', () {
     final broken = find(
-      build([(1000, 4.0), (1000, 4.0)], gapAfterPiece: {0: 15}),
+      build([(1000, 4.0), (1000, 4.0)], gapAfterPiece: {0: 90}),
     );
     expect(broken.efforts.containsKey(BestEffortDistance.k5), isFalse);
     expect(broken.fromStartSplitsMs, hasLength(4));
@@ -474,12 +474,58 @@ void main() {
       expect(r.miss, isNull);
     });
 
-    test('a GPS drop with distance accrued is never bridged', () {
-      // 15 s of silence in which the position moved on: not a measured
+    test('a long GPS drop with distance accrued is never bridged', () {
+      // 90 s of silence in which the position moved on: not a measured
       // effort, so the clean-stretch rule applies.
-      final r = find(goalRun(gap: 15));
+      final r = find(goalRun(gap: 90));
       expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
       expect(r.miss!.kind, EffortMissKind.gpsDropped);
+    });
+
+    test('a short GPS drop is bridged like it is in any other run', () {
+      final r = find(goalRun(gap: 15));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('a pause and a GPS dropout combine their bridges', () {
+      // 30 s pause after 800 s, then 453 s with a 40 s dropout in it (no-fix
+      // samples, distance frozen, then the chord).
+      final base = goalRun(pause: 30);
+      final dropAt = 900000, dropMs = 40000;
+      final samples = <Sample>[];
+      for (final s in base.samples) {
+        if (s.tMs > dropAt && s.tMs < dropAt + dropMs) {
+          samples.add(Sample(tMs: s.tMs, distM: s.distM - 0));
+          continue;
+        }
+        samples.add(s);
+      }
+      // Freeze distance in the hole, then it is already the chord at its end.
+      final frozen = samples.firstWhere((s) => s.tMs == dropAt).distM;
+      for (var i = 0; i < samples.length; i++) {
+        final s = samples[i];
+        if (s.tMs > dropAt && s.tMs < dropAt + dropMs) {
+          samples[i] = Sample(tMs: s.tMs, distM: frozen);
+        }
+      }
+      final run = RunFile(
+        id: base.id,
+        device: base.device,
+        app: base.app,
+        start: base.start,
+        end: base.end,
+        tz: base.tz,
+        mode: base.mode,
+        session: goal5k,
+        units: base.units,
+        laps: base.laps,
+        pauses: base.pauses,
+        samples: samples,
+      );
+      final r = find(run);
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
     });
 
     test('a recording gap (kill and resume) is never bridged', () {
@@ -606,9 +652,9 @@ void main() {
     });
 
     test('GPS dropped', () {
-      final m = find(free(gap: 15)).miss!;
+      final m = find(free(gap: 90)).miss!;
       expect(m.kind, EffortMissKind.gpsDropped);
-      expect(m.reason, 'GPS dropped at 3.2 km');
+      expect(m.reason, 'GPS dropped for 90 s at 3.2 km');
     });
 
     test('GPS jump', () {
@@ -647,6 +693,264 @@ void main() {
       );
       expect(back.miss!.reason, 'paused at 3.2 km');
       expect(RunBestEfforts.none.toJson().containsKey('miss'), isFalse);
+    });
+  });
+
+  group('short GPS dropouts are bridged for 5K and 10K', () {
+    const mps = 4.0;
+
+    /// A run at a steady 4 m/s sampled at 1 Hz for [seconds]. Each dropout
+    /// is (start second, length in seconds): the recorder keeps writing
+    /// no-fix samples with the distance frozen, then the first fix back
+    /// adds [chord] of the ground really covered (1 = all of it; a chord
+    /// across a bend is shorter than the path). [extraJumpM] is added on top
+    /// at the first fix back (a GPS leap).
+    RunFile dropRun(
+      int seconds,
+      List<(int, int)> dropouts, {
+      double chord = 1,
+      double extraJumpM = 0,
+      RunMode mode = RunMode.free,
+      bool lowAccuracy = false,
+    }) {
+      final samples = <Sample>[];
+      var recorded = 0.0;
+      for (var t = 0; t <= seconds; t++) {
+        final drop = dropouts.where((d) => t > d.$1 && t <= d.$1 + d.$2);
+        if (drop.isNotEmpty) {
+          final (start, len) = drop.first;
+          if (t == start + len) {
+            // First fix back: the straight line from the last fix.
+            recorded += chord * mps * len + extraJumpM;
+            samples.add(
+              Sample(
+                tMs: t * 1000,
+                lat: -33.87,
+                lon: 151.21,
+                accM: 5,
+                distM: recorded,
+              ),
+            );
+          } else if (lowAccuracy) {
+            // The recorder journals a fix it rejects (accuracy over 25 m)
+            // with lat/lon and the distance frozen.
+            samples.add(
+              Sample(
+                tMs: t * 1000,
+                lat: -33.87,
+                lon: 151.21,
+                accM: 60,
+                distM: recorded,
+              ),
+            );
+          } else {
+            samples.add(Sample(tMs: t * 1000, distM: recorded));
+          }
+          continue;
+        }
+        recorded += t == 0 ? 0 : mps;
+        samples.add(
+          Sample(
+            tMs: t * 1000,
+            lat: -33.87,
+            lon: 151.21,
+            accM: 5,
+            distM: recorded,
+          ),
+        );
+      }
+      return RunFile(
+        id: '00000000-0000-4000-8000-0000000000bf',
+        device: 'test',
+        app: 'test',
+        start: fixedNow,
+        end: fixedNow.add(Duration(seconds: seconds)),
+        tz: 'UTC',
+        mode: mode,
+        units: Units.km,
+        laps: const [],
+        samples: samples,
+      );
+    }
+
+    test('a 5K with a 20 s and a 45 s dropout counts at the true time', () {
+      // 8 km: a 5K window can hold one or both dropouts.
+      final r = find(dropRun(2000, [(300, 20), (1200, 45)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('20 s and 45 s dropouts in a run of exactly 5K count', () {
+      final r = find(dropRun(1250, [(300, 20), (800, 45)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('3 x 55 s of dropouts in exactly 5K count', () {
+      final r = find(dropRun(1250, [(200, 55), (550, 55), (900, 55)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
+    test('4 min of dropouts in exactly 5K do not count, and it says why', () {
+      final r = find(
+        dropRun(1250, [(150, 60), (450, 60), (750, 60), (1050, 60)]),
+      );
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.gpsDropped);
+      expect(r.miss!.reason, 'GPS dropped 4 times, 4 min in all');
+    });
+
+    test('an 8 s dropout in exactly 5K counts (under the old 10 s rule)', () {
+      final r = find(dropRun(1250, [(600, 8)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('30 s of low-accuracy fixes (a tunnel) count as a dropout', () {
+      final r = find(dropRun(1250, [(600, 30)], lowAccuracy: true));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
+    test('the allowance is max(180 s, 15% of the window): 184 s in a 1250 s '
+        '5K counts, 192 s does not, and the miss says so', () {
+      final ok = find(
+        dropRun(1250, [(100, 46), (400, 46), (700, 46), (1000, 46)]),
+      );
+      expect(effort(ok, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      final no = find(
+        dropRun(1250, [(100, 48), (400, 48), (700, 48), (1000, 48)]),
+      );
+      expect(no.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(no.miss!.reason, 'GPS dropped 4 times, 3 min in all');
+    });
+
+    test('a single 45 s dropout in exactly 5K counts', () {
+      final r = find(dropRun(1250, [(600, 45)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
+    test('the same holds for a gap in the timestamps (no no-fix samples)', () {
+      final r = find(build([(600, 4.0), (650, 4.0)], gapAfterPiece: {0: 30}));
+      expect(effort(r, BestEffortDistance.k5), isNotNull);
+    });
+
+    test('a 90 s dropout is not bridged and the miss says how long', () {
+      final r = find(dropRun(1300, [(800, 90)]));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.gpsDropped);
+      expect(r.miss!.reason, 'GPS dropped for 90 s at 3.2 km');
+    });
+
+    test('a 2 minute dropout reads in minutes', () {
+      final r = find(dropRun(1300, [(800, 120)]));
+      expect(r.miss!.reason, 'GPS dropped for 2 min at 3.2 km');
+    });
+
+    test('an implausible jump across a short dropout still cuts', () {
+      // 20 s dropout, then a 600 m leap: 680 m in 20 s is 34 m/s.
+      final r = find(dropRun(1300, [(800, 20)], extraJumpM: 600));
+      expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(r.miss!.kind, EffortMissKind.gpsJump);
+    });
+
+    test('a bridged time is never faster than the true time', () {
+      // The recorder only adds the straight line across the dropout, which
+      // is shorter than the path run: 15% short here. The window can only
+      // read slower than the true 1250 s, never faster.
+      for (final chord in [1.0, 0.95, 0.85, 0.6]) {
+        final r = find(dropRun(1400, [(500, 45)], chord: chord));
+        final ms = effort(r, BestEffortDistance.k5).elapsedMs;
+        expect(ms, greaterThanOrEqualTo(1250000 - 5), reason: 'chord $chord');
+        // Slower by about the distance lost at 4 m/s.
+        final lostS = (1 - chord) * mps * 45 / mps;
+        expect(ms, lessThan(1250000 + (lostS + 2) * 1000));
+      }
+    });
+
+    test('a window with an edge inside a dropout is refused', () {
+      // The dropout straddles where a window could end if it ended at 5000
+      // m: a fast window must hold the whole hole or none of it.
+      final r = find(dropRun(1400, [(600, 45)], chord: 1));
+      final k5 = effort(r, BestEffortDistance.k5);
+      final holeStart = 600000, holeEnd = 645000;
+      final touches = k5.startMs < holeEnd && k5.endMs > holeStart;
+      final whole = k5.startMs <= holeStart && k5.endMs >= holeEnd;
+      expect(!touches || whole, isTrue);
+    });
+
+    test('1K and mile windows stay strict: no window spans a dropout', () {
+      final r = find(dropRun(260, [(100, 15)]));
+      expect(r.efforts.containsKey(BestEffortDistance.km1), isFalse);
+      expect(r.efforts.containsKey(BestEffortDistance.mile), isFalse);
+    });
+
+    test('Laps, Trail and a goal run bridge too', () {
+      for (final mode in [RunMode.laps, RunMode.trail]) {
+        final r = find(dropRun(1300, [(500, 30)], mode: mode));
+        expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      }
+      final goal = dropRun(1300, [(500, 30)], mode: RunMode.intervals);
+      final g = RunFile(
+        id: goal.id,
+        device: goal.device,
+        app: goal.app,
+        start: goal.start,
+        end: goal.end,
+        tz: goal.tz,
+        mode: goal.mode,
+        session: SessionSpec.goalDistance(5000, '5K'),
+        units: goal.units,
+        laps: goal.laps,
+        samples: goal.samples,
+      );
+      expect(
+        effort(find(g), BestEffortDistance.k5).elapsedMs,
+        closeTo(1250000, 5),
+      );
+    });
+
+    test('the miss with its duration round-trips through the index JSON', () {
+      final r = find(dropRun(1300, [(800, 90)]));
+      final back = RunBestEfforts.fromJson(
+        jsonDecode(jsonEncode(r.toJson())) as Map<String, Object?>,
+      );
+      expect(back.miss!.reason, 'GPS dropped for 90 s at 3.2 km');
+    });
+
+    test('a bridged 5K feeds Estimated Times and MID', () {
+      final run = dropRun(2000, [(300, 20), (1200, 45)]);
+      final a = engine.analyze(run, now: fixedNow);
+      final efforts = finder.find(run, a);
+      final inputs = PredictionInput.ofRun(
+        run,
+        a,
+        efforts,
+        localDate: DateTime(2026, 9, 24),
+      );
+      expect(
+        inputs.map((i) => i.kind),
+        contains(PredictionSourceKind.bestEffort5k),
+      );
+      const predictor = Predictor(names: EventNames(parkrun: 'parkrun'));
+      final p = predictor.predict(
+        PredictionTarget.k10,
+        inputs,
+        now: DateTime(2026, 9, 26, 9),
+      );
+      expect(p, isNotNull);
+      final candidate = LiveCandidate(
+        BoardInput(
+          runId: run.id,
+          date: DateTime(2026, 9, 24),
+          mode: RunMode.free,
+          efforts: efforts.efforts,
+        ),
+        RunDerived(bestEfforts: efforts),
+      );
+      final mid = IdentityScores.of([
+        candidate,
+      ], now: DateTime(2026, 9, 26, 9))[IdentityLane.mid];
+      expect(mid, isNotNull);
     });
   });
 }

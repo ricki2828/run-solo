@@ -304,7 +304,8 @@ enum EffortMissKind {
   /// Recording stopped and resumed (the system killed it).
   recordingStopped('stopped'),
 
-  /// The GPS went quiet for more than a few seconds.
+  /// The GPS went quiet for too long to bridge (over a minute), or for a
+  /// few short stretches that add up to too much.
   gpsDropped('dropped'),
 
   /// The position leaped further than a runner can move.
@@ -329,7 +330,13 @@ enum EffortMissKind {
 
 /// Why a run of 5 km or more (or a 5K/10K goal run) has no 5K/10K effort.
 class EffortMiss {
-  const EffortMiss(this.kind, {this.atM, this.goalM});
+  const EffortMiss(
+    this.kind, {
+    this.atM,
+    this.goalM,
+    this.durationMs,
+    this.drops = 1,
+  });
 
   final EffortMissKind kind;
 
@@ -339,7 +346,15 @@ class EffortMiss {
   /// The distance of a 5K/10K goal run; null for any other run.
   final double? goalM;
 
-  /// "paused at 3.2 km", "GPS dropped at 4.1 km" (kilometres).
+  /// For [EffortMissKind.gpsDropped]: how long the GPS was gone (all
+  /// dropouts added up when [drops] is more than one); null when unknown
+  /// (a miss stored before version 8).
+  final int? durationMs;
+
+  /// How many dropouts [durationMs] adds up.
+  final int drops;
+
+  /// "paused at 3.2 km", "GPS dropped for 2 min at 4.1 km" (kilometres).
   String get reason => reasonIn(Units.km);
 
   /// [reason] with the distance in the runner's [units] ("paused at 2.0
@@ -354,17 +369,29 @@ class EffortMiss {
       EffortMissKind.pause => 'paused$at',
       EffortMissKind.pausedLong => 'paused for over a minute',
       EffortMissKind.recordingStopped => 'recording stopped$at',
-      EffortMissKind.gpsDropped => 'GPS dropped$at',
+      EffortMissKind.gpsDropped => _dropped(at),
       EffortMissKind.gpsJump => 'GPS jumped$at',
       EffortMissKind.noisy => 'GPS was too noisy',
       EffortMissKind.indoor => 'no GPS track',
     };
   }
 
+  String _dropped(String at) {
+    final ms = durationMs;
+    if (ms == null) return 'GPS dropped$at';
+    final s = (ms / 1000).round();
+    final span = s < 120 ? '$s s' : '${(s / 60).round()} min';
+    return drops > 1
+        ? 'GPS dropped $drops times, $span in all'
+        : 'GPS dropped for $span$at';
+  }
+
   Map<String, Object?> toJson() => {
     'kind': kind.code,
     if (atM != null) 'at_m': double.parse(atM!.toStringAsFixed(1)),
     if (goalM != null) 'goal_m': goalM,
+    if (durationMs != null) 'ms': durationMs,
+    if (drops > 1) 'drops': drops,
   };
 
   static EffortMiss? fromJson(Map<String, Object?> json) {
@@ -374,6 +401,8 @@ class EffortMiss {
       kind,
       atM: (json['at_m'] as num?)?.toDouble(),
       goalM: (json['goal_m'] as num?)?.toDouble(),
+      durationMs: (json['ms'] as num?)?.toInt(),
+      drops: (json['drops'] as num?)?.toInt() ?? 1,
     );
   }
 }
@@ -388,9 +417,10 @@ class EffortMiss {
 /// time, never read from the stored lap distance (P2-a).
 ///
 /// A window qualifies only inside one clean stretch: no pause, no
-/// kill→resume gap, no sample gap > [EngineConstants.sampleGapInterruptMs],
-/// and no GPS jump (one sample step faster than [maxStepMps], or a break
-/// of any [speedCaps]). In an
+/// kill→resume gap, no sample gap > [EngineConstants.sampleGapInterruptMs]
+/// (except a short GPS dropout, see [maxBridgedGpsGapMs]; 1K and mile
+/// windows never bridge), and no GPS jump (one sample step faster than
+/// [maxStepMps], or a break of any [speedCaps]). In an
 /// intervals session short 1K/mile windows must also lie inside one clean
 /// work rep; a 5K/10K window can span reps only within a continuous clean
 /// GPS stretch. A parkrun (one continuous 5 km step) is searched whole.
@@ -426,6 +456,36 @@ class BestEffortFinder {
   /// not a continuous effort and the clean-stretch rule applies as before.
   static const int maxBridgedInterruptMs = 60000;
 
+  /// A GPS dropout inside a run (no fix for longer than
+  /// [EngineConstants.sampleGapInterruptMs], no pause, no kill and resume)
+  /// is bridged for the 5K, 10K, half and marathon windows when it lasts no
+  /// more than this, the speed across it is plausible ([maxStepMps] and
+  /// [speedCaps]), and the dropouts a window holds add up to no more than
+  /// the larger of [maxBridgedGpsTotalMs] and [bridgedGpsShare] of the
+  /// window's time. The total cap guards data quality, not fake PBs: the
+  /// chord can only make a time slower. A tunnel
+  /// or an urban canyon changes a 5K by seconds; a long loss could hide a
+  /// stop, so past this the window is cut as before.
+  ///
+  /// The distance across a dropout is the recorder's own: its filter adds
+  /// the straight line from the last accepted fix to the first one back (or
+  /// nothing, if that step is rejected and the track re-anchors), never the
+  /// path the runner took. A chord is never longer than the path, so a
+  /// window of fixed length that spans a whole dropout holds at most the
+  /// distance really run, and its time can only be equal to or slower than
+  /// the true time, never faster. A window with an edge inside a dropout is
+  /// refused, because its edge distance would be interpolated along the
+  /// chord, which is not where the runner was. 1K and mile windows stay
+  /// strict: they are SPEED evidence, where a 20 s hole is a large share of
+  /// a 3 to 5 minute effort and the 5% rule would not protect them.
+  static const int maxBridgedGpsGapMs = 60000;
+
+  /// All dropouts one window may hold, at least (see [maxBridgedGpsGapMs]).
+  static const int maxBridgedGpsTotalMs = 180000;
+
+  /// ... or this share of the window's time, if that is more.
+  static const double bridgedGpsShare = 0.15;
+
   RunBestEfforts find(RunFile run, RunAnalysis analysis) {
     if (analysis.indoor || analysis.noisy) {
       // Say why when the run went far enough to have counted.
@@ -444,12 +504,20 @@ class BestEffortFinder {
     if (pts.length < 2) return RunBestEfforts.none;
 
     final stretches = _cutJumps(_cleanStretches(run));
+    // The same stream with short GPS dropouts bridged, for the long windows.
+    final bridgedStretches = _hasDropout(run)
+        ? _cutJumps(_cleanStretches(run, bridge: true))
+        : stretches;
     // A parkrun is one continuous 5 km step from the Start press, so the
     // whole run is its work; it does not wait on rep detection (a
     // single-lap session has none).
-    final pool = analysis.mode == RunMode.intervals && !_searchWhole(analysis)
-        ? _clipToWorkReps(stretches, analysis)
-        : stretches;
+    final clip = analysis.mode == RunMode.intervals && !_searchWhole(analysis);
+    final pool = clip ? _clipToWorkReps(stretches, analysis) : stretches;
+    final bridgedPool = identical(bridgedStretches, stretches)
+        ? pool
+        : clip
+        ? _clipToWorkReps(bridgedStretches, analysis)
+        : bridgedStretches;
 
     final efforts = <BestEffortDistance, BestEffort>{};
     BestEffort build(List<_Pt> home, _Window best, BestEffortDistance d) {
@@ -475,13 +543,14 @@ class BestEffortFinder {
       // A continuous 5K/10K can count toward MID even when the runner
       // selected INT and no work reps were detected. Short SPEED efforts
       // still stay inside a clean rep; all quality/GPS cuts remain.
-      final search =
-          analysis.mode == RunMode.intervals &&
-              !_searchWhole(analysis) &&
-              (d == BestEffortDistance.k5 || d == BestEffortDistance.k10)
-          ? stretches
+      final long = d.metres >= BestEffortDistance.k5.metres;
+      final wide = d == BestEffortDistance.k5 || d == BestEffortDistance.k10;
+      final search = clip && wide
+          ? (long ? bridgedStretches : stretches)
+          : long
+          ? bridgedPool
           : pool;
-      final found = _fastest(search, d);
+      final found = _fastest(search, d, bridged: long);
       if (found == null) continue;
       efforts[d] = build(found.$1, found.$2, d);
     }
@@ -492,7 +561,7 @@ class BestEffortFinder {
       if (efforts.containsKey(d) || goalM != d.metres) continue;
       final bridged = _bridged(run, d.metres);
       if (bridged == null) continue;
-      final found = _fastest(_cutJumps([bridged]), d);
+      final found = _fastest(_cutJumps([bridged]), d, bridged: true);
       if (found != null) efforts[d] = build(found.$1, found.$2, d);
     }
     final continuous =
@@ -562,19 +631,31 @@ class BestEffortFinder {
     final out = <_Pt>[];
     int? prevT;
     var lastClock = 0;
-    for (final s in run.samples) {
+    var gapMs = 0;
+    final (collapsed, after) = _collapse(run);
+    for (final s in collapsed) {
       if (inside(pauses, s.tMs) || inside(run.gaps, s.tMs)) continue;
       final t = moving(s.tMs);
+      gapMs = 0;
       if (prevT != null && out.isNotEmpty) {
         final dt = t - prevT;
-        if (dt > constants.sampleGapInterruptMs) return null;
+        if (dt > constants.sampleGapInterruptMs ||
+            (dt > minTrackedDropoutMs && after.contains(s.tMs))) {
+          // A short GPS dropout is bridged like in any run (the window check
+          // holds the total); a pause inside it or a long one is not.
+          if (dt > maxBridgedGpsGapMs ||
+              pauses.any((p) => p.overlaps(lastClock + 1, s.tMs))) {
+            return null;
+          }
+          gapMs = dt;
+        }
         if (dt > 0 && (s.distM - out.last.d) / (dt / 1000) > maxStepMps) {
           return null; // a GPS jump: not one honest effort
         }
       }
       if (run.gaps.any((g) => g.t1Ms <= s.tMs && out.isNotEmpty)) return null;
       final d = out.isEmpty || s.distM >= out.last.d ? s.distM : out.last.d;
-      out.add(_Pt(t.toDouble(), d, s.tMs.toDouble()));
+      out.add(_Pt(t.toDouble(), d, s.tMs.toDouble(), gapMs));
       prevT = t;
       lastClock = s.tMs;
       if (d - out.first.d >= goalM) break;
@@ -625,31 +706,61 @@ class BestEffortFinder {
         : efforts.containsKey(BestEffortDistance.k5)) {
       return null;
     }
-    final breaks = <(double, EffortMissKind)>[];
+    final breaks = <_Break>[];
     double at(num t) => _dAtT(pts, t.toDouble()) - pts.first.d;
     for (final p in run.pauses) {
-      breaks.add((at(p.t0Ms), EffortMissKind.pause));
+      breaks.add(_Break(at(p.t0Ms), EffortMissKind.pause));
     }
     for (final g in run.gaps) {
-      breaks.add((at(g.t0Ms), EffortMissKind.recordingStopped));
+      breaks.add(_Break(at(g.t0Ms), EffortMissKind.recordingStopped));
     }
     final spans = [...run.pauses, ...run.gaps];
+    // Dropouts: long ones cut for good; short ones were bridged, so they only
+    // explain a miss when they add up past what one window may hold.
+    final drops = _dropouts(run);
+    final short = <_Dropout>[];
+    for (final d in drops) {
+      final from = d.fromD - pts.first.d;
+      if (d.ms > maxBridgedGpsGapMs) {
+        breaks.add(_Break(from, EffortMissKind.gpsDropped, ms: d.ms));
+      } else if (d.bridgeable) {
+        short.add(d);
+      } else {
+        breaks.add(_Break(from, EffortMissKind.gpsJump));
+      }
+    }
+    final shortMs = short.fold<int>(0, (a, d) => a + d.ms);
+    // What one window of the effort's length may hold (as in [_holesOk]).
+    final windowMs = (pts.last.t - pts.first.t) * need / total;
+    final allowance = windowMs * bridgedGpsShare;
+    if (shortMs >
+        (allowance > maxBridgedGpsTotalMs ? allowance : maxBridgedGpsTotalMs)) {
+      breaks.add(
+        _Break(
+          short.first.fromD - pts.first.d,
+          EffortMissKind.gpsDropped,
+          ms: shortMs,
+          n: short.length,
+        ),
+      );
+    }
     Sample? prev;
-    for (final s in run.samples) {
+    for (final s in _collapse(run).$1) {
+      // Only steps between neighbouring samples; a dropout is judged above.
       if (prev != null &&
-          s.tMs - prev.tMs > constants.sampleGapInterruptMs &&
-          !spans.any((b) => b.overlaps(prev!.tMs + 1, s.tMs))) {
-        breaks.add((prev.distM - pts.first.d, EffortMissKind.gpsDropped));
-      } else if (prev != null &&
           s.tMs > prev.tMs &&
+          s.tMs - prev.tMs <= constants.sampleGapInterruptMs &&
+          !spans.any((b) => b.overlaps(prev!.tMs + 1, s.tMs)) &&
           (s.distM - prev.distM) / ((s.tMs - prev.tMs) / 1000) > maxStepMps) {
-        breaks.add((prev.distM - pts.first.d, EffortMissKind.gpsJump));
+        breaks.add(_Break(prev.distM - pts.first.d, EffortMissKind.gpsJump));
       }
       prev = s;
     }
     for (final p in _cleanStretches(run)) {
       for (final (start, _) in _jumpSpans(p)) {
-        breaks.add((_dAtT(p, start) - pts.first.d, EffortMissKind.gpsJump));
+        breaks.add(
+          _Break(_dAtT(p, start) - pts.first.d, EffortMissKind.gpsJump),
+        );
       }
     }
     if (breaks.isEmpty) return null;
@@ -659,8 +770,8 @@ class BestEffortFinder {
         run.gaps.isEmpty &&
         !breaks.any(
           (b) =>
-              b.$2 == EffortMissKind.gpsJump ||
-              b.$2 == EffortMissKind.gpsDropped,
+              b.kind == EffortMissKind.gpsJump ||
+              b.kind == EffortMissKind.gpsDropped,
         )) {
       final reached = pts.firstWhere(
         (p) => p.d - pts.first.d >= goalM,
@@ -677,7 +788,7 @@ class BestEffortFinder {
     // A goal run is bridged over pauses and gaps, so a jump is what stopped it.
     final jumps = [
       for (final b in breaks)
-        if (b.$2 == EffortMissKind.gpsJump) b,
+        if (b.kind == EffortMissKind.gpsJump) b,
     ];
     if (goalM != null && jumps.isNotEmpty) {
       breaks
@@ -685,9 +796,16 @@ class BestEffortFinder {
         ..addAll(jumps);
     }
     breaks.sort(
-      (a, b) => (a.$1 - total / 2).abs().compareTo((b.$1 - total / 2).abs()),
+      (a, b) => (a.at - total / 2).abs().compareTo((b.at - total / 2).abs()),
     );
-    return EffortMiss(breaks.first.$2, atM: breaks.first.$1, goalM: goalM);
+    final b = breaks.first;
+    return EffortMiss(
+      b.kind,
+      atM: b.n > 1 ? null : b.at,
+      goalM: goalM,
+      durationMs: b.ms,
+      drops: b.n,
+    );
   }
 
   /// The event and GOAL runs (§G) are one continuous step from the Start
@@ -756,36 +874,128 @@ class BestEffortFinder {
 
   /// Runs of consecutive samples with no pause, gap span, long sample gap
   /// or single-sample spike between them. Samples written inside a pause
-  /// are dropped.
-  List<List<_Pt>> _cleanStretches(RunFile run) {
+  /// are dropped. With [bridge], a GPS dropout (see [maxBridgedGpsGapMs]) that
+  /// is short and plausible does not cut the stretch: the samples written
+  /// without a fix during it are dropped, so the distance runs straight from
+  /// the last fix to the first one back, and that point carries the dropout's
+  /// length in [_Pt.gapMs].
+  List<List<_Pt>> _cleanStretches(RunFile run, {bool bridge = false}) {
     final breaks = [...run.pauses, ...run.gaps];
     bool inside(int t) => breaks.any((b) => t >= b.t0Ms && t < b.t1Ms);
     final out = <List<_Pt>>[];
     var cur = <_Pt>[];
     Sample? prev;
-    for (final s in run.samples) {
+    final (collapsed, after) = bridge ? _collapse(run) : (run.samples, <int>{});
+    for (final s in collapsed) {
       if (inside(s.tMs)) {
         prev = null;
         if (cur.length >= 2) out.add(cur);
         cur = [];
         continue;
       }
-      if (prev != null &&
-          (s.tMs - prev.tMs > constants.sampleGapInterruptMs ||
-              breaks.any((b) => b.overlaps(prev!.tMs + 1, s.tMs)) ||
-              (s.distM - prev.distM) / ((s.tMs - prev.tMs) / 1000) >
-                  maxStepMps)) {
-        if (cur.length >= 2) out.add(cur);
-        cur = [];
+      var gapMs = 0;
+      if (prev != null) {
+        final dt = s.tMs - prev.tMs;
+        final overlaps = breaks.any((b) => b.overlaps(prev!.tMs + 1, s.tMs));
+        final step = (s.distM - prev.distM) / (dt / 1000);
+        if (bridge &&
+            !overlaps &&
+            (after.contains(s.tMs) || dt > constants.sampleGapInterruptMs) &&
+            dt <= maxBridgedGpsGapMs &&
+            step <= maxStepMps) {
+          gapMs = _isHole(after, s, dt) ? dt : 0;
+        } else if (dt > constants.sampleGapInterruptMs ||
+            overlaps ||
+            step > maxStepMps) {
+          if (cur.length >= 2) out.add(cur);
+          cur = [];
+        }
       }
       // Distance never runs backwards inside a stretch.
       final d = cur.isEmpty || s.distM >= cur.last.d ? s.distM : cur.last.d;
-      cur.add(_Pt(s.tMs.toDouble(), d));
+      cur.add(_Pt(s.tMs.toDouble(), d, null, gapMs));
       prev = s;
     }
     if (cur.length >= 2) out.add(cur);
     return out;
   }
+
+  /// Whether [s] carries a usable position: lat/lon, and an accuracy the
+  /// recorder's filter would accept. The recorder journals fixes it rejects
+  /// for accuracy with lat/lon and the distance frozen, so they are a
+  /// dropout too. (The engine's [EngineConstants.qualityMaxAccuracyM] is the
+  /// copy of the recorder's `PointFilter.maxAccuracyM`.)
+  bool _isFix(Sample s) =>
+      s.hasFix && (s.accM == null || s.accM! <= constants.qualityMaxAccuracyM);
+
+  /// The samples with every run of no-fix ones between two fixes left out,
+  /// and the times of the samples that follow such a run. The recorder writes
+  /// a sample every second even with no fix, repeating the last distance, so
+  /// a dropout is frozen distance and then one jump; with the no-fix samples
+  /// out, the distance runs straight from the last fix to the first one back.
+  /// How long it may be and whether it is plausible are for the caller.
+  (List<Sample>, Set<int>) _collapse(RunFile run) {
+    final src = run.samples;
+    final out = <Sample>[];
+    final after = <int>{};
+    var i = 0;
+    while (i < src.length) {
+      out.add(src[i]);
+      if (!_isFix(src[i])) {
+        i++;
+        continue;
+      }
+      var j = i + 1;
+      while (j < src.length && !_isFix(src[j])) {
+        j++;
+      }
+      if (j < src.length && j > i + 1) {
+        i = j; // skip the no-fix samples between the two fixes
+        after.add(src[j].tMs);
+      } else {
+        i++;
+      }
+    }
+    return (out, after);
+  }
+
+  /// A bridged dropout shorter than this is not tracked (a stray no-fix
+  /// tick or two): the distance still runs straight across it.
+  static const int minTrackedDropoutMs = 5000;
+
+  /// Whether the run holds any run of no-fix samples to collapse.
+  bool _hasDropout(RunFile run) =>
+      _collapse(run).$1.length != run.samples.length ||
+      _dropouts(run).isNotEmpty;
+
+  /// Every GPS dropout that is tracked: [minTrackedDropoutMs] or more between
+  /// two neighbouring fix samples (or a sample gap over
+  /// [EngineConstants.sampleGapInterruptMs]) outside any pause or recording
+  /// gap.
+  List<_Dropout> _dropouts(RunFile run) {
+    final spans = [...run.pauses, ...run.gaps];
+    final out = <_Dropout>[];
+    final (samples, after) = _collapse(run);
+    Sample? prev;
+    for (final s in samples) {
+      final p = prev;
+      prev = s;
+      if (p == null) continue;
+      final dt = s.tMs - p.tMs;
+      if (!_isHole(after, s, dt) ||
+          spans.any((b) => b.overlaps(p.tMs + 1, s.tMs))) {
+        continue;
+      }
+      out.add(_Dropout(p.tMs, dt, p.distM, s.distM));
+    }
+    return out;
+  }
+
+  /// Whether the step to [s], [dt] after the previous sample, is a tracked
+  /// dropout (see [minTrackedDropoutMs]).
+  bool _isHole(Set<int> after, Sample s, int dt) =>
+      dt > constants.sampleGapInterruptMs ||
+      (dt > minTrackedDropoutMs && after.contains(s.tMs));
 
   /// Removes every span where some 200 m was covered faster than 8 m/s, so
   /// no window can contain a GPS jump.
@@ -847,11 +1057,20 @@ class BestEffortFinder {
     if (hi <= lo) return;
     // A bridged stretch keeps the run clock on its cut edges too.
     double? clock(double t) => p.first.r == null ? null : _clockAt(p, t);
+    // A cut edge inside a bridged dropout keeps that dropout's length, so a
+    // window ending there still counts (and is refused for) the whole of it.
+    int gapAt(double t) {
+      for (final q in p) {
+        if (q.t >= t) return q.t > t ? q.gapMs : 0;
+      }
+      return 0;
+    }
+
     final seg = <_Pt>[_Pt(lo, _dAtT(p, lo), clock(lo))];
     for (final q in p) {
       if (q.t > lo && q.t < hi) seg.add(q);
     }
-    seg.add(_Pt(hi, _dAtT(p, hi), clock(hi)));
+    seg.add(_Pt(hi, _dAtT(p, hi), clock(hi), gapAt(hi)));
     out.add(seg);
   }
 
@@ -884,14 +1103,24 @@ class BestEffortFinder {
   }
 
   /// The fastest window of [d] across [pool]; ties keep the earliest. Null
-  /// when [pool] has no window of [d].
+  /// when [pool] has no window of [d]. With [bridged], a window must hold
+  /// every bridged dropout it touches whole, and those must add up to no more
+  /// than the allowance (see [maxBridgedGpsTotalMs]).
   static (List<_Pt>, _Window)? _fastest(
     List<List<_Pt>> pool,
-    BestEffortDistance d,
-  ) {
+    BestEffortDistance d, {
+    bool bridged = false,
+  }) {
     (List<_Pt>, _Window)? best;
     for (final s in pool) {
+      final holes = bridged
+          ? [
+              for (var i = 1; i < s.length; i++)
+                if (s[i].gapMs > 0) (s[i - 1].t, s[i].t, s[i].gapMs),
+            ]
+          : const <(double, double, int)>[];
       for (final w in _candidates(s, d.metres)) {
+        if (holes.isNotEmpty && !_holesOk(holes, w)) continue;
         final b = best?.$2;
         if (b == null ||
             w.elapsed < b.elapsed - 1e-6 ||
@@ -901,6 +1130,20 @@ class BestEffortFinder {
       }
     }
     return best;
+  }
+
+  /// Whether window [w] takes every dropout in [holes] (start, end, length)
+  /// whole or not at all, and the ones it takes fit the allowance.
+  static bool _holesOk(List<(double, double, int)> holes, _Window w) {
+    var total = 0;
+    for (final (a, b, ms) in holes) {
+      if (w.end <= a + 1e-6 || w.start >= b - 1e-6) continue; // not touched
+      if (w.start > a + 1e-6 || w.end < b - 1e-6) return false; // an edge in it
+      total += ms;
+    }
+    final allowance = w.elapsed * bridgedGpsShare;
+    return total <=
+        (allowance > maxBridgedGpsTotalMs ? allowance : maxBridgedGpsTotalMs);
   }
 
   /// Times at each split mark strictly inside the window.
@@ -976,9 +1219,13 @@ class BestEffortFinder {
 }
 
 class _Pt {
-  const _Pt(this.t, this.d, [this.r]);
+  const _Pt(this.t, this.d, [this.r, this.gapMs = 0]);
   final double t;
   final double d;
+
+  /// How long the bridged GPS dropout that ends at this point lasted, ms;
+  /// 0 when the step from the previous point is ordinary.
+  final int gapMs;
 
   /// The run's own clock at this point when [t] is moving time (a bridged
   /// goal run); null when [t] already is the run clock.
@@ -991,4 +1238,30 @@ class _Window {
   final double end;
   final double startD;
   double get elapsed => end - start;
+}
+
+/// A GPS dropout: no fix for [ms] after the fix at [tMs].
+class _Dropout {
+  const _Dropout(this.tMs, this.ms, this.fromD, this.toD);
+  final int tMs;
+  final int ms;
+  final double fromD;
+  final double toD;
+
+  /// Short and plausible enough to bridge (see
+  /// [BestEffortFinder.maxBridgedGpsGapMs]).
+  bool get bridgeable =>
+      ms <= BestEffortFinder.maxBridgedGpsGapMs &&
+      (toD - fromD) / (ms / 1000) <= BestEffortFinder.maxStepMps;
+}
+
+/// One thing that cut a run's 5K/10K, for picking the miss reason.
+class _Break {
+  const _Break(this.at, this.kind, {this.ms, this.n = 1});
+  final double at;
+  final EffortMissKind kind;
+
+  /// Dropout length (all of them when [n] is more than one), ms.
+  final int? ms;
+  final int n;
 }
