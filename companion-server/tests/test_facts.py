@@ -185,3 +185,18 @@ def test_picture_card_names_a_cooper_test():
     assert run_facts(row, "x")["type"] == "cooper"
     from render.cards.post_run import TYPE_WORDS
     assert TYPE_WORDS["cooper"] == "Cooper test"
+
+
+def test_next_line_tomorrow_is_the_runners_local_day_not_utc():
+    """The run and its plan day are in the runner's zone; the UTC date differs from it at these moments, and the
+    line must still say "tomorrow" for the local next day (and name the weekday for a later one)."""
+    import pytest
+    from companion.facts import next_line
+    cases = [
+        ("Pacific/Auckland", datetime(2026, 10, 22, 10, 0, tzinfo=timezone.utc), "2026-10-23", "2026-10-24"),  # Thu 23:00 NZ
+        ("Asia/Singapore", datetime(2026, 10, 21, 21, 30, tzinfo=timezone.utc), "2026-10-23", "2026-10-24"),  # Thu 05:30 SGT
+    ]
+    for zone, start, tmrw, later in cases:
+        base = run(start_utc=start, zone_id=zone, plan_next_type="quality", plan_next_m=6000)
+        assert next_line(dict(base, plan_next_day=tmrw), []) == "Next: quality session 6 km tomorrow", zone
+        assert next_line(dict(base, plan_next_day=later), []) == "Next: quality session 6 km on Saturday", zone

@@ -8,10 +8,22 @@ from companion import notes
 from companion.timeutil import now_utc
 from conftest import OWNER, auth, enrol, post_tg, run_payload, tg_callback, tg_update
 from test_notes import q, say, send_run, tap_note, note_idx, _n
+import pytest
+from companion import service as _service
+
+
+@pytest.fixture(autouse=True)
+def _any_day_is_usual(monkeypatch):
+    # next_line says "on <weekday>" when tomorrow is not one of the runner's usual days, so these tests depended on
+    # which weekday they ran (deploy failed Fri NZ 22-Oct). The tests are about the in-place edit, not usual days.
+    monkeypatch.setattr(_service, "ci_usual_weekdays", lambda v: None)
 
 
 def tomorrow():
-    return (datetime.now(ZoneInfo("Pacific/Auckland")).date() + timedelta(days=1)).isoformat()
+    # the day after the RUN's local start (run_payload starts it 60 min ago), not after "now": in the hour after Auckland
+    # midnight the two differ and the card rightly says "on <weekday>" (deploy failed 22-Oct 11:02 UTC)
+    start = datetime.now(ZoneInfo("Pacific/Auckland")) - timedelta(minutes=60)
+    return (start.date() + timedelta(days=1)).isoformat()
 
 
 def quality_run(client, token, run_id="r1"):
