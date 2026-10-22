@@ -66,12 +66,29 @@ def gate(svc, c, uid: str) -> str | None:
 
 
 # Health content (injury, pain, illness) is kept only while the runner's "Keep health notes too" tick is on (Art. 9 data).
-HEALTH_RE = re.compile(
+# Words that are health on their own.
+_STRONG = re.compile(
     r"\b(injur\w*|sore\w*|pain\w*|ache\w*|aching|hurt\w*|niggle\w*|strain\w*|sprain\w*|tendon\w*|tendin\w*|achilles|"
-    r"plantar|fasciitis|shin\s*splints?|stress\s+fracture|fractur\w*|broken|cramp\w*|knee\w*|calf|calves|hamstring\w*|"
-    r"groin|hip|ankle\w*|heel|ill|illness|sick|unwell|flu|covid|fever|virus|infection|asthma|surgery|operation|"
-    r"physio\w*|doctor|medic\w+|pills?|diagnos\w*|pregnan\w*|migraine|dizz\w+|faint\w*|chest\s+tight\w*|"
-    r"depress\w*|anxi\w+|eating\s+disorder|diabet\w*|blood\s+pressure)\b", re.I)
+    r"plantar|fasciitis|shin\s*splints?|stress\s+fracture|fractur\w*|cramp\w*|illness|ill|sick|unwell|flu|covid|fever|"
+    r"virus|infection|asthma|surgery|physio\w*|doctor|medic\w+|pills?|diagnos\w*|pregnan\w*|migraine|dizz\w+|faint\w*|"
+    r"chest\s+tight\w*|depress\w*|anxi\w+|eating\s+disorder|diabet\w*|blood\s+pressure|"
+    r"broke(?:n)?\s+(?:my\s+|a\s+)?(?:bone|toe|foot|ankle|leg|rib|wrist|arm|collarbone))\b", re.I)
+# Body parts and a few words that are ordinary training talk ("calf raises", "hip mobility", "heel strike", "knee drive")
+# until a health cue sits next to them in the same sentence.
+_PART = r"(?:knee\w*|calf|calves|hamstring\w*|groin|hip\w*|ankle\w*|heel\w*|shin\w*|quad\w*|glute\w*|foot|feet|back)"
+_CUE = (r"(?:tight\w*|stiff\w*|swollen|swelling|twinge\w*|tweak\w*|flar\w+|pulled|trouble|problem\w*|issue\w*|"
+        r"giving\s+me|bothering|clicks?|sensitive|weak|giving\s+way|gave\s+way)")
+_NEAR = re.compile(rf"\b{_PART}\b(?:\W+\w+){{0,5}}?\W+{_CUE}\b|\b{_CUE}\b(?:\W+\w+){{0,5}}?\W+{_PART}\b", re.I)
+
+
+class _Health:
+    """HEALTH_RE.search(text): strong health words, or a body part next to a health cue. Not 'calf raises' or 'broken sleep'."""
+
+    def search(self, text: str):
+        return _STRONG.search(text) or _NEAR.search(text)
+
+
+HEALTH_RE = _Health()
 
 
 def health_on(c, uid: str) -> bool:
