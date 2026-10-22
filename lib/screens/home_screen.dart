@@ -446,6 +446,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Navigator.of(context)
                                     .pushNamed(Routes.settings),
                           ),
+                          // Coach "next session" sits right under the hero
+                          // (UI review finding 11); empty when there is none.
+                          if (services.companion != null)
+                            ListenableBuilder(
+                              listenable: services.companion!,
+                              builder: (context, _) => _CoachSlot(
+                                controller: services.companion!,
+                                now: _now,
+                              ),
+                            ),
                           const SizedBox(height: Space.x16),
                           _GetBetter(
                             lane: rec?.lane ?? engine.IdentityLane.aerobic,
@@ -487,14 +497,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : 'See the plan',
                             onPlan: _openPlan,
                           ),
-                          if (services.companion != null)
-                            ListenableBuilder(
-                              listenable: services.companion!,
-                              builder: (context, _) => _CoachSlot(
-                                controller: services.companion!,
-                                now: _now,
-                              ),
-                            ),
                           const SizedBox(height: Space.x16),
                           StreakCard(
                             streak: snap0.streak,

@@ -145,7 +145,7 @@ void main() {
       for (final g in grounds.entries) {
         expect(
           _ratio(HrZones.text(z, Brightness.light), g.value),
-          greaterThanOrEqualTo(3.0),
+          greaterThanOrEqualTo(4.5),
           reason: 'Z$z on ${g.key}',
         );
       }

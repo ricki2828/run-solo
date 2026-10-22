@@ -82,6 +82,8 @@ class BoardSparkPainter extends CustomPainter {
     final paint = Paint()..style = PaintingStyle.fill;
     // Cyan means "best": a level pile of more than two keeps it for none.
     final bestHeld = values.where((v) => v == best).length <= 2;
+    // With a best bar in view the rest are muted so it pops.
+    final muted = bestHeld ? barColor.withValues(alpha: 0.55) : barColor;
     for (var i = 0; i < n; i++) {
       // Cropped baseline: the worst entry keeps 10% of the height, the best
       // stops 6% short of the top. All-equal results sit mid-height.
@@ -93,7 +95,7 @@ class BoardSparkPainter extends CustomPainter {
           ? bestColor
           : i == n - 1
           ? newestColor
-          : barColor;
+          : muted;
       canvas.drawRRect(
         RRect.fromRectAndRadius(rect, const Radius.circular(2)),
         paint,

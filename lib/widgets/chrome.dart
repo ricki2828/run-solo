@@ -5,7 +5,9 @@ import '../brand/lap_line_paths.dart';
 import '../theme/lanes.dart' show readableOn;
 import '../theme/theme.dart';
 
-enum PillTone { ok, warn, danger, muted }
+/// [done] is the filled green "all set" pill (setup rows); [ok] is the quiet
+/// raised pill.
+enum PillTone { ok, done, warn, danger, muted }
 
 /// Status pill: warn / ok / danger (design brief §5).
 class StatusPill extends StatelessWidget {
@@ -18,6 +20,7 @@ class StatusPill extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final (Color fg, Color bg) = switch (tone) {
       PillTone.ok => (t.inkPrimary, t.bgRaised),
+      PillTone.done => (readableOn(t.semImproving), t.semImproving),
       PillTone.warn => (t.bgBase, t.semWarn),
       PillTone.danger => (readableOn(t.semDanger), t.semDanger),
       PillTone.muted => (t.inkMuted, t.bgRaised),
@@ -144,9 +147,12 @@ class LapLineFullMark extends StatelessWidget {
 }
 
 class _LapLineFullPainter extends CustomPainter {
-  _LapLineFullPainter(this.bone, this.arc);
+  _LapLineFullPainter(this.bone, this.arc, {this.progress = 1});
   final Color bone;
   final Color arc;
+
+  /// 0..1: first 45 % the R fades up, the rest the Arc line runs out.
+  final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -162,17 +168,23 @@ class _LapLineFullPainter extends CustomPainter {
           LapLineGeometry.cutY + LapLineGeometry.cutThickness / 2,
         ),
       );
+    final rIn = Curves.easeOut.transform((progress / 0.45).clamp(0.0, 1.0));
+    final lineIn = Curves.easeInOut.transform(
+      ((progress - 0.35) / 0.65).clamp(0.0, 1.0),
+    );
     canvas.drawPath(
       Path.combine(PathOperation.difference, lapLineR(), cut),
-      Paint()..color = bone,
+      Paint()..color = bone.withValues(alpha: bone.a * rIn),
     );
+    if (lineIn <= 0) return;
     final t = LapLineGeometry.lineThickness;
     final r = Radius.circular(t / 2);
     canvas.drawRRect(
       RRect.fromLTRBAndCorners(
         LapLineGeometry.legEntryX,
         LapLineGeometry.cutY - t / 2,
-        LapLineGeometry.markTailEndX,
+        LapLineGeometry.legEntryX +
+            (LapLineGeometry.markTailEndX - LapLineGeometry.legEntryX) * lineIn,
         LapLineGeometry.cutY + t / 2,
         topRight: r,
         bottomRight: r,
@@ -183,7 +195,67 @@ class _LapLineFullPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LapLineFullPainter old) =>
-      old.bone != bone || old.arc != arc;
+      old.bone != bone || old.arc != arc || old.progress != progress;
+}
+
+/// The Lap Line mark drawing itself once: the R settles in, then the Arc
+/// line runs out of the leg (the intro's draw, scaled for a screen). Reduced
+/// motion shows the finished [LapLineFullMark] at once.
+class LapLineDrawMark extends StatefulWidget {
+  const LapLineDrawMark({super.key, this.height = 96});
+  final double height;
+
+  @override
+  State<LapLineDrawMark> createState() => _LapLineDrawMarkState();
+}
+
+class _LapLineDrawMarkState extends State<LapLineDrawMark>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.of(context).disableAnimations) {
+      _c.value = 1;
+    } else {
+      _c.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final s = widget.height / LapLineGeometry.cap;
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => CustomPaint(
+          size: Size(
+            (LapLineGeometry.markTailEndX - LapLineGeometry.rLeft) * s,
+            widget.height,
+          ),
+          painter: _LapLineFullPainter(
+            t.inkPrimary,
+            t.accentArc,
+            progress: _c.value,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Full-bleed 2 px Bone rule with a 24 px gap (design brief §2.2).

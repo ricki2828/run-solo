@@ -563,16 +563,20 @@ class _BarsPainter extends CustomPainter {
     textDirection: TextDirection.ltr,
   )..layout();
 
-  /// A run type that is itself cyan (laps) is dimmed so the PB bar stands.
+  /// With a PB bar in view the other bars are muted so the PB pops; a run
+  /// type that is itself cyan (laps) is muted harder. With no PB in view the
+  /// bars keep their full run-type colour.
   Color get _otherBar {
     final c = barColor ?? tokens.inkMuted;
+    final hasPb = pb >= 0 && pb < points.length;
     final p = tokens.pbBarColour;
     final d = math.sqrt(
       math.pow((c.r - p.r) * 255, 2) +
           math.pow((c.g - p.g) * 255, 2) +
           math.pow((c.b - p.b) * 255, 2),
     );
-    return d < 60 ? c.withValues(alpha: 0.4) : c;
+    if (d < 60) return c.withValues(alpha: 0.35);
+    return hasPb ? c.withValues(alpha: 0.5) : c;
   }
 
   void _dashed(Canvas canvas, double y, double x1, Paint paint) {

@@ -31,7 +31,7 @@ class SetupRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final pill = switch (state) {
-      SetupState.ok => const StatusPill(label: 'OK', tone: PillTone.ok),
+      SetupState.ok => const StatusPill(label: 'OK', tone: PillTone.done),
       SetupState.needed => const StatusPill(
         label: 'NEEDED',
         tone: PillTone.warn,
