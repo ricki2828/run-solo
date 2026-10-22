@@ -443,6 +443,10 @@ class MediaRenderer:
         return video
 
 
+    def share_poster(self, run: Mapping[str, Any], headline: str) -> bytes | None:
+        """The 9:16 share poster for one stored run (the loop's Share button). None when it cannot be drawn."""
+        return self._share_picture(run_facts(run, headline))
+
     def _share_picture(self, facts: Mapping[str, Any]) -> bytes | None:
         """The 9:16 share image sent with a run's post-run message. None on any failure (or an oversized file): the caller
         then draws the older card. The route is drawn only when the app sent its shape, which its "Show route shape on

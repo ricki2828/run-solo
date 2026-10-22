@@ -344,6 +344,8 @@ class TelegramChannel:
             except ChannelError as e:
                 if not e.permanent:
                     raise
+                if method == "sendAnimation" and m.animation_file_id:
+                    m.sent["stale_file_id"] = True   # Telegram no longer knows the cached id: the service drops it
                 last = e
         assert last is not None
         raise last

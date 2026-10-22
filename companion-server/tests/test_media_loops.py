@@ -1,6 +1,7 @@
 """Cards v4 PR 2: a run, the weekly recap and a milestone go out as moment loops (sendAnimation), the still card riding
 beside as thumbnail and fallback. Fakes stand in for the worker, as in test_ghost_clip.py."""
 import io
+import json
 
 import httpx
 import pytest
@@ -116,3 +117,116 @@ def test_the_animation_goes_up_with_its_thumbnail_and_falls_back_to_the_photo(tm
     m = Media(photo=PNG, video=MP4, animation=True, duration_s=LOOP_S, thumbnail=thumbnail(PNG))
     assert ch.send_card("5", OutCard("c1", "h", "b", [], m)) == "7"
     assert calls == [("sendAnimation", ["animation", "thumbnail"]), ("sendPhoto", ["photo"])]
+
+
+# ---------------------------------------------------------------- the Share button, the file_id cache
+
+import sqlite3
+from datetime import timedelta
+
+from fastapi.testclient import TestClient
+
+from companion.app import create_app
+from companion.timeutil import now_utc
+from conftest import auth, enrol, post_tg, run_payload, shape_payload, tg_callback
+
+
+def _q(c, sql, *a):
+    con = sqlite3.connect(c.svc.s.db_path)
+    con.row_factory = sqlite3.Row
+    return [dict(r) for r in con.execute(sql, a)]
+
+
+FAIL_FIRST_POSTER = False
+
+
+@pytest.fixture
+def loop_client(tmp_path, fakes):
+    """A service whose renderer is fake: every still is PNG, every loop MP4, and `shares` counts poster renders."""
+    shares = []
+
+    def share(f, m):
+        shares.append(f)
+        if len(shares) == 1 and FAIL_FIRST_POSTER:
+            raise RuntimeError("chromium")
+        return PNG
+    s = make_settings(tmp_path, media_enabled=True)
+    app = create_app(s, httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=False)
+    app.state.svc.media = MediaRenderer(
+        {**{k: (lambda f, m: PNG) for k in ("light", "flood", "pb", "weekly_recap")}, "share": share},
+        {"run_loop": lambda facts, out: out.write_bytes(MP4), "week_loop": lambda facts, out: out.write_bytes(MP4)})
+    with TestClient(app) as c:
+        c.svc, c.shares = app.state.svc, shares
+        yield c
+    globals()["FAIL_FIRST_POSTER"] = False
+
+
+def _send_run(c):
+    t = enrol(c)
+    c.post("/v1/runs", json=run_payload("r1", **shape_payload(5000, 1800)), headers=auth(t))
+    c.svc.run_outbox(now_utc() + timedelta(seconds=1))
+    return t
+
+
+def _share_idx(c, card_id):
+    import json
+    buttons = json.loads(_q(c, "SELECT buttons_json FROM cards WHERE card_id=?", card_id)[0]["buttons_json"])
+    return next(i for i, b in enumerate(buttons) if b["action"] == "share:poster")
+
+
+def test_the_loop_message_carries_a_share_button_that_sends_the_poster_once(loop_client, fakes):
+    c = loop_client
+    _send_run(c)
+    anim = [b for m, b in fakes.tg if m == "sendAnimation"]
+    assert len(anim) == 1 and c.shares == []   # the poster is not rendered, let alone sent, with the loop
+    card_id = _q(c, "SELECT card_id FROM cards WHERE kind='run'")[0]["card_id"]
+    kb = anim[0]["reply_markup"]
+    kb = json.loads(kb) if isinstance(kb, str) else kb
+    labels = [b["text"] for row in kb["inline_keyboard"] for b in row]
+    assert "Share" in labels
+    idx = _share_idx(c, card_id)
+    assert any(b.get("callback_data") == f"{card_id}:{idx}" for row in kb["inline_keyboard"] for b in row)
+    post_tg(c, tg_callback(7001, f"{card_id}:{idx}"))
+    photos = [b for m, b in fakes.tg if m == "sendPhoto"]
+    assert len(photos) == 1 and photos[0]["caption"] == "Your run, ready to share." and len(c.shares) == 1
+    post_tg(c, tg_callback(7002, f"{card_id}:{idx}"))   # a double tap
+    assert len([1 for m, _ in fakes.tg if m == "sendPhoto"]) == 1 and len(c.shares) == 1
+
+
+def test_a_poster_that_could_not_be_made_can_be_asked_for_again(loop_client, fakes):
+    globals()["FAIL_FIRST_POSTER"] = True
+    c = loop_client
+    _send_run(c)
+    card_id = _q(c, "SELECT card_id FROM cards WHERE kind='run'")[0]["card_id"]
+    idx = _share_idx(c, card_id)
+    post_tg(c, tg_callback(7011, f"{card_id}:{idx}"))
+    assert not [1 for m, _ in fakes.tg if m == "sendPhoto"]
+    post_tg(c, tg_callback(7012, f"{card_id}:{idx}"))
+    assert len([1 for m, _ in fakes.tg if m == "sendPhoto"]) == 1
+
+
+def test_a_refused_cached_file_id_is_purged_and_the_still_goes(loop_client, fakes):
+    c = loop_client
+    _send_run(c)
+    assert _q(c, "SELECT kind FROM media_file_ids") == [{"kind": "run_loop"}]
+    card = _q(c, "SELECT * FROM cards WHERE kind='run'")[0]
+    user = _q(c, "SELECT * FROM users")[0]
+    con = sqlite3.connect(c.svc.s.db_path)
+    con.execute("UPDATE cards SET sent_at=NULL WHERE card_id=?", (card["card_id"],))
+    con.commit()
+    fakes.fail("sendAnimation", 400, "Bad Request: wrong file identifier")
+    assert c.svc._send_card(user, card["card_id"], now_utc()) is True
+    assert _q(c, "SELECT * FROM media_file_ids") == []        # purged: the next retry uploads fresh
+    assert [m for m, _ in fakes.tg][-1] == "sendPhoto"        # and the still went meanwhile
+
+
+def test_the_weekly_loop_does_not_try_to_cache_a_file_id(tmp_path, fakes):
+    from test_channels_media import media_client, week_setup
+    from datetime import datetime, timezone
+    with media_client(tmp_path, fakes, video_fns={"week_loop": lambda f, out: out.write_bytes(MP4)}) as c:
+        week_setup(c)
+        sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
+        c.svc.plan_recap(sunday)
+        c.svc.run_outbox(sunday + timedelta(seconds=1))
+        assert "sendAnimation" in [m for m, _ in fakes.tg]
+        assert _q(c, "SELECT * FROM media_file_ids") == []

@@ -74,6 +74,8 @@ TEST_FULL = ("The Run Supreme coach test is full right now, so I can't connect y
              "I haven't kept your chat or your name: the only record is a tally of how many people asked today.")
 RATE_PAUSED = "I've paused this chat for now because of how many messages came in. Your runs still sync as normal."
 NOTE_ACTION = "note:add"
+SHARE_CAPTION = "Your run, ready to share."
+SHARE_ACTION = "share:poster"   # the loop message's Share button: sends the 9:16 poster
 NOTE_STOP_WORDS = frozenset({"STOP", "STOP ALL", "UNSUBSCRIBE"})
 NOTE_CANCEL_WORDS = frozenset({"CANCEL", "END", "QUIT"})
 NOTE_BARE_WORDS = NOTE_STOP_WORDS | NOTE_CANCEL_WORDS | {"DELETE"}
@@ -795,6 +797,45 @@ class Service(CheckinMixin, MeasureMixin):
         except ChannelError as e:
             log.warning("reply failed: %s", e)
 
+    def _share_tap(self, ch: Any, inb: Inbound, user: dict, card: dict, now: datetime) -> None:
+        """Send the run's 9:16 share poster as a photo with a short caption. One poster per run: the claim row is taken
+        before the render, so a double tap sends once, and it is released again when the poster could not be sent."""
+        run_id = card.get("run_id")
+        key = f"share:{run_id}"
+        with db.tx(self.s.db_path) as c:
+            claimed = bool(run_id) and c.execute("INSERT OR IGNORE INTO quota (user_id, key, created_at) VALUES (?,?,?)",
+                                                 (user["id"], key, iso(now))).rowcount == 1
+        if not run_id:
+            ch.ack_callback(inb, "That button has expired.", clear=False)
+            return
+        if not claimed:
+            ch.ack_callback(inb, "Already sent.", clear=False)
+            return
+        sent = False
+        try:
+            with db.ro(self.s.db_path) as c:
+                run = c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?", (user["id"], run_id)).fetchone()
+                if run is not None:
+                    run = dict(run)
+                    sh = c.execute("SELECT route_json, splits_json, reps_json FROM run_shape WHERE user_id=? AND run_id=?",
+                                   (user["id"], run_id)).fetchone()
+                    if sh:
+                        run["_shape"] = {"route": json.loads(sh["route_json"]) if sh["route_json"] else None,
+                                         "splits": json.loads(sh["splits_json"]) if sh["splits_json"] else None,
+                                         "reps": json.loads(sh["reps_json"]) if sh["reps_json"] else None}
+            poster = self.media.share_poster(run, card["headline"]) if run is not None else None
+            if poster:
+                ch.send_photo(inb.ref, poster, SHARE_CAPTION, silent=False)
+                sent = True
+        except Exception as e:   # a render or upload failure: say so, and let the next tap try again
+            log.warning("share poster failed: %s", type(e).__name__)
+        if sent:
+            ch.ack_callback(inb, "Here it is.", clear=False)
+            return
+        with db.tx(self.s.db_path) as c:
+            c.execute("DELETE FROM quota WHERE user_id=? AND key=?", (user["id"], key))
+        ch.ack_callback(inb, "Couldn't make it just now. Try again.", clear=False)
+
     def _handle_button(self, ch: Any, inb: Inbound, user: dict | None, now: datetime) -> None:
         with db.ro(self.s.db_path) as c:
             card = c.execute("SELECT * FROM cards WHERE card_id=?", (inb.card_id,)).fetchone()
@@ -813,6 +854,9 @@ class Service(CheckinMixin, MeasureMixin):
         now, replay_card = self._tap_time(card["card_id"], now)
         action = buttons[inb.button_idx]["action"]
         kind, _, rest = action.partition(":")
+        if kind == "share":   # the loop's Share button: the 9:16 poster, once
+            self._share_tap(ch, inb, user, dict(card), real_now)
+            return
         if kind == "q":   # the month's quest offer: edits its own message in place
             self._quest_tap(ch, inb, user, dict(card), rest, real_now)
             return
@@ -830,7 +874,7 @@ class Service(CheckinMixin, MeasureMixin):
                     if said:   # a Hard tap turned the promised quality session easy: say so once, here, not silently later
                         msg = f"Thanks. {said}"
                 # the feel row goes after a tap; "Add a note" stays so a note can still follow
-                keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] == NOTE_ACTION]
+                keep = [(b["label"], i) for i, b in enumerate(buttons) if b["action"] in (NOTE_ACTION, SHARE_ACTION)]
             elif kind == "note":
                 # The card must be a run card whose run still exists. A tap on another run's card moves note mode to
                 # that card: the note goes where the runner last pointed.
@@ -1800,6 +1844,13 @@ class Service(CheckinMixin, MeasureMixin):
             log.info("whatsapp card not sent outside the window: no template fits it")
             return False
         media = self._render_media(user, card, now) if telegram and self.s.media_enabled else None
+        if media is not None and media.animation and card["kind"] == "run" and card["run_id"] \
+                and not any(b["action"] == SHARE_ACTION for b in buttons):
+            # the loop replaces the share poster in the chat: a Share button sends it on a tap. Stored with the card, so
+            # the callback's index resolves and a retry does not add it twice
+            buttons = [*buttons, {"label": "Share", "action": SHARE_ACTION, "row": 1}]
+            with db.tx(self.s.db_path) as c:
+                c.execute("UPDATE cards SET buttons_json=? WHERE card_id=?", (json.dumps(buttons), card_id))
         followups: list[str] = []
         mid: str | None = None
         carries_text = False   # the delivered message holds the card's whole text and its buttons
@@ -1811,7 +1862,11 @@ class Service(CheckinMixin, MeasureMixin):
                 mid = self._deliver(ch, user, card, out)
                 followups = ch.followups(out)  # the media is delivered: from here only text may be retried
                 carries_text = not media.spoiler and not {"caption", "coach_line"} & set(followups)
-                if media.sent.get("file_id"):
+                if media.sent.get("stale_file_id") and card["kind"] == "run":
+                    with db.tx(self.s.db_path) as c:   # Telegram refused the cached id: the next retry uploads fresh
+                        c.execute("DELETE FROM media_file_ids WHERE user_id=? AND run_id=? AND kind=?",
+                                  (user["id"], card.get("run_id"), media.clip_kind))
+                if media.sent.get("file_id") and card["kind"] == "run":   # a recap or touch has no run row to hang an id on
                     with db.tx(self.s.db_path) as c:   # the clip's Telegram id; a run that was deleted meanwhile just fails the FK
                         try:
                             c.execute("INSERT OR REPLACE INTO media_file_ids (user_id, run_id, kind, file_id, created_at) VALUES (?,?,?,?,?)",
@@ -1903,7 +1958,7 @@ class Service(CheckinMixin, MeasureMixin):
             buttons = json.loads(row["buttons_json"])
             felt = run["feel"] is not None and any(b["action"].startswith("feel:") for b in buttons)
             if felt:
-                buttons = [b if b["action"] == NOTE_ACTION else dict(b, hidden=True) for b in buttons]
+                buttons = [b if b["action"] in (NOTE_ACTION, SHARE_ACTION) else dict(b, hidden=True) for b in buttons]
             out = OutCard(row["card_id"], card["headline"], card["body"], buttons, None, () if felt else self._links(card),
                           short_caption=row["tg_is_photo"] == 1)
             try:
