@@ -19,7 +19,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30   # the ffmpeg apt step alone took ~10 min on 22-Oct and the 15 min cap cancelled runs
     permissions:
       contents: write  # only the failure step below publishes the rendered cards to a prerelease
     defaults:
