@@ -150,12 +150,12 @@ void main() {
     );
     tester.view.physicalSize = const Size(1080, 640 * 3);
     await pumpTimes(tester, 8);
-    await scrollTo(
-      tester,
+    await tester.drag(find.byType(ListView).first, const Offset(0, -260));
+    await pumpTimes(tester, 4);
+    expect(
       find.byKey(const ValueKey('companion-memory-agree')),
+      findsOneWidget,
     );
-    await tester.drag(find.byType(ListView).first, const Offset(0, -120));
-    await tester.pump();
     await check(tester, 'companion_memory_sheet_buttons_360x640');
   });
 
