@@ -361,7 +361,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 key: const ValueKey('max-hr-row'),
                 label: 'Max HR',
                 value: maxHrRowValue(resolved),
-                valueColor: s.pendingObservedMaxHr != null ? t.semWarn : null,
+                valueColor: s.pendingObservedMaxHr != null
+                    ? t.inkPrimary
+                    : null,
                 onTap: () => _maxHrSheet(context, now),
               ),
               SettingsRow(

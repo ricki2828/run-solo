@@ -86,7 +86,7 @@ class StreakCard extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final weeks = streak.weeks;
     final title = weeks == 0
-        ? 'START YOUR STREAK'
+        ? 'START A STREAK'
         : weeks == 1
         ? '1 WEEK STREAK'
         : '$weeks WEEK STREAK';

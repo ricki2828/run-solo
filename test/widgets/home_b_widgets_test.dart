@@ -134,9 +134,9 @@ void main() {
         ),
       ),
     );
-    expect(find.text('START YOUR STREAK'), findsOneWidget);
+    expect(find.text('START A STREAK'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('START YOUR STREAK, No freeze ready'),
+      find.bySemanticsLabel('START A STREAK, No freeze ready'),
       findsOneWidget,
     );
     await pumpApp(
