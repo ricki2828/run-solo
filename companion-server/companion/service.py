@@ -438,6 +438,8 @@ class Service(CheckinMixin, MeasureMixin):
                 coach_memory_ext.delete_health(c, r["user_id"], keep_summary_if_clean=True)
                 if c.execute("SELECT COUNT(*) FROM coach_memory WHERE user_id=?", (r["user_id"],)).fetchone()[0] != before:
                     n += 1
+        if n:
+            log.info("coach memory health clean-up: runners=%s", n)   # a count only, never the text
         return n
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)

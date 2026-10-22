@@ -913,3 +913,26 @@ def test_a_v4_grant_from_a_runner_stored_below_the_coach_version_is_ignored_and_
     assert q(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 3
     assert consent(cc, 4).json() == {"status": "ok"}     # and from 3 the v4 grant lands
     assert q(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 4
+
+
+@pytest.mark.parametrize("text", ["I do calf raises on Tuesdays", "hip mobility work after long runs", "working on my heel strike",
+                                  "I get broken sleep before races", "the operation of the club is run by volunteers",
+                                  "focusing on knee drive in strides", "I like hamstring curls in the gym", "back to back long runs"])
+def test_ordinary_training_words_are_not_health(text):
+    assert not memory.HEALTH_RE.search(text)
+
+
+@pytest.mark.parametrize("text", ["my calf is sore", "calf pain on hills", "left knee hurts downhill", "my hip is tight",
+                                  "hamstring strain in March", "I broke my ankle", "my heel is giving me trouble",
+                                  "achilles niggle", "recovering from the flu", "I had surgery last year", "back pain after long runs"])
+def test_health_phrases_are_health(text):
+    assert memory.HEALTH_RE.search(text)
+
+
+def test_the_startup_purge_logs_a_count_and_never_the_text(cc, caplog):
+    set_override(cc, [uid_of(cc)])
+    add_row(cc, "fact", "My left calf gets sore after Zanzibar hills", "history")
+    caplog.set_level(logging.INFO)
+    assert cc.svc.purge_health_when_off() == 1
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "health clean-up: runners=1" in logged and "Zanzibar" not in logged and "calf" not in logged
