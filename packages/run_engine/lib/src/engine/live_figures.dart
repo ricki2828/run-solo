@@ -175,7 +175,11 @@ class RunDerived {
   /// - 7: a 5K/10K goal run bridges a short pause or gap, Trail runs keep
   ///   their 5K/10K windows for MID, and a run that went far enough but has
   ///   no 5K/10K carries `RunBestEfforts.miss`; rebuild old runs.
-  static const int currentVersion = 7;
+  /// - 8: a GPS dropout of up to a minute no longer cuts the 5K/10K/half/
+  ///   marathon windows (bridged, see `BestEffortFinder.maxBridgedGpsGapMs`),
+  ///   and a dropout miss says how long the GPS was gone; rebuild old runs so
+  ///   MID and Estimated Times credit them.
+  static const int currentVersion = 8;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;
