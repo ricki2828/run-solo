@@ -375,6 +375,7 @@ def test_a_message_from_the_runner_while_it_was_thinking_holds_the_send(cc, fake
     fakes.coach_queue = [coach_text("How did it feel?")]
     assert tick(cc) == 0
     assert jobs(cc)[0]["outcome"] == "held:runner_wrote" and not sent_texts(fakes)
+    assert rows(cc, "SELECT * FROM coach_messages") == []   # a held message is not in the chat history either
 
 
 def test_quiet_hours_that_begin_while_it_was_thinking_hold_the_send(cc, fakes):
