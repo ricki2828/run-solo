@@ -65,6 +65,14 @@ class EffortNote {
     if (newest == null) return null;
     final i = newest.input;
     if (now.difference(i.date).inDays > recentDays) return null;
+    return forRun(newest, units: units);
+  }
+
+  /// The note for one run, whatever its age or length, or null when it
+  /// counted or the cause is not in the trace. [latest] and the Counted runs
+  /// list share it.
+  static EffortNote? forRun(LiveCandidate newest, {Units units = Units.km}) {
+    final i = newest.input;
     final efforts = newest.derived.bestEfforts;
     final date = RunIdentity.localStart(i.date, i.utcOffsetMin);
     EffortNote note(String subject, String reason) => EffortNote(

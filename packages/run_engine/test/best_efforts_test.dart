@@ -780,6 +780,18 @@ void main() {
       expect(r.miss, isNull);
     });
 
+    test('the window records the dropout time it bridged', () {
+      final r = find(dropRun(1250, [(300, 20), (800, 45)]));
+      final k5 = effort(r, BestEffortDistance.k5);
+      expect(k5.gpsGapMs, closeTo(65000, 5));
+      final back = BestEffort.fromJson(BestEffortDistance.k5, k5.toJson());
+      expect(back.gpsGapMs, k5.gpsGapMs);
+      expect(
+        effort(find(dropRun(1250, [])), BestEffortDistance.k5).gpsGapMs,
+        0,
+      );
+    });
+
     test('20 s and 45 s dropouts in a run of exactly 5K count', () {
       final r = find(dropRun(1250, [(300, 20), (800, 45)]));
       expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
