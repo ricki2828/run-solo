@@ -46,6 +46,7 @@ class LiveBoardPlan {
     this.targetM,
     required this.entries,
     this.pbSplitsMs,
+    this.pbSplitsLabel,
   });
 
   /// A distance board's PB window (the run behind the board's best, the
@@ -56,6 +57,11 @@ class LiveBoardPlan {
   /// half/marathon boards, or when the PB's splits are missing or disagree
   /// with its finish.
   final List<int>? pbSplitsMs;
+
+  /// Set when [pbSplitsMs] are a nearby standard board's PB (a custom 8 km
+  /// goal races the 10K PB's km splits pro-rata): that board's spoken name,
+  /// so the voice says "vs your 10K pace" and never calls it a best 8 km.
+  final String? pbSplitsLabel;
 
   final String key;
   final String label;
@@ -164,6 +170,14 @@ abstract final class LivePlanner {
       // A goal board needs one entry: GoalCoach only checks "beats every
       // entry" and nothing races it, so a second Half can hear "new best".
       if (entries.length < (goal ? 1 : minEntries)) return;
+      final own = kind == LiveBoardPlanKind.distance
+          ? _pbSplits(board, byId)
+          : null;
+      // A custom distance goal has no best effort of its own: race the
+      // nearest standard PB at or past its distance, pro-rata.
+      final proxy = own == null && kind == LiveBoardPlanKind.distance && goal
+          ? _proxyPbSplits(boards, byId, m)
+          : null;
       out.add(
         LiveBoardPlan(
           key: key,
@@ -171,9 +185,8 @@ abstract final class LivePlanner {
           kind: kind,
           targetM: m,
           entries: entries,
-          pbSplitsMs: kind == LiveBoardPlanKind.distance
-              ? _pbSplits(board, byId)
-              : null,
+          pbSplitsMs: own ?? proxy?.$2,
+          pbSplitsLabel: own == null ? proxy?.$1 : null,
         ),
       );
     }
@@ -319,6 +332,37 @@ abstract final class LivePlanner {
     };
   }
 
+  /// The smallest standard board (5K, 10K, Half, Marathon) at or past [goalM]
+  /// that has a PB with usable window splits, as (its spoken name, those
+  /// splits): a custom 8 km goal races the 10K PB's first 8 km, worded "your
+  /// 10K pace". Null when the goal is past the marathon or none has a PB.
+  static (String, List<int>)? _proxyPbSplits(
+    Map<String, Leaderboard> boards,
+    Map<String, LiveCandidate> byId,
+    double? goalM,
+  ) {
+    if (goalM == null) return null;
+    const names = {
+      BestEffortDistance.k5: '5K',
+      BestEffortDistance.k10: '10K',
+      BestEffortDistance.half: 'Half',
+      BestEffortDistance.marathon: 'Marathon',
+    };
+    for (final d in names.keys) {
+      if (d.metres + 1 < goalM) continue;
+      final b = boards[d.key];
+      final splits = b == null ? null : _pbSplits(b, byId);
+      if (splits != null) return (names[d]!, splits);
+      return null; // the nearest board has no usable PB: silent, not a farther one
+    }
+    return null;
+  }
+
+  /// Custom goals (an 8 km race) and course boards have no standard best
+  /// effort of their own: course boards stay silent for "chase your best"
+  /// (their last-2-km and furthest lines still say); a custom distance goal
+  /// borrows the nearest standard PB, see [_proxyPbSplits].
+  ///
   /// The PB window's cumulative km splits for a standard distance board: the
   /// effort's own `splitsMs` (every 1 km strictly inside the window) plus its
   /// finish when that is a whole km (5K, 10K). Null when the PB run has no

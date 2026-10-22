@@ -250,12 +250,18 @@ class LiveBoard {
     this.targetM,
     required this.entries,
     this.pbSplitsMs,
+    this.pbSplitsLabel,
   });
 
   /// Distance boards: the PB's own window split at each whole km, cumulative
   /// ms from the window start (km 1 .. the board's km), dropout-bridged: the
   /// pace "chase your best" races. Null = unknown (the chase cue says nothing).
   List<int>? pbSplitsMs;
+
+  /// Set when [pbSplitsMs] come from a NEARBY standard board, not this board's
+  /// own PB (a custom 8 km goal races the 10K PB's km splits): that board's
+  /// spoken name ("10K"), so the cue says "vs your 10K pace", never "best 8 km".
+  String? pbSplitsLabel;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;
