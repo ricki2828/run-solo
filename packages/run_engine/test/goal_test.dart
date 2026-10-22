@@ -214,6 +214,10 @@ void main() {
     final back = RunDerived.fromJson(old);
     expect(back.version, 1);
     expect(back.isCurrent, isFalse);
+    // v8 data (before gpsGapMs) refills too.
+    final v8 = Map<String, Object?>.of(d.toJson())..['v'] = 8;
+    expect(RunDerived.fromJson(v8).isCurrent, isFalse);
+    expect(RunDerived.currentVersion, 9);
   });
 
   group('best efforts and boards', () {

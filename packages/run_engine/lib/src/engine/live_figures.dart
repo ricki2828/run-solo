@@ -179,7 +179,9 @@ class RunDerived {
   ///   marathon windows (bridged, see `BestEffortFinder.maxBridgedGpsGapMs`),
   ///   and a dropout miss says how long the GPS was gone; rebuild old runs so
   ///   MID and Estimated Times credit them.
-  static const int currentVersion = 8;
+  /// - 9: a best effort carries `gpsGapMs`, the GPS dropout time it bridged
+  ///   (Counted runs list); rebuild old runs so they show the note.
+  static const int currentVersion = 9;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;

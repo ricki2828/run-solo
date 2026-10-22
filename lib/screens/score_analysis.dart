@@ -19,6 +19,7 @@ import '../widgets/pack_panel.dart';
 import '../widgets/quests_section.dart';
 import '../widgets/race_estimates_card.dart';
 import 'boards_overview.dart';
+import 'counted_runs_screen.dart';
 
 /// The Progress tab body: QUESTS, YOUR PACK (age band from published norms),
 /// BOARDS & RECORDS, then the four earned identities with the evidence and
@@ -445,6 +446,16 @@ class _LaneAnalysis extends StatelessWidget {
                   Navigator.of(context)
                       .pushNamed(Routes.runDetail, arguments: s.runId),
               child: const Text('VIEW SOURCE RUN'),
+            ),
+          if (lane == engine.IdentityLane.mid)
+            TextButton(
+              key: const ValueKey('analysis-mid-counted-runs'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CountedRunsScreen(),
+                ),
+              ),
+              child: const Text('COUNTED RUNS'),
             ),
         ],
       ),

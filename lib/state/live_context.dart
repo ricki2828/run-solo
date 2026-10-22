@@ -74,6 +74,9 @@ class LiveContextSource {
 
   String? _cachedVersion;
 
+  /// The runs the last prepare read (the Counted runs list shows them).
+  List<engine.LiveCandidate> get preparedCandidates => _cached;
+
   /// Which index the last prepare read; changes when a run lands.
   String? get indexVersion => _cachedVersion;
   List<engine.LiveCandidate> _cached = const [];

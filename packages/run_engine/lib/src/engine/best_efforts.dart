@@ -47,9 +47,14 @@ class BestEffort {
     this.avgHr,
     this.gradeFactor = 1,
     this.pausedMs = 0,
+    this.gpsGapMs = 0,
   });
 
   final BestEffortDistance distance;
+
+  /// GPS dropout time bridged inside the window (the Counted runs list notes
+  /// it); runs derived before this field read 0.
+  final int gpsGapMs;
 
   /// Paused time inside the window, which [elapsedMs] (moving time) leaves
   /// out; non-zero only for a 5K/10K goal run bridged over a pause.
@@ -69,6 +74,7 @@ class BestEffort {
     avgHr: avgHr,
     gradeFactor: g,
     pausedMs: pausedMs,
+    gpsGapMs: gpsGapMs,
   );
   final int elapsedMs;
 
@@ -98,6 +104,7 @@ class BestEffort {
     if (gradeFactor != 1)
       'grade_x': double.parse(gradeFactor.toStringAsFixed(4)),
     if (pausedMs != 0) 'paused_ms': pausedMs,
+    if (gpsGapMs != 0) 'gps_gap_ms': gpsGapMs,
   };
 
   factory BestEffort.fromJson(
@@ -112,6 +119,7 @@ class BestEffort {
     avgHr: (json['avg_hr'] as num?)?.toDouble(),
     gradeFactor: (json['grade_x'] as num?)?.toDouble() ?? 1,
     pausedMs: (json['paused_ms'] as int?) ?? 0,
+    gpsGapMs: (json['gps_gap_ms'] as int?) ?? 0,
   );
 }
 
@@ -536,6 +544,7 @@ class BestEffortFinder {
         splitsMs: [for (final t in splits) (t - best.start).round()],
         avgHr: run.hasHr ? Trace(run.samples).meanHr(startMs, endMs) : null,
         pausedMs: endMs - startMs - elapsedMs,
+        gpsGapMs: _bridgedGapMs(home, best),
       );
     }
 
@@ -1136,6 +1145,21 @@ class BestEffortFinder {
       }
     }
     return best;
+  }
+
+  /// GPS dropout time (each longer than [minTrackedDropoutMs]) that window
+  /// [w] of [home] holds whole.
+  static int _bridgedGapMs(List<_Pt> home, _Window w) {
+    var total = 0;
+    for (var i = 1; i < home.length; i++) {
+      final ms = home[i].gapMs;
+      if (ms > minTrackedDropoutMs &&
+          home[i - 1].t >= w.start - 1e-6 &&
+          home[i].t <= w.end + 1e-6) {
+        total += ms;
+      }
+    }
+    return total;
   }
 
   /// Whether window [w] takes every dropout in [holes] (start, end, length)
