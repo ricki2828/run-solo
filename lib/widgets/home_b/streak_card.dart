@@ -127,8 +127,8 @@ class StreakCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (streak.freezesReady > 0) ...[
-                          const SizedBox(width: Space.x8),
+                        if (streak.freezesReady > 0 && weeks > 0) ...[
+                          const SizedBox(width: Space.x4),
                           Icon(
                             Icons.ac_unit,
                             size: 14,
@@ -145,6 +145,7 @@ class StreakCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: Space.x8),
                   for (var i = 0; i < streak.recent.length; i++) ...[
                     if (i > 0) const SizedBox(width: 3),
                     _WeekDot(state: streak.recent[i]),
@@ -199,8 +200,8 @@ class _WeekDot extends StatelessWidget {
     final paused = state == engine.StreakWeek.paused;
     final colour = frozen ? t.laneFill(engine.IdentityLane.long) : t.inkPrimary;
     return Container(
-      width: 12,
-      height: 12,
+      width: 10,
+      height: 10,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: ran || frozen ? colour : Colors.transparent,
@@ -214,9 +215,9 @@ class _WeekDot extends StatelessWidget {
         ),
       ),
       child: frozen
-          ? Icon(Icons.ac_unit, size: 8, color: readableOn(colour))
+          ? Icon(Icons.ac_unit, size: 7, color: readableOn(colour))
           : paused
-          ? Icon(Icons.pause, size: 8, color: t.inkSecondary)
+          ? Icon(Icons.pause, size: 7, color: t.inkSecondary)
           : null,
     );
   }
