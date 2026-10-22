@@ -696,4 +696,82 @@ void main() {
       expect(p.boards.first.pbSplitsMs, isNull);
     });
   });
+  group('chase your best: a custom goal races the nearest standard PB', () {
+    // A 10K PB window at 5:00/km, from a Free run with a 6 minute warm-up.
+    LiveCandidate tenKRun(int n, int secs, List<int> marks) => LiveCandidate(
+      BoardInput(
+        runId: 'tenk-$n',
+        date: day0.add(Duration(days: n)),
+        mode: RunMode.free,
+        efforts: {
+          BestEffortDistance.k10: BestEffort(
+            distance: BestEffortDistance.k10,
+            elapsedMs: secs * 1000,
+            startMs: 360000,
+            startOffsetM: 1100,
+            splitsMs: marks,
+          ),
+        },
+      ),
+      const RunDerived(bestEfforts: RunBestEfforts.none),
+    );
+
+    LiveCandidate goalRun(int n, SessionSpec spec, int ms) => LiveCandidate(
+      BoardInput(
+        runId: 'goal-$n',
+        date: day0.add(Duration(days: 20 + n)),
+        mode: RunMode.intervals,
+        comparisonKey: ComparisonKey.of(spec),
+        goal: GoalResult(
+          kind: GoalKind.distance,
+          target: spec.steps.first.value,
+          name: spec.name,
+          reached: true,
+          goalMs: ms,
+          stoppedAtM: spec.steps.first.value + 30,
+        ),
+        goalBoardKey: GoalCatalogue.boardKeyOf(spec),
+      ),
+      const RunDerived(bestEfforts: RunBestEfforts.none),
+    );
+
+    final marks = [for (var k = 1; k <= 9; k++) k * 300000];
+
+    LivePlan plan(SessionSpec spec, List<LiveCandidate> runs) =>
+        LivePlanner.plan(mode: RunMode.intervals, session: spec, runs: runs);
+
+    test('an 8 km goal carries the 10K PB splits labelled 10K', () {
+      final spec = SessionSpec.goalDistance(8000, '8 km');
+      final p = plan(spec, [
+        tenKRun(1, 3000, marks),
+        tenKRun(2, 3200, [for (var k = 1; k <= 9; k++) k * 320000]),
+        goalRun(1, spec, 2500000),
+      ]);
+      final board = p.boards.single;
+      expect(board.key, 'goal:d8000');
+      expect(board.pbSplitsLabel, '10K');
+      expect(board.pbSplitsMs, [...marks, 3000000]);
+    });
+
+    test('no 10K PB, or none usable: silent, never a farther board', () {
+      final spec = SessionSpec.goalDistance(8000, '8 km');
+      final none = plan(spec, [goalRun(1, spec, 2500000)]);
+      expect(none.boards.single.pbSplitsMs, isNull);
+      expect(none.boards.single.pbSplitsLabel, isNull);
+      final bad = plan(spec, [
+        tenKRun(1, 3000, [300000, 600000]),
+        goalRun(1, spec, 2500000),
+      ]);
+      expect(bad.boards.single.pbSplitsMs, isNull);
+    });
+
+    test('a goal past the marathon has no proxy', () {
+      final spec = SessionSpec.goalDistance(50000, '50 km');
+      final p = plan(spec, [
+        tenKRun(1, 3000, marks),
+        goalRun(1, spec, 9000000),
+      ]);
+      expect(p.boards.single.pbSplitsMs, isNull);
+    });
+  });
 }

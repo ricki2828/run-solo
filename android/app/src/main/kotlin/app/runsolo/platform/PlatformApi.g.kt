@@ -763,6 +763,12 @@ data class LiveBoard (
    * pace "chase your best" races. Null = unknown (the chase cue says nothing).
    */
   val pbSplitsMs: List<Long>? = null,
+  /**
+   * Set when [pbSplitsMs] come from a NEARBY standard board, not this board's
+   * own PB (a custom 8 km goal races the 10K PB's km splits): that board's
+   * spoken name ("10K"), so the cue says "vs your 10K pace", never "best 8 km".
+   */
+  val pbSplitsLabel: String? = null,
   /** The comparison key (`be:5000`, an intervals key, `cooper`, a course). */
   val key: String,
   /**
@@ -779,17 +785,19 @@ data class LiveBoard (
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): LiveBoard {
       val pbSplitsMs = pigeonVar_list[0] as List<Long>?
-      val key = pigeonVar_list[1] as String
-      val label = pigeonVar_list[2] as String
-      val kind = pigeonVar_list[3] as LiveBoardKind
-      val targetM = pigeonVar_list[4] as Double?
-      val entries = pigeonVar_list[5] as List<LiveEntry>
-      return LiveBoard(pbSplitsMs, key, label, kind, targetM, entries)
+      val pbSplitsLabel = pigeonVar_list[1] as String?
+      val key = pigeonVar_list[2] as String
+      val label = pigeonVar_list[3] as String
+      val kind = pigeonVar_list[4] as LiveBoardKind
+      val targetM = pigeonVar_list[5] as Double?
+      val entries = pigeonVar_list[6] as List<LiveEntry>
+      return LiveBoard(pbSplitsMs, pbSplitsLabel, key, label, kind, targetM, entries)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       pbSplitsMs,
+      pbSplitsLabel,
       key,
       label,
       kind,
@@ -805,12 +813,13 @@ data class LiveBoard (
       return true
     }
     val other = other as LiveBoard
-    return PlatformApiPigeonUtils.deepEquals(this.pbSplitsMs, other.pbSplitsMs) && PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
+    return PlatformApiPigeonUtils.deepEquals(this.pbSplitsMs, other.pbSplitsMs) && PlatformApiPigeonUtils.deepEquals(this.pbSplitsLabel, other.pbSplitsLabel) && PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pbSplitsMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pbSplitsLabel)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.key)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.label)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)

@@ -69,7 +69,7 @@ object ChaseCompare {
     const val MIN_KM_MS = 120_000L
 
     /** [deltaMs] = live active ms at the km minus the PB window's split there; negative = ahead. [boardKey] says which board it is read on. */
-    data class Gap(val deltaMs: Long, val boardKey: String)
+    data class Gap(val deltaMs: Long, val boardKey: String, val proxy: Boolean = false)
 
     /** The board's whole km (5000 m is 5; a Half's 21097.5 m is 21); null when it has no distance. */
     fun boardKm(board: LiveBoard): Int? {
@@ -83,11 +83,30 @@ object ChaseCompare {
         if (km < 1 || km > n) return null
         val splits = board.pbSplitsMs ?: return null
         if (!usable(splits, n)) return null
-        return Gap(activeMs - splits[km - 1], board.key)
+        return Gap(activeMs - splits[km - 1], board.key, proxy = board.pbSplitsLabel != null)
     }
 
-    /** True when [ms] of active time over [kms] whole km is running pace, not a jump. */
-    fun plausible(kms: Int, ms: Long): Boolean = kms >= 1 && ms >= kms * MIN_KM_MS
+    /** A km quicker than this share of the PB's own fastest km is a jump, not the runner finding a gear. */
+    const val MIN_SHARE_OF_PB_KM = 0.8
+
+    /** The PB window's fastest single km (ms), from its cumulative splits; null when there are none. */
+    fun fastestPbKmMs(board: LiveBoard?): Long? {
+        val s = board?.pbSplitsMs?.takeIf { it.isNotEmpty() } ?: return null
+        var best = s[0]
+        for (i in 1 until s.size) best = minOf(best, s[i] - s[i - 1])
+        return best.takeIf { it > 0 }
+    }
+
+    /**
+     * True when [ms] of active time over [kms] whole km is running pace, not a jump: at least [MIN_KM_MS] a km
+     * (absolute) and, when the [board]'s PB is known, at least [MIN_SHARE_OF_PB_KM] of the PB's fastest km
+     * (relative: a 5:00 runner who "runs" a km in 3:45 was moved by the GPS, not by their legs).
+     */
+    fun plausible(kms: Int, ms: Long, board: LiveBoard? = null): Boolean {
+        if (kms < 1 || ms < kms * MIN_KM_MS) return false
+        val pbKm = fastestPbKmMs(board) ?: return true
+        return ms >= kms * pbKm * MIN_SHARE_OF_PB_KM
+    }
 
     private fun usable(s: List<Long>, n: Int): Boolean {
         if (s.size < n || s[0] <= 0) return false
@@ -219,7 +238,12 @@ class ChaseCoach(
 
     private fun gapPhrase(gap: ChaseCompare.Gap, ahead: Boolean, label: String): String {
         val g = CueWords.gap(seconds(gap.deltaMs))
-        return if (ahead) "$g up on your best $label." else "$g off your best $label."
+        // A custom goal races a nearby standard PB's km splits: "your 10K pace", never "best 8 km".
+        return if (gap.proxy) {
+            if (ahead) "$g up on your $label pace." else "$g off your $label pace."
+        } else {
+            if (ahead) "$g up on your best $label." else "$g off your best $label."
+        }
     }
 
     private fun seconds(ms: Long): Long = abs(ms / 1_000.0).roundToLong()

@@ -385,6 +385,7 @@ class LiveContextSource {
           },
           targetM: b.targetM,
           pbSplitsMs: b.pbSplitsMs,
+          pbSplitsLabel: b.pbSplitsLabel,
           entries: [
             for (final e in b.entries)
               LiveEntry(

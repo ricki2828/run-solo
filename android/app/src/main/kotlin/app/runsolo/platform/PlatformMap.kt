@@ -120,6 +120,7 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
             kind = CoreLiveBoardKind.valueOf(b.kind.name.toCamel()),
             targetM = b.targetM,
             pbSplitsMs = b.pbSplitsMs,
+            pbSplitsLabel = b.pbSplitsLabel,
             entries = b.entries.map { e ->
                 CoreLiveEntry(
                     runId = e.runId,

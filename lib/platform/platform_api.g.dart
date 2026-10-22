@@ -543,6 +543,7 @@ class LiveEntry {
 class LiveBoard {
   LiveBoard({
     this.pbSplitsMs,
+    this.pbSplitsLabel,
     required this.key,
     required this.label,
     required this.kind,
@@ -554,6 +555,11 @@ class LiveBoard {
   /// ms from the window start (km 1 .. the board's km), dropout-bridged: the
   /// pace "chase your best" races. Null = unknown (the chase cue says nothing).
   List<int>? pbSplitsMs;
+
+  /// Set when [pbSplitsMs] come from a NEARBY standard board, not this board's
+  /// own PB (a custom 8 km goal races the 10K PB's km splits): that board's
+  /// spoken name ("10K"), so the cue says "vs your 10K pace", never "best 8 km".
+  String? pbSplitsLabel;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;
@@ -572,6 +578,7 @@ class LiveBoard {
   List<Object?> _toList() {
     return <Object?>[
       pbSplitsMs,
+      pbSplitsLabel,
       key,
       label,
       kind,
@@ -587,11 +594,12 @@ class LiveBoard {
     result as List<Object?>;
     return LiveBoard(
       pbSplitsMs: (result[0] as List<Object?>?)?.cast<int>(),
-      key: result[1]! as String,
-      label: result[2]! as String,
-      kind: result[3]! as LiveBoardKind,
-      targetM: result[4] as double?,
-      entries: (result[5]! as List<Object?>).cast<LiveEntry>(),
+      pbSplitsLabel: result[1] as String?,
+      key: result[2]! as String,
+      label: result[3]! as String,
+      kind: result[4]! as LiveBoardKind,
+      targetM: result[5] as double?,
+      entries: (result[6]! as List<Object?>).cast<LiveEntry>(),
     );
   }
 
@@ -604,7 +612,7 @@ class LiveBoard {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(pbSplitsMs, other.pbSplitsMs) && _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
+    return _deepEquals(pbSplitsMs, other.pbSplitsMs) && _deepEquals(pbSplitsLabel, other.pbSplitsLabel) && _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
   }
 
   @override

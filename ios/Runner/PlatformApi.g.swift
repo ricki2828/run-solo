@@ -600,6 +600,10 @@ struct LiveBoard: Hashable {
   /// ms from the window start (km 1 .. the board's km), dropout-bridged: the
   /// pace "chase your best" races. Null = unknown (the chase cue says nothing).
   var pbSplitsMs: [Int64]? = nil
+  /// Set when [pbSplitsMs] come from a NEARBY standard board, not this board's
+  /// own PB (a custom 8 km goal races the 10K PB's km splits): that board's
+  /// spoken name ("10K"), so the cue says "vs your 10K pace", never "best 8 km".
+  var pbSplitsLabel: String? = nil
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   var key: String
   /// Spoken and shown name ("5K", "8 × 400 m"); the app injects any event
@@ -614,14 +618,16 @@ struct LiveBoard: Hashable {
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> LiveBoard? {
     let pbSplitsMs: [Int64]? = nilOrValue(pigeonVar_list[0])
-    let key = pigeonVar_list[1] as! String
-    let label = pigeonVar_list[2] as! String
-    let kind = pigeonVar_list[3] as! LiveBoardKind
-    let targetM: Double? = nilOrValue(pigeonVar_list[4])
-    let entries = pigeonVar_list[5] as! [LiveEntry]
+    let pbSplitsLabel: String? = nilOrValue(pigeonVar_list[1])
+    let key = pigeonVar_list[2] as! String
+    let label = pigeonVar_list[3] as! String
+    let kind = pigeonVar_list[4] as! LiveBoardKind
+    let targetM: Double? = nilOrValue(pigeonVar_list[5])
+    let entries = pigeonVar_list[6] as! [LiveEntry]
 
     return LiveBoard(
       pbSplitsMs: pbSplitsMs,
+      pbSplitsLabel: pbSplitsLabel,
       key: key,
       label: label,
       kind: kind,
@@ -632,6 +638,7 @@ struct LiveBoard: Hashable {
   func toList() -> [Any?] {
     return [
       pbSplitsMs,
+      pbSplitsLabel,
       key,
       label,
       kind,
@@ -643,12 +650,13 @@ struct LiveBoard: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.pbSplitsMs, rhs.pbSplitsMs) && deepEqualsPlatformApi(lhs.key, rhs.key) && deepEqualsPlatformApi(lhs.label, rhs.label) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.targetM, rhs.targetM) && deepEqualsPlatformApi(lhs.entries, rhs.entries)
+    return deepEqualsPlatformApi(lhs.pbSplitsMs, rhs.pbSplitsMs) && deepEqualsPlatformApi(lhs.pbSplitsLabel, rhs.pbSplitsLabel) && deepEqualsPlatformApi(lhs.key, rhs.key) && deepEqualsPlatformApi(lhs.label, rhs.label) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.targetM, rhs.targetM) && deepEqualsPlatformApi(lhs.entries, rhs.entries)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("LiveBoard")
     deepHashPlatformApi(value: pbSplitsMs, hasher: &hasher)
+    deepHashPlatformApi(value: pbSplitsLabel, hasher: &hasher)
     deepHashPlatformApi(value: key, hasher: &hasher)
     deepHashPlatformApi(value: label, hasher: &hasher)
     deepHashPlatformApi(value: kind, hasher: &hasher)

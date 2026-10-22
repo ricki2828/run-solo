@@ -78,6 +78,30 @@ class ChaseCoachTest {
     }
 
     @Test
+    fun `a km under 0 8 of the PB's fastest km is a jump - the relative guard`() {
+        // PB window at 4:50/km, so its fastest km is 290 s and the floor is 232 s.
+        val board = fiveK(best)
+        assertEquals(290_000L, ChaseCompare.fastestPbKmMs(board))
+        assertFalse(ChaseCompare.plausible(1, 231_000, board), "3:51 for a 4:50 runner")
+        assertTrue(ChaseCompare.plausible(1, 233_000, board))
+        assertTrue(ChaseCompare.plausible(2, 470_000, board))
+        assertFalse(ChaseCompare.plausible(2, 460_000, board))
+        // The absolute floor still holds for a runner whose PB km is faster than the floor says.
+        val quick = fiveK().copy(pbSplitsMs = List(5) { (it + 1) * 130_000L })
+        assertFalse(ChaseCompare.plausible(1, 110_000, quick), "under 2:00 is never running")
+        assertTrue(ChaseCompare.plausible(1, 125_000, quick))
+        // No PB splits: only the absolute floor.
+        assertTrue(ChaseCompare.plausible(1, 130_000, fiveK()))
+    }
+
+    @Test
+    fun `the fastest PB km is read from the window's own splits - the first km counts`() {
+        val uneven = fiveK().copy(pbSplitsMs = listOf(270_000L, 580_000L, 880_000L, 1_190_000L, 1_500_000L))
+        assertEquals(270_000L, ChaseCompare.fastestPbKmMs(uneven))
+        assertNull(ChaseCompare.fastestPbKmMs(fiveK()))
+    }
+
+    @Test
     fun `a km faster than 2 minutes is a jump not running`() {
         assertTrue(ChaseCompare.plausible(1, 250_000))
         assertTrue(ChaseCompare.plausible(2, 240_000))
@@ -401,8 +425,73 @@ class ChaseCoachTest {
         assertEquals("10 seconds up on your best 5K.", coach.chaseAtCue(CueKind.projection, 2, 570_000)!!.text)
         // A jump pushes km 3 in 40 s after km 2: it would read "up on your best" by minutes. Only the distance to go.
         assertEquals("2 k to go.", coach.chaseAtCue(CueKind.projection, 3, 610_000)!!.text)
-        // Back on pace, km 4 is a 4:30 span over one km: a gap is said again.
-        assertTrue(coach.chaseAtCue(CueKind.projection, 4, 880_000)!!.text.contains(" up on your best 5K"))
+        // The jump spills into km 4 (read against the wrong km 3): only the distance to go.
+        assertEquals("1 k to go.", coach.chaseAtCue(CueKind.projection, 4, 880_000)!!.text)
+        // Back on pace, km 5 says a gap again.
+        assertTrue(coach.chaseAtCue(CueKind.projection, 5, 1_170_000)!!.text.contains(" up on your best 5K"))
+    }
+
+    @Test
+    fun `free run - a km in 3 minutes 20 for a 4 50 runner is a jump too - relative guard`() {
+        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
+        walk(coach, 1, 290_000)
+        // 200 s is over the 2:00 floor but under 0.8 x 290 s.
+        assertNull(cross(coach, 2, 290_000 + 200_000)?.chase)
+    }
+
+    @Test
+    fun `free run - the km after a jump is skipped too - the jump spills into it`() {
+        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
+        walk(coach, 1, 290_000)
+        assertNull(cross(coach, 2, 350_000)?.chase, "km 2 in 60 s: a jump")
+        assertNull(cross(coach, 3, 640_000)?.chase, "km 3 at a normal 290 s is read against a wrong km 2")
+        assertNotNull(cross(coach, 4, 930_000)?.chase, "km 4 is clean again")
+    }
+
+    @Test
+    fun `goal run - the km after a jump is skipped and the one after speaks`() {
+        val spec = SessionSpec.goalDistance(8_000, "8 km")
+        val coach = LiveCoach(ctx("chase", fiveK(best).copy(key = "goal:d8000", label = "8 km", targetM = 8_000.0, pbSplitsMs = List(8) { (it + 1) * 290_000L })), RunMode.intervals, spec)
+        coach.chaseAtCue(CueKind.projection, 1, 290_000)
+        assertNull(coach.chaseAtCue(CueKind.projection, 2, 350_000), "km 2 in 60 s: a jump, nothing to say")
+        assertNull(coach.chaseAtCue(CueKind.projection, 3, 640_000), "spill")
+        assertTrue(coach.chaseAtCue(CueKind.projection, 4, 930_000)!!.text.contains(" up on your "))
+    }
+
+    // ---- a custom goal races the nearest standard PB pro-rata ----
+
+    @Test
+    fun `an 8 km goal races the 10K PB km splits and says 10K pace`() {
+        // Real shape: the 10K PB window at 5:00/km; the goal board is goal:d8000 and carries those splits, labelled.
+        val spec = SessionSpec.goalDistance(8_000, "8 km")
+        val board = LiveBoard(
+            key = "goal:d8000", label = "8 km", kind = LiveBoardKind.distance, targetM = 8_000.0,
+            entries = listOf(LiveEntry("g", 0, fromStartSplitsMs = emptyList(), finalMetric = 2_500_000.0)),
+            pbSplitsMs = List(10) { (it + 1) * 300_000L },
+            pbSplitsLabel = "10K",
+        )
+        val coach = LiveCoach(ctx("chase", board), RunMode.intervals, spec)
+        coach.chaseAtCue(CueKind.projection, 1, 300_000)
+        assertEquals("10 seconds up on your 10K pace.", coach.chaseAtCue(CueKind.projection, 2, 590_000)!!.text)
+        // 2 km to go on an 8 km goal is km 6.
+        coach.chaseAtCue(CueKind.projection, 3, 890_000)
+        coach.chaseAtCue(CueKind.projection, 4, 1_190_000)
+        coach.chaseAtCue(CueKind.projection, 5, 1_490_000)
+        assertEquals("2 k to go, 20 seconds up on your 10K pace.", coach.chaseAtCue(CueKind.projection, 6, 1_780_000)!!.text)
+    }
+
+    @Test
+    fun `proxy wording is pace and never a best 8 km`() {
+        val g = ChaseCompare.Gap(12_000, "goal:d8000", proxy = true)
+        assertEquals("12 seconds off your 10K pace.", chase().atKm(2, g, "10K")!!.text)
+        assertEquals("10 seconds up on your best 5K.", chase().atKm(2, gap(-10_000), "5K")!!.text)
+    }
+
+    @Test
+    fun `a goal past the splits the proxy has says nothing`() {
+        // A 12 km goal with a 10K proxy would read past km 10: no gap.
+        val board = fiveK().copy(key = "goal:d12000", targetM = 12_000.0, pbSplitsMs = List(10) { (it + 1) * 300_000L }, pbSplitsLabel = "10K")
+        assertNull(ChaseCompare.vsBest(board, 11, 3_400_000))
     }
 
     @Test
