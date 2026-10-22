@@ -368,3 +368,48 @@ def test_red_reply_names_the_symptom_answers_the_ask_and_has_at_most_five_senten
             assert name in r and ask in r.lower() and "995" in r
             assert "diagnose" not in r and "urgent care" in r
             assert len(_sentences(r)) <= 5, r
+
+
+# ---- per-trigger safety net, and a recurring-pain amber
+@pytest.mark.parametrize("code,must,must_not", [
+    ("calf_swollen_hot_or_red", ["chest pain", "short of breath"], ["bladder"]),
+    ("cannot_bear_weight", ["keep weight off it", "Don't walk on it"], ["stop running", "short of breath"]),
+    ("heat_illness_signs", ["cool down", "sip water"], ["bladder"]),
+    ("numbness_tingling_weakness", ["weakness spreads", "bladder or bowel"], ["short of breath"]),
+])
+def test_red_reply_safety_net_is_per_trigger(code, must, must_not):
+    from companion.coach.ext import triage as t
+    r = t.red_reply("Asia/Singapore", False, [code], "")
+    assert "995" in r and len(_sentences(r)) <= 5
+    for m in must:
+        assert m in r
+    for m in must_not:
+        assert m not in r
+
+
+def test_unknown_code_falls_back_to_the_generic_net():
+    from companion.coach.ext import triage as t
+    assert "faint, short of breath or confused" in t.red_reply("Asia/Singapore", False, ["deformity"], "")
+
+
+@pytest.mark.parametrize("msg", [
+    "race is Sunday, my knee has hurt on every run this week, give me a race pace",
+    "shin has hurt on every run this week, I'm going to run it anyway, give me a pace",
+    "achilles is sore each run, what pace for sunday",
+])
+def test_pain_on_every_run_is_amber(msg):
+    from companion.coach.ext import triage as t
+    assert t.classify_text(msg).level == "amber"
+
+
+def test_pain_free_every_run_wording_is_not_amber():
+    from companion.coach.ext import triage as t
+    assert t.classify_text("I run every run feeling great, what pace for sunday").level == "green"
+
+
+def test_the_urgent_template_carries_the_heat_line_and_the_rail_answers_heat_text_first(cc, fakes):
+    from companion.coach import redflag
+    assert "get somewhere cool and sip water" in redflag.template("urgent", "Asia/Singapore")
+    say(cc, "felt confused after the run in the heat, skin hot and dry")
+    run_worker(cc)
+    assert fakes.coach_calls == [] and "somewhere cool" in fakes.tg_texts()[-1]

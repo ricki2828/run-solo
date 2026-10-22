@@ -133,6 +133,7 @@ TEXT_AMBER: dict[str, tuple[str, list[str], bool]] = {   # code -> (reason, patt
     "worsening": ("it is getting worse", [r"(?P<k>(?:getting|got|gets|is|keeps|keep)\s+(?:\w+\s+)?worse|worsening|worse\s+each|not\s+(?:getting\s+)?better|not\s+going\s+away)"], True),
     "sharp_or_stabbing": ("sharp, stabbing or shooting pain", [r"(?P<k>sharp|stabbing|shooting)"], True),
     "lasting": ("it has lasted days", [r"(?P<k>(?:for|past|over|last)\s+(?:\w+\s+){0,2}(?:\d+|few|couple|several|two|three|four|five|six|seven)\s+(?:days?|weeks?|wks?))"], True),
+    "recurring": ("it hurts on every run", [r"(?P<k>(?:every|each)\s+(?:single\s+)?run|every\s+time\s+i\s+run|all\s+(?:week|my\s+runs)|on\s+every\s+(?:\w+\s+)?run)"], True),
     "bone_point_pain": ("pain on a bone (shin, foot, hip)", [r"(?P<k>shin|heel|metatars\w*|foot|hip)\W+(?:\w+\W+){0,3}(?:pain|hurt\w*|sore)"], False),
     "injury_words": ("they describe an injury", [r"(?P<k>injur\w*|sprain\w*|pulled\s+a?|tweak\w*)"], False),
 }
@@ -192,16 +193,28 @@ _REASON_LEAD = {   # how each trigger reads at the start of "With ..., please st
 }
 
 
+_GENERIC_NET = "If it's getting worse fast, you feel faint, short of breath or confused, or you can't move it, {call}."
+_SAFETY_NET = {   # first matching trigger wins; one sentence each, so the reply stays at 5 sentences
+    "chest_breath_or_fainting": "If the chest pain or breathlessness is happening now, {call} straight away.",
+    "heat_illness_signs": "Get out of the heat, cool down and sip water if you can, and if you're confused or it's getting worse, {call} now.",
+    "calf_swollen_hot_or_red": "If you get chest pain or you're short of breath, {call} straight away.",
+    "cannot_bear_weight": "Don't walk on it if you can avoid it, and if it's getting worse fast or you feel faint, {call}.",
+    "numbness_tingling_weakness": "If the weakness spreads, or you notice any change in bladder or bowel control, {call} straight away.",
+}
+
+
 def red_reply(zone_id: str | None, place_known: bool, codes: list[str] | None = None, message: str = "") -> str:
     """The fixed reply for a red text hit: no model, no training, at most 5 sentences. Names what triggered it, answers the
-    runner's ask in one clause, gives their own country's emergency number. Plain text."""
+    runner's ask in one clause, gives the safety net for that trigger and their own country's emergency number. Plain text."""
     call = redflag.call_emergency(zone_id)
-    named = [_REASON_LEAD[c] for c in (codes or []) if c in _REASON_LEAD][:2]
+    codes = codes or []
+    named = [_REASON_LEAD[c] for c in codes if c in _REASON_LEAD][:2]
     lead = f"With {' and '.join(named)}, please" if named else "Please"
+    action = "keep weight off it" if "cannot_bear_weight" in codes else "stop running"
     ask = next((clause for rx, clause in _ASK_CLAUSE if rx.search(message or "")), "")
+    net = _SAFETY_NET.get(next((c for c in codes if c in _SAFETY_NET), ""), _GENERIC_NET).format(call=call)
     find = ("Say \"find urgent care\" and I'll look near where you usually run." if place_known
             else "Tell me your suburb or town and I'll find the nearest urgent care.")
-    return (f"{lead} stop running and get this seen by a doctor today, at urgent care or an emergency department. "
-            + (ask + " " if ask else "")
-            + f"If it's getting worse fast, you feel faint, short of breath or confused, or you can't move it, {call}.\n\n"
+    return (f"{lead} {action} and get this seen by a doctor today, at urgent care or an emergency department. "
+            + (ask + " " if ask else "") + f"{net}\n\n"
             f"I won't suggest any training until you've been checked. {find}")

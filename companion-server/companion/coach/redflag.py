@@ -154,7 +154,7 @@ def template(kind: str, zone_id: str | None) -> str:
     em = f"call {emergency}" if emergency else "call your local emergency number"
     if kind == URGENT:
         return ("Please stop running and get checked by a doctor today. If it's happening now or it's bad, "
-                f"{em} straight away.\n\n"
+                f"{em} straight away. If it was in the heat, get somewhere cool and sip water while you wait.\n\n"
                 "No training talk from me until you've been checked. Let me know how you get on.")
     if cc == "NZ":
         support = "In NZ you can call or text 1737 any time, free, to talk to a trained counsellor."
