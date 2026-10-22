@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from ... import db
 from .. import redflag
 
 RULES = (
@@ -49,7 +50,25 @@ NEXT_STEP = {
 GREEN_CHANGES = "It would move to amber if it gets worse, swells, changes how you run, or hangs around past three days."
 
 
+def _remember(ctx, level: str) -> None:
+    """Amber and green are kept on the job (coach_jobs.niggle) so the proactive coach can check back 48 h later. Level only."""
+    job_id = getattr(ctx, "job_id", None)
+    if job_id is None or level not in ("amber", "green"):
+        return
+    try:
+        with db.tx(ctx.settings.db_path) as c:
+            c.execute("UPDATE coach_jobs SET niggle=? WHERE id=?", (level, job_id))
+    except Exception:   # a note for later; never fails the triage
+        pass
+
+
 def call(name: str, args: dict, ctx) -> dict:
+    out = _call(name, args)
+    _remember(ctx, out.get("level", ""))
+    return out
+
+
+def _call(name: str, args: dict) -> dict:
     if name != "triage_check":
         raise ValueError("unknown tool")
     red = [k for k in RED if args.get(k) is True]

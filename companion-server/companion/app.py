@@ -163,6 +163,8 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
             t.start()
         if run_worker and svc.coach.enabled:   # one coach thread; jobs live in SQLite, so a restart picks them up
             threading.Thread(target=svc.coach.run_forever, args=(stop,), name="coach", daemon=True).start()
+        if run_worker and svc.coach.enabled and settings.coach_proactive:   # its own timer; off unless COMPANION_COACH_PROACTIVE
+            threading.Thread(target=svc.coach.proactive.run_forever, args=(stop,), name="coach-proactive", daemon=True).start()
         yield
         stop.set()
         svc.coach.wake.set()

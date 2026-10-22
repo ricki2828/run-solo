@@ -125,6 +125,7 @@ class Claimed:
     soft_kind: str | None = None     # a soft regex hit on the merged turn: a classifier error means the safety reply
     zone_id: str = "UTC"
     triage: str | None = None        # the injury mode of this turn: "amber" (runner's words), "red72" (a red hit in the last 72 h)
+    trusted: bool = False            # `message` is the server's own host note (a proactive turn), not runner words: not defanged
 
 
 @dataclass
@@ -169,6 +170,8 @@ class CoachChat:
         self._last_typing: dict[str, float] = {}
         self._placeholders: dict[int, str] = {}   # job id -> message id of its "on it" line, until the answer replaces it
         self.briefing = Briefings(self)   # C2b: the spoken session briefing; shares the gate, the worker and the ledger
+        from .proactive import Proactive
+        self.proactive = Proactive(self)   # PR5: the proactive coach; its own timer thread, off unless COMPANION_COACH_PROACTIVE
         if self.s.coach_chat:
             try:
                 self.prompt = coach_prompt.load(self.s.coach_dir)
@@ -456,7 +459,7 @@ class CoachChat:
         with db.tx(self.s.db_path) as c:
             budget.release_stale(c, now)
             n += c.execute("UPDATE coach_jobs SET state='replied' WHERE state='sending' AND COALESCE(sending_at, '') < ?", (cut,)).rowcount
-            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND kind<>'briefing' AND COALESCE(claimed_at, '') < ?",
+            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND kind NOT IN ('briefing','proactive') AND COALESCE(claimed_at, '') < ?",
                                (cut,)).fetchall():
                 n += 1
                 if j["attempts"] >= 2:
@@ -788,7 +791,7 @@ class CoachChat:
             last = history[-1]
             history[-1] = {"role": last["role"], "content": [{"type": "text", "text": last["content"],
                                                                "cache_control": {"type": "ephemeral"}}]}
-        turn_text = validator.defang(job.message)
+        turn_text = job.message if job.trusted else validator.defang(job.message)
         extra = registry.context(ctx)
         if job.triage:   # the injury mode rules go in this turn, and the validator enforces them below
             note = INJURY_NOTES["red72" if job.triage == "red72" else "amber"]
