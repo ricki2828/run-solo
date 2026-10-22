@@ -159,6 +159,32 @@ def sources_from(data: dict, medical: bool) -> list[dict]:
     return out
 
 
+_YEARS = re.compile(r"\s*(?:19|20)\d{2}\s*[-\u2013]\s*(?:19|20)\d{2}\s*")
+
+
+def _strip_phones(text: str) -> str:
+    """Phone-like digit runs go; a year range such as 2019-2023 stays."""
+    return PHONE_RE.sub(lambda m: m.group(0) if _YEARS.fullmatch(m.group(0)) else "", text)
+
+
+def off_list_cited(data: dict) -> bool:
+    """True when ANY annotation (uncapped, any scheme, any malformed url) points outside the medical allowlist."""
+    try:
+        anns = data["choices"][0]["message"].get("annotations") or []
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return False
+    for a in anns if isinstance(anns, list) else []:
+        cit = a.get("url_citation") if isinstance(a, dict) else None
+        url = cit.get("url") if isinstance(cit, dict) else None
+        try:
+            host = (urlsplit(url).hostname or "").lower() if isinstance(url, str) else ""
+        except ValueError:
+            host = ""
+        if not any(host == d or host.endswith("." + d) for d in MEDICAL_DOMAINS):
+            return True
+    return False
+
+
 def request_body(model: str, query: str, topic: str) -> dict:
     plugin: dict = {"id": "web", "max_results": MAX_RESULTS}
     if topic == "medical":
@@ -228,11 +254,11 @@ def call(name: str, args: dict, ctx) -> dict:
         text = data["choices"][0]["message"]["content"]
         if isinstance(text, list):
             text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
-        text = _LINKISH.sub("", PHONE_RE.sub("", " ".join(str(text or "").split())))[:MAX_SUMMARY]   # only `sources` may carry a link
+        text = _LINKISH.sub("", _strip_phones(" ".join(str(text or "").split())))[:MAX_SUMMARY]   # only `sources` may carry a link
     except (KeyError, IndexError, TypeError, AttributeError):
         text = ""
     sources = sources_from(data, topic == "medical")
-    if topic == "medical" and len(sources) < len(sources_from(data, False)):
+    if topic == "medical" and off_list_cited(data):
         sources = []   # a medical summary that drew on any non-allowlisted page is not used
     if not text:
         raise ValueError("the search found nothing usable: say you could not find a good answer")

@@ -120,6 +120,21 @@ def test_a_medical_answer_that_drew_on_any_other_page_is_not_used(cc):
     assert r["found"] is False and r["sources"] == [] and "quoted_web_text" not in r
 
 
+def test_one_off_list_page_among_many_allowlisted_ones_voids_a_medical_answer(cc):
+    four = tuple(f"https://www.nhs.uk/conditions/p{i}/" for i in range(4))
+    for extra in ("https://runblog.example.net/x", "http://runblog.example.net/insecure", "not a url"):
+        r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=four + (extra,))), query="shin splints general causes", topic="medical")
+        assert r["found"] is False and r["sources"] == [] and "quoted_web_text" not in r
+    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(urls=four)), query="shin splints general causes", topic="medical")
+    assert r["found"] is True and len(r["sources"]) == 4
+
+
+def test_year_ranges_survive_the_phone_strip(cc):
+    text = "A 2019-2023 review found 4% gains; call 021 555 1234."
+    r, _, _ = search(cc, lambda req: httpx.Response(200, json=answer(text=text)), query="carbon shoes for a half", topic="gear")
+    assert "2019-2023" in r["quoted_web_text"] and "555" not in r["quoted_web_text"]
+
+
 def test_the_runners_own_name_is_refused(cc):
     con = sqlite3.connect(cc.svc.s.db_path)
     con.execute("UPDATE users SET chat_name='Ricki Taiaroa'")
