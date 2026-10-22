@@ -178,3 +178,43 @@ def test_the_worker_dispatches_the_loops(tmp_path):
     out = tmp_path / "m.mp4"
     _render_one("video", "milestone_loop", F.milestone_100th(), out)
     assert out.stat().st_size > 1000
+
+
+def _real_pb_facts():
+    """What media.run_facts / video_facts send for a PB: the label only, no old best and no delta."""
+    f = {k: v for k, v in F.pb_5k().items() if k in P.RUN_KEYS}
+    f.update(pb="5k", pb_detail={"label": "5 KM BEST"}, verdict="done")
+    f.pop("hero", None)
+    return f
+
+
+def test_a_pb_with_only_its_label_still_gets_the_pb_loop(tmp_path):
+    f = _real_pb_facts()
+    P.check_request({"v": 1, "op": "video", "kind": "run_loop", "facts": f})
+    s = loop.run_loop_from_facts(f)
+    assert s.label == "NEW 5 KM BEST" and s.label_col == brand.ARC and s.pb and s.pb["old_s"] is None
+    assert [lab for _, lab in s.stats] == ["/KM", "KM"]   # no OLD BEST / FASTER without the old best
+    out = tmp_path / "pb.mp4"
+    loop.render_run_loop(f, out)
+    assert out.stat().st_size > 1000
+    assert _has(_frame(out, 4.5), brand.ARC)   # the cyan time
+
+
+def test_a_pb_with_its_old_best_keeps_the_comparison():
+    s = loop.run_loop_from_facts(F.pb_5k())
+    assert s.pb and s.pb["old_s"] and [lab for _, lab in s.stats] == ["/KM", "OLD BEST", "FASTER"]
+
+
+def test_the_rep_unit_does_not_claim_a_distance():
+    s = loop.run_loop_from_facts(F.singapore_intervals())
+    assert s.unit == "AVG REP"
+
+
+def test_a_short_zone_list_is_padded_not_an_error():
+    f = F.weekly_recap()
+    f["days"] = [{**d, "zone_s": list(d["zone_s"])[:3]} for d in f["days"]]
+    f["duration_s"] = sum(sum(d["zone_s"]) for d in f["days"])   # the spec's own check: days add up to the week
+    r = loop.WeekLoopRenderer(f)
+    r._img(2.0)
+    run = {**F.milos_trail(), "zone_s": [100.0, 200.0]}
+    assert len(loop.run_loop_from_facts(run).zone_s) == 5

@@ -108,15 +108,28 @@ class RunLoop:
     pb: dict | None = None      # {"old_s": 1349, "new_s": 1301, "delta": "48 S"}
 
 
+def _pad5(zs) -> list[float]:
+    zs = [float(x) for x in (zs or [])][:5]
+    return zs + [0.0] * (5 - len(zs))
+
+
 def run_loop_from_facts(f: dict) -> RunLoop:
     has_route = bool(f.get("route_xy") or f.get("route"))
+    pbd = f.get("pb_detail") or {}
+    label_only_pb = bool(f.get("pb")) and not ("previous_s" in pbd and "delta_s" in pbd)
+    if label_only_pb:
+        # The server never holds the old best: the facts carry only the PB's label. The loop still marks the PB (the
+        # "NEW <label>" title, the cyan time, the burst) and draws no comparison; the spec is built without pb.
+        f = {**{k: v for k, v in f.items() if k not in ("pb", "pb_detail")}, "verdict": "done",
+             "title": f"NEW {str(pbd.get('label') or 'BEST')}".upper()[:24]}
+    if "zone_s" in f:   # spec_from_facts indexes Z4 and Z5: pad a short list first
+        f = {**f, "zone_s": _pad5(f["zone_s"])}
     spec = spec_from_facts(f if has_route else {**f, "route_xy": _NO_ROUTE})
     km = spec.distance_km
     lane = SCORES_DARK.get(spec.run_type, brand.BONE)
-    zone_s = [float(x) for x in (f.get("zone_s") or [])][:5]
-    zone_s += [0.0] * (5 - len(zone_s))
+    zone_s = _pad5(f.get("zone_s"))
     route = zones = None
-    if has_route and not spec.reps and not f.get("pb"):
+    if has_route and not spec.reps and not (f.get("pb") or label_only_pb):
         route = prepare_route(spec.route, n=420, latlon=spec.latlon)
         bounds, acc = [], 0.0
         for x in spec.splits:
@@ -128,7 +141,11 @@ def run_loop_from_facts(f: dict) -> RunLoop:
             zones.append(next((z for b, z in bounds if fr_ <= b + 1e-9), bounds[-1][1]))
     pace = fmt_pace(spec.duration_s / km)
     pb = bars = avg = None
-    if spec.verdict.kind == "pb":
+    if label_only_pb:
+        pb = {"old_s": None, "new_s": float(spec.duration_s), "delta": None}
+        hero, unit = fmt_dur(spec.duration_s), ""
+        stats = [(pace, "/KM"), (f"{km:.1f}", "KM")]
+    elif spec.verdict.kind == "pb":
         v = spec.verdict
         pb = {"old_s": float(v.old), "new_s": float(spec.duration_s), "delta": f"{int(round(v.hero))} S"}
         hero, unit = fmt_dur(spec.duration_s), ""
@@ -136,7 +153,7 @@ def run_loop_from_facts(f: dict) -> RunLoop:
     elif spec.reps:
         reps = [(r.pace_s, r.zone or 4, fmt_pace(r.pace_s)) for r in spec.reps]
         avg = sum(r[0] for r in reps) / len(reps)
-        bars, hero, unit = reps, fmt_pace(avg), "/400 M"
+        bars, hero, unit = reps, fmt_pace(avg), "AVG REP"   # the rep distance is not in the facts (the title carries it)
         stats = [(f"{len(reps)}", "REPS"), (f"{km:.1f}", "KM"), (fmt_dur(spec.duration_s), "TIME")]
     else:
         hero, unit = f"{km:.1f}", "KM"
@@ -208,9 +225,11 @@ class RunLoopRenderer(Loop):
         """OLD BEST and TODAY as two bars; today's is cyan and shorter (less time), then the burst behind the time."""
         pb = self.s.pb
         x0, x1 = M, W - M
-        w_new = clamp(pb["new_s"] / pb["old_s"])
+        w_new = clamp(pb["new_s"] / pb["old_s"]) if pb["old_s"] else 1.0
         for j, (lab, secs, col, y, w) in enumerate((("OLD BEST", pb["old_s"], "#3A3F47", 420, 1.0),
                                                    ("TODAY", pb["new_s"], brand.ARC, 560, w_new))):
+            if pb["old_s"] is None:   # label-only PB: no old best to compare with, just the burst behind the time
+                break
             pj = out_cubic(seg(t, 0.25 + j * 0.25, 1.0 + j * 0.25))
             if pj <= 0:
                 continue
@@ -285,7 +304,7 @@ class WeekLoopRenderer(Loop):
             if p <= 0:
                 continue
             h = (base - top) * d["distance_km"] / dmax * p
-            zs = d.get("zone_s") or []
+            zs = _pad5(d.get("zone_s"))
             tot = sum(zs) or 1
             y = base
             for z, s_ in enumerate(zs[:5]):   # stacked Z1 at the bottom, Z5 on top: the ramp climbs with effort
@@ -297,7 +316,7 @@ class WeekLoopRenderer(Loop):
             if a > 0:
                 fr.cv.text((x + bw / 2, base - h - 16), f"{d['distance_km']:.1f}", S(36), fade(DARK, brand.BONE, a),
                            anchor="ms")
-        zs = [sum((d.get("zone_s") or [0] * 5)[z] for d in days) for z in range(5)]
+        zs = [sum(_pad5(d.get("zone_s"))[z] for d in days) for z in range(5)]
         zone_strip(fr, zs, HERO_Y + 18, seg(t, 1.5, 2.0))
         self.hero.draw(fr, brand.BONE, seg(t, 1.8, 2.4))
         stats_row(fr, [(str(f["runs"]), "RUNS"), (fmt_dur(f["duration_s"]), "ON THE MOVE"), (fmt_pace(self.pace), "/KM AVG")],
