@@ -324,3 +324,47 @@ def test_false_alarm_still_works_after_three_follow_ups(cc, fakes):
     assert rows(cc, "SELECT state FROM health_flags WHERE user_id=?", uid_of(cc))[0]["state"] == "cleared"
     assert rows(cc, "SELECT triage FROM coach_jobs ORDER BY id")[0]["triage"] == "red_cleared"
     assert _chat(cc, fakes, "ok so what is on this week?", T0 + timedelta(hours=17))["triage"] is None
+
+
+# ---- red reply: the runner's own country number, named trigger, at most 5 sentences (22-Oct live eval follow-up)
+@pytest.mark.parametrize("zone,number", [
+    ("Asia/Singapore", "995"), ("Australia/Sydney", "000"), ("Pacific/Auckland", "111"), ("Europe/London", "999"),
+    ("Europe/Dublin", "999 or 112"), ("America/Chicago", "911"), ("America/Toronto", "911"), ("Europe/Paris", "112"),
+    ("Africa/Johannesburg", "10111 or 112"),
+])
+def test_red_reply_and_urgent_template_use_the_runners_own_emergency_number(zone, number):
+    from companion.coach import redflag
+    from companion.coach.ext import triage as t
+    for text in (t.red_reply(zone, False, ["numbness_tingling_weakness"], "can I run?"), redflag.template("urgent", zone)):
+        assert f"call {number}" in text
+    others = {"995", "000", "111", "911", "999"} - {n for n in number.replace(" or ", " ").split()}
+    wrong = t.red_reply(zone, False, [], "")
+    assert not any(f"call {o}" in wrong for o in others)
+
+
+@pytest.mark.parametrize("zone", ["UTC", "", None, "Asia/Tokyo", "Europe/Moscow"])
+def test_unknown_zone_says_your_local_emergency_number(zone):
+    from companion.coach import redflag
+    from companion.coach.ext import triage as t
+    for text in (t.red_reply(zone, False, [], ""), redflag.template("urgent", zone)):
+        assert "call your local emergency number" in text
+        assert not any(n in text for n in ("111", "112", "911", "995", "000", "999"))
+
+
+def _sentences(text):
+    import re
+    return [x for x in re.split(r"(?<=[.!?])\s+", text.strip()) if x]
+
+
+def test_red_reply_names_the_symptom_answers_the_ask_and_has_at_most_five_sentences():
+    from companion.coach.ext import triage as t
+    for msg, codes, name, ask in [
+        ("my foot goes numb and tingly and it feels weak, long run tomorrow?", ["numbness_tingling_weakness"], "numbness", "no long run"),
+        ("my calf is really swollen and hot, long run tomorrow?", ["calf_swollen_hot_or_red"], "swollen, hot or red calf", "no long run"),
+        ("can't put any weight on it, can I race sunday", ["cannot_bear_weight"], "put weight on it", "no racing"),
+    ]:
+        for place in (False, True):
+            r = t.red_reply("Asia/Singapore", place, codes, msg)
+            assert name in r and ask in r.lower() and "995" in r
+            assert "diagnose" not in r and "urgent care" in r
+            assert len(_sentences(r)) <= 5, r

@@ -10,11 +10,12 @@ from .. import redflag
 
 RULES = (
     "- MEDICAL. For any pain, injury, or worrying symptom, ask a couple of short questions, then call triage_check and follow its "
-    "level: you never decide it. You never diagnose (say \"could be an overuse thing\", never \"you have ...\"). You never name or "
+    "level: you never decide it. You never diagnose or guess a cause, not even softly (no \"could be an overuse thing\", no \"sounds like ordinary tightness\"). You never name or "
     "dose a medication, supplement, injection or scan, and never say to run through pain. On RED say to get this seen today, give "
     "its next_step, offer find_care(kind=urgent), name the emergency number when call_emergency is true, and give NO training, "
-    "pace or plan advice in that reply. On AMBER say to stop the painful sessions, see a physio or GP if it persists, and offer "
-    "find_care. On GREEN give only the general advice the result carries, and say what would change it. Cite only a source a tool "
+    "pace or plan advice in that reply. On AMBER say to stop the painful sessions (name the runner's actual next sessions when get_plan shows them), see a physio or GP "
+    "if it persists, offer find_care, and end with a check-back about 48 hours out, by day. On GREEN give only the general advice the "
+    "result carries in at most 5 sentences, say what would change it, and end with a 48 hour check-back. Cite only a source a tool "
     "returned.")
 
 # Red flags: argument name -> (reason shown to the model, needs the emergency number now). Order is the order reasons come back.
@@ -177,13 +178,30 @@ def classify_text(text: str) -> TextTriage:
     return TextTriage("green")
 
 
-def red_reply(zone_id: str | None, place_known: bool) -> str:
-    """The fixed reply for a red text hit: no model, no training. Plain text."""
-    em = redflag.EMERGENCY.get(redflag.country(zone_id) or "")
-    call = f"call {em}" if em else "call your local emergency number (112 or 911 in most places)"
+_ASK_CLAUSE = (
+    (re.compile(r"long\s+run", re.I), "That means no long run."),
+    (re.compile(r"race|half|marathon|parkrun|10k|5k", re.I), "That means no racing until you have been cleared."),
+    (re.compile(r"tempo|interval|speed|session|workout|train|plan|thursday|tomorrow|tonight|today|run\b", re.I), "That means no running for now."),
+)
+_REASON_LEAD = {   # how each trigger reads at the start of "With ..., please stop running"
+    "chest_breath_or_fainting": "chest pain, trouble breathing or fainting", "heat_illness_signs": "possible heat illness",
+    "cannot_bear_weight": "not being able to put weight on it", "calf_swollen_hot_or_red": "a swollen, hot or red calf",
+    "numbness_tingling_weakness": "numbness, tingling or weakness", "deformity": "the area looking out of shape",
+    "fever_with_joint_pain": "fever with joint pain", "severe_rest_or_night_pain": "severe pain at rest or at night",
+    "after_fall_or_impact": "pain after a fall or knock", "bone_pain_at_night": "bone pain that wakes you at night",
+}
+
+
+def red_reply(zone_id: str | None, place_known: bool, codes: list[str] | None = None, message: str = "") -> str:
+    """The fixed reply for a red text hit: no model, no training, at most 5 sentences. Names what triggered it, answers the
+    runner's ask in one clause, gives their own country's emergency number. Plain text."""
+    call = redflag.call_emergency(zone_id)
+    named = [_REASON_LEAD[c] for c in (codes or []) if c in _REASON_LEAD][:2]
+    lead = f"With {' and '.join(named)}, please" if named else "Please"
+    ask = next((clause for rx, clause in _ASK_CLAUSE if rx.search(message or "")), "")
     find = ("Say \"find urgent care\" and I'll look near where you usually run." if place_known
             else "Tell me your suburb or town and I'll find the nearest urgent care.")
-    return ("Please stop running and get this seen by a doctor today, at urgent care or an emergency department. "
-            f"If it's getting worse fast, you feel faint, short of breath or confused, or you can't move it, {call}.\n\n"
-            f"I won't suggest any training until you've been checked. {find}\n\n"
-            "I can't diagnose this, and a doctor needs to look at it.")
+    return (f"{lead} stop running and get this seen by a doctor today, at urgent care or an emergency department. "
+            + (ask + " " if ask else "")
+            + f"If it's getting worse fast, you feel faint, short of breath or confused, or you can't move it, {call}.\n\n"
+            f"I won't suggest any training until you've been checked. {find}")

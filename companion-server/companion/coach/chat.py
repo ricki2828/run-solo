@@ -60,25 +60,8 @@ TRIAGE_HOURS = 72
 FALSE_ALARM = "I'm OK, false alarm"
 FALSE_ALARM_REPLY = ("Glad to hear it. I've lifted the pause, so we can talk training again. If it comes back or gets worse, "
                      "tell me and get it checked.")
-INJURY_NOTES = {
-    "amber": "<host_note>The runner describes pain or an injury. Rest or modify only: no paces, no tempo, intervals or long-run "
-             "advice, no pushing on. Never diagnose or mention medicines. Suggest a physio or GP if it persists, offer find_care.</host_note>",
-    "red72": "<host_note>The runner reported a red-flag problem recently and has not been cleared. Give no training, pace, plan or "
-             "run suggestions at all. Never diagnose or mention medicines. You may help find care with find_care.</host_note>",
-}
-REPAIR_HINTS = {
-    "empty": "it was empty",
-    "too_long": f"it was too long (keep it well under {validator.MAX_REPLY_CHARS} characters)",
-    "link": "it had a link that no tool returned (leave links out unless a tool result has them)",
-    "phone_like": "it had a phone number that no tool returned",
-    "spelled_measure": "it gave a measurement in words (use a figure from a tool, or leave the figure out)",
-    "foreign_unit": "it used a unit the runner's data does not use (stick to km, minutes and m:ss pace)",
-    "dosing": "it gave a medicine, dose or tablets (never; say a pharmacist or doctor can advise)",
-    "diagnosis": "it named a condition as what the runner has (never diagnose; say what you can't tell and who can)",
-    "training_advice": "it gave pace, plan or intensity advice while the runner is hurt (rest or modify only, no paces)",
-    "ungrounded": "the figure {detail} is not in any tool result or in what the runner said (call calc_pace for pace, time "
-                  "or distance sums, or say it without that figure)",
-}
+INJURY_NOTES = validator.INJURY_NOTES   # the dicts live in validator.py so the eval harness can use them without importing chat
+REPAIR_HINTS = validator.REPAIR_HINTS
 FALLBACK_ALERT_SHARE = 0.2
 SCREEN_ALERT_SHARE = 0.05
 SCREEN_ALERT_MIN_JOBS = 10
@@ -582,7 +565,7 @@ class CoachChat:
             soft_kind = kind if level == redflag.SOFT else None
             tri = coach_triage.classify_text(message)   # the runner's own words, before any cap or model (coach PR3)
             if tri.level == "red":
-                self._triage_red_now(c, u, primary, tri, now)
+                self._triage_red_now(c, u, primary, tri, now, message)
                 return True
             mode = "amber" if tri.level == "amber" else None
             if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage='red' AND replied_at > ? AND id<>? "
@@ -617,7 +600,7 @@ class CoachChat:
         self._flag(c, u, kind, now)
         log.warning("coach red flag (%s) kind=%s tester=%s job=%s", where, kind, tag(u["tester_no"]), job_id)
 
-    def _triage_red_now(self, c, u: dict, job_id: int, tri: "coach_triage.TextTriage", now: datetime) -> None:
+    def _triage_red_now(self, c, u: dict, job_id: int, tri: "coach_triage.TextTriage", now: datetime, message: str = "") -> None:
         """A red hit on the runner's words: the fixed reply (no model, no training), the level on the job, and for the next
         TRIAGE_HOURS an active `injury` flag that every training reader honours. Emergency-type hits (chest, fainting, heat) use
         the existing urgent safety reply and flag instead."""
@@ -626,7 +609,7 @@ class CoachChat:
             self._safety_now(c, u, job_id, redflag.URGENT, f"triage:urgent:{','.join(tri.codes)}", now, "text triage")
             return
         place = c.execute("SELECT 1 FROM convo_area WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
-        reply = validator.with_chips(coach_triage.red_reply(u["zone_id"], place), [FALSE_ALARM])
+        reply = validator.with_chips(coach_triage.red_reply(u["zone_id"], place, tri.codes, message), [FALSE_ALARM])
         c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, triage='red', "
                   "replied_at=? WHERE id=?", (reply, f"triage:red:{','.join(tri.codes)}", iso(now), job_id))
         self._message(c, u["id"], job_id, "coach", reply, now)
@@ -777,9 +760,7 @@ class CoachChat:
 
     @staticmethod
     def host_note(reason: str) -> str:
-        code, _, detail = reason.partition(":")
-        hint = REPAIR_HINTS.get(code, "it did not pass the server's checks").format(detail=detail)
-        return f"<host_note>Your reply was not sent: {hint}. Write the reply again.</host_note>"
+        return validator.host_note(reason)
 
     def _agent(self, job: Claimed, now: datetime) -> "AgentResult":
         """The model loop: tool turns, then a checked reply. A reply the validator refuses goes back to the model once with

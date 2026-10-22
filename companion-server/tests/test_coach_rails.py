@@ -69,7 +69,7 @@ def test_templates_by_country():
     assert "000" in redflag.template("urgent", "Australia/Sydney")
     assert "999" in redflag.template("urgent", "Europe/London")
     assert "911" in redflag.template("urgent", "America/Chicago")
-    assert "112 or 911" in redflag.template("urgent", "UTC")
+    assert "local emergency number" in redflag.template("urgent", "UTC") and "112" not in redflag.template("urgent", "UTC")
     w_nz = redflag.template("wellbeing", "Pacific/Auckland")
     assert "1737" in w_nz and "111" in w_nz
     w_au = redflag.template("wellbeing", "Australia/Perth")
