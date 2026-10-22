@@ -711,6 +711,7 @@ void main() {
       double chord = 1,
       double extraJumpM = 0,
       RunMode mode = RunMode.free,
+      bool lowAccuracy = false,
     }) {
       final samples = <Sample>[];
       var recorded = 0.0;
@@ -727,6 +728,18 @@ void main() {
                 lat: -33.87,
                 lon: 151.21,
                 accM: 5,
+                distM: recorded,
+              ),
+            );
+          } else if (lowAccuracy) {
+            // The recorder journals a fix it rejects (accuracy over 25 m)
+            // with lat/lon and the distance frozen.
+            samples.add(
+              Sample(
+                tMs: t * 1000,
+                lat: -33.87,
+                lon: 151.21,
+                accM: 60,
                 distM: recorded,
               ),
             );
@@ -785,6 +798,30 @@ void main() {
       expect(r.efforts.containsKey(BestEffortDistance.k5), isFalse);
       expect(r.miss!.kind, EffortMissKind.gpsDropped);
       expect(r.miss!.reason, 'GPS dropped 4 times, 4 min in all');
+    });
+
+    test('an 8 s dropout in exactly 5K counts (under the old 10 s rule)', () {
+      final r = find(dropRun(1250, [(600, 8)]));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      expect(r.miss, isNull);
+    });
+
+    test('30 s of low-accuracy fixes (a tunnel) count as a dropout', () {
+      final r = find(dropRun(1250, [(600, 30)], lowAccuracy: true));
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
+    test('the allowance is max(180 s, 15% of the window): 184 s in a 1250 s '
+        '5K counts, 192 s does not, and the miss says so', () {
+      final ok = find(
+        dropRun(1250, [(100, 46), (400, 46), (700, 46), (1000, 46)]),
+      );
+      expect(effort(ok, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      final no = find(
+        dropRun(1250, [(100, 48), (400, 48), (700, 48), (1000, 48)]),
+      );
+      expect(no.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(no.miss!.reason, 'GPS dropped 4 times, 3 min in all');
     });
 
     test('a single 45 s dropout in exactly 5K counts', () {

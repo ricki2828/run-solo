@@ -632,13 +632,15 @@ class BestEffortFinder {
     int? prevT;
     var lastClock = 0;
     var gapMs = 0;
-    for (final s in _withoutDropoutNoFix(run)) {
+    final (collapsed, after) = _collapse(run);
+    for (final s in collapsed) {
       if (inside(pauses, s.tMs) || inside(run.gaps, s.tMs)) continue;
       final t = moving(s.tMs);
       gapMs = 0;
       if (prevT != null && out.isNotEmpty) {
         final dt = t - prevT;
-        if (dt > constants.sampleGapInterruptMs) {
+        if (dt > constants.sampleGapInterruptMs ||
+            (dt > minTrackedDropoutMs && after.contains(s.tMs))) {
           // A short GPS dropout is bridged like in any run (the window check
           // holds the total); a pause inside it or a long one is not.
           if (dt > maxBridgedGpsGapMs ||
@@ -728,7 +730,11 @@ class BestEffortFinder {
       }
     }
     final shortMs = short.fold<int>(0, (a, d) => a + d.ms);
-    if (shortMs > maxBridgedGpsTotalMs) {
+    // What one window of the effort's length may hold (as in [_holesOk]).
+    final windowMs = (pts.last.t - pts.first.t) * need / total;
+    final allowance = windowMs * bridgedGpsShare;
+    if (shortMs >
+        (allowance > maxBridgedGpsTotalMs ? allowance : maxBridgedGpsTotalMs)) {
       breaks.add(
         _Break(
           short.first.fromD - pts.first.d,
@@ -739,7 +745,7 @@ class BestEffortFinder {
       );
     }
     Sample? prev;
-    for (final s in _withoutDropoutNoFix(run)) {
+    for (final s in _collapse(run).$1) {
       // Only steps between neighbouring samples; a dropout is judged above.
       if (prev != null &&
           s.tMs > prev.tMs &&
@@ -879,7 +885,8 @@ class BestEffortFinder {
     final out = <List<_Pt>>[];
     var cur = <_Pt>[];
     Sample? prev;
-    for (final s in bridge ? _withoutDropoutNoFix(run) : run.samples) {
+    final (collapsed, after) = bridge ? _collapse(run) : (run.samples, <int>{});
+    for (final s in collapsed) {
       if (inside(s.tMs)) {
         prev = null;
         if (cur.length >= 2) out.add(cur);
@@ -893,10 +900,10 @@ class BestEffortFinder {
         final step = (s.distM - prev.distM) / (dt / 1000);
         if (bridge &&
             !overlaps &&
-            dt > constants.sampleGapInterruptMs &&
+            (after.contains(s.tMs) || dt > constants.sampleGapInterruptMs) &&
             dt <= maxBridgedGpsGapMs &&
             step <= maxStepMps) {
-          gapMs = dt;
+          gapMs = _isHole(after, s, dt) ? dt : 0;
         } else if (dt > constants.sampleGapInterruptMs ||
             overlaps ||
             step > maxStepMps) {
@@ -913,52 +920,69 @@ class BestEffortFinder {
     return out;
   }
 
-  /// The samples with the no-fix ones inside a GPS dropout left out: those
-  /// between two fixes more than [EngineConstants.sampleGapInterruptMs] apart.
-  /// The recorder writes a sample every second even with no fix, repeating the
-  /// last distance, so a dropout is frozen distance and then one jump.
-  List<Sample> _withoutDropoutNoFix(RunFile run) {
+  /// Whether [s] carries a usable position: lat/lon, and an accuracy the
+  /// recorder's filter would accept. The recorder journals fixes it rejects
+  /// for accuracy with lat/lon and the distance frozen, so they are a
+  /// dropout too. (The engine's [EngineConstants.qualityMaxAccuracyM] is the
+  /// copy of the recorder's `PointFilter.maxAccuracyM`.)
+  bool _isFix(Sample s) =>
+      s.hasFix && (s.accM == null || s.accM! <= constants.qualityMaxAccuracyM);
+
+  /// The samples with every run of no-fix ones between two fixes left out,
+  /// and the times of the samples that follow such a run. The recorder writes
+  /// a sample every second even with no fix, repeating the last distance, so
+  /// a dropout is frozen distance and then one jump; with the no-fix samples
+  /// out, the distance runs straight from the last fix to the first one back.
+  /// How long it may be and whether it is plausible are for the caller.
+  (List<Sample>, Set<int>) _collapse(RunFile run) {
     final src = run.samples;
     final out = <Sample>[];
+    final after = <int>{};
     var i = 0;
     while (i < src.length) {
       out.add(src[i]);
-      if (!src[i].hasFix) {
+      if (!_isFix(src[i])) {
         i++;
         continue;
       }
       var j = i + 1;
-      while (j < src.length && !src[j].hasFix) {
+      while (j < src.length && !_isFix(src[j])) {
         j++;
       }
-      if (j < src.length &&
-          j > i + 1 &&
-          src[j].tMs - src[i].tMs > constants.sampleGapInterruptMs) {
+      if (j < src.length && j > i + 1) {
         i = j; // skip the no-fix samples between the two fixes
+        after.add(src[j].tMs);
       } else {
         i++;
       }
     }
-    return out;
+    return (out, after);
   }
 
-  /// Whether the run holds any GPS dropout of the kind [_cleanStretches]
-  /// bridges (cheap pre-check: any two neighbouring fix samples, with only
-  /// no-fix ones between, more than the interrupt limit apart).
-  bool _hasDropout(RunFile run) => _dropouts(run).isNotEmpty;
+  /// A bridged dropout shorter than this is not tracked (a stray no-fix
+  /// tick or two): the distance still runs straight across it.
+  static const int minTrackedDropoutMs = 5000;
 
-  /// Every GPS dropout: more than [EngineConstants.sampleGapInterruptMs]
-  /// between two neighbouring fix samples outside any pause or recording gap.
+  /// Whether the run holds any run of no-fix samples to collapse.
+  bool _hasDropout(RunFile run) =>
+      _collapse(run).$1.length != run.samples.length ||
+      _dropouts(run).isNotEmpty;
+
+  /// Every GPS dropout that is tracked: [minTrackedDropoutMs] or more between
+  /// two neighbouring fix samples (or a sample gap over
+  /// [EngineConstants.sampleGapInterruptMs]) outside any pause or recording
+  /// gap.
   List<_Dropout> _dropouts(RunFile run) {
     final spans = [...run.pauses, ...run.gaps];
     final out = <_Dropout>[];
+    final (samples, after) = _collapse(run);
     Sample? prev;
-    for (final s in _withoutDropoutNoFix(run)) {
+    for (final s in samples) {
       final p = prev;
       prev = s;
       if (p == null) continue;
       final dt = s.tMs - p.tMs;
-      if (dt <= constants.sampleGapInterruptMs ||
+      if (!_isHole(after, s, dt) ||
           spans.any((b) => b.overlaps(p.tMs + 1, s.tMs))) {
         continue;
       }
@@ -966,6 +990,12 @@ class BestEffortFinder {
     }
     return out;
   }
+
+  /// Whether the step to [s], [dt] after the previous sample, is a tracked
+  /// dropout (see [minTrackedDropoutMs]).
+  bool _isHole(Set<int> after, Sample s, int dt) =>
+      dt > constants.sampleGapInterruptMs ||
+      (dt > minTrackedDropoutMs && after.contains(s.tMs));
 
   /// Removes every span where some 200 m was covered faster than 8 m/s, so
   /// no window can contain a GPS jump.
