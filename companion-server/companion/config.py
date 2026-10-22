@@ -155,9 +155,11 @@ class Settings:
     coach_allowlist: frozenset[str] = frozenset()
     coach_consent_required: int = 3
     # Coach memory (Phase 0): facts, chat notes and training numbers are read and written only for a runner whose consent is at
-    # or above this (the app's consent v4 sheet). Until a runner re-consents in the app, a runner on coach_allowlist (Ricki, at
-    # consent 3) keeps memory as an OR; drop the allowlist route once everyone on it has agreed to v4.
+    # or above this (the app's consent v4 sheet). The coach allowlist does NOT grant memory (chat requires it, so every chat
+    # tester is on it). The one exception is coach_memory_override: user ids (u_...), empty by default, for Ricki at consent 3
+    # until he re-consents in the app; remove it then.
     memory_consent_required: int = 4
+    coach_memory_override: frozenset[str] = frozenset()
     coach_model: str = "anthropic/claude-sonnet-5.5"
     # All model spend in a month (cards + chat). Chat stops when it would cross the cap less what the cards still have
     # reserved (coach_card_reserve_usd minus the cards' spend this month), so chat can never starve the cards.
@@ -254,6 +256,7 @@ class Settings:
             coach_chat=_flag(e.get("COMPANION_COACH_CHAT")),
             coach_allowlist=_csv(e.get("COMPANION_COACH_ALLOWLIST")),
             coach_consent_required=_posint(e.get("COMPANION_COACH_CONSENT_REQUIRED"), 3),
+            coach_memory_override=_csv(e.get("COMPANION_COACH_MEMORY_OVERRIDE")),
             memory_consent_required=_posint(e.get("COMPANION_MEMORY_CONSENT_REQUIRED"), 4),
             coach_model=(e.get("COMPANION_COACH_MODEL") or "anthropic/claude-sonnet-5.5").strip(),
             coach_monthly_cap_usd=_posfloat(e.get("COMPANION_COACH_MONTHLY_CAP_USD"), 50.0),

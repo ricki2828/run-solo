@@ -19,6 +19,17 @@ from companion.coach.ext import actions, memory, places
 from conftest import OWNER, auth, coach_text, coach_tools, enrol, run_payload, tg_callback
 from test_coach_chat import T0, OTHER, cc, rows, run_worker, say, uid_of  # noqa: F401  (cc is a fixture)
 
+@pytest.fixture(autouse=True)
+def _ricki_memory_override(request):
+    """The PR4 tests run Ricki at consent 3: he is the memory override. The v4 tests below call set_override() to change that."""
+    if "cc" in request.fixturenames:
+        c = request.getfixturevalue("cc")
+        import dataclasses as _dc
+        uid = rows(c, "SELECT id FROM users")[0]["id"]
+        s = _dc.replace(c.svc.s, coach_memory_override=frozenset({uid}))
+        c.svc.s = c.svc.coach.s = s
+
+
 THURSDAY, FRIDAY = "2026-10-22", "2026-10-23"
 MOVE_FRI = ("propose_plan_change", {"change": "move", "to_day": "friday", "reason": "busy thursday"})
 _n = iter(range(900_000, 10**7))
@@ -635,46 +646,69 @@ def consent(c, v, **kw):
     return r
 
 
-def off_allowlist(c):
-    """The runner stays chat-enabled but is no longer on the allowlist as far as memory is concerned: memory then rides on consent alone."""
-    c.svc.coach.allowlisted = lambda u, a=None: False
+def set_override(c, ids):
+    s = dataclasses.replace(c.svc.s, coach_memory_override=frozenset(ids))
+    c.svc.s = s
+    c.svc.coach.s = s
 
 
 def ctx_of(c, now=T0):
     return type("C", (), {"svc": c.svc, "user_id": uid_of(c), "now": now, "job_id": None})()
 
 
-def test_memory_gate_allowlist_at_v3_is_the_temporary_or_for_ricki(cc, fakes):
-    with db.ro(cc.svc.s.db_path) as con:
-        assert memory.gate(cc.svc, con, uid_of(cc)) is None   # consent 3 + allowlist
-    remember(cc, fakes, "I run before work")
-    assert len(q(cc, "SELECT id FROM coach_memory")) == 1
+def gate_of(c):
+    with db.ro(c.svc.s.db_path) as con:
+        return memory.gate(c.svc, con, uid_of(c))
 
 
-def test_consent_decides_memory_when_the_allowlist_does_not_apply(cc):
-    off_allowlist(cc)
+def test_a_chat_allowlisted_v3_runner_gets_no_memory(cc, fakes):
+    """The P0: every chat tester is on the coach allowlist, so the allowlist must NOT grant memory. Consent v4 does."""
+    set_override(cc, [])
     uid = uid_of(cc)
     with db.ro(cc.svc.s.db_path) as con:
-        assert memory.gate(cc.svc, con, uid) == "memory_consent"      # consent 3
+        assert cc.svc.coach.gate(con, uid) is None        # chat is open for this runner (allowlisted, consent 3)
+    assert gate_of(cc) == "memory_consent"
     assert memory.context(ctx_of(cc)) == ""
     with pytest.raises(ValueError, match="memory is not on"):
         memory.call("remember", {"fact": "I like hills", "kind": "preference"}, ctx_of(cc))
     assert memory.refresh_if_due(cc.svc, uid, T0) is False
+    # and the coach still chats: the reply goes out, the turn carries no memory block, remember saved nothing
+    fakes.coach_queue = [coach_tools(("remember", {"fact": "I hate mornings", "kind": "preference"})), coach_text("Fair enough.")]
+    say(cc, "I hate mornings, remember that")
+    run_worker(cc, now=T0 + timedelta(seconds=10))
+    assert q(cc, "SELECT * FROM coach_memory") == []
+    assert any("Fair enough" in t for t in fakes.tg_texts())
+    for call in fakes.coach_calls:
+        turn = call["messages"][-1]["content"]
+        turn = turn if isinstance(turn, str) else "".join(p.get("text", "") for p in turn if isinstance(p, dict))
+        assert "<coach_memory>" not in turn
     consent(cc, 4)
-    with db.ro(cc.svc.s.db_path) as con:
-        assert memory.gate(cc.svc, con, uid) is None                  # consent 4
+    assert gate_of(cc) is None
     assert memory.call("remember", {"fact": "I like hills", "kind": "preference"}, ctx_of(cc))["saved"] is True
-    assert '"quoted_runner_text": "I like hills"' in memory.context(ctx_of(cc))
 
 
-def test_v4_gate_still_needs_the_coach_consent_and_not_paused(cc):
-    off_allowlist(cc)
-    uid = uid_of(cc)
+def test_the_override_is_the_only_other_route_and_lists_user_ids(cc, fakes):
+    set_override(cc, ["u_somebody_else"])
+    assert gate_of(cc) == "memory_consent"
+    set_override(cc, [uid_of(cc)])
+    assert gate_of(cc) is None
+    remember(cc, fakes, "I run before work")
+    assert len(q(cc, "SELECT id FROM coach_memory")) == 1
+
+
+def test_the_override_setting_reads_the_env_csv_and_defaults_empty():
+    from companion.config import Settings
+    assert Settings.from_env({"COMPANION_PEPPER": "p" * 20}).coach_memory_override == frozenset()
+    assert Settings.from_env({"COMPANION_PEPPER": "p" * 20, "COMPANION_COACH_MEMORY_OVERRIDE": "u_a, u_b"}).coach_memory_override == frozenset({"u_a", "u_b"})
+
+
+def test_memory_gate_follows_the_chat_gate_first(cc):
     consent(cc, 4)
     with db.tx(cc.svc.s.db_path) as con:
-        con.execute("UPDATE users SET paused=1 WHERE id=?", (uid,))
-    with db.ro(cc.svc.s.db_path) as con:
-        assert memory.gate(cc.svc, con, uid) == "paused"
+        con.execute("UPDATE users SET paused=1")
+    assert gate_of(cc) == "paused"
+    cc.svc.coach.prompt = None        # coach off
+    assert gate_of(cc) == "off"
 
 
 def test_v4_sub_choices_are_stored_with_the_consent_and_default_correctly(cc):
@@ -699,42 +733,100 @@ def test_sub_choices_are_ignored_below_v4_and_must_be_booleans(cc):
     assert r.status_code == 422
 
 
-def test_an_operator_lowering_consent_below_v4_deletes_memory_for_a_runner_off_the_allowlist(cc):
-    off_allowlist(cc)
-    uid = uid_of(cc)
-    consent(cc, 4, health_notes=True)
-    with db.tx(cc.svc.s.db_path) as con:
+def add_row(c, kind, text, topic="other"):
+    with db.tx(c.svc.s.db_path) as con:
         con.execute("INSERT INTO coach_memory (user_id, kind, topic, text, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-                    (uid, "fact", "schedule", "Tuesdays are long runs", "2026-10-21T00:00:00Z", "2026-10-21T00:00:00Z"))
-    cc.svc.set_checkin_consent(uid, 3, source="cli")
+                    (uid_of(c), kind, topic, text, "2026-10-21T00:00:00Z", "2026-10-21T00:00:00Z"))
+
+
+def test_an_operator_lowering_consent_below_v4_deletes_memory(cc):
+    set_override(cc, [])
+    consent(cc, 4, health_notes=True)
+    add_row(cc, "fact", "Tuesdays are long runs", "schedule")
+    cc.svc.set_checkin_consent(uid_of(cc), 3, source="cli")
     assert q(cc, "SELECT * FROM coach_memory") == []
     assert q(cc, "SELECT memory_health_optin h, memory_sync_optin t FROM users")[0] == {"h": 0, "t": 1}
 
 
-def test_memory_off_keeps_the_coach_working(cc, fakes, monkeypatch):
-    """A closed memory gate must not break a chat turn: the reply goes out, the turn has no memory block, remember saves nothing."""
-    real_gate = memory.gate
-
-    def consent_only(svc, c, uid):   # chat stays allowlisted; memory sees the runner as off the allowlist at consent 3
-        keep, svc.coach.allowlisted = svc.coach.allowlisted, (lambda u, a=None: False)
-        try:
-            return real_gate(svc, c, uid)
-        finally:
-            svc.coach.allowlisted = keep
-    monkeypatch.setattr(memory, "gate", consent_only)
-    fakes.coach_queue = [coach_tools(("remember", {"fact": "I hate mornings", "kind": "preference"})), coach_text("Fair enough.")]
-    say(cc, "I hate mornings, remember that")
-    run_worker(cc, now=T0 + timedelta(seconds=10))
+def test_memory_off_deletes_memory_keeps_checkins_and_the_coach(cc, fakes):
+    set_override(cc, [])
+    consent(cc, 4, health_notes=True)
+    add_row(cc, "fact", "Tuesdays are long runs", "schedule")
+    add_row(cc, "summary", "Runs mornings.")
+    consent(cc, 3, coach_memory=False)
     assert q(cc, "SELECT * FROM coach_memory") == []
-    assert any("Fair enough" in t for t in fakes.tg_texts())
-    for call in fakes.coach_calls:
-        turn = call["messages"][-1]["content"]
-        turn = turn if isinstance(turn, str) else "".join(p.get("text", "") for p in turn if isinstance(p, dict))
-        assert "<coach_memory>" not in turn
+    row = q(cc, "SELECT checkin_consent, memory_health_optin h, memory_sync_optin t FROM users")[0]
+    assert row == {"checkin_consent": 3, "h": 0, "t": 1}           # still on the coach (3), memory gone, defaults back
+    assert gate_of(cc) == "memory_consent"
+    fakes.coach_queue = [coach_text("Still here.")]
+    say(cc, "hello")
+    run_worker(cc, now=T0 + timedelta(seconds=10))
+    assert any("Still here." in t for t in fakes.tg_texts())
+
+
+def test_turning_health_notes_off_deletes_health_facts_and_the_summary_only(cc):
+    set_override(cc, [])
+    consent(cc, 4, health_notes=True)
+    add_row(cc, "fact", "My left calf gets sore after hills", "history")
+    add_row(cc, "fact", "I run Tuesdays", "schedule")
+    add_row(cc, "summary", "Runs mornings. Calf niggle in October.")
+    consent(cc, 4, health_notes=False)
+    assert q(cc, "SELECT text FROM coach_memory") == [{"text": "I run Tuesdays"}]
+    consent(cc, 4, training_sync=False)                      # another category off deletes nothing it does not own
+    assert q(cc, "SELECT text FROM coach_memory") == [{"text": "I run Tuesdays"}]
+
+
+def test_remember_refuses_health_content_while_the_tick_is_off_and_accepts_it_when_on(cc):
+    set_override(cc, [])
+    consent(cc, 4)
+    for fact in ("my achilles is sore", "I had a knee injury in March", "I'm recovering from the flu", "my physio says rest"):
+        with pytest.raises(ValueError, match="health notes are off"):
+            memory.call("remember", {"fact": fact, "kind": "history"}, ctx_of(cc))
+    assert memory.call("remember", {"fact": "I prefer morning runs", "kind": "preference"}, ctx_of(cc))["saved"] is True
+    consent(cc, 4, health_notes=True)
+    assert memory.call("remember", {"fact": "my achilles is sore", "kind": "history"}, ctx_of(cc))["saved"] is True
+    assert "health notes switch is off" in memory.RULES
+
+
+def summary_call(cc, reply):
+    uid = uid_of(cc)
+    with db.tx(cc.svc.s.db_path) as con:
+        for i in range(10):
+            con.execute("INSERT INTO coach_messages (user_id, role, text, ts) VALUES (?,?,?,?)", (uid, "runner", f"msg {i}", "2026-10-21T00:00:00Z"))
+    calls = []
+
+    def handler(req):
+        calls.append(json.loads(req.content))
+        return httpx.Response(200, json=coach_text(reply))
+    real = cc.svc.http
+    cc.svc.http = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        ok = memory.refresh_if_due(cc.svc, uid, T0)
+    finally:
+        cc.svc.http = real
+    return ok, calls
+
+
+def test_the_summary_leaves_out_health_while_the_tick_is_off(cc):
+    set_override(cc, [])
+    consent(cc, 4)
+    ok, calls = summary_call(cc, "Runs mornings. Calf niggle in October. Aiming at a half marathon.")
+    assert ok is True and "Leave out anything about injuries" in calls[0]["messages"][0]["content"]
+    text = q(cc, "SELECT text FROM coach_memory WHERE kind='summary'")[0]["text"]
+    assert "calf" not in text.lower() and "Runs mornings." in text and "half marathon" in text
+
+
+def test_the_summary_keeps_health_when_the_tick_is_on(cc):
+    set_override(cc, [])
+    consent(cc, 4, health_notes=True)
+    ok, calls = summary_call(cc, "Runs mornings. Calf niggle in October.")
+    assert ok is True and "Leave out anything about injuries" not in calls[0]["messages"][0]["content"]
+    assert "Calf niggle" in q(cc, "SELECT text FROM coach_memory WHERE kind='summary'")[0]["text"]
 
 
 def test_memory_content_never_reaches_the_logs(cc, fakes, caplog):
     caplog.set_level(logging.DEBUG)
+    consent(cc, 4, health_notes=True)
     secret = "my knee clicks on Zanzibar hills"
     remember(cc, fakes, secret)
     uid = uid_of(cc)
@@ -766,8 +858,14 @@ def test_the_nightly_backup_keeps_coach_memory_but_not_the_proposals(cc, fakes, 
     assert con.execute("SELECT COUNT(*) FROM coach_proposals").fetchone()[0] == 0
 
 
-def test_slash_memory_still_lists_rows_for_a_runner_whose_gate_closed(cc, fakes):
+def test_slash_memory_and_delete_taps_work_when_the_gate_or_the_flag_is_closed(cc, fakes):
     remember(cc, fakes, "Marathon in March")
     cc.svc.coach.gate_for = lambda uid: "allowlist"   # the chat gate is closed
     cc.svc.handle_inbound(TelegramChannel.parse(tg_update(next(_n), "/memory", OWNER)), now=T0 + timedelta(minutes=3))
     assert any("Marathon in March" in t for t in fakes.tg_texts())
+    cc.svc.coach.prompt = None                         # the coach flag is off entirely
+    assert not cc.svc.coach.enabled
+    cc.svc.handle_inbound(TelegramChannel.parse(tg_update(next(_n), "/memory", OWNER)), now=T0 + timedelta(minutes=4))
+    fid = q(cc, "SELECT id FROM coach_memory")[0]["id"]
+    tap(cc, f"cm:{fid}", now=T0 + timedelta(minutes=5))
+    assert q(cc, "SELECT * FROM coach_memory") == []

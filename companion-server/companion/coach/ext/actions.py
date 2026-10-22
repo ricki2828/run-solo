@@ -251,9 +251,18 @@ def handle_inbound(svc, ch, inb, now: datetime) -> bool:
     special = inb.action is not None or inb.location is not None
     if not special and (inb.card_id is not None or inb.text.strip().lower() not in ("/memory", "memory")):
         return False
-    if not svc.coach.enabled:
-        return special   # a stale button or a stray location pin is ignored; the word /memory keeps its ordinary path
     user = svc._user_by_ref(inb.channel, inb.ref)
+    if not svc.coach.enabled:
+        # the coach flag is off: a runner who still holds memory can use /memory and the cm: delete taps
+        if user and _holds_memory(svc, user["id"]) and inb.location is None and (inb.action is None or inb.action.startswith("cm:")):
+            if not svc._seen(inb, now):
+                from . import memory
+                if inb.action is not None:
+                    memory.tap(svc, ch, inb, user, now)
+                else:
+                    memory.show(svc, ch, inb.ref, user["id"], now)
+            return True
+        return special   # a stale button or a stray location pin is ignored; the word /memory keeps its ordinary path
     if not user:
         return special
     if inb.action is not None:

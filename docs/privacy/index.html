@@ -321,22 +321,24 @@
   <p>During the test Ricki can also send a few fixed, pre-written messages through the coach, such as a nudge if you have not run yet or an invite to a chat. Which one was sent to you and when is logged against your tester number (not the words), kept until the test ends, and deleted when you delete your data. The words themselves stay with the other messages the coach has sent you, for 30 days, like any card.</p>
 
   <h3>Coach memory</h3>
-  <p>The coach can remember you between chats, but only after you agree to it in the app (the companion agreement, version 4) and only
-  for as long as that agreement stands. Memory is off for anyone who has not agreed. With it off the coach still talks to you; it just
-  starts from zero each time. With it on, the server keeps short notes: facts you tell the coach to keep (your goals, schedule,
-  what you like, key runs; up to 20 of up to 160 characters each) and one short summary of your earlier chats (up to 700 characters,
-  rewritten every ten messages you send). It also keeps your training numbers (estimated race times, best efforts, weekly load and your plan) while the
-  training numbers switch is on, which it is unless you turn it off in the app. <strong>Health notes</strong> (niggles and injuries) are
-  separate: they are kept only if you tick "Keep health notes too", which starts unticked. Your GPS tracks and heart rate recordings are
-  not part of coach memory and stay on your phone.</p>
+  <p>The coach can remember you between chats, but only after you agree to it in the app (the companion agreement, version 4). The one
+  exception is the person who runs the test, whose memory is switched on by hand until he agrees in the app too. Memory is off for
+  everyone else, and with it off the coach still talks to you; it just starts from zero each time. With it on, the server keeps short
+  notes: facts you tell the coach to keep (your goals, schedule, what you like, key runs; up to 20 of up to 160 characters each) and one
+  short summary of your earlier chats (up to 700 characters, rewritten every ten messages you send). The app also records whether the
+  training numbers switch is on (it starts on). Sending your training numbers (estimated race times, best efforts, weekly load and your plan) is
+  not built yet: when it is, the coach will keep them only while that switch is on, and this page will say so. <strong>Health notes</strong>
+  (niggles, injuries and illness) are separate: the coach keeps them only if you tick "Keep health notes too", which starts unticked. With it
+  unticked the coach will not save anything about injury, pain or illness, and it leaves them out of the chat summary. Your GPS tracks and
+  heart rate recordings are not part of coach memory and stay on your phone.</p>
   <p>The notes are stored on our server in Germany. To write the summary, the notes and your recent messages go to OpenRouter and the model
   provider (outside the EU, in the US), under a zero-data-retention setting: the provider may not keep or train on them. Nothing in your
-  notes is written to our server logs. You can see every note in the app (What the coach knows) or by sending /memory in Telegram, and delete
-  any of them. Notes are kept until you delete them or delete your data; they are not purged at 30 days like chat messages. The live
+  notes is written to our server logs. You can see every note by sending /memory in Telegram, and delete any of them. Notes are kept until you delete them or delete your data; they are not purged at 30 days like chat messages. The live
   database is not yet encrypted at rest; backups are encrypted.</p>
   <p><strong>Deleting it.</strong> Delete everything (in the app), DELETE (in the chat) or the web delete page removes all coach memory
-  from the live server at once. Turning memory off, or withdrawing the agreement, deletes it at once too. Turning a category off deletes that
-  category at once. Coach memory is included in the nightly backup, so backups age out within 14 days: it is gone from the live server immediately and from every backup within 14 days.</p>
+  from the live server at once. In the app, Settings, Companion, Coach memory, Turn off memory deletes all of it at once and keeps your check-ins and
+  the coach. Unticking "Keep health notes too" deletes the health notes and the chat summary at once. Coach memory is included in the nightly backup, so it
+  is gone from the live server immediately and from every backup within 14 days; if we ever restore a backup, we delete again what you had already deleted before the coach is switched back on.</p>
 
   <h3>Your phone number or Telegram chat</h3>
   <p>The companion has no account. It knows you by your chat. To connect, the app opens Telegram, you tap Start,

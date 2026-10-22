@@ -1127,7 +1127,8 @@ class Service(CheckinMixin, MeasureMixin):
             db.checkpoint_truncate(self.s.db_path)
 
     def set_checkin_consent(self, uid: str, version: int, c=None, source: str = "app",
-                            health_notes: bool | None = None, training_sync: bool | None = None) -> bool:
+                            health_notes: bool | None = None, training_sync: bool | None = None,
+                            coach_memory: bool | None = None) -> bool:
         """Record the consent version the runner agreed to. Returns False when an app report was ignored.
         An app report is a routine re-statement of the version its consent screen shows (every run upload repeats it),
         so a positive report BELOW the stored version never lowers it: the operator may have seeded a higher one (v3,
@@ -1135,7 +1136,10 @@ class Service(CheckinMixin, MeasureMixin):
         which removes the record. `source="cli"` (operator seeding) keeps full control, lowering included.
         Consent v4 (coach memory) also carries two sub-choices, stored beside the version: `health_notes` (default off) and
         `training_sync` (default on). They count only at or above memory_consent_required; below it they snap back to the
-        defaults, and a runner who is not on the coach allowlist loses any coach memory at once (memory off = deleted)."""
+        defaults, and any coach memory is deleted at once (memory off = deleted), except for a runner on coach_memory_override.
+        `coach_memory=False` is the explicit "turn memory off" action: from v4 it drops to v3 (check-ins and the coach stay),
+        deletes all coach memory and resets the sub-choices. Switching `health_notes` from on to off deletes the health notes
+        (facts that mention injury, pain or illness) and the chat summary, which may hold them."""
         ignored = False
         def go(c):
             nonlocal ignored
@@ -1143,6 +1147,12 @@ class Service(CheckinMixin, MeasureMixin):
             if cur is None:
                 raise NotFound()
             stored = cur["checkin_consent"]
+            if coach_memory is False and (stored or 0) >= self.s.memory_consent_required:
+                c.execute("UPDATE users SET checkin_consent=?, memory_health_optin=0, memory_sync_optin=1 WHERE id=?",
+                          (self.s.coach_consent_required, uid))
+                c.execute("DELETE FROM coach_memory WHERE user_id=?", (uid,))
+                log.info("coach memory turned off user=%s via %s", uid, source)
+                return
             if source != "cli" and 0 < version and stored is not None and version < stored:
                 ignored = True
                 log.info("consent report version=%s ignored, stored=%s user=%s via %s", version, stored, uid, source)
@@ -1154,13 +1164,16 @@ class Service(CheckinMixin, MeasureMixin):
                 if stored is None or stored < self.s.memory_consent_required:   # a fresh v4 grant starts from the defaults
                     c.execute("UPDATE users SET memory_health_optin=0, memory_sync_optin=1 WHERE id=?", (uid,))
                 if health_notes is not None:
+                    was = c.execute("SELECT memory_health_optin FROM users WHERE id=?", (uid,)).fetchone()[0]
                     c.execute("UPDATE users SET memory_health_optin=? WHERE id=?", (1 if health_notes else 0, uid))
+                    if was and not health_notes:
+                        from .coach.ext import memory as coach_memory_ext
+                        coach_memory_ext.delete_health(c, uid)
                 if training_sync is not None:
                     c.execute("UPDATE users SET memory_sync_optin=? WHERE id=?", (1 if training_sync else 0, uid))
             else:
                 c.execute("UPDATE users SET memory_health_optin=0, memory_sync_optin=1 WHERE id=?", (uid,))
-                u = c.execute("SELECT id, tester_no, channel, chat_ref FROM users WHERE id=?", (uid,)).fetchone()
-                if not self.coach.allowlisted(u):   # memory is off for this runner: turning it off deletes it at once
+                if uid not in self.s.coach_memory_override:   # memory is off for this runner: turning it off deletes it at once
                     c.execute("DELETE FROM coach_memory WHERE user_id=?", (uid,))
             log.info("consent version=%s set user=%s via %s", version, uid, source)
         if c is not None:

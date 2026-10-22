@@ -204,6 +204,11 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
   tampering fails loudly). The snapshot is encrypted in memory; no plaintext copy touches disk. Restore:
   `.venv/bin/python -m companion.backup restore FILE.db.enc restored.db` (uses `COMPANION_BACKUP_KEY` or the default key path).
   Deleted user data ages out of backups within 14 days; the privacy page must say so.
+  Coach memory is in the backup (Ricki, 22-Oct). A restore can bring back notes a runner deleted in the last 14 days, together with
+  their older consent: before switching the coach back on after a restore, clear `coach_memory` for every runner who deleted or turned
+  memory off since the backup (the privacy page promises deletes are re-applied), or `DELETE FROM coach_memory` if unsure.
+- Coach memory gate: consent v4 only. `COMPANION_COACH_MEMORY_OVERRIDE` (csv user ids, empty default) is Ricki's temporary route at
+  consent 3; remove it once he agrees in the app. The coach allowlist never grants memory.
 - Retention (automatic): message log and cards 30 days, niggle answers 8 weeks, accounts with no run for 6 months are hard-deleted.
 - Logs: journald via `journalctl --user -u companion`. Phone numbers, chat ids and tokens are redacted; request URLs are not logged.
 - Before the first non-Ricki user: run as a dedicated system user with a 700 data dir (eng-review C3), and add the row to
