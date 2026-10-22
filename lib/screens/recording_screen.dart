@@ -2207,7 +2207,9 @@ class _FreeRunBlock extends StatelessWidget {
 }
 
 class _FreeBlockSizes {
-  static double time(double size) => size * 0.88;
+  /// Time sits below the dial's pace (0.8 of [size], capped at 72): distance
+  /// first, the current pace second.
+  static double time(double size) => (size * 0.8).clamp(36.0, 72.0) * 0.92;
 }
 
 /// Free / Trail numbers: distance big, time a step down and equal, the run's average

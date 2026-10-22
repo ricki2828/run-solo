@@ -345,6 +345,7 @@ void main() {
     final dial = fig('dial-pace').style!.fontSize!;
     expect(dial, greaterThanOrEqualTo(56));
     expect(dial, lessThan(size));
+    expect(dial, greaterThan(fig('timer').style!.fontSize!));
     expect(dial, greaterThan(fig('run-average').style!.fontSize!));
 
     await tester.tap(find.byKey(_toggle));

@@ -82,8 +82,10 @@ class _InrunMomentOverlayState extends State<InrunMomentOverlay>
   @override
   Widget build(BuildContext context) {
     final m = widget.moment;
-    final deep = Color.lerp(widget.accent, const Color(0xFF000000), 0.82)!;
-    const bone = Color(0xFFF3EFE6);
+    final deep = HSLColor.fromColor(widget.accent)
+        .withLightness(0.07)
+        .toColor();
+    final bone = RunSoloTokens.dark.inkPrimary; // Bone
     // The zone colour for the key figure where it reads on the deep band
     // (a dark flood does not), else bone.
     final figure = HrZones.contrast(widget.accent, deep) >= 4.5
