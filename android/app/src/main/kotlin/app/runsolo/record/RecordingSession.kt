@@ -30,7 +30,9 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.Units
+import app.runsolo.core.live.ChaseCue
 import app.runsolo.core.live.CheckInPlan
+import app.runsolo.core.live.CueComposer
 import app.runsolo.core.live.CheckInSnapshot
 import app.runsolo.core.live.CheckInTracker
 import app.runsolo.core.live.CooperCurve
@@ -578,7 +580,7 @@ class RecordingSession(
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
         checkInTick(t, samples.last().hr)
         coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
-            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key) }
+            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key, it.chase) }
         trailMomentsTick(t)
         questTick(t)
         coachPrevT = t
@@ -975,7 +977,8 @@ class RecordingSession(
         val st = core.status(o.t)
         val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
         val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, st.phaseActiveMs, next)
-        speakFire(o.kind, cueText(o), fire, o.t, coach.nudgeAtCue(o.kind, core.phase))
+        val chase = coach.chaseAtCue(o.kind, o.index, st.phaseActiveMs)
+        speakFire(o.kind, cueText(o), fire, o.t, coach.nudgeAtCue(o.kind, core.phase), chase = chase)
         RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
     }
 
@@ -993,15 +996,27 @@ class RecordingSession(
         tail: String? = null,
         slot: CueSlot = if (kind == null) CueSlot.km else CueSlot.structure,
         key: String? = null,
+        chase: ChaseCue? = null,
     ) {
-        val extra = fire?.takeIf { it.speak }?.text
         // A spoken goal-km compare replaces "On pace for …" with "3 k." (§G); muted, the cue stays.
         val base = fire?.takeIf { it.speak }?.base ?: cueBase
+        // A chase line (the runner's Start choice) rides the cue in place of the compare, which is silent then.
+        // The last-2-km line falls back to the bare "2 k to go." when the gap would not fit the 16-word cue.
+        val chaseText = chase?.let { c ->
+            if (c.shortText != null && CueComposer.words(base) + CueComposer.words(c.text) > CueComposer.MAX_WORDS) c.shortText else c.text
+        }
+        val extra = chaseText ?: fire?.takeIf { it.speak }?.text
         // A nudge waits in the player to follow this cue; it is journaled at the tick that says it
         // (the next run's `blocked` list comes from those lines), never when it is dropped.
         val said = if (kind != null || base != null || extra != null) cues.play(kind, base, extra, nudge, tail, slot, key) else null
         said?.text?.let { logSaid(it) }
         val droppedByBudget = cues.consumeDropped()
+        // Counted and journaled only once it was really said (the budget or the 16-word cap may drop it).
+        if (chase != null && said?.compareSpoken == true) {
+            coach.chaseSaid(chase)
+            writer.append(JournalLine.CueFired(t, System.currentTimeMillis(), JournalLine.FiredKind.chase, chase.kind.name, chase.km, core.status(t).elapsedMs))
+            Log.i(TAG, "chase ${chase.kind.name}#${chase.km}")
+        }
         fire ?: return
         val st = core.status(t)
         // A compare the budget dropped was never said: it is not journaled as fired (the overlay below still shows it).

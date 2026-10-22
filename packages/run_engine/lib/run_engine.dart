@@ -10,6 +10,7 @@ export 'src/engine/effort_note.dart';
 export 'src/engine/block_plan.dart';
 export 'src/engine/load_guard.dart';
 export 'src/engine/coach_interval_facts.dart';
+export 'src/engine/coach_choice.dart';
 export 'src/engine/coach_report.dart';
 export 'src/engine/companion_shape.dart';
 export 'src/engine/coaching_rules.dart';

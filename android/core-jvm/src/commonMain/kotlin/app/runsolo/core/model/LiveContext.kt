@@ -32,6 +32,16 @@ data class LiveContext(
     val trails: List<TrailRef> = emptyList(),
     /** The runner's active quest, for the in-run "quest done" beat; null = none. */
     val quest: LiveQuest? = null,
+    /**
+     * The pre-run choice at Start (`chase` or `steady`, see [app.runsolo.core.live.CoachChoice]); null = the runner
+     * was not asked (plan sessions, intervals, tests), so the run speaks exactly as before.
+     */
+    val coachChoice: String? = null,
+    /**
+     * The furthest run (metres) the runner has done this calendar month so far, the base for "furthest run this
+     * month"; null = no base (no run this month, or too short to be worth saying), so that cue never fires.
+     */
+    val monthFurthestM: Double? = null,
 ) {
     init {
         require(boards.size <= MAX_BOARDS) { "at most $MAX_BOARDS live boards, got ${boards.size}" }
@@ -60,6 +70,8 @@ data class LiveContext(
     ).also {
         if (trails.isNotEmpty()) it["trails"] = trails.map { t -> t.toJson() }
         if (quest != null) it["quest"] = quest.toJson()
+        if (coachChoice != null) it["coachChoice"] = coachChoice
+        if (monthFurthestM != null) it["monthFurthestM"] = monthFurthestM
     }
 
     companion object {
@@ -78,6 +90,8 @@ data class LiveContext(
             engineVersion = m.int("engineVersion"),
             trails = m.list("trails").map { TrailRef.fromJson(it.asObj("trails[]")) },
             quest = m.obj("quest")?.let { LiveQuest.fromJson(it) },
+            coachChoice = m["coachChoice"] as? String,
+            monthFurthestM = (m["monthFurthestM"] as? Number)?.toDouble()?.takeIf { it.isFinite() },
         )
     }
 }

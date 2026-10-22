@@ -413,4 +413,24 @@ class RunFileTest {
         assertEquals(151.987654, pts[0][1])
         for (p in pts) for (v in p) assertTrue(v.toString().substringAfter('.').length <= 6, "$v")
     }
+    @Test
+    fun `the Start choice and the chase lines said reach the run file - no choice writes no key`() {
+        val ctx = app.runsolo.core.model.LiveContext(boards = emptyList(), coachingMuted = false, builtAtMs = 0, engineVersion = 1, coachChoice = "chase")
+        val text = StringBuilder(journal().decodeToString())
+            .append(JournalCodec.encode(JournalLine.LiveContextLine(t0, w0, ctx))).append('\n')
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 10_000, w0 + 10_000, JournalLine.FiredKind.chase, "ahead", 2, 10_000))).append('\n')
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 20_000, w0 + 20_000, JournalLine.FiredKind.compare, "be:5000", 2, 20_000))).append('\n')
+            .append(JournalCodec.encode(JournalLine.CueFired(t0 + 30_000, w0 + 30_000, JournalLine.FiredKind.chase, "slipping", 3, 30_000))).append('\n')
+            .toString().encodeToByteArray()
+        val f = RunFile.fromReplay(JournalReplay.read(text), w0 + 50_000)
+        assertEquals(RunFile.CoachLog("chase", listOf(RunFile.CoachLog.Cue("ahead", 2, 10_000), RunFile.CoachLog.Cue("slipping", 3, 30_000))), f.coach)
+        assertEquals(
+            linkedMapOf("choice" to "chase", "cues" to listOf(listOf("ahead", 2, 10_000L), listOf("slipping", 3, 30_000L))),
+            f.toJson()["coach"],
+        )
+        assertTrue(f.nudgesFired.isEmpty(), "chase lines are not nudges")
+        val none = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
+        assertNull(none.coach)
+        assertTrue("coach" !in none.toJson())
+    }
 }

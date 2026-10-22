@@ -7,6 +7,7 @@ import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.Replay
 import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.json.Json
+import app.runsolo.core.live.CoachChoice
 import app.runsolo.core.model.LapKind
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
@@ -70,7 +71,18 @@ data class RunFile(
     val elevSrc: ElevSource? = null,
     /** The route the run followed and the spans it spent off it (schema 7); null = it followed none. */
     val route: FollowedRoute? = null,
+    /** The pre-run choice and the chase lines said under it (optional key `coach`); null = the runner was not asked. */
+    val coach: CoachLog? = null,
 ) {
+    /**
+     * What the runner chose at Start and every chase line the recorder said ([app.runsolo.core.live.ChaseCoach]),
+     * in journal order. Written as `coach: {choice, cues: [[kind, km, t], ...]}`; `t` = run time in ms. The cues
+     * list stays an open list so the later mid-run buttons can log their prompts and answers beside it.
+     */
+    data class CoachLog(val choice: String, val cues: List<Cue>) {
+        data class Cue(val kind: String, val km: Int, val tMs: Long)
+    }
+
     /** The planned route as the recorder had it, and the run-time spans `[t0, t1]` spent off it. */
     data class FollowedRoute(val route: FollowRoute, val offSpans: List<LongArray>)
 
@@ -120,6 +132,7 @@ data class RunFile(
     ).apply {
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
+        coach?.let { c -> put("coach", linkedMapOf("choice" to c.choice, "cues" to c.cues.map { listOf(it.kind, it.km, it.tMs) })) }
         route?.let { fr ->
             val ele = fr.route.elevM
             put(
@@ -274,6 +287,16 @@ data class RunFile(
                     .distinct(),
                 elevSrc = if (samples.any { it.elevM != null }) fuser.source else null,
                 route = r.route?.let { FollowedRoute(it, offSpans) },
+                coach = coachLog(r),
+            )
+        }
+
+        /** The Start choice and the chase lines said under it; null when the run carried no choice. */
+        private fun coachLog(r: Replay): CoachLog? {
+            val choice = CoachChoice.parse(r.liveContext?.coachChoice) ?: return null
+            return CoachLog(
+                choice.key,
+                r.cuesFired.filter { it.kind == JournalLine.FiredKind.chase }.map { CoachLog.Cue(it.key, it.index, it.atMs) },
             )
         }
 

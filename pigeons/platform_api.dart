@@ -351,6 +351,8 @@ class LiveContext {
     required this.engineVersion,
     this.trails,
     this.quest,
+    this.coachChoice,
+    this.monthFurthestM,
   });
 
   /// At most 3.
@@ -376,6 +378,16 @@ class LiveContext {
 
   /// The runner's active quest, for the in-run "quest done" beat. Null = none.
   LiveQuest? quest;
+
+  /// The pre-run choice at Start for a Free or goal run: `chase` (race your
+  /// best, say how you stand) or `steady` (no comparisons). Null = the runner
+  /// was not asked, so the run speaks as before. The run file records it.
+  String? coachChoice;
+
+  /// The furthest run (metres) the runner has done this calendar month so
+  /// far, the base of "furthest run this month". Null = no base: that line
+  /// never fires.
+  double? monthFurthestM;
 }
 
 /// The active quest as the recorder needs it to say "quest done" (quests spec

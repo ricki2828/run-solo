@@ -198,6 +198,37 @@ class LiveContextSource {
     );
   }
 
+  /// [ctx] carrying the runner's Start choice ([choice], null = not asked: [ctx]
+  /// as it was) and, for "chase", the month's furthest run so far (the base of
+  /// "furthest run this month"; null when there is none, and then that line
+  /// never fires). With no compare to make ([ctx] null) a context of the
+  /// choice alone: no boards, and muted only when Settings has coaching tips
+  /// off ([coachingMuted]), so "2 k to go" still comes on a first goal run.
+  /// Cheap (no I/O): the candidates were prepared ahead.
+  LiveContext? withCoachChoice(
+    LiveContext? ctx,
+    engine.CoachChoice? choice, {
+    bool coachingMuted = false,
+  }) {
+    if (choice == null) return ctx;
+    final furthest = choice == engine.CoachChoice.chase
+        ? engine.MonthFurthest.of([
+            for (final c in _cached) c.input,
+          ], now: now())
+        : null;
+    final out =
+        ctx ??
+        LiveContext(
+          boards: const [],
+          coachingMuted: coachingMuted,
+          builtAtMs: now().millisecondsSinceEpoch,
+          engineVersion: engine.engineVersion,
+        );
+    return out
+      ..coachChoice = choice.key
+      ..monthFurthestM = furthest;
+  }
+
   /// The context for a Start when the live compare is off: the known trails
   /// alone, or null when there are none.
   LiveContext? trailsOnly(RecordMode mode) => withTrails(null, mode);

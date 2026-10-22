@@ -4,6 +4,7 @@ import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
+import app.runsolo.core.model.LiveBoard
 import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
 import app.runsolo.core.model.NudgePlan
@@ -55,6 +56,26 @@ class LiveCoach(
     private val livePaces = ArrayList<Double?>()
     private var lastKm = 0
 
+    /**
+     * The Start choice's coach: a Free run, or a distance goal, whose context carries `coachChoice`. Null = the
+     * runner was not asked, so every compare below speaks as it always did.
+     */
+    private val chase: ChaseCoach? = ChaseCoach.of(
+        choice = CoachChoice.parse(context?.coachChoice),
+        freeRun = mode == RunMode.free && spec?.steps.isNullOrEmpty(),
+        goalDistanceM = spec?.takeIf { it.isGoal }?.steps?.firstOrNull()?.takeIf { it.target == TargetKind.distance }?.value?.toDouble(),
+        monthFurthestM = context?.monthFurthestM,
+        fired = fired,
+    )
+
+    /** The choice this run was started with (`chase` / `steady`), or null; the run file records it. */
+    val coachChoice: CoachChoice? get() = chase?.choice
+
+    /** [cue] was spoken and journaled: the chase policy counts it. */
+    fun chaseSaid(cue: ChaseCue) {
+        chase?.said(cue)
+    }
+
     /** The last half km mark said or passed (mark h = h km + 500 m); -1 = none yet. */
     private var lastHalf = -1
     private val halfNews = HalfKmNews()
@@ -99,6 +120,8 @@ class LiveCoach(
         val slot: CueSlot = CueSlot.km,
         /** The [TalkBudget] key: `km:<n>`, or `halfKm:<item>` for a half km. */
         val key: String = "km:$km",
+        /** The chase line for this km (the runner's Start choice), said after the split; its [fire] is then overlay-free and silent. */
+        val chase: ChaseCue? = null,
     )
 
     /**
@@ -213,6 +236,7 @@ class LiveCoach(
         val splitsOn = (mode == RunMode.free || mode == RunMode.trail || goalCooldown) && kmSplits
         val plan = checkIn?.takeIf { splitsOn && !goalCooldown }
         val fire = if (goalCooldown) null else compareAtKm(km, active)
+        val chaseCue = if (goalCooldown) null else chaseAtKm(km, active)
         val snapNow = if (plan != null && plan.level != VoiceLevel.minimal) snap?.invoke() else null
         val gain = snapNow?.climbM?.let { c -> climbAtLastKm?.let { c - it } }
         snapNow?.climbM?.let { climbAtLastKm = it }
@@ -226,7 +250,7 @@ class LiveCoach(
         if (plan != null && plan.level == VoiceLevel.coach) halfNews.noteKm(snapNow)
         val base = if (!splitsOn) null else if (plan == null) LiveWords.kmSplit(km, active, splitMs) else spoken?.base
         val nudge = if (mode == RunMode.free && kmSplits && level != VoiceLevel.minimal) kmNudge(km, active, splitMs, hrMean) else null
-        return KmCue(km, base, fire, nudge, spoken?.tail).takeIf { it.base != null || it.fire != null }
+        return KmCue(km, base, fire, nudge, spoken?.tail, chase = chaseCue).takeIf { it.base != null || it.fire != null || it.chase != null }
     }
 
     private fun halfIndex(d: Double): Int = floor((d - 500) / 1_000).toInt()
@@ -349,7 +373,41 @@ class LiveCoach(
         val board = context.boards.firstOrNull { it.kind == LiveBoardKind.distance && it.targetM == boardM } ?: return null
         val r = LiveCompare.distance(board, km, active) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted && mode == RunMode.free && kmSplits && !minimalVoice)
+        // With a Start choice the chase line speaks for the compare and the overlay card steps aside: two different
+        // "best" figures on one run would be the wrong comparison, so only one is ever shown or said.
+        return Fire(r, LiveWords.compare(r), overlay = chase == null, speak = !muted && mode == RunMode.free && kmSplits && !minimalVoice && chase == null)
+    }
+
+    /** A Free run's board for [km]: the 5K for km 1 to 5, the 10K for km 6 to 10. */
+    private fun freeBoard(km: Int): LiveBoard? {
+        if (context == null || km > 10) return null
+        val boardM = if (km <= 5) 5_000.0 else 10_000.0
+        return context.boards.firstOrNull { it.kind == LiveBoardKind.distance && it.targetM == boardM }
+    }
+
+    /**
+     * The chase line for a whole km of a Free run, or null: no Start choice, not a spoken Free km, or nothing to say.
+     * Spoken only where the km line is ([kmSplits], not muted, not Minimal): the line rides it.
+     */
+    private fun chaseAtKm(km: Int, activeMs: Long): ChaseCue? {
+        val c = chase ?: return null
+        if (mode != RunMode.free || muted || !kmSplits || minimalVoice) return null
+        val board = freeBoard(km)
+        return c.atKm(km, board?.let { ChaseCompare.vsBest(it, km, activeMs) }, board?.label)
+    }
+
+    /**
+     * The chase line for a km of a distance goal (the km projection cue it rides; [stepElapsedMs] = active ms from
+     * Start, a goal has no warm-up), or null. The base is the goal's own board.
+     */
+    fun chaseAtCue(kind: CueKind, index: Int?, stepElapsedMs: Long): ChaseCue? {
+        val c = chase ?: return null
+        val s = spec ?: return null
+        if (!s.isGoal || kind != CueKind.projection || index == null || goalReached || muted || minimalVoice) return null
+        val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
+        val key = GoalCoach.boardKey(step)
+        val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key }
+        return c.atKm(index, board?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }, board?.label)
     }
 
     /**
@@ -408,7 +466,7 @@ class LiveCoach(
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key } ?: return null
         val r = LiveCompare.distance(board, index, activeMs) ?: return null
         if (!claim(r)) return null
-        return Fire(r, LiveWords.compare(r), speak = !muted && !minimalVoice, base = LiveWords.goalKm(index))
+        return Fire(r, LiveWords.compare(r), overlay = chase == null, speak = !muted && !minimalVoice && chase == null, base = LiveWords.goalKm(index))
     }
 
     private fun claim(r: CompareResult): Boolean = done.add(doneKey(r.boardKey, r.index))

@@ -155,6 +155,8 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
     trails = trails.orEmpty().mapNotNull { t -> runCatching { t.toCore() }.getOrNull() },
     // Likewise a quest that breaks its contract costs the run its quest beat alone.
     quest = quest?.let { q -> runCatching { q.toCore() }.getOrNull() },
+    coachChoice = coachChoice,
+    monthFurthestM = monthFurthestM,
 )
 
 private fun LiveQuest.toCore() = CoreLiveQuest(
