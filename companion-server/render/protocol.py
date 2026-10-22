@@ -25,7 +25,7 @@ OP_MAX_BYTES = {"card": PHOTO_MAX_BYTES, "video": VIDEO_MAX_BYTES}
 OP_KINDS = {
     "card": frozenset({"light", "flood", "pb", "share", "weekly_recap", "suggestion", "milestone", "race_countdown", "monthly",
                        "today", "today_verdict", "moved", "pinned_week", "trail_board", "trail_record", "trail_heart"}),
-    "video": frozenset({"run", "weekly", "ghostclip"}),
+    "video": frozenset({"run", "weekly", "ghostclip", "run_loop", "week_loop", "milestone_loop"}),
 }
 ROUTE_GRID, ROUTE_MAX_POINTS, SPLITS_MAX, REPS_MAX, TITLE_MAX = 255, 120, 100, 60, 24
 ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
@@ -106,7 +106,7 @@ RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headl
                       "title", "route_xy", "splits", "reps", "work_pace_s_per_km"})   # the shape facts: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
-NEW_KINDS = frozenset({"suggestion", "milestone", "race_countdown", "monthly"})   # these also get value-shape checks
+NEW_KINDS = frozenset({"suggestion", "milestone", "milestone_loop", "race_countdown", "monthly"})   # these also get value-shape checks
 # Coach cards. The session name is a short label the plan owns; the reason is a fixed enum, never free text.
 COACH_KINDS = frozenset({"today", "today_verdict", "moved", "pinned_week"})
 TODAY_KEYS = frozenset({"type", "session", "distance_km", "duration_s", "date_local", "target_pace_lo_s", "target_pace_hi_s",
@@ -122,6 +122,8 @@ COACH_REQUIRED = {"today": {"type", "session"}, "today_verdict": {"type", "sessi
 KIND_FACT_KEYS = {
     "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "share": RUN_KEYS | {"share"}, "weekly_recap": WEEK_KEYS,
     "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
+    "run_loop": RUN_KEYS, "week_loop": WEEK_KEYS,   # the v4 moment loops: the same facts, no new key
+    "milestone_loop": frozenset({"kind", "value", "line"}),
     "suggestion": frozenset({"type", "session", "distance_km", "date_local", "reason"}),
     "milestone": frozenset({"kind", "value", "line"}),
     "race_countdown": frozenset({"weeks_to_race", "race_name"}),
