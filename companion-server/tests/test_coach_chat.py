@@ -204,7 +204,7 @@ def test_request_is_sonnet_zdr_no_fallbacks_cached_prefix_read_tools_only(cc, fa
     assert sys_msg["role"] == "system" and sys_msg["content"][0]["cache_control"] == {"type": "ephemeral"}
     assert "<host name=\"Run Supreme companion server\" stage=\"C1\">" in sys_msg["content"][0]["text"]
     names = [t["function"]["name"] for t in body["tools"]]
-    assert tuple(names) == READ_TOOLS + ("calc_pace",)
+    assert tuple(names) == READ_TOOLS + ("calc_pace", "web_search", "get_weather")
     assert not {"propose_plan_change", "remember", "flag_health"} & set(names)
 
 
