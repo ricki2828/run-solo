@@ -137,7 +137,8 @@ def tool_list(sc: dict) -> list[dict]:
     contract = json.loads((COACH_DIR / "tools.json").read_text())["tools"]
     by_name = {t["name"]: t for t in contract}
     prod = [by_name[n] for n in coach_prompt.READ_TOOLS] + extra_tools()
-    return prod + [by_name[n] for n in declared_writes(sc)]
+    have = {t["name"] for t in prod}   # PR4: propose_plan_change and remember are production tools now (tools.d wins over the contract)
+    return prod + [by_name[n] for n in declared_writes(sc) if n not in have]
 
 
 def run_tool(sc: dict, call: dict, fixture_obj: dict, known: set[str]) -> dict:

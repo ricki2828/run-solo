@@ -372,6 +372,43 @@ CREATE TABLE IF NOT EXISTS coach_briefings (
   generated_at TEXT NOT NULL,
   UNIQUE (user_id, session_ref)
 );
+-- Coach memory (coach PR4): facts the runner told the coach to keep, plus one rolling summary of earlier chats. Unlike the chat
+-- history it is NOT purged at 30 days (plan decision 5: allowlisted runners only, consent v4 wording before testers). The
+-- runner sees every row with /memory and deletes any of them. Gone on consent withdrawal and on DELETE. Never in a backup.
+CREATE TABLE IF NOT EXISTS coach_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('fact','summary')),
+  topic TEXT NOT NULL DEFAULT 'other',      -- schedule | preference | history | goal | life (facts)
+  text TEXT NOT NULL,
+  last_msg_id INTEGER NOT NULL DEFAULT 0,   -- summary only: the newest coach_messages id it has read
+  expires_at TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS coach_memory_user ON coach_memory (user_id, kind, id);
+-- A plan change the coach proposed. pending until the runner taps Confirm or Decline (or 24 h pass); a confirmed row is the
+-- server's override of the runner's next session (checkin_service._ci_state reads it). Purged after 30 days.
+CREATE TABLE IF NOT EXISTS coach_proposals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER,
+  change TEXT NOT NULL CHECK (change IN ('move','easier')),
+  from_day TEXT NOT NULL,                   -- the session's resolved local date when proposed
+  to_day TEXT,                              -- move only
+  label TEXT NOT NULL,                      -- fixed words built in code, what the buttons show
+  state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','confirmed','declined','expired','superseded')),
+  offered INTEGER NOT NULL DEFAULT 0,       -- the Confirm / Decline message went out
+  created_at TEXT NOT NULL, decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS coach_proposals_user ON coach_proposals (user_id, state, id);
+-- "Share location" was offered after find_care found no place. The kind of care and a time only: the position itself is
+-- never written anywhere. One row per runner, consumed by the location message that answers it.
+CREATE TABLE IF NOT EXISTS coach_loc_wait (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER, kind TEXT NOT NULL,
+  prompted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 -- One row per coach model call: reserved before the call (inside a write transaction, so two calls cannot both pass the
 -- cap), settled from OpenRouter's usage after it. Like llm_calls, user_id has no foreign key and is set to NULL on
 -- delete, so the month's spend cannot be reset by deleting. Token counts include the cached share (eng-review W5).

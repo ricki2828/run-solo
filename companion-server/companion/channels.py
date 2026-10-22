@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import html
 import hmac
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
@@ -141,6 +141,8 @@ class Inbound:
     name: str = ""  # display name or @username of the sender, never the id
     code: str | None = None  # a check-in button: its code (checkins.CODES), with card_id; no button_idx
     chip: str | None = None  # a coach quick-reply button: its label, which the coach receives as the runner's next message
+    action: str | None = None  # a coach proposal / memory button: `cp:<id>:y|n` or `cm:<id>|all|s` (coach PR4)
+    location: tuple[float, float] | None = field(default=None, repr=False)  # a Telegram location message: used once in memory, never stored (coach PR4)
 
 
 CHECKIN_PREFIX = "ci1:"   # `ci1:<card id>:<code>`; the code names its stage, so a stale tap cannot be misread
@@ -173,6 +175,14 @@ def parse_chip_callback(data: str) -> str | None:
     job, sep, label = data[len(CHIP_PREFIX):].partition(":")
     label = label.strip()
     return label if sep and job.isdigit() and 0 < len(label) <= 48 else None
+
+
+ACTION_RX = re.compile(r"^(?:cp:\d{1,9}:[yn]|cm:(?:\d{1,9}|all|s))$")
+
+
+def parse_action_callback(data: str) -> str | None:
+    """A coach proposal (`cp:<id>:y|n`) or memory (`cm:<id>|all|s`) button, else None."""
+    return data if ACTION_RX.match(data) else None
 
 
 def strip_html(text: str) -> str:
@@ -230,11 +240,17 @@ class TelegramChannel:
             return None
         return {"inline_keyboard": [[{"text": label[:40], "callback_data": data} for label, data in row] for row in buttons]}
 
-    def send_text(self, ref: str, text: str, html: bool = False, buttons: list[list[tuple[str, str]]] | None = None) -> str:
+    def send_text(self, ref: str, text: str, html: bool = False, buttons: list[list[tuple[str, str]]] | None = None,
+                  request_location: bool = False, remove_keyboard: bool = False) -> str:
         payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
         markup = self._markup(buttons)
         if markup:
             payload["reply_markup"] = markup
+        if remove_keyboard:   # takes a leftover "Share location" keyboard away (coach PR4)
+            payload["reply_markup"] = {"remove_keyboard": True}
+        if request_location:   # a one-shot reply keyboard with a single "Share location" button (coach PR4)
+            payload["reply_markup"] = {"keyboard": [[{"text": "Share location", "request_location": True}]],
+                                       "one_time_keyboard": True, "resize_keyboard": True}
         if html:
             payload["parse_mode"] = "HTML"
         try:
@@ -591,6 +607,10 @@ class TelegramChannel:
             if chip:
                 return Inbound("telegram", str(cb["from"]["id"]), msg_id, chip=chip, callback_id=str(cb.get("id")),
                                callback_message_id=str(m.get("message_id", "")) or None)
+            act = parse_action_callback(str(cb.get("data", "")))
+            if act:
+                return Inbound("telegram", str(cb["from"]["id"]), msg_id, action=act, callback_id=str(cb.get("id")),
+                               callback_message_id=str(m.get("message_id", "")) or None)
             ci = parse_checkin_callback(str(cb.get("data", "")))
             if ci:
                 return Inbound("telegram", str(cb["from"]["id"]), msg_id, card_id=ci[0], code=ci[1],
@@ -601,6 +621,14 @@ class TelegramChannel:
             return Inbound("telegram", str(cb["from"]["id"]), msg_id, card_id=parsed[0], button_idx=parsed[1],
                            callback_id=str(cb.get("id")), callback_message_id=str(m.get("message_id", "")) or None)
         m = update.get("message")
+        if m and (m.get("chat") or {}).get("type") == "private" and "text" not in m and isinstance(m.get("location"), dict):
+            try:
+                lat, lon = float(m["location"]["latitude"]), float(m["location"]["longitude"])
+            except (KeyError, TypeError, ValueError):
+                return None
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                return None
+            return Inbound("telegram", str(m["chat"]["id"]), msg_id, location=(lat, lon))
         if not m or (m.get("chat") or {}).get("type") != "private" or "text" not in m:
             return None
         f = m.get("from") or {}

@@ -205,7 +205,7 @@ def test_request_is_sonnet_zdr_no_fallbacks_cached_prefix_read_tools_only(cc, fa
     assert "<host name=\"Run Supreme companion server\" stage=\"C1\">" in sys_msg["content"][0]["text"]
     names = [t["function"]["name"] for t in body["tools"]]
     assert set(names) >= set(READ_TOOLS) | {"calc_pace", "web_search", "get_weather"}   # ext tools from later PRs come with them, in any order
-    assert not {"propose_plan_change", "remember", "flag_health"} & set(names)
+    assert not {"flag_health"} & set(names)   # propose_plan_change and remember arrive with PR4 (tests/test_coach_actions.py)
 
 
 def test_model_comes_from_config(tmp_path, fakes):
@@ -252,7 +252,7 @@ def test_get_run_never_reads_another_runners_run(cc, fakes):
 
 def test_bad_tool_calls_come_back_as_ok_false(cc, fakes):
     fakes.coach_queue = [coach_tools(("get_recent_runs", {"days": "lots"}), ("get_stats", {"weeks": 8, "user_id": "u_x"}),
-                                     ("remember", {"fact": "x", "kind": "life"}), ("get_run", "{not json"),
+                                     ("flag_health", {"kind": "injury", "action": "set"}), ("get_run", "{not json"),
                                      ("get_recent_runs", {"days": 999})),
                          coach_text("Fair enough.")]
     say(cc, "anything")

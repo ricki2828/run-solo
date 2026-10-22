@@ -1,0 +1,34 @@
+{
+ "tools": [
+  {
+   "module": "actions",
+   "name": "propose_plan_change",
+   "description": "Propose moving the runner's next session to another day, or making it an easy run. This changes nothing by itself: the runner gets Confirm and Decline buttons after your reply and the change happens only if they confirm within 24 hours. Refused while they have pain or an injury being looked at. Say what you proposed and that it is their call.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "change": {"type": "string", "enum": ["move", "easier"]},
+     "to_day": {"type": "string", "maxLength": 12, "description": "move only: a weekday name, tomorrow, or a date like 2026-10-24, within the next two weeks"},
+     "reason": {"type": "string", "maxLength": 200, "description": "why, in a few words (not stored or shown)"}
+    },
+    "required": ["change", "reason"],
+    "additionalProperties": false
+   }
+  },
+  {
+   "module": "memory",
+   "name": "remember",
+   "description": "Keep one short fact the runner told you, for future chats (schedule, preference, history, goal, life). Only what they said. They can see and delete it with /memory. Never a diagnosis, link, phone number or email.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "fact": {"type": "string", "maxLength": 160},
+     "kind": {"type": "string", "enum": ["schedule", "preference", "history", "goal", "life"]},
+     "expires_days": {"type": "integer", "minimum": 1, "maximum": 365}
+    },
+    "required": ["fact", "kind"],
+    "additionalProperties": false
+   }
+  }
+ ]
+}

@@ -42,7 +42,7 @@ def test_offers_future_tense_and_unrelated_I_have_phrases_pass(text):
 def test_a_plan_claim_needs_the_plan_tool_and_a_flag_claim_needs_the_flag_tool():
     plan, flag = "I've moved Thursday's tempo to Friday.", "I've flagged it for you."
     assert validator.check(plan, [], wrote=["flag_health"]) == "action_claim"
-    assert validator.check(plan, [], wrote=["propose_plan_change"]) is None
+    assert validator.check(plan, [], wrote=["propose_plan_change"]) == "action_claim"   # a proposal changed nothing
     assert validator.check(flag, [], wrote=["propose_plan_change"]) == "action_claim"
     assert validator.check(flag, [], wrote=["flag_health"]) is None
 

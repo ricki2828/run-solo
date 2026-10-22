@@ -37,7 +37,7 @@ from ..timeutil import iso, now_utc, parse_iso
 from . import budget, prompt as coach_prompt, redflag, screen, validator
 from .ext import triage as coach_triage
 from .briefing import Briefings
-from .ext import ToolContext
+from .ext import ToolContext, actions as coach_actions
 from .tools import ReadTools
 
 log = logging.getLogger("companion")
@@ -280,6 +280,8 @@ class CoachChat:
                               "WHERE user_id=? AND kind='injury' AND state='active' AND source='triage'", (iso(now), user["id"])).rowcount
             jobs = c.execute("UPDATE coach_jobs SET triage='red_cleared' WHERE user_id=? AND triage='red' "
                              "AND outcome LIKE 'triage:red:%'", (user["id"],)).rowcount
+            if jobs:   # PR4: the red72 follow-ups stop counting too, so plan proposals unblock
+                c.execute("UPDATE coach_jobs SET triage='red_cleared' WHERE user_id=? AND triage='red72'", (user["id"],))
             if jobs:
                 self._message(c, user["id"], None, "runner", FALSE_ALARM, now)
                 self._message(c, user["id"], None, "coach", FALSE_ALARM_REPLY, now)
@@ -327,6 +329,7 @@ class CoachChat:
         """Consent dropped below the coach version (W6): the chat history goes and nothing queued is answered."""
         c.execute("DELETE FROM coach_messages WHERE user_id=?", (uid,))
         c.execute("DELETE FROM coach_briefings WHERE user_id=?", (uid,))   # C2b: the briefing came from check-in data too
+        coach_actions.purge(c, uid)   # PR4: memory, proposals and a waiting location request
         c.execute("UPDATE coach_jobs SET reply=NULL WHERE user_id=?", (uid,))
         c.execute("UPDATE coach_jobs SET state='cancelled', outcome='withdrawn' "
                   "WHERE user_id=? AND state IN ('pending','running','merged','replied','sending')", (uid,))   # briefing jobs too
@@ -421,6 +424,7 @@ class CoachChat:
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE coach_jobs SET state='sent', sent_at=?, parts_sent=?, reply=NULL WHERE id=? AND state='sending'",
                       (iso(now_utc()), done, job_id))
+        coach_actions.after_reply(self, ch, u["chat_ref"], j["user_id"], job_id)   # PR4: proposal buttons, location keyboard, summary
         return True
 
     # ------------------------------------------------------------------------------------------ worker
@@ -704,6 +708,7 @@ class CoachChat:
             self._fallback_alert(c, now)
         log.info("coach job=%s source=%s outcome=%s", job.job_id, source, outcome)
         self.send_job(job.job_id)
+        coach_actions.refresh_memory(self.svc, job.user_id)   # PR4: the worker, after the reply is out; never the webhook
 
     def _fallback_alert(self, c, now: datetime) -> None:
         since = iso(now - timedelta(hours=24))
@@ -850,6 +855,8 @@ class CoachChat:
                     fn = call.get("function") if isinstance(call.get("function"), dict) else {}
                     name = str(fn.get("name", ""))
                     result = registry.call(name, fn.get("arguments"), ctx) if registry.has(name) else tools.call(name, fn.get("arguments"))
+                    if registry.has(name):
+                        coach_actions.after_tool(self.svc, job.job_id, job.user_id, name, result, now)   # PR4 bookkeeping
                     if registry.has(name) and ctx.calls:   # a tool that called a model is slow: the job gets the longer deadline
                         deadline = max(deadline, started + self.s.coach_job_deadline_tool_s)
                     res.cost_usd, res.calls, ctx.cost_usd, ctx.calls = res.cost_usd + ctx.cost_usd, res.calls + ctx.calls, 0.0, 0

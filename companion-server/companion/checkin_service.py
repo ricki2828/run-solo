@@ -29,6 +29,7 @@ from . import default_week as dw
 from . import heat
 from . import quest as cv_quest
 from .channels import ChannelError
+from .coach.ext import actions as coach_actions
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
@@ -87,11 +88,11 @@ class CheckinMixin:
         planned = ci.planned_from_run(self._ci_latest_run(c, uid))
         usual = self._ci_usual(c, uid)
         today = to_local(now, user["zone_id"]).date()
-        res = ci.resolve(planned, ans, today, usual)
+        res = coach_actions.apply_overrides(c, uid, planned, ci.resolve(planned, ans, today, usual), today)   # coach PR4: confirmed proposals
         if res is None:   # no 4-week plan, or its last snapshot has gone by: the default coach week, so there is still a session
             dflt = self._ci_default_planned(c, user, today, now)
             if dflt is not None:
-                planned, res = dflt, ci.resolve(dflt, ans, today, usual)
+                planned, res = dflt, coach_actions.apply_overrides(c, uid, dflt, ci.resolve(dflt, ans, today, usual), today)
         return ans, planned, usual, today, res
 
     @staticmethod
