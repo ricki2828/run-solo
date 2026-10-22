@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,7 +28,30 @@ Future<void> shot(WidgetTester tester, String name) async {
   );
 }
 
+/// The moment's glow is a software-rendered blur: a handful of edge pixels
+/// differ between CI runs (4-40 px of 2.6 M). Anything under 0.05% passes.
+class _TolerantComparator extends LocalFileComparator {
+  _TolerantComparator(super.testFile);
+
+  static const double tolerance = 0.0005;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final result = await GoldenFileComparator.compareLists(
+      imageBytes,
+      await getGoldenBytes(golden),
+    );
+    return result.passed || result.diffPercent <= tolerance;
+  }
+}
+
 void main() {
+  setUpAll(() {
+    goldenFileComparator = _TolerantComparator(
+      Uri.parse('test/golden/inrun_moments_golden_test.dart'),
+    );
+  });
+
   testWidgets('moment: km', (tester) async {
     final fake = await openRun(tester);
     await step(tester, fake, 340);
