@@ -16,6 +16,7 @@ from companion.coach.ext import ToolContext, triage as coach_triage
 
 from conftest import OWNER, auth, coach_text, enrol, make_settings
 
+OTHER = "444555666"
 T0 = datetime(2026, 10, 21, 6, 30, tzinfo=timezone.utc)   # Wednesday 19:30 in Auckland
 H = timedelta(hours=1)
 
@@ -30,8 +31,8 @@ class Wx:
 
 
 def settings(tmp_path, **over):
-    base = dict(coach_chat=True, coach_proactive=True, coach_allowlist=frozenset({f"telegram:{OWNER}"}),
-                allowed_ids=frozenset({f"telegram:{OWNER}"}))
+    ids = frozenset({f"telegram:{OWNER}", f"telegram:{OTHER}"})
+    base = dict(coach_chat=True, coach_proactive=True, coach_allowlist=ids, coach_proactive_allowlist=ids, allowed_ids=ids)
     base.update(over)
     return make_settings(tmp_path, **base)
 
@@ -138,7 +139,7 @@ def test_race_debrief_two_hours_after_the_finish(cc, fakes):
     race(cc, 5)
     fakes.coach_queue = [coach_text("What a result on Wednesday. How did it feel out there?")]
     assert tick(cc) == 1
-    assert jobs(cc)[0]["msg_mac"] == "proactive:race:race1"
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:race:{cc.uid}:race1"
     assert "10 km in 1:00:00" in fakes.coach_calls[0]["messages"][-1]["content"]
     assert tick(cc, T0 + 40 * H) == 0   # the same race is 45 h old by now (and already debriefed)
 
@@ -152,7 +153,7 @@ def test_heat_heads_up_the_evening_before_a_quality_session(cc, fakes):
     quality_tomorrow(cc)
     fakes.coach_queue = [coach_text("Tomorrow's tempo will be hot. Run it by effort, or go earlier.")]
     assert tick(cc) == 1
-    assert jobs(cc)[0]["msg_mac"] == "proactive:heat:2026-10-22"
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:heat:{cc.uid}:2026-10-22"
     turn = fakes.coach_calls[0]["messages"][-1]["content"]
     assert "31 C" in turn and "Tempo" in turn
 
@@ -284,3 +285,142 @@ def test_triage_check_records_the_level_for_the_check_back(cc):
     assert rows(cc, "SELECT niggle FROM coach_jobs")[0]["niggle"] == "green"
     assert coach_triage.call("triage_check", {"swelling": True}, ctx)["level"] == "amber"
     assert rows(cc, "SELECT niggle FROM coach_jobs")[0]["niggle"] == "amber"
+
+
+# ------------------------------------------------------------------------------------------------- review fixes (#373)
+def second_runner(c):
+    tok = enrol(c, OTHER)
+    c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(tok))
+    c.put("/v1/me/timezone", json={"zone_id": "Pacific/Auckland"}, headers=auth(tok))
+    other = rows(c, "SELECT id FROM users WHERE chat_ref=?", OTHER)[0]["id"]
+    sql(c, "UPDATE users SET last_inbound_at=NULL")
+    return other
+
+
+def test_one_runners_trigger_never_blocks_anothers(cc, fakes):
+    other = second_runner(cc)
+    first = cc.uid
+    for uid in (first, other):
+        cc.uid = uid
+        quality_tomorrow(cc)
+        sql(cc, "UPDATE users SET paused=0 WHERE id=?", uid)
+        race(cc, 5) if uid == first else None
+    fakes.coach_queue = [coach_text("Hot one tomorrow."), coach_text("Hot one tomorrow too.")]
+    sql(cc, "DELETE FROM runs WHERE type='race'")
+    assert tick(cc) == 2
+    macs = [j["msg_mac"] for j in jobs(cc)]
+    assert sorted(macs) == sorted(f"proactive:heat:{u}:2026-10-22" for u in (first, other))
+
+
+def test_every_key_carries_the_runner(cc, fakes):
+    chat_job(cc, 49, niggle="green")
+    fakes.coach_queue = [coach_text("How's the knee?")]
+    tick(cc)
+    sql(cc, "UPDATE coach_jobs SET state='cancelled' WHERE kind='proactive'")   # so the one-a-day cap lets the next one through
+    race(cc, 5)
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    tick(cc, T0 + 24 * H)
+    assert [j["msg_mac"].rsplit(":", 1)[0] for j in jobs(cc)][0].startswith(f"proactive:niggle:{cc.uid}")
+    assert jobs(cc)[-1]["msg_mac"] == f"proactive:race:{cc.uid}:race1"
+
+
+def test_nobody_is_on_the_proactive_allowlist_by_default(tmp_path, fakes):
+    with TestClient(build(tmp_path, fakes, coach_proactive_allowlist=frozenset())) as c:
+        c.svc = c.app.state.svc
+        c.token = enrol(c)
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(c.token))
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        sql(c, "UPDATE users SET last_inbound_at=NULL")
+        race(c, 5)
+        assert tick(c) == 0 and fakes.coach_calls == [] and jobs(c) == []
+    from companion.config import Settings
+    env = {"COMPANION_PEPPER": "p" * 32}
+    assert Settings.from_env(env).coach_proactive_allowlist == frozenset()
+    assert Settings.from_env({**env, "COMPANION_COACH_PROACTIVE_ALLOWLIST": "T1,telegram:5"}).coach_proactive_allowlist == frozenset({"T1", "telegram:5"})
+
+
+def test_the_forecast_is_fetched_outside_any_write_transaction(cc, fakes):
+    quality_tomorrow(cc)
+    free = []
+
+    def heat_at(*_a, **_k):
+        con = sqlite3.connect(cc.svc.s.db_path, timeout=0)
+        try:
+            con.execute("BEGIN IMMEDIATE")   # raises "database is locked" when the fetch runs inside the write transaction
+            con.rollback()
+            free.append(True)
+        except sqlite3.OperationalError:
+            free.append(False)
+        finally:
+            con.close()
+        return (31, 22)
+    cc.wx.heat_at = heat_at
+    fakes.coach_queue = [coach_text("Hot one tomorrow.")]
+    assert tick(cc) == 1 and free and all(free)
+
+
+def _hook(cc, fn):
+    real = cc.svc.coach._agent
+
+    def agent(job, now):
+        out = real(job, now)
+        fn()
+        return out
+    cc.svc.coach._agent = agent
+
+
+def test_a_message_from_the_runner_while_it_was_thinking_holds_the_send(cc, fakes):
+    race(cc, 5)
+    _hook(cc, lambda: sql(cc, "UPDATE users SET last_inbound_at=?", iso(T0 + timedelta(seconds=1))))
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    assert tick(cc) == 0
+    assert jobs(cc)[0]["outcome"] == "held:runner_wrote" and not sent_texts(fakes)
+
+
+def test_quiet_hours_that_begin_while_it_was_thinking_hold_the_send(cc, fakes):
+    race(cc, 5)
+    _hook(cc, lambda: sql(cc, "UPDATE users SET quiet_start=?, quiet_end=?", 19 * 60, 20 * 60))   # 19:30 local is now quiet
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    assert tick(cc) == 0
+    assert jobs(cc)[0]["outcome"] == "held:quiet_hours" and not sent_texts(fakes)
+
+
+def test_the_kill_switch_pulled_while_it_was_thinking_holds_the_send(cc, fakes):
+    race(cc, 5)
+    _hook(cc, lambda: sql(cc, "INSERT OR REPLACE INTO settings (key, value) VALUES ('sends_paused', '1')"))
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    assert tick(cc) == 0
+    assert jobs(cc)[0]["outcome"] == "held:kill_switch" and not sent_texts(fakes)
+
+
+def test_a_retry_of_a_failed_send_is_checked_again(cc, fakes):
+    race(cc, 5)
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    fakes.fail("sendMessage", 500)
+    assert tick(cc) == 0
+    assert jobs(cc)[0]["state"] == "replied"                       # stored, waiting for the worker's retry
+    sql(cc, "UPDATE users SET quiet_start=?, quiet_end=?", 19 * 60, 21 * 60)
+    cc.svc.coach.step(T0 + timedelta(minutes=5))
+    assert jobs(cc)[0]["outcome"] == "held:quiet_hours" and jobs(cc)[0]["state"] == "cancelled"
+    assert not sent_texts(fakes)
+
+
+def test_a_retry_that_is_still_allowed_goes_out(cc, fakes):
+    race(cc, 5)
+    fakes.coach_queue = [coach_text("How did it feel?")]
+    fakes.fail("sendMessage", 500)
+    assert tick(cc) == 0
+    cc.svc.coach.step(T0 + timedelta(minutes=5))
+    assert jobs(cc)[0]["state"] == "sent" and sent_texts(fakes)[-1] == "How did it feel?"
+
+
+def test_a_proactive_job_stranded_running_is_cancelled_at_startup_flag_off(tmp_path, fakes):
+    app = create_app(settings(tmp_path, coach_proactive=False), httpx.Client(transport=httpx.MockTransport(fakes.handler)), run_worker=True)
+    with TestClient(app) as c:
+        c.svc = app.state.svc
+        c.token = enrol(c)
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        sql(c, "INSERT INTO coach_jobs (user_id, msg_mac, kind, state, created_at, claimed_at) VALUES (?,?,?,?,?,?)",
+            c.uid, "proactive:race:x:y", "proactive", "running", iso(T0), iso(T0))
+    with TestClient(app) as c2:   # the lifespan runs again, as a restart would
+        assert rows(c2.app.state.svc and c, "SELECT state, outcome FROM coach_jobs") == [{"state": "cancelled", "outcome": "restart"}]

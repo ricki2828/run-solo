@@ -10,8 +10,10 @@ coach_jobs): the same model loop (`CoachChat._agent`: tools, validator, repair t
 chips, retry), the same gate (`CoachChat.gate`: flag, allowlist, consent, pause), the same quiet hours and kill switch as the
 check-ins. What is new is only the decision "is there a reason, and is it allowed right now?".
 
-Every one of these must hold, re-read from the database at the moment of enqueue:
-  - COMPANION_COACH_PROACTIVE on, and the chat gate passes (a paused or ops-paused runner never gets one);
+Every one of these must hold, re-read from the database at the moment of enqueue (the last four again just before the send,
+and before every retry of it):
+  - COMPANION_COACH_PROACTIVE on, the runner on COMPANION_COACH_PROACTIVE_ALLOWLIST (empty = nobody) as well as the chat allowlist, and
+    the chat gate passes (a paused or ops-paused runner never gets one);
   - the sends kill switch is off and it is not the runner's quiet hours;
   - nothing proactive was started for them today (local day), and no chat job is open or the runner wrote in the last 2 h;
   - no urgent / wellbeing / injury / ill health flag, and no red triage in the last 72 h (the redflag rail and triage window);
@@ -19,7 +21,7 @@ Every one of these must hold, re-read from the database at the moment of enqueue
     amber triage in the last 72 h. The niggle check-back is not a training nudge, but runs in amber mode (the validator then
     refuses paces and push-on advice).
 
-Idempotence is the job's msg_mac ("proactive:<trigger>:<key>", UNIQUE): a trigger fires once, even after a failed model call
+Idempotence is the job's msg_mac ("proactive:<trigger>:<user id>:<key>", UNIQUE, so one runner's trigger never blocks another's): a trigger fires once, even after a failed model call
 (no retry: a stale "how's the knee" is worse than none). A failed model call sends nothing; the job is cancelled, never the
 "couldn't answer" template. Logging: one line per decision with the tester tag, trigger, job id and outcome, never text.
 """
@@ -60,6 +62,14 @@ def _hm(seconds: int) -> str:
     h, rem = divmod(int(seconds), 3600)
     m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+class NeedForecast(Exception):
+    """decide() wants a forecast it was not given: the caller fetches it outside any transaction and decides again."""
+
+    def __init__(self, key: tuple, lat: float, lon: float, zone: str, day: Any):
+        super().__init__("forecast")
+        self.key, self.lat, self.lon, self.zone, self.day = key, lat, lon, zone, day
 
 
 def note(text: str) -> str:
@@ -118,11 +128,75 @@ class Proactive:
             c.execute("UPDATE coach_jobs SET state='cancelled', outcome='recovered' WHERE kind='proactive' AND state='running' "
                       "AND COALESCE(claimed_at, '') < ?", (cut,))
 
+    def cancel_stranded(self) -> int:
+        """At startup, flag on or off: every proactive job still 'running' belongs to a process that is gone. Cancelled."""
+        with db.tx(self.s.db_path) as c:
+            return c.execute("UPDATE coach_jobs SET state='cancelled', outcome='restart' WHERE kind='proactive' AND state='running'").rowcount
+
+    def send_allowed(self, job_id: int, now: datetime) -> bool:
+        """The last check before a proactive reply goes out, first send and every retry. True for any other kind of job. A job
+        that fails it is cancelled and its stored reply dropped: a held message is not sent late."""
+        with db.ro(self.s.db_path) as c:
+            j = c.execute("SELECT kind, state, user_id, created_at FROM coach_jobs WHERE id=?", (job_id,)).fetchone()
+        if not j or j["kind"] != "proactive" or j["state"] not in ("replied", "running"):
+            return True
+        why = self._hold_reason(j["user_id"], parse_iso(j["created_at"]), now)
+        if why is None:
+            return True
+        with db.tx(self.s.db_path) as c:
+            c.execute("UPDATE coach_jobs SET state='cancelled', outcome=?, reply=NULL WHERE id=? AND state IN ('replied','running')",
+                      (f"held:{why}", job_id))
+        log.info("coach proactive job=%s held: %s", job_id, why)
+        return False
+
+    def _hold_reason(self, uid: str, created: datetime, now: datetime) -> str | None:
+        if not self.enabled:
+            return "off"
+        if self.svc._kill_switch():
+            return "kill_switch"
+        with db.ro(self.s.db_path) as c:
+            why = self.coach.gate(c, uid)
+            u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+            if why is None and u is not None and not self.coach.allowlisted(u, self.s.coach_proactive_allowlist):
+                why = "proactive_allowlist"
+            if why is None and u is not None and c.execute(
+                    "SELECT 1 FROM coach_jobs WHERE user_id=? AND kind IN ('chat','briefing') AND created_at>?",
+                    (uid, iso(created))).fetchone():
+                return "runner_wrote"
+        if why is not None:
+            return why
+        qs, qe = self.svc._quiet(dict(u))
+        if in_quiet(now, u["zone_id"] or "UTC", qs, qe):
+            return "quiet_hours"
+        if u["last_inbound_at"] and parse_iso(u["last_inbound_at"]) > created:
+            return "runner_wrote"
+        return None
+
     # ------------------------------------------------------------------------------------------ decide
     def consider(self, uid: str, now: datetime) -> bool:
-        """Decide for one runner and, when there is a reason and nothing forbids it, run it. -> True when a message was sent."""
+        """Decide for one runner and, when there is a reason and nothing forbids it, run it. -> True when a message was sent.
+        The forecast (a network call) is fetched between two transactions, never inside one: the first only reads, the second
+        decides again on fresh data and enqueues."""
+        wx: dict = {}
+        for _ in range(2):
+            with db.ro(self.s.db_path) as c:
+                try:
+                    plan = self.decide(c, uid, now, wx)
+                except NeedForecast as need:
+                    plan = need
+            if isinstance(plan, NeedForecast):
+                wx[plan.key] = self._wx().heat_at(plan.lat, plan.lon, plan.zone, plan.day, HEAT_HOUR)
+                continue
+            break
+        else:
+            return False
+        if plan is None:
+            return False
         with db.tx(self.s.db_path) as c:
-            plan = self.decide(c, uid, now)
+            try:
+                plan = self.decide(c, uid, now, wx)   # again, under the write lock: another tick or a message may have landed
+            except NeedForecast:
+                return False
             if plan is None:
                 return False
             key, trigger, message, mode, user = plan
@@ -161,15 +235,14 @@ class Proactive:
             body += f"\n\n<i>· {res.cost_usd * 100:.1f}¢ · {res.calls} call{'s' if res.calls != 1 else ''} · {time.monotonic() - t0:.0f} s</i>"
         reply = validator.with_chips(body, res.chips)
         with db.tx(self.s.db_path) as c:
-            # Re-read at the last moment: a withdrawal, pause or DELETE while the model was thinking wins.
             j = c.execute("SELECT state FROM coach_jobs WHERE id=?", (job_id,)).fetchone()
-            if not j or j["state"] != "running" or self.coach.gate(c, uid) is not None:
-                c.execute("UPDATE coach_jobs SET state='cancelled', outcome='gate_changed' WHERE id=? AND state='running'", (job_id,))
+            if not j or j["state"] != "running":
                 return False
             c.execute("UPDATE coach_jobs SET state='replied', reply=?, reply_source='llm', outcome=?, replied_at=? WHERE id=?",
                       (reply, f"{trigger}:{res.outcome}", iso(now), job_id))
             self.coach._message(c, uid, job_id, "coach", reply, now)
-        ok = self.coach.send_job(job_id)
+        # The model took time: check the world as it is now (quiet hours, kill switch, gate, did the runner write?) in send_job.
+        ok = self.coach.send_job(job_id, now + timedelta(seconds=time.monotonic() - t0))
         log.info("coach proactive tester=%s trigger=%s job=%s outcome=%s sent=%s", tag(user["tester_no"]), trigger, job_id, res.outcome, ok)
         return ok
 
@@ -185,12 +258,13 @@ class Proactive:
                               "WHERE m.user_id=? AND COALESCE(j.kind, 'chat') <> 'safety' AND COALESCE(j.reply_source, '') <> 'safety' "
                               "ORDER BY m.id DESC LIMIT ?", (uid, self.s.coach_history)).fetchall())])
 
-    def decide(self, c, uid: str, now: datetime) -> tuple[str, str, str, str | None, dict] | None:
-        """-> (msg_mac, trigger, host note, injury mode, user row) for the one message to send, or None. Reads only."""
+    def decide(self, c, uid: str, now: datetime, wx: dict | None = None) -> tuple[str, str, str, str | None, dict] | None:
+        """-> (msg_mac, trigger, host note, injury mode, user row) for the one message to send, or None. Reads only. `wx` holds
+        forecasts already fetched (key -> (temp, dew) or None); a heat trigger that needs one not in it raises NeedForecast."""
         if self.coach.gate(c, uid) is not None:
             return None
         u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-        if not u:
+        if not u or not self.coach.allowlisted(u, self.s.coach_proactive_allowlist):
             return None
         user = dict(u)
         zone = user["zone_id"] or "UTC"
@@ -214,16 +288,17 @@ class Proactive:
                      (uid, window)).fetchone():
             return None
         for trigger in (self._niggle, self._race, self._heat):
-            out = trigger(c, user, zone, now, window)
+            out = trigger(c, user, zone, now, window, wx or {})
             if out is not None:
                 key, message, mode = out
+                key = f"proactive:{key.split(':')[1]}:{user['id']}:{key.split(':', 2)[2]}"
                 if c.execute("SELECT 1 FROM coach_jobs WHERE msg_mac=?", (key,)).fetchone():
                     continue
                 return key, key.split(":")[1], message, mode, user
         return None
 
     # ------------------------------------------------------------------------------------------ the three triggers
-    def _niggle(self, c, user: dict, zone: str, now: datetime, window: str):
+    def _niggle(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):
         j = c.execute("SELECT id, COALESCE(replied_at, created_at) AS t FROM coach_jobs WHERE user_id=? AND kind='chat' "
                       "AND state IN ('replied','sending','sent') AND (niggle IN ('amber','green') OR triage='amber') "
                       "ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone()
@@ -239,7 +314,7 @@ class Proactive:
                 f"<chips>{NIGGLE_CHIPS}</chips>.")
         return f"proactive:niggle:{j['id']}", note(text), "amber"
 
-    def _race(self, c, user: dict, zone: str, now: datetime, window: str):
+    def _race(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):
         r = c.execute("SELECT run_id, start_utc, end_utc, distance_m, duration_s FROM runs WHERE user_id=? AND type='race' "
                       "AND end_utc <= ? AND end_utc >= ? ORDER BY end_utc DESC LIMIT 1",
                       (user["id"], iso(now - timedelta(hours=RACE_AFTER_H)), iso(now - timedelta(hours=RACE_WITHIN_H)))).fetchone()
@@ -253,7 +328,7 @@ class Proactive:
                 f"Finish with the quick replies <chips>{RACE_CHIPS}</chips>.")
         return f"proactive:race:{r['run_id']}", note(text), None
 
-    def _heat(self, c, user: dict, zone: str, now: datetime, window: str):
+    def _heat(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):
         local = to_local(now, zone)
         if local.hour * 60 + local.minute < HEAT_FROM_MIN:   # quiet hours were already ruled out in decide
             return None
@@ -270,7 +345,11 @@ class Proactive:
             if user.get("weather_optin") else None
         if not area:
             return None
-        td = self._wx().heat_at(*cell(area["lat"], area["lon"]), zone, tomorrow, HEAT_HOUR)
+        lat, lon = cell(area["lat"], area["lon"])
+        fkey = (lat, lon, zone, tomorrow)
+        if fkey not in wx:
+            raise NeedForecast(fkey, lat, lon, zone, tomorrow)
+        td = wx[fkey]
         if td is None:
             return None
         f = heat.slowdown_fraction(td[0], td[1])

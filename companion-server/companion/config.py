@@ -179,6 +179,7 @@ class Settings:
     coach_show_cost: frozenset[str] = frozenset()   # runners (same forms as the allowlist) who see a cost/latency footer on replies
     coach_proactive: bool = False     # COMPANION_COACH_PROACTIVE: the proactive coach (niggle check-back, heat heads-up, race debrief), off by default; needs the chat gates too
     coach_proactive_tick_s: float = 60.0
+    coach_proactive_allowlist: frozenset[str] = frozenset()   # COMPANION_COACH_PROACTIVE_ALLOWLIST: proactive needs this AND the chat allowlist; empty = nothing sent
     coach_history: int = 12        # earlier chat messages sent with each turn
     # Reservation estimates (USD per million tokens); the settle uses the cost OpenRouter reports.
     coach_usd_per_mtok_in: float = 3.0
@@ -258,6 +259,7 @@ class Settings:
             coach_show_cost=_csv(e.get("COMPANION_COACH_SHOW_COST")),
             coach_briefing=_flag(e.get("COMPANION_COACH_BRIEFING")),
             coach_proactive=_flag(e.get("COMPANION_COACH_PROACTIVE")),
+            coach_proactive_allowlist=_csv(e.get("COMPANION_COACH_PROACTIVE_ALLOWLIST")),
             coach_briefing_daily=_posint(e.get("COMPANION_COACH_BRIEFING_DAILY"), 8),
             coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 2000),
             coach_screen_model=(e.get("COMPANION_COACH_SCREEN_MODEL") or "anthropic/claude-haiku-5.5").strip(),

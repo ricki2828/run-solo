@@ -372,10 +372,14 @@ class CoachChat:
         btns = [(c, chip_data(job_id, c)) for c in chips]
         return [btns] if sum(len(c) for c in chips) <= 36 else [[b] for b in btns]
 
-    def send_job(self, job_id: int) -> bool:
+    def send_job(self, job_id: int, now: datetime | None = None) -> bool:
         """Send a stored reply as plain text, split at 4096. The send is claimed first (replied -> sending, one winner),
         so the webhook and the worker can never both send it (review of #341, P2-1). A failure goes back to 'replied' for
-        the worker to retry, the send only. After the send the reply is cleared from the job (it lives in coach_messages)."""
+        the worker to retry, the send only. After the send the reply is cleared from the job (it lives in coach_messages).
+        A proactive reply is checked again right here, first send and every retry (quiet hours, kill switch, gate, the runner
+        wrote since): one that fails the check is cancelled and never sent."""
+        if not self.proactive.send_allowed(job_id, now or now_utc()):
+            return False
         with db.tx(self.s.db_path) as c:
             if c.execute("UPDATE coach_jobs SET state='sending', sending_at=? WHERE id=? AND state='replied' AND reply IS NOT NULL",
                          (iso(now_utc()), job_id)).rowcount != 1:
@@ -484,7 +488,7 @@ class CoachChat:
                                "ORDER BY id LIMIT 20", (MAX_SEND_ATTEMPTS,)).fetchall()
         for j in unsent:   # a failed send waits 30 s more for each failure so far
             if parse_iso(j["replied_at"]) + timedelta(seconds=SEND_BACKOFF_S * j["send_attempts"]) <= now:
-                if self.send_job(j["id"]):
+                if self.send_job(j["id"], now):
                     return True
                 break
         return self._claim_and_run(now) or self.briefing.step(now)
