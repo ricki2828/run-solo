@@ -282,19 +282,20 @@ def week_setup(c, tz="UTC"):
     return t, uid
 
 
-def test_weekly_recap_goes_out_as_a_video_with_a_week_link(tmp_path, fakes):
+def test_weekly_recap_goes_out_as_a_loop_with_a_week_link(tmp_path, fakes):
     made = []
 
     def weekly(facts, out):
         made.append(facts)
         out.write_bytes(MP4)
-    with media_client(tmp_path, fakes, video_fns={"weekly": weekly}) as c:
+    with media_client(tmp_path, fakes, video_fns={"week_loop": weekly}) as c:
         week_setup(c)
         sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
         assert c.svc.plan_recap(sunday) == 1
         c.svc.run_outbox(sunday + timedelta(seconds=1))
-        vids = [b for m, b in fakes.tg if m == "sendVideo"]
-        assert len(vids) == 1 and vids[0]["_files"]["video"][1] == MP4 and vids[0]["supports_streaming"] == "true"
+        vids = [b for m, b in fakes.tg if m == "sendAnimation"]
+        assert len(vids) == 1 and vids[0]["_files"]["animation"][1] == MP4
+        assert "Aerobic +5" in vids[0]["caption"]   # the lane scores the loop no longer draws
         assert markup(vids[0])[-1][0]["url"] == f"{BASE}/week/2026-W41"
         f = made[0]
         assert f["runs"] == 5 and abs(f["distance_km"] - 25.0) < 1e-9 and f["score_moves"]["aerobic"] == 5
@@ -305,12 +306,12 @@ def test_weekly_recap_goes_out_as_a_video_with_a_week_link(tmp_path, fakes):
 def test_weekly_video_failure_still_sends_the_still_recap(tmp_path, fakes):
     def weekly(facts, out):
         raise RuntimeError("ffmpeg not found")
-    with media_client(tmp_path, fakes, video_fns={"weekly": weekly}) as c:
+    with media_client(tmp_path, fakes, video_fns={"week_loop": weekly}) as c:
         week_setup(c)
         sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
         c.svc.plan_recap(sunday)
         c.svc.run_outbox(sunday + timedelta(seconds=1))
-        assert fakes.tg_methods().count("sendPhoto") == 1 and "sendVideo" not in fakes.tg_methods()
+        assert fakes.tg_methods().count("sendPhoto") == 1 and "sendAnimation" not in fakes.tg_methods()
 
 
 def test_recap_facts_come_from_rows_and_validate_against_the_real_video_spec(tmp_path, fakes):
@@ -426,7 +427,7 @@ def test_real_run_card_renders_through_the_service_as_a_1080x1920_share_png(tmp_
     assert im.format == "PNG" and im.size == (1080, 1920) and len(photo) < 10 * 1024 * 1024
 
 
-def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fakes, render_socket):
+def test_real_week_loop_is_h264_without_audio_and_telegram_sized(tmp_path, fakes, render_socket):
     import shutil
     import subprocess
     from pathlib import Path
@@ -438,9 +439,9 @@ def test_real_weekly_video_is_h264_without_audio_and_telegram_sized(tmp_path, fa
         sunday = datetime(2026, 10, 11, 19, 30, tzinfo=timezone.utc)
         c.svc.plan_recap(sunday)
         c.svc.run_outbox(sunday + timedelta(seconds=1))
-    vid = [b for m, b in fakes.tg if m == "sendVideo"]
+    vid = [b for m, b in fakes.tg if m == "sendAnimation"]
     assert len(vid) == 1, fakes.tg_methods()
-    data = vid[0]["_files"]["video"][1]
+    data = vid[0]["_files"]["animation"][1]
     assert data[4:8] == b"ftyp" and len(data) < 4 * 1024 * 1024
     ffprobe = shutil.which("ffprobe") or str(Path(shutil.which("ffmpeg")).with_name("ffprobe"))
     out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,pix_fmt",

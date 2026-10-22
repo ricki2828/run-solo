@@ -338,7 +338,7 @@ def test_a_dropped_planned_video_is_logged(caplog):
     row = {**stored(), "_shape": None, "user_id": "u"}
     with caplog.at_level("WARNING", logger="companion"):
         r.render({"card": "light", "video": True}, {"run_id": "r", "headline": "h"}, [row])
-    assert "planned video dropped" in caplog.text
+    assert "run loop dropped" in caplog.text
 
 
 def test_a_failed_share_picture_is_logged_before_the_older_card(caplog):
@@ -511,17 +511,19 @@ def test_pb_and_big_session_runs_get_the_card_with_the_route_and_the_video(tmp_p
         assert c.post("/v1/runs", json=run_payload("r1", verdict="faster", **fields, **shape), headers=auth(t)).status_code == 202
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
     assert worker.refused == 0
-    assert worker.kinds() == [("card", "share"), ("video", "run")], worker.kinds()   # the picture is the share image
-    card_facts, video_facts_ = worker.asked[0][2], worker.asked[1][2]
-    assert card_facts["share"]["route"] is True and not card_facts["share"].get("place")
+    # the loop first, then the plain still card beside it: the 9:16 share image is the runner's Share tap now
+    assert [k[0] for k in worker.kinds()] == ["video", "card"] and worker.kinds()[0] == ("video", "run_loop"), worker.kinds()
+    video_facts_, card_facts = worker.asked[0][2], worker.asked[1][2]
+    assert "share" not in card_facts
     assert card_facts["route_xy"] == shape["route"] and len(card_facts["splits"]) == len(shape["splits"])
-    assert video_facts_["route_xy"] == shape["route"] and video_facts_["title"] and "pb" not in video_facts_
+    assert video_facts_["route_xy"] == shape["route"] and video_facts_["title"]
+    assert video_facts_.get("pb_detail", {}).keys() <= {"label"}   # the loop gets the PB's label, never an old best
     assert "reps" not in card_facts   # reps are drawn for interval runs only
     for _, _, f in worker.asked:
         no_coordinates(f)
-    assert "sendVideo" in fakes.tg_methods() and "sendPhoto" not in fakes.tg_methods()
-    video = [b for m, b in fakes.tg if m == "sendVideo"][0]
-    assert video["_files"]["video"][1] == MP4
+    assert "sendAnimation" in fakes.tg_methods() and "sendPhoto" not in fakes.tg_methods()
+    video = [b for m, b in fakes.tg if m == "sendAnimation"][0]
+    assert video["_files"]["animation"][1] == MP4
 
 
 def test_an_interval_run_sends_its_rep_times_to_the_card_and_the_video(tmp_path, fakes, worker):
@@ -532,9 +534,9 @@ def test_an_interval_run_sends_its_rep_times_to_the_card_and_the_video(tmp_path,
         c.post("/v1/runs", json=run_payload("r1", type="interval", distance_m=9600, duration_s=3170, pace_s_per_km=330.2,
                                             verdict="faster", zone_min={"z4": 12, "z5": 10}, **shape), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
-    assert worker.kinds() == [("card", "share"), ("video", "run")]
-    assert [r["time_s"] for r in worker.asked[0][2]["reps"]] == [84.0, 83.0, 82.0, 81.0, 80.0, 79.0]
-    assert worker.asked[1][2]["reps"] == worker.asked[0][2]["reps"]
+    assert [k[0] for k in worker.kinds()] == ["video", "card"] and worker.kinds()[0] == ("video", "run_loop")
+    assert [r["time_s"] for r in worker.asked[1][2]["reps"]] == [84.0, 83.0, 82.0, 81.0, 80.0, 79.0]
+    assert worker.asked[0][2]["reps"] == worker.asked[1][2]["reps"]
 
 
 def test_without_a_shape_the_card_is_still_made_and_there_is_no_video(tmp_path, fakes, worker):
@@ -548,17 +550,17 @@ def test_without_a_shape_the_card_is_still_made_and_there_is_no_video(tmp_path, 
     assert worker.asked[0][2]["share"]["route"] is False
 
 
-def test_with_the_route_switch_off_the_card_has_splits_but_no_route_and_there_is_no_video(tmp_path, fakes, worker):
+def test_with_the_route_switch_off_the_loop_has_splits_but_no_route(tmp_path, fakes, worker):
     app = media_client(tmp_path, fakes, worker)
     with TestClient(app) as c:
         t = enrol(c)
         assert put(c, t, route_shape=False).status_code == 200
         c.post("/v1/runs", json=run_payload("r1", verdict="faster", **PB_RUN, **shape_payload(5000, 1301)), headers=auth(t))
         app.state.svc.run_outbox(now_utc() + timedelta(seconds=1))
-    assert worker.kinds() == [("card", "share")]
-    facts = worker.asked[0][2]
-    assert "route_xy" not in facts and len(facts["splits"]) == 5
-    assert facts["share"]["route"] is False   # no shape stored, so the share image has no route to opt in
+    assert [k[0] for k in worker.kinds()] == ["video", "card"] and worker.kinds()[0] == ("video", "run_loop")
+    for _, _, facts in worker.asked:   # the zone sweep and km bars carry the loop when there is no route
+        assert "route_xy" not in facts and len(facts["splits"]) == 5
+    assert "sendAnimation" in fakes.tg_methods()
 
 
 def test_a_broken_worker_still_sends_the_text_card(tmp_path, fakes):
@@ -573,7 +575,7 @@ def test_a_broken_worker_still_sends_the_text_card(tmp_path, fakes):
 
 def test_media_renderer_hands_the_worker_only_allow_listed_facts():
     seen = []
-    r = MediaRenderer({"flood": lambda f, m: (seen.append(f), PNG)[1]}, {"run": lambda f, out: out.write_bytes(MP4)})
+    r = MediaRenderer({"flood": lambda f, m: (seen.append(f), PNG)[1]}, {"run_loop": lambda f, out: out.write_bytes(MP4)})
     run = {**stored("tempo"), "type": "tempo", "zone_min": json.dumps({"z4": 20, "z5": 2})}
     m = r.render({"card": "flood", "video": True}, {"run_id": "r", "headline": "h"}, [run])
     assert isinstance(m, Media) and m.video == MP4

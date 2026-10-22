@@ -34,7 +34,7 @@ LONG_WINDOW_DAYS = 28
 @dataclass(frozen=True)
 class MediaPlan:
     card: str   # light | flood | pb | suggestion | weekly_recap | monthly | none
-    video: bool
+    video: bool   # a big day (the reason below). Since cards v4 every run with splits goes out as a loop; this stays the reason's flag
     reason: str
     touch_card: str | None = None  # milestone | race_countdown: a second card the channel may add
     # What the picture shows, persisted at the moment the coach decides to send the card (the server holds no routes

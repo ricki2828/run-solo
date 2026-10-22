@@ -34,6 +34,8 @@ SCORE_KEYS = ("aerobic", "speed", "mid", "long")
 PB_LABEL = {"5k": "5 KM BEST", "10k": "10 KM BEST", "half": "HALF MARATHON BEST", "longest": "LONGEST RUN",
             "fastest_km": "FASTEST KM"}
 VERDICTS = frozenset({"faster", "holding", "slower", "noRealChange", "baselineSet", "indoorRun"})
+LOOP_S = 6            # the v4 moment loops (render/motion/_loopkit.LOOP_S)
+THUMB_PX = 320        # sendAnimation's thumbnail: JPEG, 320 px on the long side, under 200 kB
 GHOST_CLIP_S = 6      # the clip's length (render/motion/ghost_clip.py DURATION)
 CLIP_CACHE_MAX = 4    # rendered clips kept for an outbox retry, so a retried send does not render again
 
@@ -53,6 +55,9 @@ class Media:
     animation: bool = False             # send `video` with sendAnimation: it autoplays and loops in the chat (the ghost race clip)
     animation_file_id: str | None = None   # Telegram's id of an animation this bot already sent: re-sent without an upload
     sent: dict = field(default_factory=dict, compare=False)   # the channel notes what Telegram answered here (file_id)
+    thumbnail: bytes | None = None      # a JPEG (<= 320 px) Telegram shows before the animation plays: the still card, shrunk
+    clip_kind: str = "ghostclip"        # what the cached file_id is filed under (media_file_ids.kind)
+    caption_extra: str = ""             # one more caption line (the weekly lane scores, which the loop no longer draws)
 
     @property
     def has_content(self) -> bool:
@@ -119,7 +124,7 @@ NEUTRAL_RUN_TYPE = {"goal": "tempo", "free": "long"}   # the colour a no-verdict
 
 
 def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
-                app_type: str | None = None) -> dict[str, Any] | None:
+                app_type: str | None = None, need_route: bool = True) -> dict[str, Any] | None:
     """Facts for the route -> splits -> verdict video, or None when this run cannot have one (no shape or no splits). A run
     whose verdict is missing or has no faster/slower/holding word (free, goal and trail runs have no comparison) gets the
     neutral "done" treatment: its name, distance and time, never a pace claim. The name is the built-in session name
@@ -127,7 +132,7 @@ def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
     run takes its brand colour through `type`. A PB run uses its ordinary verdict: the server never holds the old best
     time that the PB layout needs, so it is not drawn, and a PB with no verdict is neutral too."""
     verdict = VIDEO_VERDICT.get(str(facts.get("verdict")), "done")
-    if not facts.get("route_xy") or not facts.get("splits"):
+    if (need_route and not facts.get("route_xy")) or not facts.get("splits"):
         return None
     out = {k: v for k, v in facts.items() if k not in ("pb", "pb_detail")}
     out["verdict"], out["title"] = verdict, TITLE.get(str(facts.get("type")), "Run")
@@ -140,6 +145,16 @@ def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
         kind = "goal" if known and known[1] == GOAL_PURPOSE else app_type
         if kind in NEUTRAL_RUN_TYPE and facts.get("type") not in ("interval", "race"):   # keep a hard run's flood
             out["type"] = NEUTRAL_RUN_TYPE[kind]
+    return out
+
+
+def loop_facts(facts: Mapping[str, Any], session_name: str | None = None, app_type: str | None = None) -> dict[str, Any] | None:
+    """Facts for the v4 run loop: video_facts' treatment, but a run needs only its splits. With no route shape (the runner
+    opted out, or an indoor run) the loop draws the zone sweep and the km bars instead of a route."""
+    out = video_facts(facts, session_name, app_type, need_route=False)
+    if out is not None and facts.get("pb") and (facts.get("pb_detail") or {}).get("label"):
+        # the loop marks a PB from its label alone (the server never holds the old best): no previous_s, no delta
+        out["pb"], out["pb_detail"] = facts["pb"], {"label": facts["pb_detail"]["label"]}
     return out
 
 
@@ -238,7 +253,44 @@ def _default_video_fns(client: RenderClient | None = None) -> dict[str, Callable
         out.write_bytes(_client(client).video("weekly", facts))
     def ghostclip(facts: dict, out: Path) -> Any:
         out.write_bytes(_client(client).video("ghostclip", facts))
-    return {"run": run, "weekly": weekly, "ghostclip": ghostclip}
+
+    def run_loop(facts: dict, out: Path) -> Any:
+        if not facts.get("splits"):
+            raise MediaError("run loop needs splits")
+        out.write_bytes(_client(client).video("run_loop", facts))
+
+    def week_loop(facts: dict, out: Path) -> Any:
+        out.write_bytes(_client(client).video("week_loop", facts))
+
+    def milestone_loop(facts: dict, out: Path) -> Any:
+        out.write_bytes(_client(client).video("milestone_loop", facts))
+    return {"run": run, "weekly": weekly, "ghostclip": ghostclip, "run_loop": run_loop, "week_loop": week_loop,
+            "milestone_loop": milestone_loop}
+
+
+def thumbnail(png: bytes | None) -> bytes | None:
+    """The still card as the animation's thumbnail: a small JPEG. None on any failure (Telegram then picks a frame)."""
+    if not png:
+        return None
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(png)).convert("RGB")
+        im.thumbnail((THUMB_PX, THUMB_PX))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=80)
+        return buf.getvalue()
+    except Exception as e:
+        log.warning("thumbnail skipped: %s", type(e).__name__)
+        return None
+
+
+def score_line(moves: Mapping[str, Any] | None) -> str:
+    """The weekly lane scores for the caption, e.g. "Aerobic +3 · Speed +5 · Mid 0 · Long -2"."""
+    if not moves:
+        return ""
+    return " · ".join(f"{k.title()} {int(moves[k]):+d}" if int(moves[k]) else f"{k.title()} 0"
+                      for k in SCORE_KEYS if isinstance(moves.get(k), (int, float)))
 
 
 def _client(client: RenderClient | None) -> RenderClient:
@@ -256,7 +308,7 @@ class MediaRenderer:
     def __init__(self, card_fns: Mapping[str, Callable[..., bytes]] | None = None,
                  video_fns: Mapping[str, Callable[..., Any]] | None = None, client: RenderClient | None = None):
         self._cards, self._videos = card_fns, video_fns
-        self._clips: dict[tuple[str, str], bytes] = {}   # (user_id, run_id): a run id is only unique per runner
+        self._clips: dict[tuple[str, ...], bytes] = {}   # (user_id, run_id): a run id is only unique per runner
         self._client = client or RenderClient(default_socket_path())
 
     @property
@@ -313,9 +365,11 @@ class MediaRenderer:
         return Media(photo=photo or None, video=video, duration_s=GHOST_CLIP_S, animation=True)
 
     def render(self, plan: Mapping[str, Any], card: Mapping[str, Any], runs: Sequence[Mapping[str, Any]],
-               memory: Mapping[str, Any] | None = None, clip: bool = True) -> Media | None:
+               memory: Mapping[str, Any] | None = None, clip: bool = True, loop: bool = True) -> Media | None:
         """None when the plan has no media. Raises MediaError when a planned still card cannot be made. A trail record
-        with a ghost series goes out as the race clip instead of the still (`clip=False` keeps the still)."""
+        with a ghost series goes out as the race clip instead of the still (`clip=False` keeps the still). A run card and
+        the weekly recap go out as a 6 s moment loop with the still card as its thumbnail and fallback (`loop=False`
+        keeps the still alone)."""
         kind = plan.get("card")
         if kind == "suggestion":
             # The evening suggestion's facts were stored when the coach decided to send it. An older card, written
@@ -335,7 +389,7 @@ class MediaRenderer:
             if kind == "weekly_recap":
                 week_ref = str(card["run_id"]).split("recap:", 1)[1]
                 facts = week_facts(week_ref, runs)
-                vkind, vfacts = "weekly", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
+                vkind, vfacts = "week_loop", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
             elif kind in ("trail_board", "trail_record", "trail_heart"):
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 trail = (run.get("_shape") or {}).get("trail")
@@ -355,9 +409,15 @@ class MediaRenderer:
             else:
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 facts = run_facts(run, card["headline"])
-                vkind, vfacts = "run", video_facts(facts, run.get("session_name"), run.get("app_type"))
+                vkind, vfacts = "run_loop", loop_facts(facts, run.get("session_name"), run.get("app_type"))
+            if kind in SHARE_PICTURE_KINDS and vfacts is None:
+                log.warning("run loop dropped for run %s: no splits", card.get("run_id"))
+            # Every run with splits (and every recap) is a loop; the 9:16 share poster is no longer sent with it: the
+            # runner's Share tap makes it in the app. Rendered first, so a failure falls back to the older share picture.
+            clip_key = (str(run.get("user_id") or ""), str(card["run_id"]), vkind) if kind in SHARE_PICTURE_KINDS else None
+            video = self._loop(clip_key, vkind, vfacts) if loop and vfacts is not None and vkind in ("run_loop", "week_loop") else None
             photo = None
-            if kind in SHARE_PICTURE_KINDS:
+            if kind in SHARE_PICTURE_KINDS and video is None:
                 photo = self._share_picture(facts)
             if photo is None:
                 photo = self.cards[kind](facts, memory or {})
@@ -365,11 +425,27 @@ class MediaRenderer:
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
-        if plan.get("video") and vfacts is None:
-            log.warning("planned video dropped for %s run %s: no route shape or splits", kind, card.get("run_id"))
-        video = self._video(vkind, vfacts) if plan.get("video") and vfacts is not None else None
-        return Media(photo=photo, video=video, duration_s=13 if video else 0)
+        if video is None:
+            return Media(photo=photo)
+        extra = score_line(facts.get("score_moves")) if kind == "weekly_recap" else ""
+        return Media(photo=photo, video=video, duration_s=LOOP_S, animation=True, thumbnail=thumbnail(photo),
+                     clip_kind=vkind, caption_extra=extra)
 
+    def _loop(self, key: tuple[str, str, str] | None, vkind: str, facts: dict) -> bytes | None:
+        """A moment loop, rendered once per (runner, run) while an outbox retry may need it again."""
+        if key is not None and key in self._clips:
+            return self._clips[key]
+        video = self._video(vkind, facts)
+        if video is not None and key is not None:
+            while len(self._clips) >= CLIP_CACHE_MAX:
+                self._clips.pop(next(iter(self._clips)))
+            self._clips[key] = video
+        return video
+
+
+    def share_poster(self, run: Mapping[str, Any], headline: str) -> bytes | None:
+        """The 9:16 share poster for one stored run (the loop's Share button). None when it cannot be drawn."""
+        return self._share_picture(run_facts(run, headline))
 
     def _share_picture(self, facts: Mapping[str, Any]) -> bytes | None:
         """The 9:16 share image sent with a run's post-run message. None on any failure (or an oversized file): the caller
@@ -410,7 +486,14 @@ class MediaRenderer:
         kind, facts = plan.get("touch_card"), plan.get("touch_facts")
         if kind not in ("milestone", "race_countdown") or not isinstance(facts, dict) or not facts:
             return None
-        return self._still(kind, facts, None)
+        still = self._still(kind, facts, None)
+        if kind != "milestone":
+            return still
+        video = self._video("milestone_loop", dict(facts))   # the count-up loop; the still is its thumbnail and fallback
+        if video is None:
+            return still
+        return Media(photo=still.photo, video=video, duration_s=LOOP_S, animation=True, thumbnail=thumbnail(still.photo),
+                     clip_kind="milestone_loop")
 
 
 def from_settings(socket_path: str) -> MediaRenderer:
