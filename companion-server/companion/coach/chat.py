@@ -565,7 +565,7 @@ class CoachChat:
             soft_kind = kind if level == redflag.SOFT else None
             tri = coach_triage.classify_text(message)   # the runner's own words, before any cap or model (coach PR3)
             if tri.level == "red":
-                self._triage_red_now(c, u, primary, tri, now)
+                self._triage_red_now(c, u, primary, tri, now, message)
                 return True
             mode = "amber" if tri.level == "amber" else None
             if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage='red' AND replied_at > ? AND id<>? "
@@ -600,7 +600,7 @@ class CoachChat:
         self._flag(c, u, kind, now)
         log.warning("coach red flag (%s) kind=%s tester=%s job=%s", where, kind, tag(u["tester_no"]), job_id)
 
-    def _triage_red_now(self, c, u: dict, job_id: int, tri: "coach_triage.TextTriage", now: datetime) -> None:
+    def _triage_red_now(self, c, u: dict, job_id: int, tri: "coach_triage.TextTriage", now: datetime, message: str = "") -> None:
         """A red hit on the runner's words: the fixed reply (no model, no training), the level on the job, and for the next
         TRIAGE_HOURS an active `injury` flag that every training reader honours. Emergency-type hits (chest, fainting, heat) use
         the existing urgent safety reply and flag instead."""
@@ -609,7 +609,7 @@ class CoachChat:
             self._safety_now(c, u, job_id, redflag.URGENT, f"triage:urgent:{','.join(tri.codes)}", now, "text triage")
             return
         place = c.execute("SELECT 1 FROM convo_area WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
-        reply = validator.with_chips(coach_triage.red_reply(u["zone_id"], place), [FALSE_ALARM])
+        reply = validator.with_chips(coach_triage.red_reply(u["zone_id"], place, tri.codes, message), [FALSE_ALARM])
         c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, triage='red', "
                   "replied_at=? WHERE id=?", (reply, f"triage:red:{','.join(tri.codes)}", iso(now), job_id))
         self._message(c, u["id"], job_id, "coach", reply, now)

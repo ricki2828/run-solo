@@ -118,7 +118,12 @@ _ZONE_COUNTRY = {
     "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US", "America/Los_Angeles": "US",
     "America/Detroit": "US",
 }
-EMERGENCY = {"NZ": "111", "AU": "000", "UK": "999", "US": "911", "ZA": "10111 or 112", "SG": "995"}
+EMERGENCY = {"NZ": "111", "AU": "000", "UK": "999", "IE": "999 or 112", "US": "911", "CA": "911", "EU": "112",
+             "ZA": "10111 or 112", "SG": "995"}
+_CA_ZONES = frozenset({"America/Toronto", "America/Vancouver", "America/Edmonton", "America/Winnipeg", "America/Halifax",
+                       "America/St_Johns", "America/Regina", "America/Montreal", "America/Calgary"})
+_NO_112_EUROPE = frozenset({"Europe/London", "Europe/Belfast", "Europe/Moscow", "Europe/Istanbul", "Europe/Minsk", "Europe/Kyiv",
+                            "Europe/Kiev"})   # UK has its own entry; the rest are left to "your local emergency number"
 
 
 def country(zone_id: str | None) -> str | None:
@@ -127,14 +132,26 @@ def country(zone_id: str | None) -> str | None:
         return "AU"
     if z.startswith(("America/Indiana/", "America/Kentucky/", "America/North_Dakota/", "US/")):
         return "US"
+    if z in _CA_ZONES or z.startswith("Canada/"):
+        return "CA"
+    if z == "Europe/Dublin":
+        return "IE"
+    if z.startswith("Europe/") and z not in _NO_112_EUROPE:
+        return "EU"   # 112 works across the EU and the EEA/Switzerland
     return _ZONE_COUNTRY.get(z)
+
+
+def call_emergency(zone_id: str | None) -> str:
+    """"call 995" for a known country, else "call your local emergency number". Never another country's number."""
+    em = EMERGENCY.get(country(zone_id) or "")
+    return f"call {em}" if em else "call your local emergency number"
 
 
 def template(kind: str, zone_id: str | None) -> str:
     """The fixed reply. No model writes any of it; plain text, no links."""
     cc = country(zone_id)
     emergency = EMERGENCY.get(cc or "", "")
-    em = f"call {emergency}" if emergency else "call your local emergency number (112 or 911 in most places)"
+    em = f"call {emergency}" if emergency else "call your local emergency number"
     if kind == URGENT:
         return ("Please stop running and get checked by a doctor today. If it's happening now or it's bad, "
                 f"{em} straight away.\n\n"

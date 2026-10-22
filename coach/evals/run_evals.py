@@ -175,7 +175,7 @@ def server_template(message: str, fixture_obj: dict) -> tuple[str, str] | None:
     if tri.level == "red":
         if tri.call_emergency:
             return redflag.template(redflag.URGENT, zone), f"triage:urgent:{','.join(tri.codes)}"
-        return ext_triage.red_reply(zone, False), f"triage:red:{','.join(tri.codes)}"
+        return ext_triage.red_reply(zone, False, tri.codes, message), f"triage:red:{','.join(tri.codes)}"
     return None
 
 
