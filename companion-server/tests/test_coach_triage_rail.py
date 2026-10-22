@@ -9,6 +9,10 @@ import pytest
 from companion.coach import validator
 from companion.coach.ext.triage import classify_text
 
+from companion import db
+from companion.channels import TelegramChannel, chip_data
+from companion.coach.chat import FALSE_ALARM
+
 from conftest import coach_text
 from test_coach_chat import T0, cc, rows, run_worker, say, uid_of   # noqa: F401  (cc is a fixture)
 
@@ -19,7 +23,8 @@ RED_TEXT = {
     "numbness_tingling_weakness": ["my foot goes numb about 6k in", "numbness down my leg", "tingly toes the whole run", "foot drop on the left",
                                     "pins and needles in my shin", "sudden weakness in my leg", "my leg gave out"],
     "cannot_bear_weight": ["can't put any weight on it", "cant put any wieght on my ankle", "unable to walk after the trail", "I cannot bear weight",
-                           "couldn't stand on it", "non weight bearing since sunday"],
+                           "couldn't stand on it", "non weight bearing since sunday", "can barely walk on it", "it hurts to walk",
+                           "I can hardly walk", "painful to put weight on it", "struggling to walk since the fall"],
     "bone_pain_at_night": ["I think it's a stress fracture", "possible stress reaction in my shin"],
     "severe_rest_or_night_pain": ["shin pain wakes me at night", "my foot aches at night and in bed", "pain keeps me awake", "it hurts at rest",
                                   "excruciating pain in my hip", "night pain in the heel"],
@@ -179,3 +184,104 @@ def test_amber_mode_allows_rest_and_modify():
 def test_red72_mode_also_refuses_run_suggestions():
     assert validator.medical_check("Try an easy run tomorrow.", "red72") == "training_advice"
     assert validator.medical_check("Try an easy run tomorrow.", "amber") is None
+
+
+# ------------------------------------------------------------------------------------------------ round 2
+@pytest.mark.parametrize("text", [
+    "A couple of Nurofen might help.", "Grab some ibuprofen.", "An anti-inflammatory might help.", "Voltaren gel is worth a go.",
+    "Paracetamol is fine.", "Try acetaminophen.", "Maybe some painkillers.", "A cortisone shot can settle it.", "Get an MRI.",
+    "Some collagen supplements help tendons.", "Aspirin before you run.", "Ask about a steroid injection."])
+def test_any_medicine_name_is_refused_with_no_number_needed(text):
+    assert validator.check(text, []) == "dosing", text
+
+
+@pytest.mark.parametrize("text", ["Ask a pharmacist or your doctor about pain relief.", "A physio can look at it and tell you more.",
+                                  "Rest, and keep it pain-free."])
+def test_talking_about_who_to_ask_is_not_naming_a_medicine(text):
+    assert validator.check(text, []) is None, text
+
+
+@pytest.mark.parametrize("text", ["Run 8 km easy tomorrow.", "Do 6 x 1 km at the track.", "Keep running but slower.",
+                                  "Go for a 30 min jog.", "Try 4x4 when you're ready.", "Run easy for 40 minutes.", "Resume running on Friday."])
+def test_red72_refuses_any_run_distance_or_rep_prescription(text):
+    assert validator.medical_check(text, "red72") == "training_advice", text
+
+
+@pytest.mark.parametrize("text", ["No running until you've been checked.", "Rest today and get it seen.", "Stop running and see a doctor today."])
+def test_red72_allows_saying_no_running(text):
+    assert validator.medical_check(text, "red72") is None, text
+
+
+def test_a_chip_cannot_carry_training_advice_in_injury_mode(cc, fakes):
+    say(cc, "outside of my knee is sore for 5 days now")
+    fakes.coach_queue = [coach_text("Take Thursday off and see a physio.\n<chips>Do 6 x 1 km|Find a physio</chips>")]
+    run_worker(cc)
+    kb = [m for k, m in fakes.tg if k == "sendMessage"][-1]["reply_markup"]["inline_keyboard"]
+    assert [[b["text"] for b in r] for r in kb] == [["Find a physio"]]
+
+
+def test_the_evening_suggestion_is_held_while_a_health_flag_is_active(cc, fakes):
+    from datetime import date
+    uid = uid_of(cc)
+    svc = cc.svc
+    with db.tx(svc.s.db_path) as c:
+        assert svc._ci_evening_held(c, uid, date(2026, 10, 22), T0) is False
+    say(cc, "numbness down my leg")
+    run_worker(cc)
+    with db.tx(svc.s.db_path) as c:
+        assert svc._ci_evening_held(c, uid, date(2026, 10, 22), T0 + timedelta(hours=2)) is True
+        c.execute("UPDATE health_flags SET state='cleared'")
+        assert svc._ci_evening_held(c, uid, date(2026, 10, 22), T0 + timedelta(hours=2)) is False
+
+
+def test_a_triage_hit_never_takes_over_an_operator_flag_and_the_auto_clear_leaves_it(cc, fakes):
+    uid = uid_of(cc)
+    with db.tx(cc.svc.s.db_path) as c:
+        c.execute("INSERT INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?)",
+                  (uid, "injury", "active", "operator", "2026-10-20T00:00:00Z"))
+    say(cc, "numbness down my leg")
+    run_worker(cc)
+    f = rows(cc, "SELECT state, source, set_at FROM health_flags WHERE user_id=?", uid)[0]
+    assert (f["state"], f["source"], f["set_at"]) == ("active", "operator", "2026-10-20T00:00:00Z")
+    assert rows(cc, "SELECT triage FROM coach_jobs")[0]["triage"] == "red"          # the pause window is the job's, not the flag's
+    cc.svc.coach.step(T0 + timedelta(hours=100))
+    assert rows(cc, "SELECT state FROM health_flags WHERE user_id=?", uid)[0]["state"] == "active"
+
+
+def _tap(cc, job_id, label, n, now):
+    upd = {"update_id": n, "callback_query": {"id": f"cb{n}", "from": {"id": 111222333}, "data": chip_data(job_id, label),
+                                              "message": {"message_id": 5, "chat": {"id": 111222333, "type": "private"}}}}
+    cc.svc.handle_inbound(TelegramChannel.parse(upd), now=now)
+
+
+def test_red_reply_carries_a_false_alarm_chip_that_clears_only_the_triage_flag_and_is_logged(cc, fakes, caplog):
+    from conftest import OWNER
+    say(cc, "can't feel my toes in the cold")
+    run_worker(cc)
+    out = [m for k, m in fakes.tg if k == "sendMessage"][-1]
+    assert [[b["text"] for b in r] for r in out["reply_markup"]["inline_keyboard"]] == [[FALSE_ALARM]]
+    assert "doctor today" in out["text"] and "<chips>" not in out["text"]                 # the urgent wording stays
+    job = rows(cc, "SELECT id FROM coach_jobs")[0]["id"]
+    uid = uid_of(cc)
+    with db.tx(cc.svc.s.db_path) as c:      # an urgent flag from the rail must survive the tap
+        c.execute("INSERT INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?)", (uid, "urgent", "active", "rail", "2026-10-21T00:00:00Z"))
+    with caplog.at_level("WARNING"):
+        _tap(cc, job, FALSE_ALARM, 900001, T0 + timedelta(minutes=5))
+    st = {r["kind"]: r["state"] for r in rows(cc, "SELECT kind, state FROM health_flags WHERE user_id=?", uid)}
+    assert st == {"injury": "cleared", "urgent": "active"}
+    assert rows(cc, "SELECT triage FROM coach_jobs")[0]["triage"] == "red_cleared"
+    assert "false alarm" in caplog.text
+    assert fakes.tg_texts()[-1].startswith("Glad to hear it")
+    assert fakes.coach_calls == []
+    # and the next turn is ordinary again
+    fakes.coach_queue = [coach_text("Easy week, then.")]
+    say(cc, "what should the week look like?", now=T0 + timedelta(minutes=10))
+    run_worker(cc, T0 + timedelta(minutes=11))
+    assert rows(cc, "SELECT triage FROM coach_jobs ORDER BY id DESC")[0]["triage"] is None
+
+
+def test_urgent_type_red_has_no_false_alarm_chip(cc, fakes):
+    say(cc, "think I had heat exhaustion")
+    run_worker(cc)
+    out = [m for k, m in fakes.tg if k == "sendMessage"][-1]
+    assert "reply_markup" not in out

@@ -203,11 +203,14 @@ def _urls(text: str) -> set[str]:
 # ------------------------------------------------------------------------------------------------ medical safety (coach PR3)
 # Always on: no dosing, no diagnosis (coach plan section 4.3). `mode` "amber" / "red72" (an injury was reported in the runner's
 # words, or a red one in the last 72 h): also no pace figures and no push-on training advice beyond rest and modify.
-_DRUGS = (r"ibuprofen|nurofen|advil|brufen|paracetamol|acetaminophen|panadol|tylenol|naproxen|aleve|aspirin|diclofenac|voltaren|"
-          r"celecoxib|codeine|tramadol|cortisone|corticosteroids?|prednisone|prednisolone|steroids?|nsaids?|anti-?inflammator\w+|"
-          r"painkillers?|pain\s*killers?|voltarol|arnica")
-_DRUG_CONTEXT = re.compile(r"\b(?:take|taking|took|pop|popping|dose|doses|dosage|tablets?|pills?|capsules?|hourly|daily|twice|"
-                           r"every\s+\w+\s+hours?|with\s+food|before|after|\d+)\b|\d", re.I)
+# Plan section 4.3: the coach never names a medicine, supplement or injection, with or without a dose.
+_DRUGS = (r"ibuprofen|ibuprophen|nurofen|advil|brufen|motrin|paracetamol|paracetemol|acetaminophen|panadol|panadeine|tylenol|naproxen|"
+          r"aleve|naprosyn|aspirin|asprin|diclofenac|voltaren|voltarol|celecoxib|celebrex|indomethacin|ketoprofen|meloxicam|codeine|"
+          r"tramadol|morphine|opioids?|cortisone|corticosteroids?|prednisone|prednisolone|steroids?|nsaids?|anti-?inflammator\w+|"
+          r"analgesics?|painkill\w+|pain\s*killers?|deep\s+heat|tiger\s+balm|ben-?gay|salonpas|biofreeze|arnica|"
+          r"supplements?|collagen|turmeric|curcumin|cbd|magnesium|creatine|"
+          r"(?:cortisone|steroid|cortico\w*|hyaluron\w*|prp|botox)\s+(?:shots?|injections?|jabs?)|injections?")
+_IMAGING = re.compile(r"\b(?:get|have|book|need|order|arrange|ask\s+for)\s+(?:an?\s+|the\s+)?(?:mri|x-?ray|ultrasound|ct|scan)\b", re.I)
 _DOSE_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|\u00b5g|ug|milligrams?|micrograms?|ml|millilit\w+|iu)\b|"
                       r"\b(?:one|two|three|four|five|six|a\s+couple\s+of|a\s+few|half(?:\s+a)?|\d+)\s+(?:\w+\s+)?"
                       r"(?:tablets?|pills?|capsules?|caplets?|tabs|doses?|sachets?)\b", re.I)
@@ -225,7 +228,12 @@ _INTENSITY = re.compile(r"\b" + _TRAIN_VERBS + r"\b[^.!?\n]{0,25}?\b(?:tempo|int
                         r"threshold|race\s+pace|speed\s*work|4x4|reps|sprints?|long\s+run|workout)s?\b|"
                         r"\b(?:increase|build|ramp|extend|boost|up)\w*\s+[^.!?\n]{0,20}?\b(?:mileage|volume|distance|km|intensity|pace|load)\b|"
                         r"\bpush\s+(?:through|on|it|harder|yourself)\b|\brun\s+(?:through|it\s+off)\b|\brun\s+on\s+it\b", re.I)
-_RUN_SUGGEST = re.compile(r"\b(?:easy\s+(?:run|jog)s?|jog(?:ging)?|go\s+for\s+an?\s+(?:run|jog)|run\s+(?:today|tomorrow|tonight))\b", re.I)
+_RUN_SUGGEST = re.compile(
+    r"\b(?:easy\s+(?:run|jog)s?|jog(?:ging)?|go\s+for\s+an?\s+(?:run|jog)|run\s+(?:today|tomorrow|tonight)|"
+    r"(?:keep|continue|carry\s+on|resume|start|begin|restart|go|get\s+back\s+to|return\s+to|ease\s+back\s+into)\s+(?:on\s+)?(?:running|jogging)|"
+    r"(?:run|jog)\s+(?:\w+\s+){0,2}(?:easy|easily|slow\w*|gently|lightly|short|shorter|\d+)|"
+    r"\d+(?:[.,]\d+)?\s*(?:km|kms|k|miles?|mi|min|mins|minutes?)\s+(?:\w+\s+){0,2}(?:easy|run|jog|slow\w*|steady|gentle)|"
+    r"\d+\s*x\s*\d+|\d+\s+(?:reps?|repeats?|intervals?|strides?))\b", re.I)
 
 
 def medical_check(text: str, mode: str | None = None) -> str | None:
@@ -234,13 +242,12 @@ def medical_check(text: str, mode: str | None = None) -> str | None:
     if _DOSE_RE.search(t):
         return "dosing"
     drug = re.compile(r"\b(?:" + _DRUGS + r")\b", re.I)
-    for sent in re.split(r"(?<=[.!?\n])\s+", t):
-        if drug.search(sent) and _DRUG_CONTEXT.search(sent):
-            return "dosing"
+    if drug.search(t) or _IMAGING.search(t):
+        return "dosing"
     if _DIAG_RE.search(t):
         return "diagnosis"
     if mode in ("amber", "red72"):
-        if _PACE_FIG.search(t) or _INTENSITY.search(t) or (mode == "red72" and _RUN_SUGGEST.search(t)):
+        if _PACE_FIG.search(t) or _INTENSITY.search(t) or re.search(r"\b\d+\s*x\s*\d+", t) or (mode == "red72" and _RUN_SUGGEST.search(t)):
             return "training_advice"
     return None
 

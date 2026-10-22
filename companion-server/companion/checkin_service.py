@@ -782,7 +782,11 @@ class CheckinMixin:
 
     def _ci_evening_held(self, c, uid: str, tomorrow: date, now: datetime) -> bool:
         """True when the evening suggestion must not go: the runner said ill (rest, no nudge) or is away that week, or a
-        readiness question for tomorrow is due in the same window and takes the day's one question (P3-6)."""
+        readiness question for tomorrow is due in the same window and takes the day's one question (P3-6). Also held while a
+        health flag (urgent, wellbeing, injury, ill) is active: nothing may be said about training, as in the briefing."""
+        if c.execute("SELECT 1 FROM health_flags WHERE user_id=? AND state='active' AND kind IN ('urgent','wellbeing','injury','ill')",
+                     (uid,)).fetchone():
+            return True
         if not self._ci_consented(c, uid):
             return False   # stored answers are ignored without consent, and no readiness question is coming either
         ans = self._ci_answers(c, uid, now)

@@ -106,7 +106,10 @@ TEXT_RED: dict[str, tuple[str, bool, list[str]]] = {
         r"(?:leg|foot|ankle)\s+(?:\w+\s+){0,2}(?:gave|giving)\s+(?:out|way))"]),
     "cannot_bear_weight": ("cannot put weight on the leg", False, [
         r"(?P<k>(?:can'?t|cant|cannot|can\s+not|unable\s+to|couldn'?t|could\s+not)\s+(?:even\s+)?(?:put\s+(?:any\s+)?w[ei]{1,2}ght|bear\s+(?:any\s+)?w[ei]{1,2}ght|"
-        r"stand\s+on|walk\b|hobble)|non\s*-?\s*w[ei]{1,2}ght\s*-?\s*bearing)"]),
+        r"stand\s+on|walk\b|hobble)|non\s*-?\s*w[ei]{1,2}ght\s*-?\s*bearing|"
+        r"(?:can|could)\s+(?:only\s+)?(?:barely|hardly|just\s+about)\s+(?:walk|stand|put\s+weight)|(?:barely|hardly)\s+(?:able\s+to\s+)?(?:walk|stand)|"
+        r"(?:hurts?|painful|sore|agony|pain)\s+(?:\w+\s+){0,2}(?:to|when|while|on)\s+(?:i\s+)?(?:walk|walking|stand|standing|put\w*\s+weight)|"
+        r"struggl\w+\s+to\s+walk)"]),
     "deformity": ("the area looks out of shape or something snapped", False, [
         r"(?P<k>dislocat\w*|deform\w*|bone\s+(?:is\s+)?(?:sticking|poking)|heard\s+(?:a\s+)?(?:snap|pop|crack)\w*|looks?\s+(?:out\s+of\s+shape|crooked)|"
         r"broke[n]?\s+(?:my\s+)?(?:bone|ankle|leg|foot|toe)|think\s+(?:i\s+)?broke)"]),

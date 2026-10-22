@@ -57,6 +57,9 @@ MAX_TOOL_CALLS_PER_TURN = 8
 TG_LIMIT = 4096
 TYPING_EVERY_S = 4.0   # Telegram's typing indicator lasts about 5 s
 TRIAGE_HOURS = 72
+FALSE_ALARM = "I'm OK, false alarm"
+FALSE_ALARM_REPLY = ("Glad to hear it. I've lifted the pause, so we can talk training again. If it comes back or gets worse, "
+                     "tell me and get it checked.")
 INJURY_NOTES = {
     "amber": "<host_note>The runner describes pain or an injury. Rest or modify only: no paces, no tempo, intervals or long-run "
              "advice, no pushing on. Never diagnose or mention medicines. Suggest a physio or GP if it persists, offer find_care.</host_note>",
@@ -271,6 +274,8 @@ class CoachChat:
         rail, caps), so a button can never reach the coach by another road. Command words are not looked at: a chip
         called "Delete" is only ever words to the coach."""
         user = self.svc._user_by_ref(inb.channel, inb.ref)
+        if user and (inb.chip or "") == FALSE_ALARM and self.false_alarm(ch, inb, user, now):
+            return
         taken = bool(user) and self.accept(ch, replace(inb, text=inb.chip or "", chip=None), user, now)
         ack = getattr(ch, "ack_chip", None)
         if user and not taken and self.gate_for(user["id"]) == "ops_paused":
@@ -280,6 +285,29 @@ class CoachChat:
         if ack:
             ack(inb, (inb.chip or "") if taken else
                 (COACH_PAUSED if user and self.gate_for(user["id"]) == "paused" else "The coach chat isn't on right now."))
+
+    def false_alarm(self, ch: Any, inb: Any, user: dict, now: datetime) -> bool:
+        """The "I'm OK, false alarm" chip on a text-triage red reply (cold toes, a red calf sleeve). Lifts only what the text
+        triage set: the `injury` flag whose source is 'triage' and the 72 h window on its red jobs. An urgent or wellbeing
+        flag, or an operator's injury flag, is never touched. Logged. -> False when the coach gate is closed."""
+        if self.gate_for(user["id"]) is not None:
+            return False
+        with db.tx(self.s.db_path) as c:
+            flags = c.execute("UPDATE health_flags SET state='cleared', cleared_at=?, cleared_by='runner-false-alarm' "
+                              "WHERE user_id=? AND kind='injury' AND state='active' AND source='triage'", (iso(now), user["id"])).rowcount
+            jobs = c.execute("UPDATE coach_jobs SET triage='red_cleared' WHERE user_id=? AND triage='red' "
+                             "AND outcome LIKE 'triage:red:%'", (user["id"],)).rowcount
+            if jobs:
+                self._message(c, user["id"], None, "runner", FALSE_ALARM, now)
+                self._message(c, user["id"], None, "coach", FALSE_ALARM_REPLY, now)
+        log.warning("coach triage false alarm tester=%s flags_cleared=%s red_jobs_cleared=%s", tag(user.get("tester_no")), flags, jobs)
+        ack = getattr(ch, "ack_chip", None)
+        if ack:
+            ack(inb, "Pause lifted" if jobs else "Nothing to lift")
+        if jobs:
+            with contextlib.suppress(ChannelError):
+                ch.send_text(inb.ref, FALSE_ALARM_REPLY)
+        return True
 
     def rail(self, user: dict, text: str, now: datetime, where: str = "note") -> str | None:
         """The red-flag check for text that does not go to the coach: a typed run note, Tell Ricki feedback, or free text
@@ -382,8 +410,8 @@ class CoachChat:
                 kw: dict[str, Any] = {}
                 if rich:
                     kw["html"] = True
-                    if chips and i == len(parts) - 1:
-                        kw["buttons"] = self._chip_rows(job_id, chips)
+                if chips and i == len(parts) - 1 and (rich or (j["kind"] == "safety" and getattr(ch, "supports_html", False))):
+                    kw["buttons"] = self._chip_rows(job_id, chips)   # a safety reply's only chip is the triage false alarm
                 if i == 0 and placeholder:   # the answer replaces the "on it" line
                     try:
                         ch.edit_text(u["chat_ref"], placeholder, text, **kw)
@@ -557,9 +585,9 @@ class CoachChat:
                 self._triage_red_now(c, u, primary, tri, now)
                 return True
             mode = "amber" if tri.level == "amber" else None
-            if c.execute("SELECT 1 FROM health_flags WHERE user_id=? AND kind='injury' AND state='active' AND source='triage' "
-                         "AND set_at > ?", (uid, iso(now - timedelta(hours=TRIAGE_HOURS)))).fetchone():
-                mode = "red72"
+            if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage='red' AND replied_at > ? AND id<>?",
+                         (uid, iso(now - timedelta(hours=TRIAGE_HOURS)), primary)).fetchone():
+                mode = "red72"   # the 72 h window is read off the red jobs themselves, so it never depends on who owns the flag
             if mode:
                 c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode if mode == "amber" else "red", primary))
             over = None
@@ -594,16 +622,18 @@ class CoachChat:
         the existing urgent safety reply and flag instead."""
         if tri.call_emergency:
             c.execute("UPDATE coach_jobs SET triage='red' WHERE id=?", (job_id,))
-            self._safety_now(c, u, job_id, redflag.URGENT, f"triage:red:{','.join(tri.codes)}", now, "text triage")
+            self._safety_now(c, u, job_id, redflag.URGENT, f"triage:urgent:{','.join(tri.codes)}", now, "text triage")
             return
         place = c.execute("SELECT 1 FROM convo_area WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
-        reply = coach_triage.red_reply(u["zone_id"], place)
+        reply = validator.with_chips(coach_triage.red_reply(u["zone_id"], place), [FALSE_ALARM])
         c.execute("UPDATE coach_jobs SET kind='safety', state='replied', reply=?, reply_source='safety', outcome=?, triage='red', "
                   "replied_at=? WHERE id=?", (reply, f"triage:red:{','.join(tri.codes)}", iso(now), job_id))
         self._message(c, u["id"], job_id, "coach", reply, now)
+        # Never replace a flag someone else owns (the operator's, or the rail's): only a cleared one, or our own, is rewritten.
         c.execute("INSERT INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?) "
                   "ON CONFLICT(user_id, kind) DO UPDATE SET state='active', source='triage', set_at=excluded.set_at, "
-                  "cleared_at=NULL, cleared_by=NULL", (u["id"], "injury", "active", "triage", iso(now)))
+                  "cleared_at=NULL, cleared_by=NULL WHERE health_flags.state='cleared' OR health_flags.source='triage'",
+                  (u["id"], "injury", "active", "triage", iso(now)))
         log.warning("coach text triage red codes=%s tester=%s job=%s", ",".join(tri.codes), tag(u["tester_no"]), job_id)
 
     def _reply_now(self, c, uid: str, job_id: int, text: str, outcome: str, now: datetime) -> None:
@@ -856,7 +886,7 @@ class CoachChat:
             bad = validator.check(body, sources, tool_sources, mode=job.triage)
             if bad is None:
                 res.reply, res.outcome = body, "repaired" if repairs else "ok"
-                res.chips = [c for c in chips if validator.check(c, sources, tool_sources) is None]
+                res.chips = [c for c in chips if validator.check(c, sources, tool_sources, mode=job.triage) is None]
                 return res
             res.outcome = f"rejected:{bad.split(':')[0]}"
             if repairs >= self.s.coach_repair_turns:
