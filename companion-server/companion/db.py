@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS coach_jobs (
   prompt_hash TEXT,
   screen TEXT,                              -- the safety classifier's verdict: clear | hit:<kind> | error:<why>
   triage TEXT,                              -- the text triage level of the turn: amber | red (coach PR3)
+  niggle TEXT,                              -- the level triage_check returned on this turn: amber | green (the proactive 48 h check-back reads it)
   send_attempts INTEGER NOT NULL DEFAULT 0, parts_sent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sending_at TEXT, sent_at TEXT
 );
@@ -524,6 +525,12 @@ def init(path: str) -> None:
         if "triage" not in {r["name"] for r in c.execute("PRAGMA table_info(coach_jobs)")}:  # coach PR3
             try:
                 c.execute("ALTER TABLE coach_jobs ADD COLUMN triage TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
+        if "niggle" not in {r["name"] for r in c.execute("PRAGMA table_info(coach_jobs)")}:  # coach PR5
+            try:
+                c.execute("ALTER TABLE coach_jobs ADD COLUMN niggle TEXT")
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise

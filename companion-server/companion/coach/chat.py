@@ -125,6 +125,7 @@ class Claimed:
     soft_kind: str | None = None     # a soft regex hit on the merged turn: a classifier error means the safety reply
     zone_id: str = "UTC"
     triage: str | None = None        # the injury mode of this turn: "amber" (runner's words), "red72" (a red hit in the last 72 h)
+    trusted: bool = False            # `message` is the server's own host note (a proactive turn), not runner words: not defanged
 
 
 @dataclass
@@ -169,6 +170,8 @@ class CoachChat:
         self._last_typing: dict[str, float] = {}
         self._placeholders: dict[int, str] = {}   # job id -> message id of its "on it" line, until the answer replaces it
         self.briefing = Briefings(self)   # C2b: the spoken session briefing; shares the gate, the worker and the ledger
+        from .proactive import Proactive
+        self.proactive = Proactive(self)   # PR5: the proactive coach; its own timer thread, off unless COMPANION_COACH_PROACTIVE
         if self.s.coach_chat:
             try:
                 self.prompt = coach_prompt.load(self.s.coach_dir)
@@ -369,10 +372,14 @@ class CoachChat:
         btns = [(c, chip_data(job_id, c)) for c in chips]
         return [btns] if sum(len(c) for c in chips) <= 36 else [[b] for b in btns]
 
-    def send_job(self, job_id: int) -> bool:
+    def send_job(self, job_id: int, now: datetime | None = None) -> bool:
         """Send a stored reply as plain text, split at 4096. The send is claimed first (replied -> sending, one winner),
         so the webhook and the worker can never both send it (review of #341, P2-1). A failure goes back to 'replied' for
-        the worker to retry, the send only. After the send the reply is cleared from the job (it lives in coach_messages)."""
+        the worker to retry, the send only. After the send the reply is cleared from the job (it lives in coach_messages).
+        A proactive reply is checked again right here, first send and every retry (quiet hours, kill switch, gate, the runner
+        wrote since): one that fails the check is cancelled and never sent."""
+        if not self.proactive.send_allowed(job_id, now or now_utc()):
+            return False
         with db.tx(self.s.db_path) as c:
             if c.execute("UPDATE coach_jobs SET state='sending', sending_at=? WHERE id=? AND state='replied' AND reply IS NOT NULL",
                          (iso(now_utc()), job_id)).rowcount != 1:
@@ -456,7 +463,7 @@ class CoachChat:
         with db.tx(self.s.db_path) as c:
             budget.release_stale(c, now)
             n += c.execute("UPDATE coach_jobs SET state='replied' WHERE state='sending' AND COALESCE(sending_at, '') < ?", (cut,)).rowcount
-            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND kind<>'briefing' AND COALESCE(claimed_at, '') < ?",
+            for j in c.execute("SELECT id, user_id, attempts FROM coach_jobs WHERE state='running' AND kind NOT IN ('briefing','proactive') AND COALESCE(claimed_at, '') < ?",
                                (cut,)).fetchall():
                 n += 1
                 if j["attempts"] >= 2:
@@ -481,7 +488,7 @@ class CoachChat:
                                "ORDER BY id LIMIT 20", (MAX_SEND_ATTEMPTS,)).fetchall()
         for j in unsent:   # a failed send waits 30 s more for each failure so far
             if parse_iso(j["replied_at"]) + timedelta(seconds=SEND_BACKOFF_S * j["send_attempts"]) <= now:
-                if self.send_job(j["id"]):
+                if self.send_job(j["id"], now):
                     return True
                 break
         return self._claim_and_run(now) or self.briefing.step(now)
@@ -788,7 +795,7 @@ class CoachChat:
             last = history[-1]
             history[-1] = {"role": last["role"], "content": [{"type": "text", "text": last["content"],
                                                                "cache_control": {"type": "ephemeral"}}]}
-        turn_text = validator.defang(job.message)
+        turn_text = job.message if job.trusted else validator.defang(job.message)
         extra = registry.context(ctx)
         if job.triage:   # the injury mode rules go in this turn, and the validator enforces them below
             note = INJURY_NOTES["red72" if job.triage == "red72" else "amber"]
