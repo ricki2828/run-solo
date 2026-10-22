@@ -8,11 +8,13 @@ Flow (eng-review section 2):
   one worker thread (persisted jobs survive a restart)                                                    (B2)
     claim: per runner, messages within coach_merge_s answered as one turn; gate re-checked; daily caps;
            first spend reservation in the claim transaction                                              (B9)
-    agent: <= coach_max_tool_turns tool turns, 30 s per model call, 60 s per job, max_tokens 2000 (thinking included)
+    agent: <= coach_max_tool_turns tool turns, 30 s per model call, 60 s per job, max_tokens 2000 (thinking included);
+         typing heartbeat for the whole job; a validator miss gets ONE repair turn (the reason goes back to the model)
     hard tier again on the merged turn, then the safety classifier (screen.py): a hit, or a soft regex
            hit with a classifier error, gets the safety template and no main model call
-    chat validator -> template fallback on failure (counted, alert above 20% in 24 h)                     (B7)
-    reply stored on the job before the send; a failed send retries the send only                         (B3)
+    chat validator -> repair turn -> template fallback on a second failure (counted, alert above 20% in 24 h)   (B7)
+    reply stored on the job before the send (HTML, up to 3 chip buttons that come back as the runner's next
+    turn); a failed send retries the send only                                                          (B3)
 """
 from __future__ import annotations
 
@@ -21,25 +23,28 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 
 from .. import db
-from ..channels import ChannelError, utf16_len
+from ..channels import ChannelError, chip_data, utf16_len
 from ..notes import clean as clean_text
 from ..rails import add_alert, tag
 from ..timeutil import iso, now_utc, parse_iso
 from . import budget, prompt as coach_prompt, redflag, screen, validator
 from .briefing import Briefings
+from .ext import ToolContext
 from .tools import ReadTools
 
 log = logging.getLogger("companion")
 
 COACH_PAUSED = "You're paused, so the coach chat is off too. Send RESUME to turn it back on."
-FALLBACK = "Sorry, I couldn't put a proper answer together just now. Give me another go in a bit."
+FALLBACK_TEXT = "That one got away from me. Ask it again, or tap one of these."
+FALLBACK_CHIPS = ("How was my last run?", "What's next in my plan?")
+FALLBACK = validator.with_chips(FALLBACK_TEXT, FALLBACK_CHIPS)
 DAILY_CAP = "That's all the chat I've got in me today. Ask me again tomorrow; your run cards still come as normal."
 BUDGET = "The coach chat is resting for now. Your run cards still come as normal."
 MAX_CHAT_CHARS = 2000
@@ -49,7 +54,17 @@ MAX_BATCH_CHARS = 4000   # a merged turn is cut to its latest 4000 characters
 SEND_BACKOFF_S = 30
 MAX_TOOL_CALLS_PER_TURN = 8
 TG_LIMIT = 4096
-TYPING_EVERY_S = 4.0
+TYPING_EVERY_S = 4.0   # Telegram's typing indicator lasts about 5 s
+REPAIR_HINTS = {
+    "empty": "it was empty",
+    "too_long": f"it was too long (keep it well under {validator.MAX_REPLY_CHARS} characters)",
+    "link": "it had a link that no tool returned (leave links out unless a tool result has them)",
+    "phone_like": "it had a phone number that no tool returned",
+    "spelled_measure": "it gave a measurement in words (use a figure from a tool, or leave the figure out)",
+    "foreign_unit": "it used a unit the runner's data does not use (stick to km, minutes and m:ss pace)",
+    "ungrounded": "the figure {detail} is not in any tool result or in what the runner said (call calc_pace for pace, time "
+                  "or distance sums, or say it without that figure)",
+}
 FALLBACK_ALERT_SHARE = 0.2
 SCREEN_ALERT_SHARE = 0.05
 SCREEN_ALERT_MIN_JOBS = 10
@@ -114,12 +129,47 @@ class Claimed:
     zone_id: str = "UTC"
 
 
+@dataclass
+class AgentResult:
+    reply: str | None          # the checked reply (HTML subset, no chips block), None when the template goes out
+    chips: list[str]
+    outcome: str
+    sources: list[str]
+    calls: int = 0
+    cost_usd: float = 0.0
+
+
+class _Heartbeat:
+    """Sends 'typing...' now and every TYPING_EVERY_S until the job ends."""
+
+    def __init__(self, ch: Any, ref: str):
+        self.ch, self.ref = ch, ref
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name="coach-typing", daemon=True)
+
+    def _loop(self) -> None:
+        while True:
+            with contextlib.suppress(Exception):   # cosmetic, never takes the job down
+                self.ch.send_typing(self.ref)
+            if self._stop.wait(TYPING_EVERY_S):
+                return
+
+    def __enter__(self) -> "_Heartbeat":
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self._stop.set()
+        self._thread.join(2.0)
+
+
 class CoachChat:
     def __init__(self, svc: Any):
         self.svc, self.s = svc, svc.s
         self.prompt: coach_prompt.CoachPrompt | None = None
         self.wake = threading.Event()
         self._last_typing: dict[str, float] = {}
+        self._placeholders: dict[int, str] = {}   # job id -> message id of its "on it" line, until the answer replaces it
         self.briefing = Briefings(self)   # C2b: the spoken session briefing; shares the gate, the worker and the ledger
         if self.s.coach_chat:
             try:
@@ -133,8 +183,8 @@ class CoachChat:
         return bool(self.s.coach_chat and self.prompt is not None and self.s.coach_allowlist)
 
     # ------------------------------------------------------------------------------------------ gate (B1)
-    def allowlisted(self, u: Any) -> bool:
-        a = self.s.coach_allowlist
+    def allowlisted(self, u: Any, a: frozenset[str] | None = None) -> bool:
+        a = self.s.coach_allowlist if a is None else a
         return (u["id"] in a or (bool(u["tester_no"]) and f"T{u['tester_no']}" in a)
                 or f"{u['channel']}:{u['chat_ref']}" in a)
 
@@ -204,6 +254,17 @@ class CoachChat:
             self.wake.set()
         return True
 
+    def chip_tap(self, ch: Any, inb: Any, now: datetime) -> None:
+        """A coach quick-reply button: its label is the runner's next message, taken exactly like typed text (gate, red-flag
+        rail, caps), so a button can never reach the coach by another road. Command words are not looked at: a chip
+        called "Delete" is only ever words to the coach."""
+        user = self.svc._user_by_ref(inb.channel, inb.ref)
+        taken = bool(user) and self.accept(ch, replace(inb, text=inb.chip or "", chip=None), user, now)
+        ack = getattr(ch, "ack_chip", None)
+        if ack:
+            ack(inb, (inb.chip or "") if taken else
+                (COACH_PAUSED if user and self.gate_for(user["id"]) == "paused" else "The coach chat isn't on right now."))
+
     def rail(self, user: dict, text: str, now: datetime, where: str = "note") -> str | None:
         """The red-flag check for text that does not go to the coach: a typed run note, Tell Ricki feedback, or free text
         from a paused coach runner (review of #341, P2-5). Applies to runners past the gate or only paused. -> the safety
@@ -230,6 +291,8 @@ class CoachChat:
 
     @staticmethod
     def _message(c, uid: str, job_id: int | None, role: str, text: str, now: datetime) -> None:
+        if role == "coach":   # chips and the operator footer are buttons and a readout, not words the coach said
+            text = validator.strip_footer(validator.split_chips(text)[0])
         c.execute("INSERT INTO coach_messages (user_id, job_id, role, text, ts) VALUES (?,?,?,?,?)",
                   (uid, job_id, role, text, iso(now)))
 
@@ -254,6 +317,28 @@ class CoachChat:
             except ChannelError:
                 pass   # cosmetic
 
+    def _heartbeat(self, uid: str):
+        """'typing...' for the whole job (a beat now, then every 4 s), so the chat never goes quiet while the model works."""
+        out = self._ref_for(uid)
+        if out is None or not getattr(out[0], "send_typing", None):
+            return contextlib.nullcontext()
+        return _Heartbeat(out[0], out[1])
+
+    def _send_placeholder(self, job: "Claimed", ch: Any, ref: str, text: str) -> None:
+        """A one-line 'on it' message for a slow job; send_job edits it into the answer. Once per job."""
+        if job.job_id in self._placeholders:
+            return
+        try:
+            self._placeholders[job.job_id] = ch.send_text(ref, text)
+        except ChannelError:
+            pass   # cosmetic
+
+    @staticmethod
+    def _chip_rows(job_id: int, chips: list[str]) -> list[list[tuple[str, str]]]:
+        """One row when the labels are short enough to sit side by side, else one button per row."""
+        btns = [(c, chip_data(job_id, c)) for c in chips]
+        return [btns] if sum(len(c) for c in chips) <= 36 else [[b] for b in btns]
+
     def send_job(self, job_id: int) -> bool:
         """Send a stored reply as plain text, split at 4096. The send is claimed first (replied -> sending, one winner),
         so the webhook and the worker can never both send it (review of #341, P2-1). A failure goes back to 'replied' for
@@ -269,11 +354,29 @@ class CoachChat:
             with db.tx(self.s.db_path) as c:
                 c.execute("UPDATE coach_jobs SET state='failed', outcome=COALESCE(outcome,'')||':no_channel' WHERE id=?", (job_id,))
             return False
-        parts = split_text(j["reply"])
+        body, chips = validator.split_chips(j["reply"])
+        rich = bool(getattr(ch, "supports_html", False)) and j["kind"] != "safety" and j["reply_source"] in ("llm", "template")
+        parts = split_text(body)
         done = j["parts_sent"]
+        placeholder = self._placeholders.get(job_id)
         try:
             for i in range(done, len(parts)):
-                ch.send_text(u["chat_ref"], parts[i])
+                text = validator.render_html(parts[i]) if rich else (
+                    validator.plain(parts[i]) if j["reply_source"] == "llm" else parts[i])
+                kw: dict[str, Any] = {}
+                if rich:
+                    kw["html"] = True
+                    if chips and i == len(parts) - 1:
+                        kw["buttons"] = self._chip_rows(job_id, chips)
+                if i == 0 and placeholder:   # the answer replaces the "on it" line
+                    try:
+                        ch.edit_text(u["chat_ref"], placeholder, text, **kw)
+                        placeholder, done = None, 1
+                        self._placeholders.pop(job_id, None)
+                        continue
+                    except (ChannelError, AttributeError):
+                        placeholder = None
+                ch.send_text(u["chat_ref"], text, **kw)
                 done = i + 1
         except ChannelError as e:
             failed = j["send_attempts"] + 1 >= MAX_SEND_ATTEMPTS
@@ -287,6 +390,7 @@ class CoachChat:
                               now_utc())
             log.warning("coach send failed job=%s: %s", job_id, type(e).__name__)
             return False
+        self._placeholders.pop(job_id, None)
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE coach_jobs SET state='sent', sent_at=?, parts_sent=?, reply=NULL WHERE id=? AND state='sending'",
                       (iso(now_utc()), done, job_id))
@@ -357,7 +461,8 @@ class CoachChat:
         if claimed is True:
             return True
         try:
-            self._run(claimed, now)
+            with self._heartbeat(claimed.user_id):
+                self._run(claimed, now)
         except Exception as e:   # never leave a claimed job hanging: the runner gets the template (review of #341, P2-2)
             log.error("coach run failed job=%s: %s", claimed.job_id, type(e).__name__)
             with db.tx(self.s.db_path) as c:
@@ -506,14 +611,15 @@ class CoachChat:
             return
         if result == "error":
             log.warning("coach screen failed job=%s why=%s: no regex hit, going on to the main model", job.job_id, detail)
-        reply, outcome, sources = self._agent(job, now)
-        source = "llm"
-        if reply is not None:
-            reply = validator.tidy(reply)
-            bad = validator.check(reply, sources)
-            if bad:
-                outcome, reply = f"rejected:{bad.split(':')[0]}", None
-        if reply is None:
+        t0 = time.monotonic()
+        res = self._agent(job, now)
+        outcome, source = res.outcome, "llm"
+        if res.reply is not None:
+            body = res.reply
+            if self._show_cost(job.user_id):
+                body += f"\n\n<i>· {res.cost_usd * 100:.1f}¢ · {res.calls} call{'s' if res.calls != 1 else ''} · {time.monotonic() - t0:.0f} s</i>"
+            reply = validator.with_chips(body, res.chips)
+        else:
             reply, source = FALLBACK, "template"
         with db.tx(self.s.db_path) as c:
             # B8: a DELETE or a withdrawal while the model was thinking wins; nothing is written back for a runner who is gone
@@ -574,55 +680,91 @@ class CoachChat:
         # The static skill prefix carries cache_control so repeat turns read it from the provider's cache (W5).
         return {"role": "system", "content": [{"type": "text", "text": self.prompt.text, "cache_control": {"type": "ephemeral"}}]}
 
-    def _agent(self, job: Claimed, now: datetime) -> tuple[str | None, str, list[str]]:
-        """-> (reply text or None, outcome, the texts whose numbers the reply may use)."""
+    def _show_cost(self, uid: str) -> bool:
+        if not self.s.coach_show_cost:
+            return False
+        with db.ro(self.s.db_path) as c:
+            u = c.execute("SELECT id, tester_no, channel, chat_ref FROM users WHERE id=?", (uid,)).fetchone()
+        return bool(u) and self.allowlisted(u, self.s.coach_show_cost)
+
+    @staticmethod
+    def host_note(reason: str) -> str:
+        code, _, detail = reason.partition(":")
+        hint = REPAIR_HINTS.get(code, "it did not pass the server's checks").format(detail=detail)
+        return f"<host_note>Your reply was not sent: {hint}. Write the reply again.</host_note>"
+
+    def _agent(self, job: Claimed, now: datetime) -> "AgentResult":
+        """The model loop: tool turns, then a checked reply. A reply the validator refuses goes back to the model once with
+        the reason (repair turn); a second miss is the template."""
         sources = [job.message] + [h["content"] for h in job.history]
+        res = AgentResult(None, [], "ok", sources)
         if not self.s.openrouter_key or self.prompt is None:
             self._settle(job.ledger_id, now, None, "no_key", None)
-            return None, "no_key", sources
+            res.outcome = "no_key"
+            return res
         out = self._ref_for(job.user_id)
         ch, ref = out if out else (None, "")
         tools = ReadTools(self.svc, self.prompt.tools, job.user_id, now)
-        messages: list[dict] = [self.system_message(), *job.history, {"role": "user", "content": job.message}]
+        registry = self.prompt.registry
+        ctx = ToolContext(self.svc, job.user_id, now, job.job_id,
+                          placeholder=(lambda text: self._send_placeholder(job, ch, ref, text)) if ch is not None else (lambda text: None))
+        history = [dict(h) for h in job.history]
+        if history:   # second cache breakpoint: the earlier conversation is read from cache on the next turn
+            last = history[-1]
+            history[-1] = {"role": last["role"], "content": [{"type": "text", "text": last["content"],
+                                                               "cache_control": {"type": "ephemeral"}}]}
+        turn_text = job.message
+        extra = registry.context(ctx)
+        if extra:
+            sources.append(extra)
+            turn_text = extra + "\n\n" + turn_text
+        messages: list[dict] = [self.system_message(), *history, {"role": "user", "content": turn_text}]
+        base = len(messages)
         deadline = time.monotonic() + self.s.coach_job_deadline_s
         ledger_id: int | None = job.ledger_id
-        for turn in range(self.s.coach_max_tool_turns + 1):
-            final = turn == self.s.coach_max_tool_turns
+        tool_turn, repairs = 0, 0
+        for _ in range(self.s.coach_max_tool_turns + 1 + self.s.coach_repair_turns):
+            final = tool_turn >= self.s.coach_max_tool_turns
             if ledger_id is None:
                 with db.tx(self.s.db_path) as c:
-                    chars = job.chars + sum(len(json.dumps(m)) for m in messages[2 + len(job.history):])
+                    chars = job.chars + sum(len(json.dumps(m)) for m in messages[base:])
                     zone = (c.execute("SELECT zone_id FROM users WHERE id=?", (job.user_id,)).fetchone() or {"zone_id": "UTC"})["zone_id"]
                     ledger_id, why = budget.reserve(c, self.s, job.user_id, job.job_id, budget.estimate(self.s, chars),
                                                     now, self.prompt.prompt_hash, zone)
                 if ledger_id is None:
-                    return None, why, sources
+                    res.outcome = why
+                    return res
             remaining = deadline - time.monotonic()
             if remaining < 1.0:
                 self._settle(ledger_id, now, None, "deadline", None)
-                return None, "deadline", sources
-            if ch is not None:
-                self._typing(ch, ref)
+                res.outcome = "deadline"
+                return res
             data, why = self._post(self.request_body(messages, final), min(self.s.coach_turn_timeout_s, remaining))
             if data is None:
                 self._settle(ledger_id, now, None, why, None)
-                return None, why, sources
+                res.outcome = why
+                return res
             provider = data.get("provider") if isinstance(data.get("provider"), str) else None
             fields = budget.usage_fields(data.get("usage"), self.s)
             self._settle(ledger_id, now, provider, "ok", fields)
             ledger_id = None
+            res.calls += 1
+            res.cost_usd += fields["cost_usd"] or 0.0
             log.info("coach call job=%s turn=%d provider=%s prompt_tokens=%s cached_tokens=%s cache_write=%s cost=%.5f",
-                     job.job_id, turn, provider, fields["prompt_tokens"], fields["cached_tokens"],
+                     job.job_id, res.calls - 1, provider, fields["prompt_tokens"], fields["cached_tokens"],
                      fields["cache_write_tokens"], fields["cost_usd"])
             try:
                 msg = data["choices"][0]["message"]
                 if not isinstance(msg, dict):
                     raise TypeError("message")
             except (KeyError, IndexError, TypeError):
-                return None, "bad_response", sources
+                res.outcome = "bad_response"
+                return res
             calls = msg.get("tool_calls") or []
             if not isinstance(calls, list):
                 calls = []
             if calls and not final:
+                tool_turn += 1
                 calls = [x if isinstance(x, dict) else {} for x in calls]   # odd shapes from the provider never raise
                 messages.append({"role": "assistant", "content": msg.get("content") or None, "tool_calls": calls})
                 for k, call in enumerate(calls):
@@ -632,8 +774,9 @@ class CoachChat:
                                          "content": json.dumps({"ok": False, "error": "too many tool calls in one turn"})})
                         continue
                     fn = call.get("function") if isinstance(call.get("function"), dict) else {}
-                    res = tools.call(str(fn.get("name", "")), fn.get("arguments"))
-                    enc = tools.encode(res)
+                    name = str(fn.get("name", ""))
+                    result = registry.call(name, fn.get("arguments"), ctx) if registry.has(name) else tools.call(name, fn.get("arguments"))
+                    enc = tools.encode(result)
                     sources.append(enc)
                     messages.append({"role": "tool", "tool_call_id": call_id, "content": enc})
                 continue
@@ -641,9 +784,21 @@ class CoachChat:
             if isinstance(content, list):
                 content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
             if not isinstance(content, str) or not content.strip():
-                return None, "tool_loop" if final else "empty", sources
-            return content, "ok", sources
-        return None, "tool_loop", sources
+                res.outcome = "tool_loop" if final else "empty"
+                return res
+            body, chips = validator.split_chips(validator.tidy(content))
+            bad = validator.check(body, sources)
+            if bad is None:
+                res.reply, res.outcome = body, "repaired" if repairs else "ok"
+                res.chips = [c for c in chips if validator.check(c, sources) is None]
+                return res
+            res.outcome = f"rejected:{bad.split(':')[0]}"
+            if repairs >= self.s.coach_repair_turns:
+                return res
+            repairs += 1   # the refused reply and the reason go back; the reason is never added to `sources`
+            messages += [{"role": "assistant", "content": content}, {"role": "user", "content": self.host_note(bad)}]
+        res.outcome = "tool_loop"
+        return res
 
     def _settle(self, ledger_id: int | None, now: datetime, provider: str | None, outcome: str, fields: dict | None) -> None:
         if ledger_id is None:

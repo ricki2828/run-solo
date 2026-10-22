@@ -122,7 +122,7 @@ def test_allowlist_takes_a_t_number_or_user_id(cc, fakes):
     assert not cc.svc.coach.allowlisted(u)
 
 
-def test_gated_free_text_is_queued_then_answered_in_plain_text_with_typing(cc, fakes):
+def test_gated_free_text_is_queued_then_answered_in_html_with_typing(cc, fakes):
     say(cc, "how did today go?")
     jobs = rows(cc, "SELECT * FROM coach_jobs")
     assert [(j["state"], j["kind"]) for j in jobs] == [("pending", "chat")]
@@ -132,7 +132,7 @@ def test_gated_free_text_is_queued_then_answered_in_plain_text_with_typing(cc, f
     j = rows(cc, "SELECT * FROM coach_jobs")[0]
     assert j["state"] == "sent" and j["reply_source"] == "llm" and j["prompt_hash"] == cc.svc.coach.prompt.prompt_hash
     send = [b for m, b in fakes.tg if m == "sendMessage"][-1]
-    assert send["text"] == "Keep the next one easy and see how the legs feel." and "parse_mode" not in send
+    assert send["text"] == "Keep the next one easy and see how the legs feel." and send["parse_mode"] == "HTML"
     msgs = rows(cc, "SELECT role, text FROM coach_messages ORDER BY id")
     assert [m["role"] for m in msgs] == ["runner", "coach"]
 
@@ -186,6 +186,7 @@ def test_history_is_sent_with_the_next_turn(cc, fakes):
     msgs = fakes.coach_calls[-1]["messages"]
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
     assert msgs[1]["content"] == "first question" and msgs[-1]["content"] == "second question"
+    assert msgs[2]["content"][0]["cache_control"] == {"type": "ephemeral"}   # the second cache breakpoint: last history message
 
 
 # ------------------------------------------------------------------------------------------------- request shape
@@ -203,7 +204,7 @@ def test_request_is_sonnet_zdr_no_fallbacks_cached_prefix_read_tools_only(cc, fa
     assert sys_msg["role"] == "system" and sys_msg["content"][0]["cache_control"] == {"type": "ephemeral"}
     assert "<host name=\"Run Supreme companion server\" stage=\"C1\">" in sys_msg["content"][0]["text"]
     names = [t["function"]["name"] for t in body["tools"]]
-    assert tuple(names) == READ_TOOLS
+    assert tuple(names) == READ_TOOLS + ("calc_pace",)
     assert not {"propose_plan_change", "remember", "flag_health"} & set(names)
 
 
@@ -231,12 +232,12 @@ def test_tool_call_then_grounded_answer(cc, fakes):
 
 
 def test_invented_number_falls_back_to_the_template(cc, fakes):
-    fakes.coach_queue = [coach_text("You ran 21.3 km at 4:05/km, a big jump.")]
+    fakes.coach_queue = [coach_text("You ran 21.3 km at 4:05/km, a big jump."), coach_text("Yep, 21.3 km at 4:05/km.")]
     say(cc, "how was my week?")
     run_worker(cc)
     j = rows(cc, "SELECT reply_source, outcome FROM coach_jobs")[0]
     assert j == {"reply_source": "template", "outcome": "rejected:ungrounded"}
-    assert last_text(fakes) == coach_chat.FALLBACK
+    assert last_text(fakes) == coach_chat.FALLBACK_TEXT
 
 
 def test_get_run_never_reads_another_runners_run(cc, fakes):
@@ -269,14 +270,14 @@ def test_tool_turns_are_capped(cc, fakes):
     assert len(fakes.coach_calls) == cc.svc.s.coach_max_tool_turns + 1
     assert fakes.coach_calls[-1]["tool_choice"] == "none"
     assert rows(cc, "SELECT outcome FROM coach_jobs")[0]["outcome"] == "tool_loop"
-    assert last_text(fakes) == coach_chat.FALLBACK
+    assert last_text(fakes) == coach_chat.FALLBACK_TEXT
 
 
 def test_timeout_or_error_gives_the_template_and_releases_the_reservation(cc, fakes):
     fakes.coach_queue = ["timeout"]
     say(cc, "hello?")
     run_worker(cc)
-    assert last_text(fakes) == coach_chat.FALLBACK
+    assert last_text(fakes) == coach_chat.FALLBACK_TEXT
     assert rows(cc, "SELECT state, outcome FROM cost_ledger WHERE purpose='chat'") == [{"state": "released", "outcome": "timeout"}]
 
 
@@ -680,7 +681,7 @@ def test_a_job_stuck_running_is_recovered_by_the_worker_without_a_restart(cc, fa
     assert rows(cc, "SELECT state FROM coach_jobs") == [{"state": "running"}]
     cc.svc.coach.drain(T0 + timedelta(seconds=95))
     assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "recovered"}]
-    assert last_text(fakes) == coach_chat.FALLBACK
+    assert last_text(fakes) == coach_chat.FALLBACK_TEXT
 
 
 def test_a_crash_in_the_run_writes_the_template(cc, fakes, monkeypatch):
@@ -690,7 +691,7 @@ def test_a_crash_in_the_run_writes_the_template(cc, fakes, monkeypatch):
     say(cc, "hi")
     run_worker(cc)
     assert rows(cc, "SELECT state, outcome FROM coach_jobs") == [{"state": "sent", "outcome": "error:RuntimeError"}]
-    assert last_text(fakes) == coach_chat.FALLBACK
+    assert last_text(fakes) == coach_chat.FALLBACK_TEXT
     assert {r["state"] for r in rows(cc, "SELECT state FROM cost_ledger WHERE purpose='chat'")} == {"released"}
 
 

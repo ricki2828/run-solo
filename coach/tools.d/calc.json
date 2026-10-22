@@ -1,0 +1,45 @@
+{
+ "tools": [
+  {
+   "module": "calc",
+   "name": "calc_pace",
+   "description": "Pace, time and distance arithmetic, done exactly. Use it for ANY figure you would otherwise work out yourself (a target pace, a finish time, a distance for a time, an easier or harder pace), so the number in your reply comes from a tool. mode pace: distance_km + time -> pace per km. mode time: distance_km + pace -> finish time. mode distance: time + pace -> distance_km. mode adjust: pace + seconds_per_km (positive = slower) -> new pace. Times are h:mm:ss or m:ss, paces are m:ss per km.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "pace",
+       "time",
+       "distance",
+       "adjust"
+      ]
+     },
+     "distance_km": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 1000
+     },
+     "time": {
+      "type": "string",
+      "maxLength": 10
+     },
+     "pace": {
+      "type": "string",
+      "maxLength": 6
+     },
+     "seconds_per_km": {
+      "type": "number",
+      "minimum": -300,
+      "maximum": 600
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "additionalProperties": false
+   }
+  }
+ ]
+}

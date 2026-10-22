@@ -37,6 +37,14 @@ def _iso_date(v: str | None, default: str = DEFAULT_TEST_END) -> str:
         return default
 
 
+def _nonneg(v: str | None, default: int) -> int:
+    try:
+        n = int((v or "").strip())
+    except ValueError:
+        return default
+    return n if n >= 0 else default
+
+
 def _posint(v: str | None, default: int) -> int:
     """A positive whole number, else the default (a typo must not turn a limit off)."""
     try:
@@ -162,10 +170,12 @@ class Settings:
     coach_screen_model: str = "anthropic/claude-haiku-5.5"
     coach_screen_timeout_s: float = 5.0
     coach_screen_max_tokens: int = 60
-    coach_merge_s: float = 5.0     # messages a runner sends within this long of each other are answered as one turn
+    coach_merge_s: float = 2.0     # messages a runner sends within this long of each other are answered as one turn
     coach_briefing: bool = False      # COMPANION_COACH_BRIEFING: the briefing kill switch, off by default; needs the chat gates too
     coach_briefing_daily: int = 8     # briefing model calls per runner per local day (a retry counts)
     coach_briefing_ttl_h: float = 36.0   # a stored briefing is served for this long after it was generated
+    coach_repair_turns: int = 1    # extra model turns after a validator miss, with the reason, before the template
+    coach_show_cost: frozenset[str] = frozenset()   # runners (same forms as the allowlist) who see a cost/latency footer on replies
     coach_history: int = 12        # earlier chat messages sent with each turn
     # Reservation estimates (USD per million tokens); the settle uses the cost OpenRouter reports.
     coach_usd_per_mtok_in: float = 3.0
@@ -241,6 +251,8 @@ class Settings:
             coach_card_reserve_usd=_posfloat(e.get("COMPANION_COACH_CARD_RESERVE_USD"), 5.0),
             coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
             coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
+            coach_repair_turns=min(_nonneg(e.get("COMPANION_COACH_REPAIR_TURNS"), 1), 2),
+            coach_show_cost=_csv(e.get("COMPANION_COACH_SHOW_COST")),
             coach_briefing=_flag(e.get("COMPANION_COACH_BRIEFING")),
             coach_briefing_daily=_posint(e.get("COMPANION_COACH_BRIEFING_DAILY"), 8),
             coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 2000),

@@ -134,7 +134,7 @@ def test_runner_numbers_count_as_grounded():
 
 
 def test_tidy_removes_markdown():
-    assert validator.tidy("**Nice.**\n\n\n- do this\n# Heading\nok — fine") == "Nice.\n\ndo this\nHeading\nok, fine"
+    assert validator.tidy("**Nice.**\n\n\n- do this\n# Heading\nok — fine") == "<b>Nice.</b>\n\n• do this\nHeading\nok — fine"
 
 
 # ------------------------------------------------------------------------------------------------- tool args
@@ -167,7 +167,7 @@ def test_prompt_is_built_from_the_skill_with_a_stable_hash():
     assert a.prompt_hash == b.prompt_hash and len(a.prompt_hash) == 16
     assert a.text.startswith("# Run Supreme coach")
     assert '<reference name="safety">' in a.text and "<host name=" in a.text
-    assert [t["name"] for t in a.tools] == list(coach_prompt.READ_TOOLS)
+    assert [t["name"] for t in a.tools] == list(coach_prompt.READ_TOOLS) + ["calc_pace"]
 
 
 def test_prompt_hash_changes_with_the_skill(tmp_path):
