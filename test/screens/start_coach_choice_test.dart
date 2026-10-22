@@ -65,13 +65,13 @@ void main() {
     expect(services.settings.settings.coachChoice, engine.CoachChoice.steady);
   });
 
-  testWidgets('the buttons are big: at least 112 px tall and half the width', (
+  testWidgets('the buttons are big: at least 96 px tall and half the width', (
     tester,
   ) async {
     await open(tester, free);
     final chase = tester.getSize(find.byKey(chaseKey));
     final steady = tester.getSize(find.byKey(steadyKey));
-    expect(chase.height, greaterThanOrEqualTo(112));
+    expect(chase.height, greaterThanOrEqualTo(96));
     expect(chase.height, steady.height);
     expect(chase.width, greaterThan(140));
   });

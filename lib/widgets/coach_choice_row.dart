@@ -42,7 +42,7 @@ class CoachChoiceRow extends StatelessWidget {
                 child: _ChoiceButton(
                   key: chaseKey,
                   title: 'Chase your best',
-                  subtitle: 'Voice says how you stand',
+                  subtitle: 'Vs your best, live',
                   selected: selected == engine.CoachChoice.chase,
                   onTap: () => onSelect(engine.CoachChoice.chase),
                 ),
@@ -91,8 +91,11 @@ class _ChoiceButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.button),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 112),
-          padding: const EdgeInsets.all(Space.x16),
+          constraints: const BoxConstraints(minHeight: 96),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.x16,
+            vertical: Space.x12,
+          ),
           decoration: BoxDecoration(
             color: t.bgRaised,
             borderRadius: BorderRadius.circular(Radii.button),
