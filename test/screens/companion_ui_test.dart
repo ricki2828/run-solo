@@ -724,5 +724,22 @@ void main() {
         });
       },
     );
+
+    testWidgets('an "ignored" answer to Agree leaves memory off on the phone', (
+      tester,
+    ) async {
+      await open(tester);
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'PUT' && r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(200, '{"status":"ignored"}')
+          : plain.defaultReply(r);
+      await tester.runAsync(ctl.acceptMemory);
+      expect(ctl.memoryOn, isFalse);
+      expect(ctl.problem, contains('still off'));
+      expect(
+        secrets.values[CompanionController.consentName],
+        '$kCompanionBaseConsent',
+      );
+    });
   });
 }

@@ -1059,6 +1059,8 @@ class CompanionController extends ChangeNotifier {
     bool healthNotes = false,
     bool trainingSync = true,
   }) async {
+    final before = (_consent, _healthNotes, _trainingSync, _memoryDismissed);
+    _consentIgnored = false;
     _consent = kCompanionConsentVersion;
     _healthNotes = healthNotes;
     _trainingSync = trainingSync;
@@ -1082,7 +1084,35 @@ class CompanionController extends ChangeNotifier {
     }
     notifyListeners();
     await syncConsent();
+    if (_consentIgnored && _consent == kCompanionConsentVersion) {
+      // The server answered {"status":"ignored"}: it holds this runner below
+      // the coach version and did not take version 4. Memory is not on.
+      _consent = before.$1;
+      _healthNotes = before.$2;
+      _trainingSync = before.$3;
+      _memoryDismissed = before.$4;
+      _consentSent = _consent;
+      problem = 'The companion did not take that. Memory is still off.';
+      try {
+        await store.write(consentName, '$_consent');
+        if (_healthNotes) {
+          await store.write(healthNotesName, '1');
+        } else {
+          await store.delete(healthNotesName);
+        }
+        if (_trainingSync) {
+          await store.delete(trainingSyncName);
+        } else {
+          await store.write(trainingSyncName, '1');
+        }
+      } catch (e) {
+        companionLog('could not save memory consent (${e.runtimeType})');
+      }
+      notifyListeners();
+    }
   }
+
+  bool _consentIgnored = false;
 
   /// Settings: the health notes tick and the training numbers switch. Server
   /// first, like Turn off memory: the phone changes only once the server says
@@ -1238,7 +1268,12 @@ class CompanionController extends ChangeNotifier {
       if (r.status == 401 || r.status == 403) {
         await _wipe();
       } else if (r.ok) {
-        _consentSent = v;
+        final j = r.json;
+        if (j['status'] == 'ignored') {
+          _consentIgnored = true; // the server did not take it
+        } else {
+          _consentSent = v;
+        }
       }
       // 404/422: a server older than this app; the next try is after its update.
     } on CompanionNetworkError {
