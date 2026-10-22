@@ -474,7 +474,19 @@ void main() {
     Map<String, Object?> lastConsent() =>
         http.bodyOf(http.to('PUT', '/v1/me/consent').last);
 
-    Future<void> open(WidgetTester tester) async {
+    // What the server says it holds for this runner (profile.checkin_consent).
+    void serverHolds(int? v) {
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+          ? CompanionReply(
+              200,
+              v == null ? '{}' : '{"profile":{"checkin_consent":$v}}',
+            )
+          : plain.defaultReply(r);
+    }
+
+    Future<void> open(WidgetTester tester, {int? holds = 3}) async {
+      serverHolds(holds);
       await tester.runAsync(() => enrolNow(ctl));
       await pumpApp(
         tester,
@@ -652,5 +664,65 @@ void main() {
       expect(ctl.memoryOn, isTrue);
       expect(ctl.problem, isNotNull);
     });
+
+    testWidgets(
+      'the sheet is not offered to a runner the server holds below 3',
+      (tester) async {
+        await open(tester, holds: 2);
+        expect(ctl.memoryOffered, isFalse);
+        expect(
+          find.byKey(const ValueKey('companion-memory-offer')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('nor when the server does not say (older server)', (
+      tester,
+    ) async {
+      await open(tester, holds: null);
+      expect(ctl.memoryOffered, isFalse);
+      expect(
+        find.byKey(const ValueKey('companion-memory-offer')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a health switch that fails changes nothing and says so', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.runAsync(ctl.acceptMemory);
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'PUT' && r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : plain.defaultReply(r);
+      final ok = await tester.runAsync(
+        () => ctl.setMemoryChoices(healthNotes: true, trainingSync: true),
+      );
+      expect(ok, isFalse);
+      expect(ctl.healthNotesOn, isFalse);
+      expect(ctl.problem, contains('Nothing changed'));
+      expect(secrets.values[CompanionController.healthNotesName], isNull);
+    });
+
+    testWidgets(
+      'a health switch that lands updates the phone after the server',
+      (tester) async {
+        await open(tester);
+        await tester.runAsync(ctl.acceptMemory);
+        final ok = await tester.runAsync(
+          () => ctl.setMemoryChoices(healthNotes: true, trainingSync: false),
+        );
+        expect(ok, isTrue);
+        expect(ctl.healthNotesOn, isTrue);
+        expect(ctl.trainingSyncOn, isFalse);
+        expect(lastConsent(), {
+          'consent_version': 4,
+          'health_notes': true,
+          'training_sync': false,
+        });
+      },
+    );
   });
 }

@@ -727,7 +727,12 @@ class CompanionMe {
     this.channel,
     this.checkins = const [],
     this.quests,
+    this.serverConsent,
   });
+
+  /// The consent version the server holds for this runner (`profile.checkin_consent`),
+  /// null from an older server. The memory sheet is offered only at 3 or above.
+  final int? serverConsent;
 
   /// How many quests the server keeps, by state (`taken`, `waiting` = offered,
   /// `ended` = done, expired or passed on), from `quests` in `GET /v1/me`.
@@ -817,6 +822,9 @@ class CompanionMe {
       quietStartMin: mins(profile['quiet_start_min']),
       quietEndMin: mins(profile['quiet_end_min']),
       channel: s(profile['channel']),
+      serverConsent: profile['checkin_consent'] is int
+          ? profile['checkin_consent'] as int
+          : null,
       checkins: checkins,
       chatName:
           s(j['chat_name']) ??
@@ -1020,7 +1028,16 @@ class CompanionController extends ChangeNotifier {
   /// The memory sheet is on offer: linked, on the check-ins copy, not yet on
   /// version 4, and the runner has not said "Not now". No silent upgrade.
   bool get memoryOffered =>
-      enrolled && consentCurrent && !memoryOn && !_memoryDismissed;
+      enrolled &&
+      consentCurrent &&
+      !memoryOn &&
+      !_memoryDismissed &&
+      (_serverConsent ?? 0) >= kCompanionCoachConsent;
+
+  /// What the server last said it holds (from `GET /v1/me`); null until read.
+  /// The sheet is never offered to a runner the server holds below the coach
+  /// version: agreeing would otherwise grant more than they agreed to.
+  int? _serverConsent;
 
   /// "Keep health notes too" as agreed (off unless ticked).
   bool get healthNotesOn => _healthNotes && memoryOn;
@@ -1065,6 +1082,55 @@ class CompanionController extends ChangeNotifier {
     }
     notifyListeners();
     await syncConsent();
+  }
+
+  /// Settings: the health notes tick and the training numbers switch. Server
+  /// first, like Turn off memory: the phone changes only once the server says
+  /// yes (it deletes the health notes on a health off), otherwise a problem
+  /// shows and nothing moves. True when it landed.
+  Future<bool> setMemoryChoices({
+    required bool healthNotes,
+    required bool trainingSync,
+  }) async {
+    final t = await token();
+    if (t == null || !memoryOn) return false;
+    try {
+      final r = await client.putConsent(
+        t,
+        kCompanionConsentVersion,
+        healthNotes: healthNotes,
+        trainingSync: trainingSync,
+      );
+      final j = r.ok ? r.json : null;
+      if (!r.ok || (j != null && j['status'] == 'ignored')) {
+        problem = 'Could not save that. Nothing changed. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. Nothing changed. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _healthNotes = healthNotes;
+    _trainingSync = trainingSync;
+    try {
+      if (healthNotes) {
+        await store.write(healthNotesName, '1');
+      } else {
+        await store.delete(healthNotesName);
+      }
+      if (trainingSync) {
+        await store.delete(trainingSyncName);
+      } else {
+        await store.write(trainingSyncName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the memory choices (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
   }
 
   /// Settings: "Turn off memory". The server deletes every coach note, drops
@@ -1887,6 +1953,9 @@ class CompanionController extends ChangeNotifier {
       if (r.me == null) {
         problem = 'The companion is busy. Try again.';
         notifyListeners();
+      } else if (r.me!.serverConsent != _serverConsent) {
+        _serverConsent = r.me!.serverConsent;
+        notifyListeners();
       }
       return r.me;
     } on CompanionNetworkError {
@@ -1950,6 +2019,7 @@ class CompanionController extends ChangeNotifier {
     _healthNotes = false;
     _trainingSync = true;
     _memoryDismissed = false;
+    _serverConsent = null;
     _coachNext = null;
     problem = null;
     notifyListeners();

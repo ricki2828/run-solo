@@ -107,7 +107,7 @@ const String kCompanionMemoryBody =
     'zero each time. It keeps your training numbers too: estimated race '
     'times, best efforts, weekly load and your plan. Your GPS tracks and '
     'heart rate recordings stay on your phone. You can see and delete every '
-    'note by sending /memory in Telegram. Health notes (niggles and '
+    'note by sending /\u2060memory in Telegram. Health notes (niggles and '
     'injuries) are separate: tick below to let the coach keep them.';
 
 const String kCompanionMemoryHealthTick = 'Keep health notes too';
@@ -947,7 +947,7 @@ class _CompanionMemorySettingsState extends State<CompanionMemorySettings> {
             onChanged: _busy
                 ? null
                 : (v) => _run(
-                    () => c.acceptMemory(
+                    () => c.setMemoryChoices(
                       healthNotes: v,
                       trainingSync: c.trainingSyncOn,
                     ),
@@ -961,7 +961,7 @@ class _CompanionMemorySettingsState extends State<CompanionMemorySettings> {
             onChanged: _busy
                 ? null
                 : (v) => _run(
-                    () => c.acceptMemory(
+                    () => c.setMemoryChoices(
                       healthNotes: c.healthNotesOn,
                       trainingSync: v,
                     ),
