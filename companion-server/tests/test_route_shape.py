@@ -516,7 +516,8 @@ def test_pb_and_big_session_runs_get_the_card_with_the_route_and_the_video(tmp_p
     video_facts_, card_facts = worker.asked[0][2], worker.asked[1][2]
     assert "share" not in card_facts
     assert card_facts["route_xy"] == shape["route"] and len(card_facts["splits"]) == len(shape["splits"])
-    assert video_facts_["route_xy"] == shape["route"] and video_facts_["title"] and "pb" not in video_facts_
+    assert video_facts_["route_xy"] == shape["route"] and video_facts_["title"]
+    assert video_facts_.get("pb_detail", {}).keys() <= {"label"}   # the loop gets the PB's label, never an old best
     assert "reps" not in card_facts   # reps are drawn for interval runs only
     for _, _, f in worker.asked:
         no_coordinates(f)

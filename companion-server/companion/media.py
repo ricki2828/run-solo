@@ -151,7 +151,11 @@ def video_facts(facts: Mapping[str, Any], session_name: str | None = None,
 def loop_facts(facts: Mapping[str, Any], session_name: str | None = None, app_type: str | None = None) -> dict[str, Any] | None:
     """Facts for the v4 run loop: video_facts' treatment, but a run needs only its splits. With no route shape (the runner
     opted out, or an indoor run) the loop draws the zone sweep and the km bars instead of a route."""
-    return video_facts(facts, session_name, app_type, need_route=False)
+    out = video_facts(facts, session_name, app_type, need_route=False)
+    if out is not None and facts.get("pb") and (facts.get("pb_detail") or {}).get("label"):
+        # the loop marks a PB from its label alone (the server never holds the old best): no previous_s, no delta
+        out["pb"], out["pb_detail"] = facts["pb"], {"label": facts["pb_detail"]["label"]}
+    return out
 
 
 def week_bounds(week_ref: str) -> tuple[date, date]:

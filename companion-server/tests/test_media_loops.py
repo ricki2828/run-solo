@@ -80,8 +80,9 @@ def test_a_loop_that_rendered_once_is_not_rendered_again_for_a_retry():
 
 def test_loop_facts_carry_only_run_keys():
     from render import protocol as P
-    f = loop_facts({"type": "easy", "distance_km": 5, "duration_s": 1800, "splits": SPLITS, "pb": {"x": 1}}, None, None)
-    assert f and set(f) <= P.RUN_KEYS and "pb" not in f
+    f = loop_facts({"type": "easy", "distance_km": 5, "duration_s": 1800, "splits": SPLITS, "pb": "5k",
+                    "pb_detail": {"label": "5 KM BEST", "previous_s": 1500}}, None, None)
+    assert f and set(f) <= P.RUN_KEYS and f["pb"] == "5k" and f["pb_detail"] == {"label": "5 KM BEST"}
     assert loop_facts({"type": "easy", "distance_km": 5}, None, None) is None
 
 
