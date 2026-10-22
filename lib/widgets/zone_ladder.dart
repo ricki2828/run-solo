@@ -21,7 +21,13 @@ class ZoneLadder extends StatelessWidget {
   /// The ladder's width; the screen reserves [reserve] for it and its pointer.
   static const double width = 18;
   static const double pointer = 6;
-  static const double reserve = width + pointer + 2;
+
+  /// A clear 8 dp between the ladder's pointer and the numbers: the big
+  /// figures scale to fit the gutter, never under the ladder (21-Oct).
+  static const double reserve = width + pointer + 8;
+
+  /// Rung numerals: 16 sp, bold (the review floor was 14).
+  static const double numeralSize = 16;
 
   static const double _inactiveAlpha = 0.30;
 
@@ -109,7 +115,7 @@ class _Rung extends StatelessWidget {
                       ),
                 borderRadius: BorderRadius.circular(4),
                 border: lit
-                    ? Border.all(color: t.inkPrimary, width: 2)
+                    ? Border.all(color: t.inkPrimary, width: 3)
                     : onInk
                     ? Border.all(color: t.lineHair)
                     : null,
@@ -117,8 +123,9 @@ class _Rung extends StatelessWidget {
               child: Text(
                 '$z',
                 style: RunSoloType.label13.copyWith(
+                  fontSize: ZoneLadder.numeralSize,
                   color: lit ? ink : t.inkPrimary,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
                   height: 1,
                 ),
               ),
@@ -153,5 +160,6 @@ class _PointerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PointerPainter old) => old.colour != colour || old.position != position;
+  bool shouldRepaint(_PointerPainter old) =>
+      old.colour != colour || old.position != position;
 }

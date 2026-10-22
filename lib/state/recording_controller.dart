@@ -17,6 +17,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../platform/gateway.dart';
 import '../map/route_builder.dart' show GeoPoint;
+import 'inrun_moments.dart';
 import 'live_route.dart';
 import '../platform/session_codec.dart';
 import 'voice_coach_plan.dart' show CoachTarget;
@@ -462,6 +463,26 @@ class RecordingController extends ChangeNotifier {
   /// card (LV2). Muted tips still arrive here; `overlay` false = voice only.
   final ValueNotifier<CompareEvent?> lastCompare = ValueNotifier(null);
 
+  /// The in-run moment due now (km / mile, rep done, halfway, last 400 m,
+  /// goal reached), for the record screen's overlay. Set per event; the
+  /// overlay shows each for about 1.5 s on its own clock.
+  final ValueNotifier<InrunMoment?> moment = ValueNotifier(null);
+  final InrunMomentDetector _moments = InrunMomentDetector();
+
+  /// The runner's units for the moment text (a km or a mile); the screen
+  /// keeps it current.
+  Units momentUnits = Units.km;
+
+  void _detectMoment() {
+    // A feature of the display, never of the run: a failure here drops the
+    // moment, not the event.
+    try {
+      if (!_snap.recording) return;
+      final m = _moments.observe(_snap, momentUnits);
+      if (m != null) moment.value = m;
+    } catch (_) {}
+  }
+
   /// The goal reached in a GOAL run (§G), for the "GOAL 49:12" lock card (G3).
   final ValueNotifier<GoalEvent?> lastGoal = ValueNotifier(null);
 
@@ -630,6 +651,7 @@ class RecordingController extends ChangeNotifier {
       fault: s.journalOk ? null : 'Journal write failed',
       clearFault: s.journalOk,
     );
+    _detectMoment();
     notifyListeners();
   }
 
@@ -640,6 +662,7 @@ class RecordingController extends ChangeNotifier {
     LiveContext? liveContext,
     FollowRoute? route,
   }) async {
+    momentUnits = units;
     final result = await _gateway.start(
       mode,
       spec,
@@ -692,6 +715,7 @@ class RecordingController extends ChangeNotifier {
     _finishSeen = 0;
     _finishPending = false;
     _clearPending();
+    moment.value = null; // nor a moment
     lastCompare.value = null; // never a card from the previous run
     lastCompareAt = null;
     _tracker = engine.HrZoneTracker(zones: _zones());
@@ -828,6 +852,9 @@ class RecordingController extends ChangeNotifier {
         lastCompare.value = e;
       case GoalEvent():
         lastGoal.value = e;
+        try {
+          moment.value = _moments.goalReached(e);
+        } catch (_) {}
       case FaultEvent():
         _onFault(e);
       case GpsProbeEvent():
@@ -837,6 +864,7 @@ class RecordingController extends ChangeNotifier {
           unawaited(syncRoute());
         }
     }
+    _detectMoment();
     notifyListeners();
   }
 
@@ -1108,6 +1136,7 @@ class RecordingController extends ChangeNotifier {
     _sub?.cancel();
     _clearPending();
     lapPulse.dispose();
+    moment.dispose();
     lastCompare.dispose();
     lastGoal.dispose();
     repCompletePulse.dispose();
