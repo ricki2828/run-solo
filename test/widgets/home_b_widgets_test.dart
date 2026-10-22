@@ -135,7 +135,10 @@ void main() {
       ),
     );
     expect(find.text('START YOUR STREAK'), findsOneWidget);
-    expect(find.text('No freeze ready'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('START YOUR STREAK, No freeze ready'),
+      findsOneWidget,
+    );
     await pumpApp(
       tester,
       fakeServices(),
@@ -159,8 +162,10 @@ void main() {
       ),
     );
     expect(find.text('5 WEEK STREAK'), findsOneWidget);
-    expect(find.text('2 freezes ready'), findsOneWidget);
-    expect(find.text('This week is done. Rest up.'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('5 WEEK STREAK, 2 freezes ready'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('GhostCard: faster, slower and steady lines use both labels', (

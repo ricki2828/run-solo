@@ -61,13 +61,13 @@ abstract final class HrZones {
     Color(0xFFD6283B),
   ];
 
-  /// Darker zone hues for text on the light ground (>= 4.0:1 on every light
-  /// surface).
+  /// Darker zone hues for text on the light ground (>= 4.5:1 on every light
+  /// surface, including the sunken F1F2EE).
   static const List<Color> distributionLightText = [
-    NightSessionLight.semNoise,
+    Color(0xFF5F646D),
     Color(0xFF1A63C7),
-    Color(0xFF12803F),
-    Color(0xFF9A6200),
+    Color(0xFF0F7A3A),
+    Color(0xFF8F5900),
     Color(0xFFBE3E08),
     Color(0xFFC41230),
   ];

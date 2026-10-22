@@ -162,7 +162,7 @@ class _OnboardingIntro extends StatelessWidget {
           body: PinnedFooterLayout(
             content: [
               const SizedBox(height: Space.x48),
-              const LapLineMark(height: 48),
+              const LapLineDrawMark(height: 96),
               const SizedBox(height: Space.x32),
               Text('TRACK PROGRESS.\nGET BETTER.', style: text.displayMedium),
               const SizedBox(height: Space.x16),
@@ -292,10 +292,37 @@ class _BirthYearStepState extends State<_BirthYearStep> {
             style: RunSoloType.display44.copyWith(color: t.inkPrimary),
             decoration: InputDecoration(
               hintText: '1985',
-              hintStyle: RunSoloType.display44.copyWith(color: t.inkMuted),
+              hintStyle: RunSoloType.display44.copyWith(
+                color: t.inkSecondary.withValues(alpha: 0.6),
+              ),
               counterText: '',
               errorText: _error,
-              border: InputBorder.none,
+              filled: true,
+              fillColor: t.bgRaised,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: Space.x16,
+                vertical: Space.x12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                borderSide: BorderSide(color: t.inkPrimary, width: 2),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                borderSide: BorderSide(color: t.inkPrimary, width: 2),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                borderSide: BorderSide(color: t.accentArc, width: 3),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                borderSide: BorderSide(color: t.semDanger, width: 2),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(Radii.button),
+                borderSide: BorderSide(color: t.semDanger, width: 3),
+              ),
             ),
           ),
           const SizedBox(height: Space.x24),

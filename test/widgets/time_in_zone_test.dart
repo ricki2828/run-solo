@@ -117,7 +117,7 @@ void main() {
       for (final bg in [light.bgBase, light.bgRaised, light.bgSunken]) {
         expect(
           contrast(HrZones.text(z, Brightness.light), bg),
-          greaterThanOrEqualTo(3),
+          greaterThanOrEqualTo(4.5),
           reason: 'light Z$z text on $bg',
         );
       }

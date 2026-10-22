@@ -6,7 +6,8 @@ import '../../theme/lanes.dart';
 import '../../theme/theme.dart';
 import 'lane_block.dart';
 
-/// The weekly streak with its freeze, and the firsts so far. One run in a
+/// The weekly streak with its freeze, on one line (title, freeze count,
+/// eight week dots). The pause button shows only when it applies. One run in a
 /// Monday-to-Sunday week keeps the streak alive; a freeze covers a missed
 /// week. Eight dots: ran (filled), missed (hollow), frozen (ice), paused
 /// (hollow with a pause bar). A paused week (ill or sore) neither counts nor
@@ -25,6 +26,9 @@ class StreakCard extends StatelessWidget {
   });
 
   final WeeklyStreak streak;
+
+  /// Firsts progress; no longer drawn on the one-line card (kept so
+  /// callers need no change).
   final int firstsDone;
   final int firstsTotal;
 
@@ -90,13 +94,6 @@ class StreakCard extends StatelessWidget {
         streak.recent.isNotEmpty &&
         streak.recent.last == engine.StreakWeek.paused &&
         !streak.thisWeekDone;
-    final line = pausedNow
-        ? 'Paused. Get well, it\'ll be here.'
-        : weeks == 0
-        ? 'Run once this week and it starts. Miss a week and a freeze covers it.'
-        : streak.thisWeekDone
-        ? 'This week is done. Rest up.'
-        : 'Run once before Sunday to keep it going.';
     final pause = _pausable;
     final undo = pause == null ? _undoable : null;
     final freeze = streak.freezesReady == 0
@@ -110,22 +107,47 @@ class StreakCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: RunSoloType.heading26.copyWith(color: t.inkPrimary),
-                ),
+          Semantics(
+            container: true,
+            label: pausedNow ? '$title, paused, $freeze' : '$title, $freeze',
+            child: ExcludeSemantics(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: RunSoloType.body17.copyWith(
+                        color: t.inkPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (streak.freezesReady > 0) ...[
+                    const SizedBox(width: Space.x8),
+                    Icon(
+                      Icons.ac_unit,
+                      size: 14,
+                      color: t.laneFill(engine.IdentityLane.long),
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${streak.freezesReady}',
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkSecondary,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  for (var i = 0; i < streak.recent.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 4),
+                    _WeekDot(state: streak.recent[i]),
+                  ],
+                ],
               ),
-              Text(
-                freeze,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: Space.x4),
-          Text(line, style: RunSoloType.body15.copyWith(color: t.inkSecondary)),
           if (pause != null || undo != null)
             Align(
               alignment: Alignment.centerLeft,
@@ -152,27 +174,7 @@ class StreakCard extends StatelessWidget {
                   ),
                 ),
               ),
-            )
-          else
-            const SizedBox(height: Space.x12),
-          if (pause != null || undo != null) const SizedBox(height: Space.x4),
-          Row(
-            children: [
-              for (var i = 0; i < streak.recent.length; i++) ...[
-                if (i > 0) const SizedBox(width: Space.x8),
-                _WeekDot(state: streak.recent[i]),
-              ],
-              const Spacer(),
-              Text(
-                '$firstsDone OF $firstsTotal FIRSTS',
-                key: const ValueKey('home-firsts'),
-                style: RunSoloType.micro11.copyWith(
-                  color: t.inkPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -192,8 +194,8 @@ class _WeekDot extends StatelessWidget {
     final paused = state == engine.StreakWeek.paused;
     final colour = frozen ? t.laneFill(engine.IdentityLane.long) : t.inkPrimary;
     return Container(
-      width: 16,
-      height: 16,
+      width: 14,
+      height: 14,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: ran || frozen ? colour : Colors.transparent,
@@ -207,9 +209,9 @@ class _WeekDot extends StatelessWidget {
         ),
       ),
       child: frozen
-          ? Icon(Icons.ac_unit, size: 10, color: readableOn(colour))
+          ? Icon(Icons.ac_unit, size: 9, color: readableOn(colour))
           : paused
-          ? Icon(Icons.pause, size: 10, color: t.inkSecondary)
+          ? Icon(Icons.pause, size: 9, color: t.inkSecondary)
           : null,
     );
   }
