@@ -19,6 +19,7 @@ class EngineConstants {
     this.noisyQualityBelow = 0.80,
     this.qualityMaxGapMs = 5000,
     this.qualityMaxAccuracyM = 25,
+    this.noFixAccuracyM = 25,
     this.zoneLowFraction = 0.85,
     this.zoneHighFraction = 0.95,
     this.medianSetSize = 6,
@@ -56,6 +57,12 @@ class EngineConstants {
   final double noisyQualityBelow;
   final int qualityMaxGapMs;
   final double qualityMaxAccuracyM;
+
+  /// A sample whose accuracy is worse than this is not a fix: the recorder
+  /// journals it with lat/lon but its filter rejected it and froze the
+  /// distance. Must equal Kotlin `PointFilter.maxAccuracyM` (a contract test
+  /// reads the Kotlin source).
+  final double noFixAccuracyM;
 
   /// Time-in-zone window as a fraction of max HR.
   final double zoneLowFraction;
