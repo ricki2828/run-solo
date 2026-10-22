@@ -585,11 +585,12 @@ class CoachChat:
                 self._triage_red_now(c, u, primary, tri, now)
                 return True
             mode = "amber" if tri.level == "amber" else None
-            if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage='red' AND replied_at > ? AND id<>?",
+            if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage='red' AND replied_at > ? AND id<>? "
+                         "AND (outcome LIKE 'triage:red:%' OR outcome LIKE 'triage:urgent:%')",
                          (uid, iso(now - timedelta(hours=TRIAGE_HOURS)), primary)).fetchone():
-                mode = "red72"   # the 72 h window is read off the red jobs themselves, so it never depends on who owns the flag
+                mode = "red72"   # read off the ORIGINATING red jobs only: follow-ups are stored 'red72', so they never extend it
             if mode:
-                c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode if mode == "amber" else "red", primary))
+                c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode, primary))
             over = None
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
             if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:

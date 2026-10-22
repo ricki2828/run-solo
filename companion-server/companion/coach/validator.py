@@ -208,9 +208,12 @@ _DRUGS = (r"ibuprofen|ibuprophen|nurofen|advil|brufen|motrin|paracetamol|paracet
           r"aleve|naprosyn|aspirin|asprin|diclofenac|voltaren|voltarol|celecoxib|celebrex|indomethacin|ketoprofen|meloxicam|codeine|"
           r"tramadol|morphine|opioids?|cortisone|corticosteroids?|prednisone|prednisolone|steroids?|nsaids?|anti-?inflammator\w+|"
           r"analgesics?|painkill\w+|pain\s*killers?|deep\s+heat|tiger\s+balm|ben-?gay|salonpas|biofreeze|arnica|"
-          r"supplements?|collagen|turmeric|curcumin|cbd|magnesium|creatine|"
+          r"(?:take|taking|start|try|add)\s+(?:a\s+|an\s+|some\s+|the\s+)?(?:\w+\s+)?supplements?|"
           r"(?:cortisone|steroid|cortico\w*|hyaluron\w*|prp|botox)\s+(?:shots?|injections?|jabs?)|injections?")
-_IMAGING = re.compile(r"\b(?:get|have|book|need|order|arrange|ask\s+for)\s+(?:an?\s+|the\s+)?(?:mri|x-?ray|ultrasound|ct|scan)\b", re.I)
+# A scan the coach tells them to get is refused; "a physio can tell you if you need a scan" (the professional's call) is fine.
+_IMAGING = re.compile(r"\b(?:get|book|order|arrange|ask\s+for|go\s+for)\s+(?:an?\s+|the\s+)?(?:mri|x-?ray|ultrasound|ct|scan)\b|"
+                      r"(?<!if )(?<!whether )\byou\s+(?:need|should\s+have|should\s+get|must\s+get)\s+(?:an?\s+|the\s+)?(?:mri|x-?ray|ultrasound|ct|scan)\b", re.I)
+_PILL = re.compile(r"\b(?:tablets?|pills?|capsules?|caplets?)\b", re.I)
 _DOSE_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s*(?:mg|mcg|\u00b5g|ug|milligrams?|micrograms?|ml|millilit\w+|iu)\b|"
                       r"\b(?:one|two|three|four|five|six|a\s+couple\s+of|a\s+few|half(?:\s+a)?|\d+)\s+(?:\w+\s+)?"
                       r"(?:tablets?|pills?|capsules?|caplets?|tabs|doses?|sachets?)\b", re.I)
@@ -242,7 +245,7 @@ def medical_check(text: str, mode: str | None = None) -> str | None:
     if _DOSE_RE.search(t):
         return "dosing"
     drug = re.compile(r"\b(?:" + _DRUGS + r")\b", re.I)
-    if drug.search(t) or _IMAGING.search(t):
+    if drug.search(t) or _IMAGING.search(t) or _PILL.search(t):
         return "dosing"
     if _DIAG_RE.search(t):
         return "diagnosis"

@@ -118,7 +118,7 @@ def test_next_turn_within_72h_is_in_pause_mode_and_training_advice_is_refused(cc
     fakes.coach_queue = [coach_text("Do the tempo on Thursday, easy 30 min."), coach_text("Nothing on Thursday until you're checked.")]
     run_worker(cc, now=t1 + timedelta(seconds=10))
     j = rows(cc, "SELECT * FROM coach_jobs ORDER BY id DESC")[0]
-    assert j["triage"] == "red" and j["outcome"] == "repaired"
+    assert j["triage"] == "red72" and j["outcome"] == "repaired"
     assert len(fakes.coach_calls) == 2 and "<host_note>" in str(fakes.coach_calls[0]["messages"][-1]["content"])
     assert "no paces" in str(fakes.coach_calls[1]["messages"][-1]["content"])
     assert fakes.tg_texts()[-1] == "Nothing on Thursday until you're checked."
@@ -190,13 +190,15 @@ def test_red72_mode_also_refuses_run_suggestions():
 @pytest.mark.parametrize("text", [
     "A couple of Nurofen might help.", "Grab some ibuprofen.", "An anti-inflammatory might help.", "Voltaren gel is worth a go.",
     "Paracetamol is fine.", "Try acetaminophen.", "Maybe some painkillers.", "A cortisone shot can settle it.", "Get an MRI.",
-    "Some collagen supplements help tendons.", "Aspirin before you run.", "Ask about a steroid injection."])
+    "Take a collagen supplement.", "Try some magnesium tablets.", "Pop a pill before the run.", "Aspirin before you run.", "Ask about a steroid injection."])
 def test_any_medicine_name_is_refused_with_no_number_needed(text):
     assert validator.check(text, []) == "dosing", text
 
 
 @pytest.mark.parametrize("text", ["Ask a pharmacist or your doctor about pain relief.", "A physio can look at it and tell you more.",
-                                  "Rest, and keep it pain-free."])
+                                  "Rest, and keep it pain-free.", "A physio can tell you if you need a scan.",
+                                  "Whether you need a scan is the doctor's call.", "A magnesium-rich dinner is a nice idea.",
+                                  "Plenty of protein and a good night's sleep."])
 def test_talking_about_who_to_ask_is_not_naming_a_medicine(text):
     assert validator.check(text, []) is None, text
 
@@ -285,3 +287,40 @@ def test_urgent_type_red_has_no_false_alarm_chip(cc, fakes):
     run_worker(cc)
     out = [m for k, m in fakes.tg if k == "sendMessage"][-1]
     assert "reply_markup" not in out
+
+
+# ------------------------------------------------------------------------------------------------ round 3: the window
+def _chat(cc, fakes, text, at):
+    fakes.coach_queue = [coach_text("Rest up and get it checked.")]
+    say(cc, text, now=at)
+    run_worker(cc, at + timedelta(seconds=10))
+    return rows(cc, "SELECT * FROM coach_jobs ORDER BY id DESC")[0]
+
+
+def test_follow_ups_are_red72_and_do_not_extend_the_window(cc, fakes):
+    say(cc, "numbness down my leg")
+    run_worker(cc)
+    for h in (20, 45, 70):
+        assert _chat(cc, fakes, "how are things looking?", T0 + timedelta(hours=h))["triage"] == "red72"
+    assert [r["triage"] for r in rows(cc, "SELECT triage FROM coach_jobs ORDER BY id")] == ["red", "red72", "red72", "red72"]
+    # 73 h after the ORIGINAL red: the follow-up at 70 h did not push the end of the window out to 142 h
+    j = _chat(cc, fakes, "how is the week looking?", T0 + timedelta(hours=73))
+    assert j["triage"] is None and j["reply_source"] == "llm"
+
+
+def test_the_window_is_still_open_just_before_72h(cc, fakes):
+    say(cc, "numbness down my leg")
+    run_worker(cc)
+    assert _chat(cc, fakes, "so what now?", T0 + timedelta(hours=71, minutes=50))["triage"] == "red72"
+
+
+def test_false_alarm_still_works_after_three_follow_ups(cc, fakes):
+    say(cc, "can't feel my toes in the cold")
+    run_worker(cc)
+    first = rows(cc, "SELECT id FROM coach_jobs")[0]["id"]
+    for h in (5, 10, 15):
+        _chat(cc, fakes, "any thoughts?", T0 + timedelta(hours=h))
+    _tap(cc, first, FALSE_ALARM, 900100, T0 + timedelta(hours=16))
+    assert rows(cc, "SELECT state FROM health_flags WHERE user_id=?", uid_of(cc))[0]["state"] == "cleared"
+    assert rows(cc, "SELECT triage FROM coach_jobs ORDER BY id")[0]["triage"] == "red_cleared"
+    assert _chat(cc, fakes, "ok so what is on this week?", T0 + timedelta(hours=17))["triage"] is None
