@@ -331,6 +331,7 @@ CREATE TABLE IF NOT EXISTS coach_jobs (
   reply TEXT, reply_source TEXT, outcome TEXT,   -- reply_source: llm | template | safety
   prompt_hash TEXT,
   screen TEXT,                              -- the safety classifier's verdict: clear | hit:<kind> | error:<why>
+  triage TEXT,                              -- the text triage level of the turn: amber | red (coach PR3)
   send_attempts INTEGER NOT NULL DEFAULT 0, parts_sent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL, claimed_at TEXT, replied_at TEXT, sending_at TEXT, sent_at TEXT
 );
@@ -483,6 +484,12 @@ def init(path: str) -> None:
         c.execute("CREATE INDEX IF NOT EXISTS llm_calls_user ON llm_calls (user_id, ts)")
         c.commit()
         number_testers(c)
+        if "triage" not in {r["name"] for r in c.execute("PRAGMA table_info(coach_jobs)")}:  # coach PR3
+            try:
+                c.execute("ALTER TABLE coach_jobs ADD COLUMN triage TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
         run_cols = {r["name"] for r in c.execute("PRAGMA table_info(runs)")}
         for col, typ in (("app_type", "TEXT"), ("real_upload", "INTEGER"),
                          ("plan_week", "INTEGER"), ("plan_weeks", "INTEGER"), ("plan_next_type", "TEXT"),

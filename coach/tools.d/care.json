@@ -1,0 +1,46 @@
+{
+ "tools": [
+  {
+   "module": "triage",
+   "name": "triage_check",
+   "description": "Decide how worried to be about a pain or symptom. Ask the runner short questions first, then pass what they told you as true/false answers (leave out anything they did not say). The red/amber/green level is decided by code from your answers; you cannot change it. Follow the level and next_step in the result. Never diagnose or suggest medication.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "chest_breath_or_fainting": {"type": "boolean"},
+     "heat_illness_signs": {"type": "boolean", "description": "confusion, collapse or hot skin after running in the heat"},
+     "cannot_bear_weight": {"type": "boolean"},
+     "deformity": {"type": "boolean"},
+     "numbness_tingling_weakness": {"type": "boolean"},
+     "calf_swollen_hot_or_red": {"type": "boolean"},
+     "fever_with_joint_pain": {"type": "boolean"},
+     "severe_rest_or_night_pain": {"type": "boolean"},
+     "after_fall_or_impact": {"type": "boolean"},
+     "bone_pain_at_night": {"type": "boolean", "description": "pinpointed on a bone and wakes them at night"},
+     "swelling": {"type": "boolean"},
+     "changes_gait": {"type": "boolean", "description": "limping or running differently because of it"},
+     "worsening": {"type": "boolean", "description": "gets worse as they run"},
+     "sharp_or_stabbing": {"type": "boolean"},
+     "bone_point_pain": {"type": "boolean", "description": "pinpointed on a bone (shin, foot, hip)"},
+     "days_present": {"type": "integer", "minimum": 0, "maximum": 365},
+     "pain_0_10": {"type": "integer", "minimum": 0, "maximum": 10}
+    },
+    "additionalProperties": false
+   }
+  },
+  {
+   "module": "places",
+   "name": "find_care",
+   "description": "Find nearby care from OpenStreetMap: physio, sports_med (sports doctor), gp, or urgent (hospital / emergency). Uses the place the runner typed, else the rough start of their latest run. If it returns need_place, ask which suburb or town they are in. Results are by distance only, not recommendations.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "kind": {"type": "string", "enum": ["physio", "sports_med", "gp", "urgent"]},
+     "place": {"type": "string", "maxLength": 80, "description": "a suburb, town or address the runner typed"}
+    },
+    "required": ["kind"],
+    "additionalProperties": false
+   }
+  }
+ ]
+}
