@@ -225,8 +225,9 @@ class RunBestEfforts {
   final Map<BestEffortDistance, BestEffort> efforts;
 
   /// Cumulative time from the Start press (run time 0) at each whole km, up
-  /// to [maxFromStartKm], cut at the first pause, recording gap, sample gap
-  /// or GPS jump. Live compare uses the first 5 for the 5K board, 10 for the
+  /// to [maxFromStartKm], cut at the first pause, recording gap, long sample
+  /// gap or GPS jump (a GPS dropout up to a minute is bridged, as in the
+  /// 5K/10K windows). Live compare uses the first 5 for the 5K board, 10 for the
   /// 10K, 21/42 for half/marathon goals (§G), and only when the list is that
   /// long. Empty for sessions that race no distance board (intervals other
   /// than the event and goals, Cooper).
@@ -591,7 +592,7 @@ class BestEffortFinder {
     return RunBestEfforts(
       efforts: efforts,
       fromStartSplitsMs: _racesDistanceBoards(analysis)
-          ? _fromStartSplits(run, stretches)
+          ? _fromStartSplits(run, bridgedStretches)
           : const [],
       distances: distances,
       wholeRunM: continuous ? run.distanceM - run.samples.first.distM : null,
@@ -1198,7 +1199,9 @@ class BestEffortFinder {
   }
 
   /// Whole-km times from run time 0 inside the first clean stretch, which
-  /// must start at the first sample; cut where that stretch ends.
+  /// must start at the first sample; cut where that stretch ends. Called with
+  /// the stretches the 5K/10K windows use (short GPS dropouts bridged), so a
+  /// run whose best 5K held a dropout still races from Start.
   List<int> _fromStartSplits(RunFile run, List<List<_Pt>> stretches) {
     if (stretches.isEmpty) return const [];
     final p = stretches.first;

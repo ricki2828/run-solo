@@ -217,7 +217,9 @@ void main() {
     // v8 data (before gpsGapMs) refills too.
     final v8 = Map<String, Object?>.of(d.toJson())..['v'] = 8;
     expect(RunDerived.fromJson(v8).isCurrent, isFalse);
-    expect(RunDerived.currentVersion, 9);
+    final v9 = Map<String, Object?>.of(d.toJson())..['v'] = 9;
+    expect(RunDerived.fromJson(v9).isCurrent, isFalse);
+    expect(RunDerived.currentVersion, 10);
   });
 
   group('best efforts and boards', () {

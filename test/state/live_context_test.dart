@@ -222,6 +222,11 @@ void main() {
       expect(board.targetM, 5000);
       expect(board.entries, hasLength(2));
       expect(board.entries.first.fromStartSplitsMs, hasLength(5));
+      expect(
+        board.bestMs,
+        board.entries.map((e) => e.finalMetric).reduce((a, b) => a < b ? a : b),
+        reason: 'the board carries the PB finish for the chase cue',
+      );
       expect(ctx.nudges!.version, 0, reason: 'LC1 stub');
       expect(ctx.engineVersion, engine.engineVersion);
       expect(ctx.coachingMuted, isFalse);

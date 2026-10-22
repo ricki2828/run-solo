@@ -757,6 +757,11 @@ data class LiveEntry (
  * Generated class from Pigeon that represents data sent in messages.
  */
 data class LiveBoard (
+  /**
+   * Distance boards: the best finish (ms) over every earlier run, the PB
+   * Home shows. Null = unknown (the chase cue then says nothing).
+   */
+  val bestMs: Double? = null,
   /** The comparison key (`be:5000`, an intervals key, `cooper`, a course). */
   val key: String,
   /**
@@ -772,16 +777,18 @@ data class LiveBoard (
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): LiveBoard {
-      val key = pigeonVar_list[0] as String
-      val label = pigeonVar_list[1] as String
-      val kind = pigeonVar_list[2] as LiveBoardKind
-      val targetM = pigeonVar_list[3] as Double?
-      val entries = pigeonVar_list[4] as List<LiveEntry>
-      return LiveBoard(key, label, kind, targetM, entries)
+      val bestMs = pigeonVar_list[0] as Double?
+      val key = pigeonVar_list[1] as String
+      val label = pigeonVar_list[2] as String
+      val kind = pigeonVar_list[3] as LiveBoardKind
+      val targetM = pigeonVar_list[4] as Double?
+      val entries = pigeonVar_list[5] as List<LiveEntry>
+      return LiveBoard(bestMs, key, label, kind, targetM, entries)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
+      bestMs,
       key,
       label,
       kind,
@@ -797,11 +804,12 @@ data class LiveBoard (
       return true
     }
     val other = other as LiveBoard
-    return PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
+    return PlatformApiPigeonUtils.deepEquals(this.bestMs, other.bestMs) && PlatformApiPigeonUtils.deepEquals(this.key, other.key) && PlatformApiPigeonUtils.deepEquals(this.label, other.label) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.targetM, other.targetM) && PlatformApiPigeonUtils.deepEquals(this.entries, other.entries)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.bestMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.key)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.label)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)

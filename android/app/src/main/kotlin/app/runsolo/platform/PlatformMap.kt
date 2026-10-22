@@ -119,6 +119,7 @@ fun LiveContext.toCore(): CoreLiveContext = CoreLiveContext(
             label = b.label,
             kind = CoreLiveBoardKind.valueOf(b.kind.name.toCamel()),
             targetM = b.targetM,
+            bestMs = b.bestMs,
             entries = b.entries.map { e ->
                 CoreLiveEntry(
                     runId = e.runId,

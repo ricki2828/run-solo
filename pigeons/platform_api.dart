@@ -249,7 +249,12 @@ class LiveBoard {
     required this.kind,
     this.targetM,
     required this.entries,
+    this.bestMs,
   });
+
+  /// Distance boards: the best finish (ms) over every earlier run, the PB
+  /// Home shows. Null = unknown (the chase cue then says nothing).
+  double? bestMs;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;

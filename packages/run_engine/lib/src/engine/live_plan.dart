@@ -45,7 +45,15 @@ class LiveBoardPlan {
     required this.kind,
     this.targetM,
     required this.entries,
+    this.bestMs,
   });
+
+  /// A distance board's best finish (ms) over EVERY earlier run, the number
+  /// the runner's PB shows (dropout-bridged window). [entries] may not hold
+  /// that run (it needs from-start splits), so "chase your best" checks its
+  /// base against this and says nothing when they disagree. Null off
+  /// distance boards.
+  final double? bestMs;
 
   final String key;
   final String label;
@@ -161,6 +169,9 @@ abstract final class LivePlanner {
           kind: kind,
           targetM: m,
           entries: entries,
+          bestMs: kind == LiveBoardPlanKind.distance && board.ranked.isNotEmpty
+              ? board.ranked.first.metric * 1000
+              : null,
         ),
       );
     }

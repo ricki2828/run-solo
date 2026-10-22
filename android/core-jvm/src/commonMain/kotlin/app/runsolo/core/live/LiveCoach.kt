@@ -236,7 +236,8 @@ class LiveCoach(
         val splitsOn = (mode == RunMode.free || mode == RunMode.trail || goalCooldown) && kmSplits
         val plan = checkIn?.takeIf { splitsOn && !goalCooldown }
         val fire = if (goalCooldown) null else compareAtKm(km, active)
-        val chaseCue = if (goalCooldown) null else chaseAtKm(km, active)
+        // A catch-up past several kms (a GPS jump or dropout) interpolates the crossing: no gap is worth saying then.
+        val chaseCue = if (goalCooldown) null else chaseAtKm(km, active, trustTime = !skipped)
         val snapNow = if (plan != null && plan.level != VoiceLevel.minimal) snap?.invoke() else null
         val gain = snapNow?.climbM?.let { c -> climbAtLastKm?.let { c - it } }
         snapNow?.climbM?.let { climbAtLastKm = it }
@@ -389,11 +390,11 @@ class LiveCoach(
      * The chase line for a whole km of a Free run, or null: no Start choice, not a spoken Free km, or nothing to say.
      * Spoken only where the km line is ([kmSplits], not muted, not Minimal): the line rides it.
      */
-    private fun chaseAtKm(km: Int, activeMs: Long): ChaseCue? {
+    private fun chaseAtKm(km: Int, activeMs: Long, trustTime: Boolean): ChaseCue? {
         val c = chase ?: return null
         if (mode != RunMode.free || muted || !kmSplits || minimalVoice) return null
         val board = freeBoard(km)
-        return c.atKm(km, board?.let { ChaseCompare.vsBest(it, km, activeMs) }, board?.label)
+        return c.atKm(km, board?.takeIf { trustTime }?.let { ChaseCompare.vsBest(it, km, activeMs) }, board?.label)
     }
 
     /**

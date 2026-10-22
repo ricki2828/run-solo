@@ -76,7 +76,7 @@ data class RunFile(
 ) {
     /**
      * What the runner chose at Start and every chase line the recorder said ([app.runsolo.core.live.ChaseCoach]),
-     * in journal order. Written as `coach: {choice, cues: [[kind, km, t], ...]}`; `t` = run time in ms. The cues
+     * in journal order. Written as `coach: {choice, cues: [[kind, km, t], ...]}`; `t` = elapsed ms from Start (pauses included). The cues
      * list stays an open list so the later mid-run buttons can log their prompts and answers beside it.
      */
     data class CoachLog(val choice: String, val cues: List<Cue>) {

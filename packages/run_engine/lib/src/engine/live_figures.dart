@@ -181,7 +181,10 @@ class RunDerived {
   ///   MID and Estimated Times credit them.
   /// - 9: a best effort carries `gpsGapMs`, the GPS dropout time it bridged
   ///   (Counted runs list); rebuild old runs so they show the note.
-  static const int currentVersion = 9;
+  /// - 10: the from-start splits the live compare races bridge a short GPS
+  ///   dropout like the 5K/10K windows do, so a best run that held one is a
+  ///   usable base; rebuild old runs.
+  static const int currentVersion = 10;
 
   /// The version this data was built at; JSON without one is 1.
   final int version;

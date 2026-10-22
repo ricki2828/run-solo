@@ -50,20 +50,25 @@ data class ChaseCue(
     val text: String,
     /** What to say instead when [text] would not fit the 16-word cue; null = drop it then. */
     val shortText: String? = null,
+    /** True when the line carries a gap to the best (it then counts toward the cap even if said bare). */
+    val withGap: Boolean = false,
 )
 
 /**
- * The comparison maths for "chase your best", pure. The base is ONE real earlier run, never a blend: the entry on
- * the board with the fastest from-start time over the board's own distance ("your best 5K"), read at the same km
- * as the live run. Each entry's splits come from the engine's run data (GPS dropouts already bridged there), so a
- * dropout in an old run cannot make it look faster than it was. An entry whose splits are short, non-positive or
- * not strictly increasing cannot be the base. No eligible entry, or the run is past the board's distance: no
- * comparison (null), never a guess. The board holds the runner's best 10 and newest 10 runs by best effort, so
- * "best" means best of those.
+ * The comparison maths for "chase your best", pure. The base is ONE real earlier run, never a blend: the run behind
+ * the board's best finish ([LiveBoard.bestMs], the dropout-bridged best effort the runner's PB shows), read at the
+ * same km as the live run. That run must be on the board with usable from-start splits (the engine bridges short GPS
+ * dropouts in them, so a PB that held one still races), and its from-start time over the board distance must agree
+ * with the PB within [AGREE_MS]: a PB set mid-run (after a warm-up) is not a from-Start pace to race, so the cue stays
+ * silent rather than call a different run "your best". Never a fall back to a slower run. Short, non-positive or
+ * non-increasing splits, an unknown best, or a run past the board's distance: no comparison (null), never a guess.
  */
 object ChaseCompare {
-    /** [deltaMs] = live active ms at the km minus the base run's split there; negative = ahead. */
-    data class Gap(val deltaMs: Long, val baseRunId: String)
+    /** The PB run's from-start time may differ from its best effort by this much (interpolation, a bridged hole). */
+    const val AGREE_MS = 3_000L
+
+    /** [deltaMs] = live active ms at the km minus the base run's split there; negative = ahead. [boardKey] says which board it is read on. */
+    data class Gap(val deltaMs: Long, val baseRunId: String, val boardKey: String)
 
     /** The board's whole km (5000 m is 5; a Half's 21097.5 m is 21); null when it has no distance. */
     fun boardKm(board: LiveBoard): Int? {
@@ -75,18 +80,13 @@ object ChaseCompare {
         if (board.kind != LiveBoardKind.distance || activeMs <= 0) return null
         val n = boardKm(board) ?: return null
         if (km < 1 || km > n) return null
-        var baseId: String? = null
-        var baseSplits: List<Long>? = null
-        for (e in board.entries) {
-            val s = e.fromStartSplitsMs ?: continue
-            if (!usable(s, n)) continue
-            if (baseSplits == null || s[n - 1] < baseSplits[n - 1]) {
-                baseId = e.runId
-                baseSplits = s
-            }
-        }
-        val splits = baseSplits ?: return null
-        return Gap(activeMs - splits[km - 1], baseId!!)
+        val best = board.bestMs?.takeIf { it.isFinite() && it > 0 } ?: return null
+        val pb = board.entries.minByOrNull { it.finalMetric } ?: return null
+        // The PB itself must be here (a run without usable splits is dropped from the board, and then a slower run is not "best").
+        if (pb.finalMetric > best + AGREE_MS) return null
+        val splits = pb.fromStartSplitsMs ?: return null
+        if (!usable(splits, n) || abs(splits[n - 1] - pb.finalMetric) > AGREE_MS) return null
+        return Gap(activeMs - splits[km - 1], pb.runId, board.key)
     }
 
     private fun usable(s: List<Long>, n: Int): Boolean {
@@ -124,6 +124,9 @@ class ChaseCoach(
     /** The side of the best at the last km a gap was seen (not only said): true = ahead; null = none yet. */
     private var lastSideAhead: Boolean? = null
 
+    /** The board [lastSideAhead] was read on. */
+    private var lastBoardKey: String? = null
+
     init {
         for (f in fired) {
             if (f.kind != JournalLine.FiredKind.chase) continue
@@ -153,12 +156,17 @@ class ChaseCoach(
         val toGo = last2k(km)
         if (choice == CoachChoice.steady) return toGo?.let { ChaseCue(ChaseKind.last2k, km, "${it.text} to go.") }
         val side = gap?.let { sideOf(it.deltaMs) }
+        // A different board (5K to 10K at km 6) is a different base: nothing "slipped", so the side starts over.
+        if (gap != null && gap.boardKey != lastBoardKey) {
+            lastBoardKey = gap.boardKey
+            lastSideAhead = null
+        }
         val flipped = side != null && lastSideAhead != null && side != lastSideAhead
         if (side != null) lastSideAhead = side
         val phrase = if (gap != null && label != null && side != null) gapPhrase(gap, side, label) else null
         if (toGo != null) {
             val bare = "${toGo.text} to go."
-            return if (phrase != null && gapDue(km, flipped)) ChaseCue(ChaseKind.last2k, km, "${toGo.text} to go, $phrase", shortText = bare) else ChaseCue(ChaseKind.last2k, km, bare)
+            return if (phrase != null && gapDue(km, flipped)) ChaseCue(ChaseKind.last2k, km, "${toGo.text} to go, $phrase", shortText = bare, withGap = true) else ChaseCue(ChaseKind.last2k, km, bare)
         }
         if (!furthestSaid && monthFurthestM != null && km * 1_000.0 > monthFurthestM) {
             return ChaseCue(ChaseKind.furthest, km, "Furthest run this month.")
@@ -178,7 +186,7 @@ class ChaseCoach(
             ChaseKind.furthest -> furthestSaid = true
             ChaseKind.last2k -> {
                 last2kSaid = true
-                if (choice == CoachChoice.chase) countGap(cue.km)
+                if (cue.withGap) countGap(cue.km)
             }
             else -> countGap(cue.km)
         }
