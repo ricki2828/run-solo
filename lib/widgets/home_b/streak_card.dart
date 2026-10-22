@@ -113,33 +113,38 @@ class StreakCard extends StatelessWidget {
             child: ExcludeSemantics(
               child: Row(
                 children: [
-                  Flexible(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: RunSoloType.body15.copyWith(
-                        color: t.inkPrimary,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: RunSoloType.body15.copyWith(
+                              color: t.inkPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (streak.freezesReady > 0) ...[
+                          const SizedBox(width: Space.x8),
+                          Icon(
+                            Icons.ac_unit,
+                            size: 14,
+                            color: t.laneFill(engine.IdentityLane.long),
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${streak.freezesReady}',
+                            style: RunSoloType.label13.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (streak.freezesReady > 0) ...[
-                    const SizedBox(width: Space.x8),
-                    Icon(
-                      Icons.ac_unit,
-                      size: 14,
-                      color: t.laneFill(engine.IdentityLane.long),
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      '${streak.freezesReady}',
-                      style: RunSoloType.label13.copyWith(
-                        color: t.inkSecondary,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
                   for (var i = 0; i < streak.recent.length; i++) ...[
                     if (i > 0) const SizedBox(width: 3),
                     _WeekDot(state: streak.recent[i]),
