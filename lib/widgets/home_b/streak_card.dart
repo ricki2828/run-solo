@@ -118,7 +118,7 @@ class StreakCard extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: RunSoloType.body17.copyWith(
+                      style: RunSoloType.body15.copyWith(
                         color: t.inkPrimary,
                         fontWeight: FontWeight.w800,
                       ),
@@ -141,7 +141,7 @@ class StreakCard extends StatelessWidget {
                   ],
                   const Spacer(),
                   for (var i = 0; i < streak.recent.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 4),
+                    if (i > 0) const SizedBox(width: 3),
                     _WeekDot(state: streak.recent[i]),
                   ],
                 ],
@@ -194,8 +194,8 @@ class _WeekDot extends StatelessWidget {
     final paused = state == engine.StreakWeek.paused;
     final colour = frozen ? t.laneFill(engine.IdentityLane.long) : t.inkPrimary;
     return Container(
-      width: 14,
-      height: 14,
+      width: 12,
+      height: 12,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: ran || frozen ? colour : Colors.transparent,
@@ -209,9 +209,9 @@ class _WeekDot extends StatelessWidget {
         ),
       ),
       child: frozen
-          ? Icon(Icons.ac_unit, size: 9, color: readableOn(colour))
+          ? Icon(Icons.ac_unit, size: 8, color: readableOn(colour))
           : paused
-          ? Icon(Icons.pause, size: 9, color: t.inkSecondary)
+          ? Icon(Icons.pause, size: 8, color: t.inkSecondary)
           : null,
     );
   }
