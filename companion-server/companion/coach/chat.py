@@ -60,25 +60,8 @@ TRIAGE_HOURS = 72
 FALSE_ALARM = "I'm OK, false alarm"
 FALSE_ALARM_REPLY = ("Glad to hear it. I've lifted the pause, so we can talk training again. If it comes back or gets worse, "
                      "tell me and get it checked.")
-INJURY_NOTES = {
-    "amber": "<host_note>The runner describes pain or an injury. Rest or modify only: no paces, no tempo, intervals or long-run "
-             "advice, no pushing on. Never diagnose or mention medicines. Suggest a physio or GP if it persists, offer find_care.</host_note>",
-    "red72": "<host_note>The runner reported a red-flag problem recently and has not been cleared. Give no training, pace, plan or "
-             "run suggestions at all. Never diagnose or mention medicines. You may help find care with find_care.</host_note>",
-}
-REPAIR_HINTS = {
-    "empty": "it was empty",
-    "too_long": f"it was too long (keep it well under {validator.MAX_REPLY_CHARS} characters)",
-    "link": "it had a link that no tool returned (leave links out unless a tool result has them)",
-    "phone_like": "it had a phone number that no tool returned",
-    "spelled_measure": "it gave a measurement in words (use a figure from a tool, or leave the figure out)",
-    "foreign_unit": "it used a unit the runner's data does not use (stick to km, minutes and m:ss pace)",
-    "dosing": "it gave a medicine, dose or tablets (never; say a pharmacist or doctor can advise)",
-    "diagnosis": "it named a condition as what the runner has (never diagnose; say what you can't tell and who can)",
-    "training_advice": "it gave pace, plan or intensity advice while the runner is hurt (rest or modify only, no paces)",
-    "ungrounded": "the figure {detail} is not in any tool result or in what the runner said (call calc_pace for pace, time "
-                  "or distance sums, or say it without that figure)",
-}
+INJURY_NOTES = validator.INJURY_NOTES   # the dicts live in validator.py so the eval harness can use them without importing chat
+REPAIR_HINTS = validator.REPAIR_HINTS
 FALLBACK_ALERT_SHARE = 0.2
 SCREEN_ALERT_SHARE = 0.05
 SCREEN_ALERT_MIN_JOBS = 10
@@ -777,9 +760,7 @@ class CoachChat:
 
     @staticmethod
     def host_note(reason: str) -> str:
-        code, _, detail = reason.partition(":")
-        hint = REPAIR_HINTS.get(code, "it did not pass the server's checks").format(detail=detail)
-        return f"<host_note>Your reply was not sent: {hint}. Write the reply again.</host_note>"
+        return validator.host_note(reason)
 
     def _agent(self, job: Claimed, now: datetime) -> "AgentResult":
         """The model loop: tool turns, then a checked reply. A reply the validator refuses goes back to the model once with

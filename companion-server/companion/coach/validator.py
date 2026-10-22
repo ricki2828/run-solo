@@ -52,6 +52,36 @@ CHIPS_OPEN_RE = re.compile(r"<chips>.*\Z", re.I | re.S)   # a block the model ne
 FOOTER_RE = re.compile(r"\n\n<i>· [^\n]*</i>\s*\Z")
 
 
+# What the model is told, in the next turn, when its reply is refused (chat.host_note) or the turn is an injury turn.
+INJURY_NOTES = {
+    "amber": "<host_note>The runner describes pain or an injury. Rest or modify only: no paces, no tempo, intervals or long-run "
+             "advice, no pushing on. Never diagnose or mention medicines. Suggest a physio or GP if it persists, offer find_care.</host_note>",
+    "red72": "<host_note>The runner reported a red-flag problem recently and has not been cleared. Give no training, pace, plan or "
+             "run suggestions at all. Never diagnose or mention medicines. You may help find care with find_care.</host_note>",
+}
+REPAIR_HINTS = {
+    "empty": "it was empty",
+    "too_long": f"it was too long (keep it well under {MAX_REPLY_CHARS} characters)",
+    "link": "it had a link that no tool returned (leave links out unless a tool result has them)",
+    "phone_like": "it had a phone number that no tool returned",
+    "spelled_measure": "it gave a measurement in words (use a figure from a tool, or leave the figure out)",
+    "foreign_unit": "it used a unit the runner's data does not use (stick to km, minutes and m:ss pace)",
+    "dosing": "it gave a medicine, dose or tablets (never; say a pharmacist or doctor can advise)",
+    "diagnosis": "it named a condition as what the runner has (never diagnose; say what you can't tell and who can)",
+    "training_advice": "it gave pace, plan or intensity advice while the runner is hurt (rest or modify only, no paces)",
+    "action_claim": "it said you changed the plan, a session or the schedule, and nothing was changed (say what you would do and ask, never that it is done)",
+    "ungrounded": "the figure {detail} is not in any tool result or in what the runner said (call calc_pace for pace, time "
+                  "or distance sums, or say it without that figure)",
+}
+
+
+def host_note(reason: str) -> str:
+    """The note that goes back to the model with a refused reply (one repair turn)."""
+    code, _, detail = reason.partition(":")
+    hint = REPAIR_HINTS.get(code, "it did not pass the server's checks").format(detail=detail)
+    return f"<host_note>Your reply was not sent: {hint}. Write the reply again.</host_note>"
+
+
 def tidy(text: str) -> str:
     """Telegram-ready text: markdown the model sometimes adds becomes the HTML subset or plain text, bullets become dots,
     line breaks are kept. Em dashes stay (the voice uses them)."""
@@ -255,9 +285,38 @@ def medical_check(text: str, mode: str | None = None) -> str | None:
     return None
 
 
-def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None = None, mode: str | None = None) -> str | None:
+# ------------------------------------------------------------------------------------------------ action claims (coach PR3 eval fix)
+# "I've pulled Thursday's tempo", "I've taken the hard sessions off the plan": a first-person claim that the plan changed. It may only
+# go out when a matching write tool ran in this job. No write tool exists yet (PR4 adds propose_plan_change), so today every such
+# claim is refused; `check(..., wrote=...)` is the hook: pass the names of the write tools that returned ok this job.
+PLAN_WRITE_TOOLS = frozenset({"propose_plan_change"})
+_CLAIM_VERB = (r"(?:moved|pulled|swapped|swapt|removed|cancel+ed|rescheduled|re-?scheduled|taken|cleared|paused|dropped|changed|shifted|"
+               r"switched|replaced|scrapped|cut|eased|adjusted|updated|bumped|pushed|deleted|postponed|called\s+off|put\s+back)")
+_CLAIM_OBJ = (r"(?:plans?|sessions?|runs?|tempo|long\s+run|intervals?|4x4|strides|schedule|week|workouts?|training|"
+              r"(?:mon|tues?|wednes|thurs?|fri|satur|sun)day'?s?)")
+_ACTION_CLAIM = re.compile(
+    r"\b(?:i|we)(?:'ve|\s+have|'ll\s+have)?\s+(?:(?:just|now|already|also|gone\s+ahead\s+and|went\s+ahead\s+and)\s+)*"
+    + _CLAIM_VERB + r"\b(?!\s+(?:a\s+look|a\s+note|note|stock|care))[^.!?\n]{0,60}?\b" + _CLAIM_OBJ + r"\b", re.I)
+
+
+_FLAG_CLAIM = re.compile(r"\b(?:i|we)(?:'ve|\s+have)?\s+(?:(?:just|now|already|also)\s+)*flagged\b", re.I)
+FLAG_WRITE_TOOLS = frozenset({"flag_health"})
+
+
+def action_claim(text: str) -> str | None:
+    """"plan" when the reply says, in the first person and the past, that the plan, a session or the schedule was changed;
+    "flag" when it says it flagged something; else None."""
+    t = " ".join((text or "").replace("\u2019", "'").split())
+    if _ACTION_CLAIM.search(t):
+        return "plan"
+    return "flag" if _FLAG_CLAIM.search(t) else None
+
+
+def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None = None, mode: str | None = None,
+          wrote: Iterable[str] = ()) -> str | None:
     """None when the reply may go out, else the reason it may not. Links are grounded only in `link_sources` (tool results;
-    default: all sources), whole URL, scheme to the end of the token. `mode` is the injury mode of the turn (see medical_check)."""
+    default: all sources), whole URL, scheme to the end of the token. `mode` is the injury mode of the turn (see medical_check).
+    `wrote` is the names of the write tools that succeeded in this job; a plan-change claim needs one of PLAN_WRITE_TOOLS, a "flagged" claim one of FLAG_WRITE_TOOLS."""
     sources = list(sources)
     link_hay = "\n".join(s or "" for s in (sources if link_sources is None else link_sources))
     link_urls = _urls(link_hay)
@@ -270,6 +329,9 @@ def check(reply: str, sources: Iterable[str], link_sources: Iterable[str] | None
     bad = medical_check(text, mode)
     if bad:
         return bad
+    claim = action_claim(text)
+    if claim and not (PLAN_WRITE_TOOLS if claim == "plan" else FLAG_WRITE_TOOLS) & set(wrote):
+        return "action_claim"
     haystack = "\n".join(s or "" for s in sources)
     haystack_n = _norm(haystack)
     for href in HREF_RE.findall(raw):   # a link goes out only when a tool handed it over, character for character

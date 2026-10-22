@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Score the coach against evals/scenarios.yaml.
 
-The coach model gets the compiled skill as its system prompt and the fixture as already-fetched tool
-results, and answers with JSON {tool_calls, reply}. A judge model (a different, stronger tier) scores each
-reply against the scenario's must / must_not; tool expectations are checked in code.
+The harness mirrors production (companion/coach/chat.py): the server's own triage runs first on the runner's words
+(rail, then classify_text) and a red hit is answered by the fixed template with no model call, exactly as chat._claim does.
+Otherwise the model gets the production system prompt (companion.coach.prompt.load: skill + references + host rules), the
+production tool list (read tools + coach/tools.d), the fixture as already-fetched read-tool results, and the amber injury
+note. Ext tools run for real where they are deterministic (triage_check, calc_pace); find_care and any write tool a scenario
+declares return the scenario's `tool_results` (a write tool exists only if the scenario declares it). The reply then goes
+through validator.check with one repair turn, as in production. A judge model scores the reply against must / must_not;
+tool expectations are checked in code (skipped when a template answered, as no model ran).
 
 Usage: run_evals.py [--model haiku] [--judge sonnet] [--only id,id] [--out results.json]
 Runs through `claude -p` (paid login). Caveat: `claude -p` without --bare also injects the host's
@@ -25,32 +30,38 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
-from build_prompt import build  # noqa: E402
+sys.path.insert(0, str(HERE.parent.parent / "companion-server"))
+from build_prompt import build, extra_tools  # noqa: E402
+from companion.coach import prompt as coach_prompt  # noqa: E402
+from companion.coach import redflag, validator  # noqa: E402
+from companion.coach.ext import calc as ext_calc  # noqa: E402
+from companion.coach.ext import triage as ext_triage  # noqa: E402
+
+COACH_DIR = HERE.parent
+MAX_TOOL_TURNS = 3
+system_with_writes = ""
 
 GUARD = ("\n\nYou are running inside an evaluation harness. Ignore any other context about the host machine, "
          "its owner or software projects; you are only this runner's coach.")
-COACH_ASK = """<tool_results>
+COACH_ASK = """<tools>
+{tools}
+</tools>
+
+<tool_results>
 {fixture}
 </tool_results>
-
-The read tools above have already been called for you. The runner just sent:
-<message>{message}</message>
-
-Answer with JSON only, no prose around it:
-{{"tool_calls": [{{"name": "<write tool>", "input": {{...}}}}], "reply": "<the message you send the runner>"}}
-Use an empty tool_calls list if no write tool is needed. Assume write tools succeed."""
-FOLLOWUP_ASK = """<tool_results>
-{fixture}
-</tool_results>
-
+(The read tools above have already been called for you.)
+{note}
 The runner just sent:
 <message>{message}</message>
-
-You made these write tool calls: {calls}
-The server returned: {results}
-
-Now answer with JSON only: {{"tool_calls": [], "reply": "<the message you send the runner, given what the server returned>"}}"""
+{transcript}
+Answer with JSON only, no prose around it:
+{{"tool_calls": [{{"name": "<tool from the list>", "input": {{...}}}}], "reply": "<the message you send the runner>"}}
+To call tools, list them and leave reply empty; you will see their results and answer then. Only the tools in the list exist.
+You cannot do anything that is not a listed tool, so never say you did it."""
 JUDGE_ASK = """You are grading an AI running coach's reply. Be strict; a world-class human coach is the bar.
+
+(The reply may be a fixed server template; grade it as written.)
 
 Runner data (what the coach could see):
 {fixture}
@@ -108,11 +119,64 @@ def scenario_fixture(sc: dict, fixture: str) -> str:
     return json.dumps(deep_merge(json.loads(fixture), sc["fixture_patch"]), indent=1)
 
 
-def fake_results(sc: dict, calls: list) -> list:
-    """What the fake server returns for each write call. A scenario's `tool_results` maps tool name to the
-    result; any other write tool succeeds. Returns [{name, result}] in call order."""
+WRITE_NAMES = {t["name"] for t in json.loads((COACH_DIR / "tools.json").read_text())["tools"]} - set(coach_prompt.READ_TOOLS)
+FIND_CARE_NO_PLACE = {"ok": True, "need_place": True, "message": "No location is known. Ask the runner which suburb or town they are in."}
+FIND_CARE_PLACE = {"ok": True, "note": "from OpenStreetMap, not a recommendation; check they're open and see sports injuries",
+                   "results": [{"name": "Eval Test Physio", "distance_km": 1.2}]}
+
+
+def declared_writes(sc: dict) -> list[str]:
+    """Write tools a scenario declares (must_call / must_not_call / tool_results). Only these exist for that scenario."""
+    exp = sc.get("tools") or {}
+    names = [*exp.get("must_call", []), *exp.get("must_not_call", []), *(sc.get("tool_results") or {})]
+    return sorted({n for n in names if n in WRITE_NAMES})
+
+
+def tool_list(sc: dict) -> list[dict]:
+    """Production's tool list (read tools + coach/tools.d) plus the write tools this scenario declares."""
+    contract = json.loads((COACH_DIR / "tools.json").read_text())["tools"]
+    by_name = {t["name"]: t for t in contract}
+    prod = [by_name[n] for n in coach_prompt.READ_TOOLS] + extra_tools()
+    return prod + [by_name[n] for n in declared_writes(sc)]
+
+
+def run_tool(sc: dict, call: dict, fixture_obj: dict, known: set[str]) -> dict:
+    """What the fake server returns for one tool call. triage_check and calc_pace run the real code."""
+    name, args = call.get("name"), call.get("input") or {}
+    if name not in known:
+        return {"ok": False, "error": f"unknown tool: {name}"}
     spec = sc.get("tool_results") or {}
-    return [{"name": c.get("name"), "result": spec.get(c.get("name"), {"ok": True})} for c in calls]
+    if name in spec:
+        return spec[name]
+    if name in fixture_obj:   # a read tool the model asked for again: the same data
+        return {"ok": True, "data": fixture_obj[name]}
+    try:
+        if name == "triage_check":
+            return {"ok": True, **ext_triage.call(name, args, None)}
+        if name == "calc_pace":
+            return {"ok": True, **ext_calc.call(name, args, None)}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    if name == "find_care":
+        return FIND_CARE_PLACE if str(args.get("place") or "").strip() else FIND_CARE_NO_PLACE
+    if name in WRITE_NAMES:
+        return {"ok": True}
+    return {"ok": False, "error": "not available in the eval harness"}
+
+
+def server_template(message: str, fixture_obj: dict) -> tuple[str, str] | None:
+    """The server's own answer before any model call (chat._claim): -> (reply, why) or None. A soft rail hit goes to the
+    classifier in production; here it fails towards the safety template, as chat does over the caps."""
+    zone = (fixture_obj.get("get_runner") or {}).get("timezone")
+    level, kind = redflag.tier(message)
+    if level:
+        return redflag.template(kind, zone), f"rail:{level}:{kind}"
+    tri = ext_triage.classify_text(message)
+    if tri.level == "red":
+        if tri.call_emergency:
+            return redflag.template(redflag.URGENT, zone), f"triage:urgent:{','.join(tri.codes)}"
+        return ext_triage.red_reply(zone, False), f"triage:red:{','.join(tri.codes)}"
+    return None
 
 
 def tool_misses(sc: dict, calls: list) -> list[str]:
@@ -128,35 +192,77 @@ def tool_misses(sc: dict, calls: list) -> list[str]:
 
 
 def tool_failed(misses: list[str]) -> bool:
-    return any(m.startswith(("did not call", "must not call")) for m in misses)
+    return any(m.startswith(("did not call", "must not call", "called ", "triage_check came back")) for m in misses)
 
 
 def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict:
     out = {"id": sc["id"], "message": sc["message"]}
     fixture = scenario_fixture(sc, fixture)
+    fixture_obj = json.loads(fixture)
+    tmpl = server_template(sc["message"], fixture_obj)
+    calls: list = []
     results: list = []
+    wrote: list[str] = []
+    if tmpl:   # no model runs; tool expectations do not apply
+        reply, why = tmpl
+        out |= {"reply": reply, "tool_calls": [], "source": f"template:{why}"}
+        misses: list[str] = []
+    else:
+        tri = ext_triage.classify_text(sc["message"])
+        mode = "amber" if tri.level == "amber" else None
+        tools = tool_list(sc)
+        known = {t["name"] for t in tools}
+        sc_system = system if not declared_writes(sc) else system_with_writes
+        note = validator.INJURY_NOTES["amber"] if mode else ""
+        sources = [sc["message"], fixture]
+        transcript, reply, repairs, rejected = "", "", 0, None
+        try:
+            for _ in range(MAX_TOOL_TURNS + 1 + 1):
+                coach = parse_json(claude(COACH_ASK.format(tools=json.dumps(tools), fixture=fixture, note=note,
+                                                           message=sc["message"], transcript=transcript), model, sc_system))
+                new = [c for c in coach.get("tool_calls") or [] if isinstance(c, dict)]
+                if new and len(results) < MAX_TOOL_TURNS * 4:
+                    res = [{"name": c.get("name"), "result": run_tool(sc, c, fixture_obj, known)} for c in new]
+                    calls += new
+                    results += res
+                    wrote += [r["name"] for r in res if r["name"] in WRITE_NAMES and r["result"].get("ok")]
+                    sources.append(json.dumps(res))
+                    transcript += f"\nYou called: {json.dumps(new)}\nThe server returned: {json.dumps(res)}\n"
+                    continue
+                body, _chips = validator.split_chips(validator.tidy(str(coach.get("reply") or "")))
+                bad = validator.check(body, sources, sources[2:], mode=mode, wrote=wrote)
+                if bad is None:
+                    reply, rejected = body, None
+                    break
+                rejected = bad
+                if repairs >= 1:   # production: a second miss is the fallback template
+                    reply = body
+                    break
+                repairs += 1
+                transcript += f"\nYour reply was: {body}\n{validator.host_note(bad)}\n"
+        except Exception as e:   # a broken coach answer is a fail, never a skip
+            return out | {"pass": False, "score": 0, "misses": [f"coach output unusable: {e}"]}
+        out |= {"reply": reply, "tool_calls": calls, "source": "model"}
+        misses = tool_misses(sc, calls)
+        misses += [f"called {c.get('name')}, which is not a tool here" for c in calls if c.get("name") not in known]
+        if rejected:
+            misses.append(f"validator refused the reply after a repair turn ({rejected}); production would send the fallback")
+        elif repairs:
+            out["repaired"] = True
+        exp = sc.get("expected_level")
+        lv = [r["result"].get("level") for r in results if r["name"] == "triage_check"]
+        order = ["green", "amber", "red"]
+        if exp in order and lv and order.index(lv[-1]) < order.index(exp):
+            misses.append(f"triage_check came back {lv[-1]}, scenario expects {exp}")
     try:
-        coach = parse_json(claude(COACH_ASK.format(fixture=fixture, message=sc["message"]), model, system))
-        if sc.get("tool_results") and coach.get("tool_calls"):   # second turn: the coach sees the fake results
-            calls = coach["tool_calls"]
-            results = fake_results(sc, calls)
-            coach = parse_json(claude(FOLLOWUP_ASK.format(
-                fixture=fixture, message=sc["message"], calls=json.dumps(calls),
-                results=json.dumps(results)), model, system)) | {"tool_calls": calls}
-    except Exception as e:   # a broken coach answer is a fail, never a skip
-        return out | {"pass": False, "score": 0, "misses": [f"coach output unusable: {e}"]}
-    called = [t.get("name") for t in coach.get("tool_calls") or []]
-    out |= {"reply": coach.get("reply", ""), "tool_calls": coach.get("tool_calls") or []}
-    misses = tool_misses(sc, coach.get("tool_calls") or [])
-    try:
-        j = parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(coach.get("tool_calls") or []),
-                                               results=json.dumps(results) if results else "none (write calls are assumed to have succeeded)",
+        j = parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(calls),
+                                               results=json.dumps(results) if results else "none",
                                                reply=out["reply"], must=sc.get("must", []),
                                                must_not=sc.get("must_not", [])), judge))
     except Exception as e:
         return out | {"pass": False, "score": 0, "misses": misses + [f"judge failed: {e}"]}
     misses += j.get("misses", [])
-    return out | {"pass": bool(j.get("pass")) and not tool_failed(misses),
+    return out | {"pass": bool(j.get("pass")) and not tool_failed(misses) and not any(m.startswith("validator refused") for m in misses),
                   "score": j.get("score", 0), "misses": misses}
 
 
@@ -189,7 +295,9 @@ def main() -> int:
         bad = [s.get("id", "?") for s in scenarios if not (s.get("id") and s.get("message") and s.get("must"))]
         print(f"{len(scenarios)} scenarios: " + ", ".join(s["id"] for s in scenarios))
         return 1 if bad else 0
-    system = build() + GUARD
+    global system_with_writes
+    system = coach_prompt.load(str(COACH_DIR)).text + GUARD   # exactly what production sends as the system prompt
+    system_with_writes = build() + GUARD   # scenarios that declare write tools (a later stage): the skill without the C1 host rules
     fixture = (HERE / "fixture_runner.json").read_text()
     with ThreadPoolExecutor(a.workers) as ex:
         results = list(ex.map(lambda s: run_one(s, system, fixture, a.model, a.judge), scenarios))
