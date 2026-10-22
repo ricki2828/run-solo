@@ -39,8 +39,8 @@ void main() {
     ctl = controller();
   });
 
-  test('the consent version is 2, so version-1 runners agree again', () {
-    expect(kCompanionConsentVersion, 2);
+  test('the check-ins consent is 2, so version-1 runners agree again', () {
+    expect(kCompanionBaseConsent, 2);
   });
 
   test('companion off or not linked: no request at all', () async {

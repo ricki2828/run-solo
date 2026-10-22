@@ -24,7 +24,8 @@ void main() {
       ..handler = (r) => switch (r.uri.path) {
         '/v1/me' => const CompanionReply(
           200,
-          '{"profile":{"quiet_start_min":1260,"quiet_end_min":420},'
+          '{"profile":{"quiet_start_min":1260,"quiet_end_min":420,'
+          '"checkin_consent":3},'
           '"runs_received":[{"feel":"easy"},{"feel":"right"},{"feel":"right"},'
           '{"feel":"hard"},{}],"messages_sent_30d":6,"chat_name":"Ricki",'
           '"memory":{"goal_type":"first_5k","race_month":"2026-11",'
@@ -123,6 +124,40 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('companion-agree')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
+  });
+
+  testWidgets('companion memory sheet 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    expect(
+      find.byKey(const ValueKey('companion-memory-offer')),
+      findsOneWidget,
+    );
+    await check(tester, 'companion_memory_sheet_360x640');
+  });
+
+  testWidgets('companion memory sheet buttons 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -260));
+    await pumpTimes(tester, 4);
+    expect(
+      find.byKey(const ValueKey('companion-memory-agree')),
+      findsOneWidget,
+    );
+    await check(tester, 'companion_memory_sheet_buttons_360x640');
   });
 
   testWidgets('companion weather sheet 360x640', (tester) async {

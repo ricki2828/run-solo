@@ -65,7 +65,15 @@ const String kCompanionPrivacyUrl = 'https://runsupreme.taiaroa.xyz/privacy/';
 
 /// Bump when the consent copy changes in a way that needs a fresh "Turn on".
 /// 2: check-ins (readiness and skip answers, kept 14 days).
-const int kCompanionConsentVersion = 2;
+const int kCompanionBaseConsent = 2;
+
+/// 3: the coach (chat); what the server drops a runner to when memory is turned off.
+const int kCompanionCoachConsent = 3;
+
+/// 4: coach memory (the memory sheet: notes, training numbers, optional
+/// health notes). Asked as its own step on top of version 2, never silently:
+/// a runner who says "Not now" keeps everything they had, minus memory.
+const int kCompanionConsentVersion = 4;
 
 // ---------------------------------------------------------------- HTTP seam
 
@@ -413,12 +421,25 @@ class CompanionClient {
   /// `PUT /v1/me/consent {consent_version}`: the consent version the runner
   /// agreed to. The server sends no check-in until it is at least the version
   /// it requires; the latest value wins, so it is safe to repeat.
-  Future<CompanionReply> putConsent(String token, int version) => http.send(
+  Future<CompanionReply> putConsent(
+    String token,
+    int version, {
+    bool? healthNotes,
+    bool? trainingSync,
+    bool? coachMemory,
+  }) => http.send(
     CompanionRequest(
       method: 'PUT',
       uri: _uri(['v1', 'me', 'consent']),
       headers: _headers(token, json: true),
-      body: utf8.encode(jsonEncode({'consent_version': version})),
+      body: utf8.encode(
+        jsonEncode({
+          'consent_version': version,
+          'health_notes': ?healthNotes,
+          'training_sync': ?trainingSync,
+          'coach_memory': ?coachMemory,
+        }),
+      ),
     ),
   );
 
@@ -706,7 +727,12 @@ class CompanionMe {
     this.channel,
     this.checkins = const [],
     this.quests,
+    this.serverConsent,
   });
+
+  /// The consent version the server holds for this runner (`profile.checkin_consent`),
+  /// null from an older server. The memory sheet is offered only at 3 or above.
+  final int? serverConsent;
 
   /// How many quests the server keeps, by state (`taken`, `waiting` = offered,
   /// `ended` = done, expired or passed on), from `quests` in `GET /v1/me`.
@@ -796,6 +822,9 @@ class CompanionMe {
       quietStartMin: mins(profile['quiet_start_min']),
       quietEndMin: mins(profile['quiet_end_min']),
       channel: s(profile['channel']),
+      serverConsent: profile['checkin_consent'] is int
+          ? profile['checkin_consent'] as int
+          : null,
       checkins: checkins,
       chatName:
           s(j['chat_name']) ??
@@ -989,9 +1018,216 @@ class CompanionController extends ChangeNotifier {
   /// no place, scale or direction in it.
   bool get routeShapeOn => _routeShape && enrolled;
 
-  /// True when the runner agreed to the current consent copy. A runner who
-  /// turned on before [kCompanionConsentVersion] went up has to agree again.
-  bool get consentCurrent => _consent >= kCompanionConsentVersion;
+  /// True when the runner agreed to the check-ins copy. A runner who turned on
+  /// before [kCompanionBaseConsent] went up has to agree again.
+  bool get consentCurrent => _consent >= kCompanionBaseConsent;
+
+  /// Coach memory: the runner agreed to the memory sheet (version 4).
+  bool get memoryOn => enrolled && _consent >= kCompanionConsentVersion;
+
+  /// The memory sheet is on offer: linked, on the check-ins copy, not yet on
+  /// version 4, and the runner has not said "Not now". No silent upgrade.
+  bool get memoryOffered =>
+      enrolled &&
+      consentCurrent &&
+      !memoryOn &&
+      !_memoryDismissed &&
+      (_serverConsent ?? 0) >= kCompanionCoachConsent;
+
+  /// What the server last said it holds (from `GET /v1/me`); null until read.
+  /// The sheet is never offered to a runner the server holds below the coach
+  /// version: agreeing would otherwise grant more than they agreed to.
+  int? _serverConsent;
+
+  /// "Keep health notes too" as agreed (off unless ticked).
+  bool get healthNotesOn => _healthNotes && memoryOn;
+
+  /// Training numbers sync as agreed (on unless switched off).
+  bool get trainingSyncOn => _trainingSync && memoryOn;
+
+  bool _healthNotes = false;
+  bool _trainingSync = true;
+  bool _memoryDismissed = false;
+
+  static const String healthNotesName = 'companion_memory_health';
+  static const String trainingSyncName = 'companion_memory_sync_off';
+  static const String memoryDismissedName = 'companion_memory_not_now';
+
+  /// "Agree" on the memory sheet: version 4 with the two choices, kept on the
+  /// phone and sent with the version.
+  Future<void> acceptMemory({
+    bool healthNotes = false,
+    bool trainingSync = true,
+  }) async {
+    final before = (_consent, _healthNotes, _trainingSync, _memoryDismissed);
+    _consentIgnored = false;
+    _consent = kCompanionConsentVersion;
+    _healthNotes = healthNotes;
+    _trainingSync = trainingSync;
+    _memoryDismissed = false;
+    _consentSent = 0;
+    try {
+      await store.write(consentName, '$kCompanionConsentVersion');
+      if (healthNotes) {
+        await store.write(healthNotesName, '1');
+      } else {
+        await store.delete(healthNotesName);
+      }
+      if (trainingSync) {
+        await store.delete(trainingSyncName);
+      } else {
+        await store.write(trainingSyncName, '1');
+      }
+      await store.delete(memoryDismissedName);
+    } catch (e) {
+      companionLog('could not save memory consent (${e.runtimeType})');
+    }
+    notifyListeners();
+    await syncConsent();
+    if (_consentIgnored && _consent == kCompanionConsentVersion) {
+      // The server answered {"status":"ignored"}: it holds this runner below
+      // the coach version and did not take version 4. Memory is not on.
+      _consent = before.$1;
+      _healthNotes = before.$2;
+      _trainingSync = before.$3;
+      _memoryDismissed = before.$4;
+      _consentSent = _consent;
+      problem = 'The companion did not take that. Memory is still off.';
+      try {
+        await store.write(consentName, '$_consent');
+        if (_healthNotes) {
+          await store.write(healthNotesName, '1');
+        } else {
+          await store.delete(healthNotesName);
+        }
+        if (_trainingSync) {
+          await store.delete(trainingSyncName);
+        } else {
+          await store.write(trainingSyncName, '1');
+        }
+      } catch (e) {
+        companionLog('could not save memory consent (${e.runtimeType})');
+      }
+      notifyListeners();
+    }
+  }
+
+  bool _consentIgnored = false;
+
+  /// Settings: the health notes tick and the training numbers switch. Server
+  /// first, like Turn off memory: the phone changes only once the server says
+  /// yes (it deletes the health notes on a health off), otherwise a problem
+  /// shows and nothing moves. True when it landed.
+  Future<bool> setMemoryChoices({
+    required bool healthNotes,
+    required bool trainingSync,
+  }) async {
+    final t = await token();
+    if (t == null || !memoryOn) return false;
+    try {
+      final r = await client.putConsent(
+        t,
+        kCompanionConsentVersion,
+        healthNotes: healthNotes,
+        trainingSync: trainingSync,
+      );
+      final j = r.ok ? r.json : null;
+      if (!r.ok || (j != null && j['status'] == 'ignored')) {
+        problem = 'Could not save that. Nothing changed. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. Nothing changed. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _healthNotes = healthNotes;
+    _trainingSync = trainingSync;
+    try {
+      if (healthNotes) {
+        await store.write(healthNotesName, '1');
+      } else {
+        await store.delete(healthNotesName);
+      }
+      if (trainingSync) {
+        await store.delete(trainingSyncName);
+      } else {
+        await store.write(trainingSyncName, '1');
+      }
+    } catch (e) {
+      companionLog('could not save the memory choices (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Settings: "Turn off memory". The server deletes every coach note, drops
+  /// the runner to the check-ins and coach version and keeps everything else.
+  /// Only changes the phone once the server said yes; false when it could not.
+  Future<bool> turnOffMemory() async {
+    final t = await token();
+    if (t == null) return false;
+    try {
+      final r = await client.putConsent(
+        t,
+        kCompanionCoachConsent,
+        coachMemory: false,
+      );
+      if (!r.ok) {
+        problem = 'Could not turn memory off. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. Memory is still on. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _consent = kCompanionCoachConsent;
+    _consentSent = _consent;
+    _healthNotes = false;
+    _trainingSync = true;
+    _memoryDismissed = true;
+    try {
+      await store.write(consentName, '$_consent');
+      await store.delete(healthNotesName);
+      await store.delete(trainingSyncName);
+      await store.write(memoryDismissedName, '1');
+    } catch (e) {
+      companionLog('could not save the memory choice (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Settings: "Review" after Not now or Turn off memory shows the sheet again.
+  Future<void> reviewMemory() async {
+    _memoryDismissed = false;
+    try {
+      await store.delete(memoryDismissedName);
+    } catch (e) {
+      companionLog('could not save the memory choice (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// Whether memory was said no to (Not now, or turned off) and can be offered again.
+  bool get memoryDeclined =>
+      enrolled && consentCurrent && !memoryOn && _memoryDismissed;
+
+  /// "Not now" on the memory sheet: nothing changes, nothing is sent.
+  Future<void> dismissMemory() async {
+    _memoryDismissed = true;
+    try {
+      await store.write(memoryDismissedName, '1');
+    } catch (e) {
+      companionLog('could not save the memory choice (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
 
   /// Turned on, but under older consent copy: ask again before the coach's
   /// check-in data is shown or asked for.
@@ -999,9 +1235,9 @@ class CompanionController extends ChangeNotifier {
 
   /// The runner agrees to the current copy ("Agree" on the new check-ins).
   Future<void> acceptConsent() async {
-    _consent = kCompanionConsentVersion;
+    _consent = kCompanionBaseConsent;
     try {
-      await store.write(consentName, '$kCompanionConsentVersion');
+      await store.write(consentName, '$kCompanionBaseConsent');
     } catch (e) {
       companionLog('could not save consent (${e.runtimeType})');
     }
@@ -1023,11 +1259,21 @@ class CompanionController extends ChangeNotifier {
     final t = await token();
     if (t == null) return;
     try {
-      final r = await client.putConsent(t, v);
+      final r = await client.putConsent(
+        t,
+        v,
+        healthNotes: v >= kCompanionConsentVersion ? _healthNotes : null,
+        trainingSync: v >= kCompanionConsentVersion ? _trainingSync : null,
+      );
       if (r.status == 401 || r.status == 403) {
         await _wipe();
       } else if (r.ok) {
-        _consentSent = v;
+        final j = r.json;
+        if (j['status'] == 'ignored') {
+          _consentIgnored = true; // the server did not take it
+        } else {
+          _consentSent = v;
+        }
       }
       // 404/422: a server older than this app; the next try is after its update.
     } on CompanionNetworkError {
@@ -1093,6 +1339,9 @@ class CompanionController extends ChangeNotifier {
       _asked = true;
       try {
         _consent = int.tryParse(await store.read(consentName) ?? '') ?? 0;
+        _healthNotes = await store.read(healthNotesName) == '1';
+        _trainingSync = await store.read(trainingSyncName) != '1';
+        _memoryDismissed = await store.read(memoryDismissedName) == '1';
         final cached = await store.read(nextName);
         if (cached != null && cached.isNotEmpty) {
           final j = jsonDecode(cached);
@@ -1547,9 +1796,9 @@ class CompanionController extends ChangeNotifier {
     _phase = CompanionPhase.waiting;
     notifyListeners();
     await _markAsked();
-    _consent = kCompanionConsentVersion;
+    _consent = kCompanionBaseConsent;
     try {
-      await store.write(consentName, '$kCompanionConsentVersion');
+      await store.write(consentName, '$kCompanionBaseConsent');
     } catch (e) {
       companionLog('could not save consent (${e.runtimeType})');
     }
@@ -1739,6 +1988,9 @@ class CompanionController extends ChangeNotifier {
       if (r.me == null) {
         problem = 'The companion is busy. Try again.';
         notifyListeners();
+      } else if (r.me!.serverConsent != _serverConsent) {
+        _serverConsent = r.me!.serverConsent;
+        notifyListeners();
       }
       return r.me;
     } on CompanionNetworkError {
@@ -1776,6 +2028,9 @@ class CompanionController extends ChangeNotifier {
     try {
       await store.delete(tokenName);
       await store.delete(consentName);
+      await store.delete(healthNotesName);
+      await store.delete(trainingSyncName);
+      await store.delete(memoryDismissedName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
       await store.delete(placeNamesName);
@@ -1796,6 +2051,10 @@ class CompanionController extends ChangeNotifier {
     _heartRate = false;
     _consent = 0;
     _consentSent = 0;
+    _healthNotes = false;
+    _trainingSync = true;
+    _memoryDismissed = false;
+    _serverConsent = null;
     _coachNext = null;
     problem = null;
     notifyListeners();
@@ -2067,7 +2326,9 @@ Map<String, Object?> companionIntervalFacts(RunSummary s) {
     cleanRepPacesSecPerKm: s.cleanRepPacesSecPerKm.whereType<double>(),
     recoveryPaceSecPerKm: s.recoveryPaceSecPerKm,
   );
-  return facts.isEmpty ? {'session_name': engine.coachSessionName(name)} : facts;
+  return facts.isEmpty
+      ? {'session_name': engine.coachSessionName(name)}
+      : facts;
 }
 
 /// The goal names the server accepts (`GoalCatalogue.nameFor` and

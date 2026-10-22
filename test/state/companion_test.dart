@@ -1526,7 +1526,7 @@ void main() {
 
     test('enrolling sends the agreed version once the key is kept', () async {
       await enrolNow(ctl);
-      expect(sent(), [kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent]);
       expect(http.bodyOf(http.to('PUT', '/v1/me/consent').single).keys, [
         'consent_version',
       ]);
@@ -1544,9 +1544,9 @@ void main() {
       http.handler = null;
       http.requests.clear();
       await ctl.acceptConsent();
-      expect(sent(), [kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent]);
       await ctl.acceptConsent();
-      expect(sent(), [kCompanionConsentVersion]); // landed: not repeated
+      expect(sent(), [kCompanionBaseConsent]); // landed: not repeated
     });
 
     test('a failed PUT is tried again with the next sync', () async {
@@ -1554,10 +1554,10 @@ void main() {
           ? const CompanionReply(503)
           : http.defaultReply(r);
       await enrolNow(ctl);
-      expect(sent(), [kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent]);
       http.handler = null;
       await ctl.syncConsent();
-      expect(sent(), [kCompanionConsentVersion, kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent, kCompanionBaseConsent]);
       await ctl.syncConsent();
       expect(sent().length, 2); // landed: not repeated
     });
@@ -1573,7 +1573,7 @@ void main() {
       http.offline = false;
       http.requests.clear();
       await ctl.syncConsent();
-      expect(sent(), [kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent]);
     });
 
     test('app start sends it when the last PUT never landed', () async {
@@ -1584,7 +1584,7 @@ void main() {
       http.handler = null;
       http.requests.clear();
       await controller().load();
-      expect(sent(), [kCompanionConsentVersion]);
+      expect(sent(), [kCompanionBaseConsent]);
     });
 
     test('a runner who has not agreed sends nothing', () async {
