@@ -166,6 +166,7 @@ class Settings:
     coach_max_tool_turns: int = 6
     coach_turn_timeout_s: float = 30.0
     coach_job_deadline_s: float = 60.0
+    coach_job_deadline_tool_s: float = 90.0   # a job that called a slow tool (web search) may run this long
     # The safety classifier (coach/screen.py): every coach turn the hard regex tier did not answer, before the main model.
     coach_screen_model: str = "anthropic/claude-haiku-5.5"
     coach_screen_timeout_s: float = 5.0

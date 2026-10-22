@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-REFS = ["voice", "interpreting-messages", "coaching-method", "plan-building", "insight", "safety"]
+REFS = ["voice", "interpreting-messages", "coaching-method", "plan-building", "insight", "safety", "research"]
 
 
 def body(path: Path) -> str:

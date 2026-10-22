@@ -47,6 +47,9 @@ class ToolContext:
     job_id: int | None = None
     # Send a one-line "on it" message that the final answer then replaces (edited in place). A no-op until a channel is bound.
     placeholder: Callable[[str], None] = field(default=lambda text: None)
+    # Model spend a tool made itself (research): the chat loop folds it into the job's footer figures after each tool call.
+    cost_usd: float = 0.0
+    calls: int = 0
 
     @property
     def settings(self) -> Any:
