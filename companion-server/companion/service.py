@@ -571,6 +571,9 @@ class Service(CheckinMixin, MeasureMixin):
         if verdict != "ok":
             self._rate_limited(ch, inb, verdict, now)
             return
+        if inb.chip is not None:
+            self.coach.chip_tap(ch, inb, now)   # a coach quick-reply button: its label becomes the runner's next message
+            return
         if self.coach.enabled and inb.card_id is None and not bare_delete and self._coach_take(ch, inb, now):
             return   # free text from a gated runner: queued for the coach (or answered by the red-flag rail) in one tx
         if self._seen(inb, now):

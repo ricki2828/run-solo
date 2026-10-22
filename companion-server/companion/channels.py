@@ -140,6 +140,7 @@ class Inbound:
     callback_message_id: str | None = None
     name: str = ""  # display name or @username of the sender, never the id
     code: str | None = None  # a check-in button: its code (checkins.CODES), with card_id; no button_idx
+    chip: str | None = None  # a coach quick-reply button: its label, which the coach receives as the runner's next message
 
 
 CHECKIN_PREFIX = "ci1:"   # `ci1:<card id>:<code>`; the code names its stage, so a stale tap cannot be misread
@@ -156,6 +157,27 @@ def parse_checkin_callback(data: str) -> tuple[str, str] | None:
     if not sep or not card_id.isalnum() or len(card_id) > 64 or not code.replace(".", "").isalnum() or len(code) > 12:
         return None
     return card_id, code
+
+
+CHIP_PREFIX = "cc:"   # `cc:<job id>:<label>`; the label rides in the data (64 bytes) so no state is kept per button
+
+
+def chip_data(job_id: int, label: str) -> str:
+    return f"{CHIP_PREFIX}{job_id}:{label}"
+
+
+def parse_chip_callback(data: str) -> str | None:
+    """The label of a coach chip tap, else None."""
+    if not data.startswith(CHIP_PREFIX):
+        return None
+    job, sep, label = data[len(CHIP_PREFIX):].partition(":")
+    label = label.strip()
+    return label if sep and job.isdigit() and 0 < len(label) <= 48 else None
+
+
+def strip_html(text: str) -> str:
+    """The plain text of a Telegram-HTML message (the retry when Telegram will not parse it)."""
+    return html.unescape(re.sub(r"<[^>]*>", "", text))
 
 
 def parse_callback(data: str) -> tuple[str, int] | None:
@@ -199,9 +221,61 @@ class TelegramChannel:
                                ambiguous=r.status_code >= 500 or r.status_code == 200)
         return data
 
-    def send_text(self, ref: str, text: str) -> str:
-        d = self._call("sendMessage", {"chat_id": int(ref), "text": text})
+    supports_html = True   # the coach chat sends parse_mode=HTML and inline chip buttons here; other channels get plain text
+
+    @staticmethod
+    def _markup(buttons: list[list[tuple[str, str]]] | None) -> dict | None:
+        """Inline keyboard rows of (label, callback_data)."""
+        if not buttons:
+            return None
+        return {"inline_keyboard": [[{"text": label[:40], "callback_data": data} for label, data in row] for row in buttons]}
+
+    def send_text(self, ref: str, text: str, html: bool = False, buttons: list[list[tuple[str, str]]] | None = None) -> str:
+        payload: dict[str, Any] = {"chat_id": int(ref), "text": text}
+        markup = self._markup(buttons)
+        if markup:
+            payload["reply_markup"] = markup
+        if html:
+            payload["parse_mode"] = "HTML"
+        try:
+            d = self._call("sendMessage", payload)
+        except ChannelError as e:
+            if not (html and e.status == 400 and "parse" in (e.description or "").lower()):
+                raise
+            payload.pop("parse_mode")   # a tag Telegram would not take: the same words, plain, rather than nothing
+            payload["text"] = strip_html(text)
+            d = self._call("sendMessage", payload)
         return str(d["result"]["message_id"])
+
+    def edit_text(self, ref: str, message_id: str, text: str, html: bool = False,
+                  buttons: list[list[tuple[str, str]]] | None = None) -> None:
+        """Replace a message's text (the placeholder becoming the answer). "Not modified" is success."""
+        payload: dict[str, Any] = {"chat_id": int(ref), "message_id": int(message_id), "text": text}
+        if html:
+            payload["parse_mode"] = "HTML"
+        markup = self._markup(buttons)
+        if markup:
+            payload["reply_markup"] = markup
+        try:
+            self._call("editMessageText", payload)
+        except ChannelError as e:
+            if e.not_modified:
+                return
+            if not (html and e.status == 400 and "parse" in (e.description or "").lower()):
+                raise
+            payload.pop("parse_mode")
+            payload["text"] = strip_html(text)
+            self._call("editMessageText", payload)
+
+    def ack_chip(self, inb: Inbound, toast: str) -> None:
+        """Answer a chip tap (stops the spinner) and take the buttons off, so one tap is one turn."""
+        try:
+            self._call("answerCallbackQuery", {"callback_query_id": inb.callback_id, "text": toast[:60]})
+            if inb.callback_message_id:
+                self._call("editMessageReplyMarkup", {"chat_id": int(inb.ref), "message_id": int(inb.callback_message_id),
+                                                      "reply_markup": {"inline_keyboard": []}})
+        except ChannelError:
+            pass  # cosmetic
 
     def send_typing(self, ref: str) -> None:
         """"typing..." in the chat for about 5 seconds, while the coach works on a reply."""
@@ -513,6 +587,10 @@ class TelegramChannel:
             chat = m.get("chat") or {}
             if chat.get("type") != "private" or "id" not in (cb.get("from") or {}):
                 return None
+            chip = parse_chip_callback(str(cb.get("data", "")))
+            if chip:
+                return Inbound("telegram", str(cb["from"]["id"]), msg_id, chip=chip, callback_id=str(cb.get("id")),
+                               callback_message_id=str(m.get("message_id", "")) or None)
             ci = parse_checkin_callback(str(cb.get("data", "")))
             if ci:
                 return Inbound("telegram", str(cb["from"]["id"]), msg_id, card_id=ci[0], code=ci[1],

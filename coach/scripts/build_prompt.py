@@ -21,11 +21,21 @@ def body(path: Path) -> str:
     return text.strip()
 
 
+def extra_tools() -> list[dict]:
+    """Tools a later PR adds by dropping `tools.d/<name>.json` ({"tools": [...]}): the same schema form as tools.json, plus an
+    optional "module" (default: the file name) naming the server module that runs it. tools.json itself is never edited."""
+    out: list[dict] = []
+    for path in sorted((ROOT / "tools.d").glob("*.json")):
+        for t in json.loads(path.read_text())["tools"]:
+            out.append({"module": path.stem, **t})
+    return out
+
+
 def build(with_tools: bool = False) -> str:
     parts = [body(ROOT / "SKILL.md")]
     parts += [f"<reference name=\"{r}\">\n{body(ROOT / 'references' / f'{r}.md')}\n</reference>" for r in REFS]
     if with_tools:   # for engines without native tool calling
-        parts.append("<tools>\n" + json.dumps(json.loads((ROOT / "tools.json").read_text())["tools"], indent=1) + "\n</tools>")
+        parts.append("<tools>\n" + json.dumps(json.loads((ROOT / "tools.json").read_text())["tools"] + extra_tools(), indent=1) + "\n</tools>")
     return "\n\n".join(parts) + "\n"
 
 
