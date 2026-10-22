@@ -234,6 +234,11 @@ def _gate_ok(svc, uid: str, allow_paused: bool = False) -> bool:
     return g is None or (allow_paused and g == "paused")
 
 
+def _holds_memory(svc, uid: str) -> bool:
+    with db.ro(svc.s.db_path) as c:
+        return c.execute("SELECT 1 FROM coach_memory WHERE user_id=? LIMIT 1", (uid,)).fetchone() is not None
+
+
 def _ack(ch, inb, toast: str) -> None:
     fn = getattr(ch, "ack_chip", None)
     if fn:
@@ -265,8 +270,8 @@ def handle_inbound(svc, ch, inb, now: datetime) -> bool:
             _location(svc, ch, inb, user, now)
         return True
     # "/memory"
-    if not _gate_ok(svc, user["id"], allow_paused=True):
-        return False   # an ungated runner gets the ordinary path
+    if not (_gate_ok(svc, user["id"], allow_paused=True) or _holds_memory(svc, user["id"])):
+        return False   # an ungated runner gets the ordinary path (but anyone who still has memory rows can see and delete them)
     if svc._seen(inb, now):
         return True
     from . import memory

@@ -1,8 +1,11 @@
 """Coach memory: `remember` (a short fact the runner wants kept), a context block for every turn, a rolling summary of earlier
 chats, and the /memory command that shows and deletes all of it (coach PR4).
 
-Facts and the summary live in `coach_memory`, outside the 30-day chat purge (plan decision 5), for runners who pass the coach
-gate, which today is the allowlist (consent v4 wording is due before testers). The model gets them as quoted data in the
+Facts and the summary live in `coach_memory`, outside the 30-day chat purge (plan decision 5). The memory gate (`gate` below) is
+consent: the runner's checkin_consent must be at or above memory_consent_required (4, the app's consent v4 sheet). A runner on
+the coach allowlist also passes while still at consent 3 (Ricki, until he re-consents in the app): that OR is temporary and goes
+once everyone on the allowlist has agreed to v4. With memory off the coach chat still works, it just carries no memory: the
+`remember` tool refuses, the turn has no coach_memory block and no summary is made. The model gets them as quoted data in the
 runner's turn: a stored fact is something the runner said, never an instruction. The runner can see every row with /memory and
 delete any of them; consent withdrawal and DELETE remove all of it.
 The summary is a cheap-model call (ZDR, in the cost ledger as purpose 'memory') made after a reply is sent, every 10 runner
@@ -47,6 +50,26 @@ def _clean(text: str) -> str:
     return " ".join(validator.defang(str(text)).split())
 
 
+def gate(svc, c, uid: str) -> str | None:
+    """None when coach memory may be read or written for this runner, else why not. Fresh from the database. The coach itself
+    must be on and the runner not paused (a paused runner gets nothing, as with the chat); then consent v4, or the allowlist
+    as a temporary OR for a runner who has not re-consented yet."""
+    s = svc.s
+    if not svc.coach.enabled:
+        return "off"
+    u = c.execute("SELECT id, tester_no, channel, chat_ref, checkin_consent, paused, ops_paused FROM users WHERE id=?", (uid,)).fetchone()
+    if not u:
+        return "gone"
+    have = u["checkin_consent"] or 0
+    if have < s.coach_consent_required:
+        return "consent"
+    if u["ops_paused"] or u["paused"]:
+        return "paused"
+    if have >= s.memory_consent_required or svc.coach.allowlisted(u):
+        return None
+    return "memory_consent"
+
+
 def call(name: str, args: dict, ctx) -> dict:
     if name != "remember":
         raise ValueError("unknown tool")
@@ -58,8 +81,7 @@ def call(name: str, args: dict, ctx) -> dict:
     svc, uid, now = ctx.svc, ctx.user_id, ctx.now
     expires = iso(now + timedelta(days=int(args["expires_days"]))) if args.get("expires_days") else None
     with db.tx(svc.s.db_path) as c:
-        u = c.execute("SELECT id, tester_no, channel, chat_ref FROM users WHERE id=?", (uid,)).fetchone()
-        if not u or not svc.coach.allowlisted(u):
+        if gate(svc, c, uid) is not None:
             raise ValueError("memory is not on for this runner")
         live = [r for r in c.execute("SELECT id, text FROM coach_memory WHERE user_id=? AND kind='fact' AND "
                                      "(expires_at IS NULL OR expires_at > ?)", (uid, iso(now)))]
@@ -83,7 +105,7 @@ def context(ctx) -> str:
     """The block added to the runner's turn; empty when there is nothing, or the runner is not past the gate."""
     svc = ctx.svc
     with db.ro(svc.s.db_path) as c:
-        if svc.coach.gate(c, ctx.user_id) is not None:
+        if gate(svc, c, ctx.user_id) is not None:
             return ""
         facts, summ = _rows(c, ctx.user_id, ctx.now)
     if not facts and not summ:
@@ -103,7 +125,7 @@ def refresh_if_due(svc, uid: str, now: datetime) -> bool:
     if not s.openrouter_key:
         return False
     with db.tx(s.db_path) as c:
-        if svc.coach.gate(c, uid) is not None:
+        if gate(svc, c, uid) is not None:
             return False
         prev = c.execute("SELECT id, text, last_msg_id FROM coach_memory WHERE user_id=? AND kind='summary'", (uid,)).fetchone()
         since = prev["last_msg_id"] if prev else 0
@@ -148,7 +170,7 @@ def refresh_if_due(svc, uid: str, now: datetime) -> bool:
     ok = bool(text) and not _BAD.search(text) and not validator.PHONE_RE.search(text)
     with db.tx(s.db_path) as c:
         budget.settle(c, s, ledger_id, now, provider=provider, outcome=outcome if ok or outcome != "ok" else "unusable", fields=fields)
-        if ok and c.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone() and svc.coach.gate(c, uid) is None:
+        if ok and c.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone() and gate(svc, c, uid) is None:
             last = new[-1]["id"]
             if prev:
                 c.execute("UPDATE coach_memory SET text=?, last_msg_id=?, updated_at=? WHERE id=?", (text, last, iso(now), prev["id"]))

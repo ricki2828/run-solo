@@ -433,8 +433,10 @@ def test_the_export_shows_memory_and_proposals(cc, fakes):
 def test_the_new_tables_are_covered_by_export_and_backup_maps():
     from companion.backup import PRIVATE_TABLES
     from companion.service import EXPORTED_TABLES, NOT_EXPORTED_TABLES
-    for t in ("coach_memory", "coach_proposals", "coach_loc_wait"):
+    for t in ("coach_proposals", "coach_loc_wait"):
         assert t in PRIVATE_TABLES and t in {**EXPORTED_TABLES, **NOT_EXPORTED_TABLES}
+    # backups keep ALL coach memory (Ricki, 22-Oct): exported, but not in the emptied-in-backup list
+    assert "coach_memory" not in PRIVATE_TABLES and "coach_memory" in {**EXPORTED_TABLES, **NOT_EXPORTED_TABLES}
 
 
 # ---------------------------------------------------------------------------------------------------- location
@@ -617,3 +619,155 @@ def test_no_move_onto_a_day_that_already_has_a_run_or_a_confirmed_move(cc, fakes
     tap(cc, f"cp:{q(cc, 'SELECT id FROM coach_proposals')[0]['id']}:y")
     with db.ro(cc.svc.s.db_path) as con:
         assert actions._day_taken(con, uid_of(cc), date(2026, 10, 24), "Pacific/Auckland")
+
+
+# ---------------------------------------------------------------------------------------------------- consent v4 gate (Phase 0)
+import dataclasses
+import logging
+import sqlite3 as _sq
+
+from conftest import tg_update
+
+
+def consent(c, v, **kw):
+    r = c.put("/v1/me/consent", json={"consent_version": v, **kw}, headers=auth(c.token))
+    assert r.status_code == 200, r.text
+    return r
+
+
+def off_allowlist(c):
+    """The runner stays chat-enabled but is no longer on the allowlist as far as memory is concerned: memory then rides on consent alone."""
+    c.svc.coach.allowlisted = lambda u, a=None: False
+
+
+def ctx_of(c, now=T0):
+    return type("C", (), {"svc": c.svc, "user_id": uid_of(c), "now": now, "job_id": None})()
+
+
+def test_memory_gate_allowlist_at_v3_is_the_temporary_or_for_ricki(cc, fakes):
+    with db.ro(cc.svc.s.db_path) as con:
+        assert memory.gate(cc.svc, con, uid_of(cc)) is None   # consent 3 + allowlist
+    remember(cc, fakes, "I run before work")
+    assert len(q(cc, "SELECT id FROM coach_memory")) == 1
+
+
+def test_consent_decides_memory_when_the_allowlist_does_not_apply(cc):
+    off_allowlist(cc)
+    uid = uid_of(cc)
+    with db.ro(cc.svc.s.db_path) as con:
+        assert memory.gate(cc.svc, con, uid) == "memory_consent"      # consent 3
+    assert memory.context(ctx_of(cc)) == ""
+    with pytest.raises(ValueError, match="memory is not on"):
+        memory.call("remember", {"fact": "I like hills", "kind": "preference"}, ctx_of(cc))
+    assert memory.refresh_if_due(cc.svc, uid, T0) is False
+    consent(cc, 4)
+    with db.ro(cc.svc.s.db_path) as con:
+        assert memory.gate(cc.svc, con, uid) is None                  # consent 4
+    assert memory.call("remember", {"fact": "I like hills", "kind": "preference"}, ctx_of(cc))["saved"] is True
+    assert '"quoted_runner_text": "I like hills"' in memory.context(ctx_of(cc))
+
+
+def test_v4_gate_still_needs_the_coach_consent_and_not_paused(cc):
+    off_allowlist(cc)
+    uid = uid_of(cc)
+    consent(cc, 4)
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("UPDATE users SET paused=1 WHERE id=?", (uid,))
+    with db.ro(cc.svc.s.db_path) as con:
+        assert memory.gate(cc.svc, con, uid) == "paused"
+
+
+def test_v4_sub_choices_are_stored_with_the_consent_and_default_correctly(cc):
+    row = lambda: q(cc, "SELECT checkin_consent, memory_health_optin h, memory_sync_optin t FROM users")[0]
+    assert row() == {"checkin_consent": 3, "h": 0, "t": 1}
+    consent(cc, 4)
+    assert row() == {"checkin_consent": 4, "h": 0, "t": 1}   # health off, sync on by default
+    consent(cc, 4, health_notes=True, training_sync=False)
+    assert row() == {"checkin_consent": 4, "h": 1, "t": 0}
+    consent(cc, 4)                                            # a plain re-statement leaves the sub-choices alone
+    assert row() == {"checkin_consent": 4, "h": 1, "t": 0}
+    consent(cc, 3)                                            # a lower app report is ignored (no silent downgrade)
+    assert row() == {"checkin_consent": 4, "h": 1, "t": 0}
+    prof = cc.get("/v1/me", headers=auth(cc.token)).json()["profile"]
+    assert prof["memory_health_notes"] is True and prof["memory_training_sync"] is False
+
+
+def test_sub_choices_are_ignored_below_v4_and_must_be_booleans(cc):
+    consent(cc, 3, health_notes=True, training_sync=False)
+    assert q(cc, "SELECT memory_health_optin h, memory_sync_optin t FROM users")[0] == {"h": 0, "t": 1}
+    r = cc.put("/v1/me/consent", json={"consent_version": 4, "health_notes": "yes"}, headers=auth(cc.token))
+    assert r.status_code == 422
+
+
+def test_an_operator_lowering_consent_below_v4_deletes_memory_for_a_runner_off_the_allowlist(cc):
+    off_allowlist(cc)
+    uid = uid_of(cc)
+    consent(cc, 4, health_notes=True)
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("INSERT INTO coach_memory (user_id, kind, topic, text, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+                    (uid, "fact", "schedule", "Tuesdays are long runs", "2026-10-21T00:00:00Z", "2026-10-21T00:00:00Z"))
+    cc.svc.set_checkin_consent(uid, 3, source="cli")
+    assert q(cc, "SELECT * FROM coach_memory") == []
+    assert q(cc, "SELECT memory_health_optin h, memory_sync_optin t FROM users")[0] == {"h": 0, "t": 1}
+
+
+def test_memory_off_keeps_the_coach_working(cc, fakes, monkeypatch):
+    """A closed memory gate must not break a chat turn: the reply goes out, the turn has no memory block, remember saves nothing."""
+    real_gate = memory.gate
+
+    def consent_only(svc, c, uid):   # chat stays allowlisted; memory sees the runner as off the allowlist at consent 3
+        keep, svc.coach.allowlisted = svc.coach.allowlisted, (lambda u, a=None: False)
+        try:
+            return real_gate(svc, c, uid)
+        finally:
+            svc.coach.allowlisted = keep
+    monkeypatch.setattr(memory, "gate", consent_only)
+    fakes.coach_queue = [coach_tools(("remember", {"fact": "I hate mornings", "kind": "preference"})), coach_text("Fair enough.")]
+    say(cc, "I hate mornings, remember that")
+    run_worker(cc, now=T0 + timedelta(seconds=10))
+    assert q(cc, "SELECT * FROM coach_memory") == []
+    assert any("Fair enough" in t for t in fakes.tg_texts())
+    for call in fakes.coach_calls:
+        turn = call["messages"][-1]["content"]
+        turn = turn if isinstance(turn, str) else "".join(p.get("text", "") for p in turn if isinstance(p, dict))
+        assert "<coach_memory>" not in turn
+
+
+def test_memory_content_never_reaches_the_logs(cc, fakes, caplog):
+    caplog.set_level(logging.DEBUG)
+    secret = "my knee clicks on Zanzibar hills"
+    remember(cc, fakes, secret)
+    uid = uid_of(cc)
+    with db.tx(cc.svc.s.db_path) as con:
+        for i in range(10):
+            con.execute("INSERT INTO coach_messages (user_id, role, text, ts) VALUES (?,?,?,?)", (uid, "runner", f"{secret} {i}", "2026-10-21T00:00:00Z"))
+    real = cc.svc.http
+    cc.svc.http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=coach_text("Notes about Zanzibar hills and a clicking knee."))))
+    try:
+        assert memory.refresh_if_due(cc.svc, uid, T0) is True
+    finally:
+        cc.svc.http = real
+    tap(cc, "cm:all")
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "Zanzibar" not in logged and "knee" not in logged
+    assert "coach memory summary outcome=ok updated=True" in logged
+
+
+def test_the_nightly_backup_keeps_coach_memory_but_not_the_proposals(cc, fakes, tmp_path):
+    from companion.backup import backup, restore
+    remember(cc, fakes, "Marathon in March")
+    key = tmp_path / "k.key"
+    key.write_bytes(b"k" * 32)
+    enc = backup(cc.svc.s.db_path, str(tmp_path / "bk"), str(key))
+    out = str(tmp_path / "restored.db")
+    restore(enc, out, str(key))
+    con = _sq.connect(out)
+    assert con.execute("SELECT text FROM coach_memory").fetchall() == [("Marathon in March",)]
+    assert con.execute("SELECT COUNT(*) FROM coach_proposals").fetchone()[0] == 0
+
+
+def test_slash_memory_still_lists_rows_for_a_runner_whose_gate_closed(cc, fakes):
+    remember(cc, fakes, "Marathon in March")
+    cc.svc.coach.gate_for = lambda uid: "allowlist"   # the chat gate is closed
+    cc.svc.handle_inbound(TelegramChannel.parse(tg_update(next(_n), "/memory", OWNER)), now=T0 + timedelta(minutes=3))
+    assert any("Marathon in March" in t for t in fakes.tg_texts())
