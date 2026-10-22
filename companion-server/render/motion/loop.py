@@ -190,7 +190,12 @@ class RunLoopRenderer(Loop):
             fr.cv.rect(x, base - h, x + bw, base, rgb(ZONE[z - 1]), r=min(10, bw / 3), top_only=True)
             a = seg(t, 0.25 + i * step + 0.3, 0.25 + i * step + 0.55)
             if a > 0 and bw >= 60:   # the label sits inside the bar's top, clear of the average line's dashes
-                fr.cv.text((x + bw / 2, base - h + 46), lab, S(34), fade(ZONE[z - 1], ink_on(ZONE[z - 1]), a), anchor="ms")
+                ly = base - h + 46
+                if self.s.avg_s:   # keep the label 12 px clear of the average line: below it if the line would cross it
+                    ay = base - hgt(self.s.avg_s)
+                    if ly - 34 - 12 < ay < ly + 12:
+                        ly = ay + 12 + 34
+                fr.cv.text((x + bw / 2, ly), lab, S(34), fade(ZONE[z - 1], ink_on(ZONE[z - 1]), a), anchor="ms")
         pa = in_out_cubic(seg(t, 1.55, 2.0))
         if pa > 0 and self.s.avg_s:
             y = base - hgt(self.s.avg_s)
