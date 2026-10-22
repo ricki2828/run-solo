@@ -48,6 +48,7 @@ from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve
                        valid_zone, week_key)
 from .writer import Writer, Written, digest_lines
 from .coach.chat import COACH_PAUSED, CoachChat
+from .coach.ext import actions as coach_actions
 
 log = logging.getLogger("companion")
 
@@ -374,6 +375,7 @@ EXPORTED_TABLES = {
     "convo_area": "areas", "run_notes": "run_notes", "run_shape": "run_shapes", "checkin_answers": "checkins",
     "feedback": "feedback", "quests": "quests", "inbound_events": "activity", "survey_answers": "survey_answers",
     "ops_sends": "ops_messages", "coach_messages": "coach_chat_30d", "health_flags": "health_flags",
+    "coach_memory": "coach_memory", "coach_proposals": "coach_proposals",
 }
 NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message content of its own
     "devices": "hashed device tokens", "enrolments": "short-lived sign-up nonces", "outbox": "send queue, ids only",
@@ -391,6 +393,7 @@ NOT_EXPORTED_TABLES = {  # operational plumbing: no run, location or message con
                   "sides are exported under coach_chat_30d",
     "cost_ledger": "the cost and token counts of each coach model call, so the caps can be counted; no content",
     "coach_briefings": "the coach's spoken-briefing template for the next planned session: words with slots, never a number",
+    "coach_loc_wait": "a waiting 'Share location' request: the kind of care wanted and a time, never a position",
 }
 
 
@@ -574,6 +577,8 @@ class Service(CheckinMixin, MeasureMixin):
         if inb.chip is not None:
             self.coach.chip_tap(ch, inb, now)   # a coach quick-reply button: its label becomes the runner's next message
             return
+        if coach_actions.handle_inbound(self, ch, inb, now):
+            return   # coach PR4: a Confirm / Decline / memory button, a shared location, or /memory
         if self.coach.enabled and inb.card_id is None and not bare_delete and self._coach_take(ch, inb, now):
             return   # free text from a gated runner: queued for the coach (or answered by the red-flag rail) in one tx
         if self._seen(inb, now):
@@ -1034,6 +1039,9 @@ class Service(CheckinMixin, MeasureMixin):
             coach_chat = [dict(r) for r in c.execute("SELECT role, text, ts FROM coach_messages WHERE user_id=? ORDER BY id", (uid,))]
             flags = [dict(r) for r in c.execute("SELECT kind, state, source, set_at, cleared_at FROM health_flags WHERE user_id=? "
                                                 "ORDER BY kind", (uid,))]
+            coach_mem = [dict(r) for r in c.execute("SELECT kind, topic, text, created_at FROM coach_memory WHERE user_id=? ORDER BY id", (uid,))]
+            coach_props = [dict(r) for r in c.execute("SELECT change, from_day, to_day, label, state, created_at, decided_at "
+                                                      "FROM coach_proposals WHERE user_id=? ORDER BY id", (uid,))]
             coach_on = self.coach.gate(c, uid) in (None, "paused")
             shapes = [{"run_id": r["run_id"], "route": json.loads(r["route_json"]) if r["route_json"] else None,
                        "splits": json.loads(r["splits_json"]) if r["splits_json"] else None,
@@ -1050,7 +1058,7 @@ class Service(CheckinMixin, MeasureMixin):
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "activity": activity, "survey_answers": survey, "memory": memory, "suggestion_outcomes": outcomes,
             "messages_sent_30d": msgs, "areas": areas, "conversation_log": convo, "checkins": checkins, "quests": quests, "ops_messages": ops_msgs,
-            "coach_chat_30d": coach_chat, "health_flags": flags,
+            "coach_chat_30d": coach_chat, "health_flags": flags, "coach_memory": coach_mem, "coach_proposals": coach_props,
             "goes_to": ["OpenRouter and the model provider (facts and enumerated memory only, no phone number or chat id)",
                         *(["OpenRouter and a zero-data-retention model provider, for the coach chat: your messages, runs, "
                            "check-ins and run notes (no phone number or chat id)"] if coach_on else []),
@@ -2471,6 +2479,8 @@ class Service(CheckinMixin, MeasureMixin):
             gone += c.execute("DELETE FROM coach_messages WHERE ts < ?", (log_cut,)).rowcount
             gone += c.execute("DELETE FROM coach_jobs WHERE created_at < ?", (log_cut,)).rowcount
             gone += c.execute("DELETE FROM coach_briefings WHERE generated_at < ?", (log_cut,)).rowcount
+            gone += c.execute("DELETE FROM coach_proposals WHERE created_at < ?", (log_cut,)).rowcount   # coach memory is kept (PR4)
+            c.execute("DELETE FROM coach_loc_wait WHERE created_at < ?", (iso(now - timedelta(days=1)),))
             c.execute("DELETE FROM cost_ledger WHERE ts < ?", (iso(now - timedelta(days=400)),))
             c.execute("DELETE FROM health_flags WHERE state='cleared' AND cleared_at < ?", (iso(now - timedelta(days=90)),))
             c.execute("DELETE FROM inbound_strikes WHERE ts < ?", (iso(now - timedelta(days=2)),))

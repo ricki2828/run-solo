@@ -71,7 +71,7 @@ def load(coach_dir: str) -> CoachPrompt:
         contract = json.load(f)
     by_name = {t["name"]: t for t in contract["tools"]}
     tools = [by_name[n] for n in READ_TOOLS]   # write tools stay out of the model's list until C2
-    registry = ext.load_registry(coach_dir, core_names=frozenset(by_name))
+    registry = ext.load_registry(coach_dir, core_names=frozenset(READ_TOOLS))   # PR4: propose_plan_change and remember come from tools.d
     tools += registry.schemas()
     rules = SERVER_RULES
     if registry.rules():   # each extension adds its own paragraph just inside the host block
