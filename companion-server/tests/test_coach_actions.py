@@ -29,8 +29,8 @@ def q(c, sql, *a):
 
 
 def plan(c):
-    """A run with a 4-week plan snapshot whose next session is Thursday's Tempo."""
-    assert c.post("/v1/runs", json=run_payload("r1", minutes_ago=60), headers=auth(c.token)).status_code in (200, 201, 202)
+    """A run (at a pinned time: the real clock once put it on the target Friday) with a 4-week plan snapshot whose next session is Thursday's Tempo."""
+    assert c.post("/v1/runs", json=run_payload("r1", start_utc=(T0 - timedelta(hours=3)).isoformat()), headers=auth(c.token)).status_code in (200, 201, 202)
     with db.tx(c.svc.s.db_path) as con:
         con.execute("UPDATE runs SET plan_next_type='quality', plan_next_day=?, plan_next_session_name='Tempo', plan_next_week=2, "
                     "plan_weeks=4", (THURSDAY,))
