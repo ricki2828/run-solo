@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
   tester_no INTEGER,                         -- T1, T2 ...: the number the operator CLI and the logs use instead of a name; never reused
   ops_paused INTEGER NOT NULL DEFAULT 0,     -- paused by the operator or the rate limiter; only `ops resume` clears it (the runner's own RESUME does not)
   ops_paused_reason TEXT,                    -- 'ops' | 'rate'
+  memory_health_optin INTEGER NOT NULL DEFAULT 0,  -- consent v4 "Keep health notes too" tick (default off); only meaningful at consent >= 4
+  memory_sync_optin INTEGER NOT NULL DEFAULT 1,    -- consent v4 training-numbers sync switch (default on); only meaningful at consent >= 4
   UNIQUE (channel, chat_ref)
 );
 CREATE TABLE IF NOT EXISTS devices (
@@ -374,8 +376,9 @@ CREATE TABLE IF NOT EXISTS coach_briefings (
   UNIQUE (user_id, session_ref)
 );
 -- Coach memory (coach PR4): facts the runner told the coach to keep, plus one rolling summary of earlier chats. Unlike the chat
--- history it is NOT purged at 30 days (plan decision 5: allowlisted runners only, consent v4 wording before testers). The
--- runner sees every row with /memory and deletes any of them. Gone on consent withdrawal and on DELETE. Never in a backup.
+-- history it is NOT purged at 30 days. Read and written only at consent v4 (or on the coach allowlist until Ricki re-consents).
+-- The runner sees every row with /memory and deletes any of them. Gone on consent withdrawal and on DELETE. It IS in the
+-- nightly backup (Ricki's call, 22-Oct): a delete leaves the backups within 14 days.
 CREATE TABLE IF NOT EXISTS coach_memory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -506,7 +509,8 @@ def init(path: str) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column" not in str(e):
                     raise
-        for col, typ in (("tester_no", "INTEGER"), ("ops_paused", "INTEGER NOT NULL DEFAULT 0"), ("ops_paused_reason", "TEXT")):
+        for col, typ in (("tester_no", "INTEGER"), ("ops_paused", "INTEGER NOT NULL DEFAULT 0"), ("ops_paused_reason", "TEXT"),
+                         ("memory_health_optin", "INTEGER NOT NULL DEFAULT 0"), ("memory_sync_optin", "INTEGER NOT NULL DEFAULT 1")):
             if col not in cols:  # databases created before the tester rails
                 try:
                     c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")

@@ -786,7 +786,7 @@ def test_the_nightly_backup_leaves_the_check_in_tables_out(env, tmp_path):
     with db.tx(env.path) as c:
         c.execute("INSERT INTO question_cap VALUES (?,?,?,?)", (env.uid, "2026-10-15", "today", iso(at(2026, 10, 15, 6, 45))))
     assert set(PRIVATE_TABLES) == {"checkin_answers", "checkin_slots", "question_cap", "feedback", "feedback_mode",
-                                 "inbound_events", "coach_jobs", "coach_messages", "coach_briefings", "coach_memory",
+                                 "inbound_events", "coach_jobs", "coach_messages", "coach_briefings",
                                  "coach_proposals", "coach_loc_wait"}
     key = tmp_path / "k.key"
     key.write_bytes(b"k" * 32)

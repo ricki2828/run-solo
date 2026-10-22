@@ -234,6 +234,11 @@ def _gate_ok(svc, uid: str, allow_paused: bool = False) -> bool:
     return g is None or (allow_paused and g == "paused")
 
 
+def _holds_memory(svc, uid: str) -> bool:
+    with db.ro(svc.s.db_path) as c:
+        return c.execute("SELECT 1 FROM coach_memory WHERE user_id=? LIMIT 1", (uid,)).fetchone() is not None
+
+
 def _ack(ch, inb, toast: str) -> None:
     fn = getattr(ch, "ack_chip", None)
     if fn:
@@ -246,9 +251,18 @@ def handle_inbound(svc, ch, inb, now: datetime) -> bool:
     special = inb.action is not None or inb.location is not None
     if not special and (inb.card_id is not None or inb.text.strip().lower() not in ("/memory", "memory")):
         return False
-    if not svc.coach.enabled:
-        return special   # a stale button or a stray location pin is ignored; the word /memory keeps its ordinary path
     user = svc._user_by_ref(inb.channel, inb.ref)
+    if not svc.coach.enabled:
+        # the coach flag is off: a runner who still holds memory can use /memory and the cm: delete taps
+        if user and _holds_memory(svc, user["id"]) and inb.location is None and (inb.action is None or inb.action.startswith("cm:")):
+            if not svc._seen(inb, now):
+                from . import memory
+                if inb.action is not None:
+                    memory.tap(svc, ch, inb, user, now)
+                else:
+                    memory.show(svc, ch, inb.ref, user["id"], now)
+            return True
+        return special   # a stale button or a stray location pin is ignored; the word /memory keeps its ordinary path
     if not user:
         return special
     if inb.action is not None:
@@ -265,8 +279,8 @@ def handle_inbound(svc, ch, inb, now: datetime) -> bool:
             _location(svc, ch, inb, user, now)
         return True
     # "/memory"
-    if not _gate_ok(svc, user["id"], allow_paused=True):
-        return False   # an ungated runner gets the ordinary path
+    if not (_gate_ok(svc, user["id"], allow_paused=True) or _holds_memory(svc, user["id"])):
+        return False   # an ungated runner gets the ordinary path (but anyone who still has memory rows can see and delete them)
     if svc._seen(inb, now):
         return True
     from . import memory
