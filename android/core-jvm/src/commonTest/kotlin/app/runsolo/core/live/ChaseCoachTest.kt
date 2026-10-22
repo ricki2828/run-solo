@@ -451,7 +451,7 @@ class ChaseCoachTest {
     @Test
     fun `goal run - the km after a jump is skipped and the one after speaks`() {
         val spec = SessionSpec.goalDistance(8_000, "8 km")
-        val coach = LiveCoach(ctx("chase", fiveK(best).copy(key = "goal:d8000", label = "8 km", targetM = 8_000.0, pbSplitsMs = List(8) { (it + 1) * 290_000L })), RunMode.intervals, spec)
+        val coach = LiveCoach(ctx("chase", LiveBoard("goal:d8000", "8 km", LiveBoardKind.distance, 8_000.0, emptyList(), pbSplitsMs = List(10) { (it + 1) * 290_000L }, pbSplitsLabel = "10K")), RunMode.intervals, spec)
         coach.chaseAtCue(CueKind.projection, 1, 290_000)
         assertNull(coach.chaseAtCue(CueKind.projection, 2, 350_000), "km 2 in 60 s: a jump, nothing to say")
         assertNull(coach.chaseAtCue(CueKind.projection, 3, 640_000), "spill")
@@ -466,7 +466,7 @@ class ChaseCoachTest {
         val spec = SessionSpec.goalDistance(8_000, "8 km")
         val board = LiveBoard(
             key = "goal:d8000", label = "8 km", kind = LiveBoardKind.distance, targetM = 8_000.0,
-            entries = listOf(LiveEntry("g", 0, fromStartSplitsMs = emptyList(), finalMetric = 2_500_000.0)),
+            entries = emptyList(), // production: no 8 km goal was ever reached
             pbSplitsMs = List(10) { (it + 1) * 300_000L },
             pbSplitsLabel = "10K",
         )
