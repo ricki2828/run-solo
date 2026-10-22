@@ -97,6 +97,27 @@ class RepBars extends StatelessWidget {
       return 1 - 0.55 * (pace - fastest) / span;
     }
 
+    // Cyan only on a unique fastest rep, vermillion on a rep beyond the noise
+    // slower than the median; only with 3+ reps, so two never crown a best.
+    final own = [
+      for (final r in reps)
+        if (!r.excluded && r.paceSecPerKm != null) r.paceSecPerKm!,
+    ]..sort();
+    final median = own.isEmpty
+        ? 0.0
+        : own.length.isOdd
+        ? own[own.length ~/ 2]
+        : (own[own.length ~/ 2 - 1] + own[own.length ~/ 2]) / 2;
+    final uniqueBest = own.length >= 3 && own[1].round() - own[0].round() >= 1
+        ? own[0]
+        : null;
+    Color? flagOf(RepBarDatum r) {
+      final p = r.paceSecPerKm;
+      if (r.excluded || p == null || own.length < 3) return null;
+      if (uniqueBest != null && p == uniqueBest) return t.accentArc;
+      return p - median >= 10 ? t.semSlower : null;
+    }
+
     final barColor = switch (tone) {
       RepTone.faster => t.semImproving,
       RepTone.slower => t.semSlower,
@@ -174,6 +195,29 @@ class RepBars extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: colorOf(r),
                                 borderRadius: BorderRadius.circular(2),
+                                border: flagOf(r) == null
+                                    ? null
+                                    : Border.all(color: flagOf(r)!, width: 2),
+                              ),
+                            ),
+                          if (r.ghostSecPerKm != null && r.paceSecPerKm != null)
+                            // Last run's end, a tick over the bar, so
+                            // even a few seconds of delta is plainly seen.
+                            Positioned(
+                              left: (trackW * frac(r.ghostSecPerKm) - 2).clamp(
+                                0.0,
+                                trackW,
+                              ),
+                              child: Container(
+                                key: const ValueKey('rep-ghost-tick'),
+                                width: 4,
+                                height: barHeight,
+                                decoration: BoxDecoration(
+                                  color: t.inkPrimary,
+                                  border: Border.symmetric(
+                                    vertical: BorderSide(color: t.bgRaised),
+                                  ),
+                                ),
                               ),
                             ),
                         ],

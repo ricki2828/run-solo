@@ -327,6 +327,7 @@ class _FourByFourTrend extends StatelessWidget {
         const SizedBox(height: Space.x24),
         RecentBarsChart(
           key: const ValueKey('trend-chart'),
+          axisSuffix: units == Units.mi ? '/mi' : '/km',
           barColor: t.typeIntervals,
           minSpan: 30,
           points: [
@@ -506,6 +507,7 @@ class _DistanceTrend extends StatelessWidget {
       children: [
         RecentBarsChart(
           key: const ValueKey('distance-trend-chart'),
+          axisSuffix: laps ? '' : (units == Units.mi ? '/mi' : '/km'),
           barColor: t.barColourFor(mode),
           minSpan: laps ? 0 : 30,
           points: [

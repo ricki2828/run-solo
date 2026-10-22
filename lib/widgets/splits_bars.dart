@@ -34,7 +34,9 @@ class SplitBar {
 /// Run detail's splits chart, in the leaderboard bar style
 /// (`RecentBarsChart`): one vertical bar per km, mile or lap, taller =
 /// faster, filled by the HR zone the split mostly ran in (the run-type colour
-/// without a heart rate); the fastest is outlined and bold, never a different fill. Every bar carries its pace
+/// without a heart rate). A 4 px cap on each bar says faster or slower than
+/// the run's median: mint, or vermillion, only beyond [noiseSec] (level bars
+/// get none); the one unique fastest split is cyan, outlined and bold. Every bar carries its pace
 /// above it (every second bar once they get too tight for it). Tap or drag
 /// across the bars to pick one: it is outlined and its readout shows above
 /// the chart. The axis note says which way is better and where the baseline
@@ -67,6 +69,10 @@ class SplitsBars extends StatefulWidget {
 
   /// The narrowest pace range the axis spans, s/km.
   static const double minSpanSec = 30;
+
+  /// A split this far (s/km) off the median is faster or slower; closer is
+  /// level. Roughly the GPS pace noise on a km.
+  static const double noiseSec = 10;
 
   @override
   State<SplitsBars> createState() => _SplitsBarsState();
@@ -110,6 +116,10 @@ class _SplitsBarsState extends State<SplitsBars> {
           i,
     };
     if (best.length > 2) best.clear();
+    final sorted = [...paces]..sort();
+    final median = sorted.length.isOdd
+        ? sorted[sorted.length ~/ 2]
+        : (sorted[sorted.length ~/ 2 - 1] + sorted[sorted.length ~/ 2]) / 2;
     final sel = _selected != null && _selected! < bars.length
         ? _selected
         : null;
@@ -152,6 +162,7 @@ class _SplitsBarsState extends State<SplitsBars> {
                   bars: bars,
                   units: units,
                   best: best,
+                  median: median,
                   selected: sel,
                   base: base,
                   top: top,
@@ -165,7 +176,8 @@ class _SplitsBarsState extends State<SplitsBars> {
         ),
         const SizedBox(height: Space.x8),
         Text(
-          'Faster is taller. Fastest ${Fmt.pace(fastest, units)}/$unit. '
+          'Faster is taller. Green cap faster, red cap slower than your '
+          'median. Fastest ${Fmt.pace(fastest, units)}/$unit. '
           'Axis starts at ${Fmt.pace(base, units)}/$unit.',
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
@@ -186,6 +198,7 @@ class _SplitsPainter extends CustomPainter {
     required this.bars,
     required this.units,
     required this.best,
+    required this.median,
     required this.selected,
     required this.base,
     required this.top,
@@ -196,6 +209,7 @@ class _SplitsPainter extends CustomPainter {
   final List<SplitBar> bars;
   final Units units;
   final Set<int> best;
+  final double median;
   final int? selected;
   final double base;
   final double top;
@@ -203,22 +217,26 @@ class _SplitsPainter extends CustomPainter {
   final Brightness brightness;
   final Color? noHrColor;
 
-  static const _topPad = 20.0, _bottomPad = 22.0;
+  static const _topPad = 22.0, _bottomPad = 22.0;
 
-  TextPainter _tp(String s, Color c, {FontWeight w = FontWeight.w500}) =>
-      TextPainter(
-        text: TextSpan(
-          text: s,
-          style: TextStyle(
-            fontFamily: RunSoloType.ui,
-            fontSize: 11,
-            fontWeight: w,
-            color: c,
-            fontFeatures: RunSoloType.tabular,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
+  TextPainter _tp(
+    String s,
+    Color c, {
+    FontWeight w = FontWeight.w500,
+    double size = 11,
+  }) => TextPainter(
+    text: TextSpan(
+      text: s,
+      style: TextStyle(
+        fontFamily: RunSoloType.ui,
+        fontSize: size,
+        fontWeight: w,
+        color: c,
+        fontFeatures: RunSoloType.tabular,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -245,7 +263,7 @@ class _SplitsPainter extends CustomPainter {
     );
     // The pace above a bar and the number under it; once the bars get too
     // tight for the pace, every second one (the picked bar always).
-    final paceW = _tp('00:00', tokens.inkSecondary).width + 4;
+    final paceW = _tp('00:00', tokens.inkSecondary, size: 12).width + 4;
     // Up to 12 bars every one is labelled; past that, every second or so.
     final paceStep = n <= 12 ? 1 : math.max(1, (paceW / slot).ceil());
     final numStep = math.max(1, (26 / slot).ceil());
@@ -280,9 +298,28 @@ class _SplitsPainter extends CustomPainter {
             topRight: const Radius.circular(4),
           ),
           Paint()
-            ..color = tokens.inkPrimary
+            ..color = tokens.accentArc
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2,
+        );
+      }
+      // Cap: cyan for the unique best, else mint / vermillion beyond noise.
+      final off = p - median;
+      final cap = best.contains(i)
+          ? tokens.accentArc
+          : off <= -SplitsBars.noiseSec
+          ? tokens.semImproving
+          : off >= SplitsBars.noiseSec
+          ? tokens.semSlower
+          : null;
+      if (cap != null) {
+        canvas.drawRRect(
+          RRect.fromRectAndCorners(
+            Rect.fromLTWH(x, rect.top, barW, math.min(4, rect.height)),
+            topLeft: const Radius.circular(3),
+            topRight: const Radius.circular(3),
+          ),
+          Paint()..color = cap,
         );
       }
       if (isSel) {
@@ -302,8 +339,11 @@ class _SplitsPainter extends CustomPainter {
         final hi = best.contains(i);
         final tp = _tp(
           Fmt.pace(p, units),
-          hi || isSel ? tokens.inkPrimary : tokens.inkSecondary,
+          isSel
+              ? tokens.inkPrimary
+              : (hi ? tokens.accentArc : tokens.inkSecondary),
           w: hi || isSel ? FontWeight.w700 : FontWeight.w500,
+          size: 12,
         );
         final lx = (i * slot + slot / 2 - tp.width / 2).clamp(
           0.0,
@@ -349,6 +389,7 @@ class _SplitsPainter extends CustomPainter {
   bool shouldRepaint(_SplitsPainter old) =>
       old.bars != bars ||
       old.best != best ||
+      old.median != median ||
       old.selected != selected ||
       old.base != base ||
       old.top != top ||

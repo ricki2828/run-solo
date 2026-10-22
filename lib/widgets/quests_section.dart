@@ -3,6 +3,7 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../state/quests/quest_build.dart';
 import '../state/quests/quest_store.dart';
+import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import 'home_b/lane_block.dart';
 import 'recent_bars_chart.dart';
@@ -230,7 +231,8 @@ class _BestChart extends StatelessWidget {
               : d.target.toDouble());
     return RecentBarsChart(
       chartKey: const ValueKey('quest-chart'),
-      barColor: t.typeTrail,
+      // The quest's own lane colour at full saturation, never a muddy tint.
+      barColor: t.laneFill(questLane(d.kind)),
       points: [
         for (var i = 0; i < secs.length; i++)
           BarPoint(date: board.recentDates[i], value: secs[i]),

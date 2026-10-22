@@ -17,10 +17,11 @@ void main() {
     ('light', RunSoloTokens.light),
     ('dark', RunSoloTokens.dark),
   ]) {
-    test('PB bar is 60+ RGB from every run-type bar colour ($name)', () {
+    test('PB bar is cyan and 60+ RGB from every run-type colour but laps '
+        '($name; laps bars are dimmed by the chart instead)', () {
+      expect(t.pbBarColour, t.accentArc);
       final types = {
         'free': t.typeFree,
-        'laps': t.typeLaps,
         'intervals': t.typeIntervals,
         'tests': t.typeTests,
         'goal': t.typeGoal,
