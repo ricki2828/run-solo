@@ -12,6 +12,7 @@ import '../map/map_surface.dart' show usesTerrainMap;
 import '../map/retrace_tracker.dart' show RetraceInput;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
+import '../state/inrun_moments.dart' show InrunMoment, inLastStretch;
 import '../state/next_step.dart';
 import '../state/recording_controller.dart';
 import '../state/true_pace_smoother.dart';
@@ -23,6 +24,7 @@ import '../theme/zones.dart';
 import '../widgets/compare_card.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
+import '../widgets/inrun_moment.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/odometer_distance.dart';
 import '../widgets/pace_dial.dart';
@@ -257,6 +259,7 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   void _onSnapshot() {
     final s = _ctl!.snapshot;
+    _ctl!.momentUnits = _services!.settings.settings.units;
     _questToastCheck(s);
     _sampleTruePace(s);
     if (s.active &&
@@ -1060,6 +1063,26 @@ class _RecordingScreenState extends State<RecordingScreen>
                   anchorBottom: !s.isPreset && s.lapsEnabled,
                   card: card,
                 ),
+                // The in-run moment (km / mile, rep done, halfway, last
+                // 400 m, goal reached): about 1.5 s, over the numbers, no
+                // taps. Not on the finish screen or while paused.
+                ValueListenableBuilder<InrunMoment?>(
+                  valueListenable: ctl.moment,
+                  builder: (context, m, _) =>
+                      m == null || pausedNow || _finishing
+                      ? const SizedBox.shrink()
+                      : InrunMomentOverlay(
+                          key: ValueKey('inrun-moment-${m.serial}'),
+                          moment: m,
+                          accent: flood.background,
+                          reduced: reduced,
+                          onDone: () {
+                            if (ctl.moment.value?.serial == m.serial) {
+                              ctl.moment.value = null;
+                            }
+                          },
+                        ),
+                ),
                 if (_finishing)
                   // The finish and saving screens are their own dark ground:
                   // they keep the base theme, not the flood's.
@@ -1720,7 +1743,7 @@ class _Vitals extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final number = RunSoloType.display44.copyWith(
       color: t.inkPrimary,
-      fontSize: RunSoloType.runSize(compact ? 36 : 44),
+      fontSize: RunSoloType.runSize(compact ? 40 : 52),
     );
     final label = RunLabelScope.style(context, secondary);
     // Short reps (plan §3.7, A8): HR lags a 30 s effort, so in a rep the
@@ -1949,6 +1972,12 @@ class _FreeRunBlock extends StatelessWidget {
   /// Short screen (< 720 dp): each number one step down.
   final bool compact;
 
+  /// The current pace is the second-largest number on the screen (21-Oct UI
+  /// review): 56 px numerals or more in every plan. Average pace is demoted
+  /// to the small [AuxFigure] size.
+  static double _dialPaceSize(double size) =>
+      RunSoloType.runSize((size * 0.8).clamp(36.0, 72.0));
+
   static double _textH(TextStyle style) {
     final p = TextPainter(
       text: TextSpan(text: '0', style: style),
@@ -1959,11 +1988,14 @@ class _FreeRunBlock extends StatelessWidget {
 
   /// The RUN trio's height at [size]: stacked is three full rows, otherwise
   /// distance, then time and pace side by side.
-  static double _trioH(double size, {required bool stacked}) =>
-      (stacked ? 3 : 2) *
-          (_textH(RunSoloType.runLabel) +
-              _textH(RunSoloType.display44.copyWith(fontSize: size))) +
-      (stacked ? 2 : 1) * Space.x4;
+  static double _trioH(double size, {required bool stacked}) {
+    final label = _textH(RunSoloType.runLabel);
+    final row = label + _textH(RunSoloType.display44.copyWith(fontSize: size));
+    // Stacked: distance and time big, the average pace a small third row;
+    // otherwise time and average pace share the second row.
+    final aux = stacked ? label + _textH(AuxFigure.style) : 0.0;
+    return 2 * row + aux + (stacked ? 2 : 1) * Space.x4;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2050,7 +2082,7 @@ class _FreeRunBlock extends StatelessWidget {
                         units: units,
                         onZone: true,
                         paceStyle: AuxFigure.style.copyWith(
-                          fontSize: RunSoloType.runSize(56),
+                          fontSize: _dialPaceSize(size),
                         ),
                       ),
                     ),
@@ -2063,18 +2095,18 @@ class _FreeRunBlock extends StatelessWidget {
                     beside: true,
                     dialWidth: plan.dialWidth == half ? null : plan.dialWidth,
                     paceStyle: AuxFigure.style.copyWith(
-                      fontSize: RunSoloType.runSize(40),
+                      fontSize: _dialPaceSize(size),
                     ),
                   );
             final clusters = <Widget>[
-              EqualFigures(
+              _FreeFigures(
                 figures: liveHero(s, ctl, units).figures,
                 valueKeys: const [
                   ValueKey('free-distance'),
                   ValueKey('timer'),
                   ValueKey('run-average'),
                 ],
-                cap: size,
+                size: size,
                 stacked: plan.stacked,
                 labelColor: secondary,
                 valueColor: t.inkPrimary,
@@ -2159,18 +2191,97 @@ class _FreeRunBlock extends StatelessWidget {
       pace =
           w / 2 +
           Space.x4 +
-          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(56))) +
+          _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize(size))) +
           label;
     } else {
       final paceCol =
           label +
-          _textH(AuxFigure.style.copyWith(fontSize: RunSoloType.runSize(40)));
+          _textH(AuxFigure.style.copyWith(fontSize: _dialPaceSize(size)));
       pace = paceCol > p.dialWidth / 2 ? paceCol : p.dialWidth / 2;
     }
     final ghost = trail == null
         ? 0.0
         : TrailGhostReadout.heightFor(trail!, size);
     return ghost + _trioH(size, stacked: p.stacked) + minGap + pace;
+  }
+}
+
+class _FreeBlockSizes {
+  /// Time sits below the dial's pace (0.8 of [size], capped at 72): distance
+  /// first, the current pace second.
+  static double time(double size) => (size * 0.8).clamp(36.0, 72.0) * 0.92;
+}
+
+/// Free / Trail numbers: distance big, time a step down and equal, the run's average
+/// pace demoted to the small [AuxFigure] size so the current-pace dial under
+/// them is the second-largest read (21-Oct UI review, finding 3). [figures]
+/// is distance, time, average pace; [size] the shared big size.
+class _FreeFigures extends StatelessWidget {
+  const _FreeFigures({
+    required this.figures,
+    required this.valueKeys,
+    required this.size,
+    required this.stacked,
+    required this.labelColor,
+    required this.valueColor,
+    this.odometer,
+  });
+  final List<LiveFigure> figures;
+  final List<Key> valueKeys;
+  final double size;
+  final bool stacked;
+  final Color labelColor;
+  final Color valueColor;
+  final Widget Function(TextStyle style)? odometer;
+
+  @override
+  Widget build(BuildContext context) {
+    final big = RunSoloType.display44.copyWith(
+      fontSize: size,
+      fontWeight: FontWeight.w700,
+      color: valueColor,
+    );
+    final mid = big.copyWith(fontSize: _FreeBlockSizes.time(size));
+    final small = AuxFigure.style.copyWith(color: valueColor);
+    Widget one(int i, TextStyle style) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(figures[i].label, style: RunLabelScope.style(context, labelColor)),
+        if (i == 0 && odometer != null)
+          KeyedSubtree(key: valueKeys[i], child: odometer!(style))
+        else
+          Text(
+            figures[i].value,
+            key: valueKeys[i],
+            softWrap: false,
+            maxLines: 1,
+            overflow: TextOverflow.visible,
+            style: style,
+          ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        one(0, big),
+        const SizedBox(height: Space.x4),
+        if (stacked) ...[
+          one(1, mid),
+          const SizedBox(height: Space.x4),
+          one(2, small),
+        ] else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(child: one(1, mid)),
+              const SizedBox(width: Space.x16),
+              Expanded(child: one(2, small)),
+            ],
+          ),
+      ],
+    );
   }
 }
 
@@ -3263,14 +3374,7 @@ bool isEventRun(RecordingSnapshot s) =>
 
 /// The last 400 m (A10.10), or a time goal's last minute (G3): projected
 /// finish becomes the primary number.
-bool eventLastStretch(RecordingSnapshot s) {
-  final st = s.currentStep;
-  if (st != null && st.target == TargetKind.time) {
-    return s.phaseRemainingMs <= 60000;
-  }
-  final m = s.metresToGo;
-  return m != null && m <= 400;
-}
+bool eventLastStretch(RecordingSnapshot s) => inLastStretch(s);
 
 /// "6.21 km" / "3.86 mi": a time goal's distance, two decimals.
 String goalDistanceText(double metres, Units units) => units == Units.mi
@@ -3362,14 +3466,15 @@ class _EventStats extends StatelessWidget {
         ),
         const SizedBox(width: Space.x16),
         SizedBox(
-          width: 136,
+          width: 152,
           child: PaceDial(
             currentSecPerKm: s.livePaceSecPerKm,
             referenceSecPerKm: avg,
             units: units,
             onZone: true,
             label: 'CURRENT PACE',
-            paceStyle: RunSoloType.display44,
+            // Second-largest number on the goal / event screen (21-Oct).
+            paceStyle: RunSoloType.display64,
           ),
         ),
       ],
@@ -3420,11 +3525,16 @@ class EventBlock extends StatelessWidget {
         key: ValueKey(key),
         mainAxisSize: MainAxisSize.min,
         children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: odo && kOdometerDistance && !dashed
-                ? OdometerDistance(value: text, style: style)
-                : Text(text, softWrap: false, style: style),
+          // 8 dp of clear air before the zone ladder: the headline scales to
+          // fit inside it (21-Oct review).
+          Padding(
+            padding: const EdgeInsets.only(right: Space.x8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: odo && kOdometerDistance && !dashed
+                  ? OdometerDistance(value: text, style: style)
+                  : Text(text, softWrap: false, style: style),
+            ),
           ),
           Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
         ],
