@@ -79,12 +79,21 @@ def health_on(c, uid: str) -> bool:
     return bool(r and r["memory_health_optin"])
 
 
-def delete_health(c, uid: str) -> None:
+def delete_health(c, uid: str, keep_summary_if_clean: bool = False) -> None:
     """The health tick went off: facts that mention health go, and so does the chat summary (it may hold health notes and is
     rewritten, without them, after the next ten messages)."""
     for r in c.execute("SELECT id, text FROM coach_memory WHERE user_id=? AND kind='fact'", (uid,)).fetchall():
         if HEALTH_RE.search(r["text"]):
             c.execute("DELETE FROM coach_memory WHERE id=?", (r["id"],))
+    if keep_summary_if_clean:   # grant time and start-up: strip health sentences from the summary, keep the rest
+        r = c.execute("SELECT id, text FROM coach_memory WHERE user_id=? AND kind='summary'", (uid,)).fetchone()
+        if r and HEALTH_RE.search(r["text"]):
+            kept = _strip_health(r["text"])
+            if kept:
+                c.execute("UPDATE coach_memory SET text=? WHERE id=?", (kept, r["id"]))
+            else:
+                c.execute("DELETE FROM coach_memory WHERE id=?", (r["id"],))
+        return
     c.execute("DELETE FROM coach_memory WHERE user_id=? AND kind='summary'", (uid,))
 
 

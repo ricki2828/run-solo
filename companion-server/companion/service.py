@@ -423,6 +423,22 @@ class Service(CheckinMixin, MeasureMixin):
         self.media = from_settings(settings.render_socket)  # a socket client only; nothing connects unless media_enabled is on
         db.init(settings.db_path)
         self.coach = CoachChat(self)   # inert unless COMPANION_COACH_CHAT, an allowlist and a compiled skill
+        self.purge_health_when_off()   # one-off clean-up of notes saved before the health tick existed (idempotent)
+
+    def purge_health_when_off(self) -> int:
+        """Health notes (facts that mention injury, pain or illness, and the chat summary that may hold them) go for every runner whose
+        "Keep health notes too" tick is off. Run at start-up: it removes what was saved before the tick existed (Ricki's PR4 rows),
+        and it is cheap and idempotent because the tick-off paths never save health content again. Returns the runners cleaned."""
+        from .coach.ext import memory as coach_memory_ext
+        n = 0
+        with db.tx(self.s.db_path) as c:
+            for r in c.execute("SELECT DISTINCT user_id FROM coach_memory WHERE user_id IN "
+                               "(SELECT id FROM users WHERE memory_health_optin=0)").fetchall():
+                before = c.execute("SELECT COUNT(*) FROM coach_memory WHERE user_id=?", (r["user_id"],)).fetchone()[0]
+                coach_memory_ext.delete_health(c, r["user_id"], keep_summary_if_clean=True)
+                if c.execute("SELECT COUNT(*) FROM coach_memory WHERE user_id=?", (r["user_id"],)).fetchone()[0] != before:
+                    n += 1
+        return n
 
     # ---------------------------------------------------------------- tokens / enrolment (B1)
     def token_hash(self, token: str) -> str:
@@ -1147,11 +1163,21 @@ class Service(CheckinMixin, MeasureMixin):
             if cur is None:
                 raise NotFound()
             stored = cur["checkin_consent"]
-            if coach_memory is False and (stored or 0) >= self.s.memory_consent_required:
-                c.execute("UPDATE users SET checkin_consent=?, memory_health_optin=0, memory_sync_optin=1 WHERE id=?",
-                          (self.s.coach_consent_required, uid))
+            if coach_memory is False:
+                # "Turn off memory": delete the notes. Only a runner the server holds at v4 or above is dropped to the coach
+                # version; below that the request never touches consent (it must not raise a v2 runner to v3).
                 c.execute("DELETE FROM coach_memory WHERE user_id=?", (uid,))
+                if (stored or 0) >= self.s.memory_consent_required:
+                    c.execute("UPDATE users SET checkin_consent=?, memory_health_optin=0, memory_sync_optin=1 WHERE id=?",
+                              (self.s.coach_consent_required, uid))
                 log.info("coach memory turned off user=%s via %s", uid, source)
+                return
+            if (source != "cli" and version >= self.s.memory_consent_required
+                    and (stored or 0) < self.s.coach_consent_required):
+                # a v4 (memory) grant from a runner the server holds below the coach version: the memory sheet is offered only
+                # at v3 or above, so this never raises consent past what the runner agreed to. No change.
+                ignored = True
+                log.info("consent v%s ignored, stored=%s is below the coach version user=%s via %s", version, stored, uid, source)
                 return
             if source != "cli" and 0 < version and stored is not None and version < stored:
                 ignored = True
@@ -1163,6 +1189,9 @@ class Service(CheckinMixin, MeasureMixin):
             if version >= self.s.memory_consent_required:
                 if stored is None or stored < self.s.memory_consent_required:   # a fresh v4 grant starts from the defaults
                     c.execute("UPDATE users SET memory_health_optin=0, memory_sync_optin=1 WHERE id=?", (uid,))
+                    if not health_notes:   # a fresh grant with the tick off: notes saved earlier (at v3) lose their health content
+                        from .coach.ext import memory as coach_memory_grant
+                        coach_memory_grant.delete_health(c, uid, keep_summary_if_clean=True)
                 if health_notes is not None:
                     was = c.execute("SELECT memory_health_optin FROM users WHERE id=?", (uid,)).fetchone()[0]
                     c.execute("UPDATE users SET memory_health_optin=? WHERE id=?", (1 if health_notes else 0, uid))

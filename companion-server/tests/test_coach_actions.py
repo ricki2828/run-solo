@@ -869,3 +869,47 @@ def test_slash_memory_and_delete_taps_work_when_the_gate_or_the_flag_is_closed(c
     fid = q(cc, "SELECT id FROM coach_memory")[0]["id"]
     tap(cc, f"cm:{fid}", now=T0 + timedelta(minutes=5))
     assert q(cc, "SELECT * FROM coach_memory") == []
+
+
+def test_turn_off_for_a_runner_held_below_v4_deletes_notes_and_never_raises_consent(cc):
+    set_override(cc, [uid_of(cc)])
+    cc.svc.set_checkin_consent(uid_of(cc), 2, source="cli")
+    add_row(cc, "fact", "Tuesdays are long runs", "schedule")
+    consent(cc, 3, coach_memory=False)
+    assert q(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 2     # 2 stays 2, never 3
+    assert q(cc, "SELECT * FROM coach_memory") == []
+
+
+def test_health_facts_saved_before_the_tick_existed_are_cleaned_at_start_up(cc):
+    set_override(cc, [uid_of(cc)])                      # Ricki: consent 3, tick off by default
+    add_row(cc, "fact", "My left calf gets sore after hills", "history")
+    add_row(cc, "fact", "I run Tuesdays", "schedule")
+    add_row(cc, "summary", "Runs mornings. Calf niggle in October. Aims at a half.")
+    assert cc.svc.purge_health_when_off() == 1
+    assert q(cc, "SELECT kind, text FROM coach_memory ORDER BY id") == [
+        {"kind": "fact", "text": "I run Tuesdays"}, {"kind": "summary", "text": "Runs mornings. Aims at a half."}]
+    assert cc.svc.purge_health_when_off() == 0          # idempotent
+    assert '"summary_of_earlier_chats"' in memory.context(ctx_of(cc)) and "calf" not in memory.context(ctx_of(cc)).lower()
+
+
+def test_a_fresh_v4_grant_with_the_tick_off_removes_earlier_health_facts_but_keeps_them_when_ticked(cc):
+    add_row(cc, "fact", "My achilles is sore", "history")
+    consent(cc, 4, health_notes=True)
+    assert len(q(cc, "SELECT id FROM coach_memory")) == 1      # ticked: kept
+    consent(cc, 3, coach_memory=False)
+    add_row(cc, "fact", "My achilles is sore", "history")
+    add_row(cc, "fact", "I like trails", "preference")
+    consent(cc, 4)                                             # a new grant, tick off
+    assert q(cc, "SELECT text FROM coach_memory") == [{"text": "I like trails"}]
+
+
+def test_a_v4_grant_from_a_runner_stored_below_the_coach_version_is_ignored_and_says_so(cc):
+    set_override(cc, [uid_of(cc)])
+    cc.svc.set_checkin_consent(uid_of(cc), 2, source="cli")
+    r = consent(cc, 4, health_notes=True)
+    assert r.json() == {"status": "ignored"}
+    assert q(cc, "SELECT checkin_consent, memory_health_optin h FROM users")[0] == {"checkin_consent": 2, "h": 0}
+    consent(cc, 3)                                       # the coach version itself is still accepted
+    assert q(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 3
+    assert consent(cc, 4).json() == {"status": "ok"}     # and from 3 the v4 grant lands
+    assert q(cc, "SELECT checkin_consent FROM users")[0]["checkin_consent"] == 4

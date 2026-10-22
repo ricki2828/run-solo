@@ -284,10 +284,10 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
         """The app calls this when the runner taps Agree on the companion consent card (and may repeat it). The latest
         value wins, so a lower one withdraws check-ins. Check-ins need a value at or above the server's requirement."""
         try:
-            svc.set_checkin_consent(uid, body.consent_version, health_notes=body.health_notes, training_sync=body.training_sync, coach_memory=body.coach_memory)
+            ok = svc.set_checkin_consent(uid, body.consent_version, health_notes=body.health_notes, training_sync=body.training_sync, coach_memory=body.coach_memory)
         except NotFound:
             raise HTTPException(404, "gone")
-        return {"status": "ok"}
+        return {"status": "ok" if ok else "ignored"}   # ignored: a lower report, or a v4 grant from a runner below the coach version
 
     @app.put("/v1/me/timezone")
     def put_timezone(body: TimezoneIn, uid: str = Depends(current_user)):
