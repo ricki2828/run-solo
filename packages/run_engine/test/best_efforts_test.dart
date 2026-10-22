@@ -824,6 +824,26 @@ void main() {
       expect(no.miss!.reason, 'GPS dropped 4 times, 3 min in all');
     });
 
+    test('minutes of short holes add up: 4 s holes in a 5K count toward the '
+        'allowance', () {
+      List<(int, int)> holes(int n) => [
+        for (var k = 0; k < n; k++) (20 + 25 * k, 4),
+      ];
+      // 40 x 4 s = 160 s fits in 187.5 s; 48 x 4 s = 192 s does not.
+      final ok = find(dropRun(1250, holes(40)));
+      expect(effort(ok, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+      final no = find(dropRun(1250, holes(48)));
+      expect(no.efforts.containsKey(BestEffortDistance.k5), isFalse);
+      expect(no.miss!.reason, 'GPS dropped 48 times, 3 min in all');
+    });
+
+    test('a stray missed tick or two is jitter and is not counted', () {
+      final r = find(
+        dropRun(1250, [for (var k = 0; k < 100; k++) (10 + 12 * k, 2)]),
+      );
+      expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));
+    });
+
     test('a single 45 s dropout in exactly 5K counts', () {
       final r = find(dropRun(1250, [(600, 45)]));
       expect(effort(r, BestEffortDistance.k5).elapsedMs, closeTo(1250000, 5));

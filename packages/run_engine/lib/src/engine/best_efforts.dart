@@ -640,7 +640,7 @@ class BestEffortFinder {
       if (prevT != null && out.isNotEmpty) {
         final dt = t - prevT;
         if (dt > constants.sampleGapInterruptMs ||
-            (dt > minTrackedDropoutMs && after.contains(s.tMs))) {
+            (dt > minCountedHoleMs && after.contains(s.tMs))) {
           // A short GPS dropout is bridged like in any run (the window check
           // holds the total); a pause inside it or a long one is not.
           if (dt > maxBridgedGpsGapMs ||
@@ -923,10 +923,10 @@ class BestEffortFinder {
   /// Whether [s] carries a usable position: lat/lon, and an accuracy the
   /// recorder's filter would accept. The recorder journals fixes it rejects
   /// for accuracy with lat/lon and the distance frozen, so they are a
-  /// dropout too. (The engine's [EngineConstants.qualityMaxAccuracyM] is the
-  /// copy of the recorder's `PointFilter.maxAccuracyM`.)
+  /// dropout too. ([EngineConstants.noFixAccuracyM] is held equal to the
+  /// recorder's `PointFilter.maxAccuracyM` by a contract test.)
   bool _isFix(Sample s) =>
-      s.hasFix && (s.accM == null || s.accM! <= constants.qualityMaxAccuracyM);
+      s.hasFix && (s.accM == null || s.accM! <= constants.noFixAccuracyM);
 
   /// The samples with every run of no-fix ones between two fixes left out,
   /// and the times of the samples that follow such a run. The recorder writes
@@ -959,8 +959,14 @@ class BestEffortFinder {
     return (out, after);
   }
 
-  /// A bridged dropout shorter than this is not tracked (a stray no-fix
-  /// tick or two): the distance still runs straight across it.
+  /// A hole shorter than this is a stray no-fix tick or two, normal GPS
+  /// jitter: the distance runs straight across it and it is not counted.
+  /// Longer ones count toward a window's allowance ([maxBridgedGpsTotalMs]).
+  static const int minCountedHoleMs = 2000;
+
+  /// A hole longer than this is also a dropout a window may not cut through
+  /// (an edge inside it is refused); shorter ones are too brief for the
+  /// interpolated edge to matter.
   static const int minTrackedDropoutMs = 5000;
 
   /// Whether the run holds any run of no-fix samples to collapse.
@@ -968,7 +974,7 @@ class BestEffortFinder {
       _collapse(run).$1.length != run.samples.length ||
       _dropouts(run).isNotEmpty;
 
-  /// Every GPS dropout that is tracked: [minTrackedDropoutMs] or more between
+  /// Every counted GPS dropout: more than [minCountedHoleMs] between
   /// two neighbouring fix samples (or a sample gap over
   /// [EngineConstants.sampleGapInterruptMs]) outside any pause or recording
   /// gap.
@@ -991,11 +997,11 @@ class BestEffortFinder {
     return out;
   }
 
-  /// Whether the step to [s], [dt] after the previous sample, is a tracked
-  /// dropout (see [minTrackedDropoutMs]).
+  /// Whether the step to [s], [dt] after the previous sample, is a counted
+  /// dropout (see [minCountedHoleMs]).
   bool _isHole(Set<int> after, Sample s, int dt) =>
       dt > constants.sampleGapInterruptMs ||
-      (dt > minTrackedDropoutMs && after.contains(s.tMs));
+      (dt > minCountedHoleMs && after.contains(s.tMs));
 
   /// Removes every span where some 200 m was covered faster than 8 m/s, so
   /// no window can contain a GPS jump.
@@ -1138,7 +1144,10 @@ class BestEffortFinder {
     var total = 0;
     for (final (a, b, ms) in holes) {
       if (w.end <= a + 1e-6 || w.start >= b - 1e-6) continue; // not touched
-      if (w.start > a + 1e-6 || w.end < b - 1e-6) return false; // an edge in it
+      if ((w.start > a + 1e-6 || w.end < b - 1e-6) &&
+          ms > minTrackedDropoutMs) {
+        return false; // an edge in it
+      }
       total += ms;
     }
     final allowance = w.elapsed * bridgedGpsShare;
