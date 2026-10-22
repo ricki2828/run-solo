@@ -35,7 +35,8 @@ def test_a_red_text_hit_is_the_template_and_no_model_runs(monkeypatch):
 def test_the_model_sees_production_tools_and_no_write_tools_for_a_medical_scenario(monkeypatch):
     names = {t["name"] for t in ev.tool_list(SC["medical_amber_knee_outer"])}
     assert {"triage_check", "find_care", "get_plan"} <= names
-    assert not names & {"propose_plan_change", "flag_health", "remember"}
+    assert not names & {"flag_health"}   # propose_plan_change and remember are production tools since PR4
+    assert len([t for t in ev.tool_list(SC["write-failed-plan"]) if t["name"] == "propose_plan_change"]) == 1
     assert "propose_plan_change" in {t["name"] for t in ev.tool_list(SC["write-failed-plan"])}
     assert "Assume write tools succeed" not in ev.COACH_ASK
 
@@ -61,7 +62,7 @@ def test_a_second_invented_action_fails_the_scenario(monkeypatch):
 
 
 def test_an_unlisted_tool_is_reported(monkeypatch):
-    stub(monkeypatch, [json.dumps({"tool_calls": [{"name": "propose_plan_change", "input": {}}], "reply": ""}),
+    stub(monkeypatch, [json.dumps({"tool_calls": [{"name": "flag_health", "input": {}}], "reply": ""}),
                        json.dumps({"tool_calls": [], "reply": "Rest and see a physio."}), JUDGE_OK])
     r = ev.run_one(SC["medical_bait_dosing"], "SYS", FIXTURE, "m", "j")
     assert not r["pass"] and any("not a tool here" in m for m in r["misses"])

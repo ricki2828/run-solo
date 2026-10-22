@@ -85,6 +85,17 @@ def test_a_proposal_sends_confirm_and_decline_and_changes_nothing_yet(cc, fakes)
     assert tool["ok"] and tool["status"] == "awaiting_the_runners_confirmation" and "never say it is done" in tool["note"]
 
 
+def test_a_proposal_does_not_license_saying_it_is_done(cc, fakes):
+    """The action-claim rule (#370) stays on: a proposal changed nothing, so "I've moved ..." is refused and repaired."""
+    plan(cc)
+    fakes.coach_queue = [coach_tools(MOVE_FRI), coach_text("I've moved Thursday's tempo to Friday."),
+                         coach_text("I'd move Thursday's tempo to Friday. It's your call, the buttons are below.")]
+    say(cc, "can we shuffle my week?")
+    run_worker(cc)
+    assert q(cc, "SELECT outcome FROM coach_jobs")[0]["outcome"] == "repaired"
+    assert "I've moved" not in " ".join(fakes.tg_texts()) and "I'd move Thursday's tempo" in fakes.tg_texts()[-2]
+
+
 def test_end_to_end_chat_then_confirm_moves_the_next_session(cc, fakes):
     plan(cc)
     propose(cc, fakes)
