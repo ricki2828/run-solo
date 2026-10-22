@@ -97,6 +97,27 @@ const List<String> kCompanionWeatherSheet = [
       'as your phone can reach it. Backups keep data for up to 14 days.',
 ];
 
+/// The coach memory sheet (consent version 4). Title and body together stay
+/// under 90 words; a test counts them. Plain words, no em dashes.
+const String kCompanionMemoryTitle = 'Let the coach remember you';
+
+const String kCompanionMemoryBody =
+    'The coach can keep notes about your goals, your schedule, what you like, '
+    'key runs, and a short summary of your chats, so it never starts from '
+    'zero. It keeps your training numbers too: estimated race '
+    'times, best efforts, weekly load and your plan. Your GPS tracks and '
+    'heart rate recordings stay on your phone. You can see and delete every '
+    'note by sending /memory in Telegram. Health notes (niggles and '
+    'injuries) are separate: tick below to let the coach keep them.';
+
+const String kCompanionMemoryHealthTick = 'Keep health notes too';
+
+const String kCompanionMemorySyncTitle = 'Share training numbers';
+
+const String kCompanionMemorySyncBlurb =
+    'Estimated times, best efforts, weekly load and your plan. On unless you '
+    'switch it off.';
+
 /// The companion's setup step (onboarding) and Settings > Companion. Off:
 /// the consent copy with "Turn on" and "Not now" at equal weight, neither
 /// pre-selected. Waiting and failed: the enrolment state with a retry. On:
@@ -525,6 +546,18 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
                   ),
                 ),
         ),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) => !services.companion!.memoryOffered
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: Space.x16),
+                  child: CompanionMemoryOffer(
+                    key: const ValueKey('companion-memory-offer'),
+                    controller: services.companion!,
+                  ),
+                ),
+        ),
         const _Heading('What the companion knows'),
         if (_loading)
           const Padding(
@@ -737,6 +770,109 @@ class _SwitchRow extends StatelessWidget {
           ),
           const SizedBox(width: Space.x12),
           Switch(key: switchKey, value: on, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+}
+
+/// The memory sheet as a card: the words, the health notes tick (off), the
+/// training numbers switch (on), Agree and Not now at equal weight. Agree
+/// records version 4 with both choices; Not now changes nothing.
+class CompanionMemoryOffer extends StatefulWidget {
+  const CompanionMemoryOffer({super.key, required this.controller});
+  final CompanionController controller;
+
+  @override
+  State<CompanionMemoryOffer> createState() => _CompanionMemoryOfferState();
+}
+
+class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
+  bool _health = false;
+  bool _sync = true;
+  bool _busy = false;
+
+  Future<void> _agree() async {
+    setState(() => _busy = true);
+    await widget.controller.acceptMemory(
+      healthNotes: _health,
+      trainingSync: _sync,
+    );
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            kCompanionMemoryTitle,
+            key: const ValueKey('companion-memory-title'),
+            style: RunSoloType.body17.copyWith(
+              color: t.inkPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Space.x8),
+          Text(
+            kCompanionMemoryBody,
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          InkWell(
+            key: const ValueKey('companion-memory-health-tick'),
+            onTap: _busy ? null : () => setState(() => _health = !_health),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  Checkbox(
+                    key: const ValueKey('companion-memory-health-box'),
+                    value: _health,
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(() => _health = v ?? false),
+                  ),
+                  Expanded(
+                    child: Text(
+                      kCompanionMemoryHealthTick,
+                      style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _SwitchRow(
+            title: kCompanionMemorySyncTitle,
+            blurb: kCompanionMemorySyncBlurb,
+            switchKey: const ValueKey('companion-memory-sync-switch'),
+            on: _sync,
+            onChanged: _busy ? null : (v) => setState(() => _sync = v),
+          ),
+          const SizedBox(height: Space.x16),
+          Row(
+            children: [
+              Expanded(
+                child: _ChoiceButton(
+                  key: const ValueKey('companion-memory-agree'),
+                  label: 'Agree',
+                  onTap: _busy ? null : _agree,
+                ),
+              ),
+              const SizedBox(width: Space.x12),
+              Expanded(
+                child: _ChoiceButton(
+                  key: const ValueKey('companion-memory-notnow'),
+                  label: 'Not now',
+                  onTap: _busy ? null : widget.controller.dismissMemory,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

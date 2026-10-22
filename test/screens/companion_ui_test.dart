@@ -120,8 +120,9 @@ void main() {
     await pumpTimes(tester, 6);
     expect(ctl.enrolled, isTrue);
     expect(find.text('WHAT THE COMPANION KNOWS'), findsOneWidget);
-    expect(find.text('first 5k'), findsOneWidget);
     expect(find.byKey(const ValueKey('companion-connected')), findsOneWidget);
+    await scrollTo(tester, find.text('first 5k')); // below the memory offer
+    expect(find.text('first 5k'), findsOneWidget);
     await scrollTo(tester, find.byKey(const ValueKey('companion-turn-off')));
     expect(find.byKey(const ValueKey('companion-delete')), findsOneWidget);
     expect(find.byKey(const ValueKey('companion-turn-off')), findsOneWidget);
@@ -399,8 +400,9 @@ void main() {
       expect(sw(tester).value, isFalse);
       expect(ctl.weatherOn, isFalse);
       expect(ctl.problem, contains('Weather is still off'));
-      await tester.drag(find.byType(ListView), const Offset(0, 2000));
+      await tester.drag(find.byType(ListView), const Offset(0, 3000));
       await pumpTimes(tester, 4);
+      await scrollTo(tester, find.byKey(const ValueKey('companion-problem')));
       expect(find.byKey(const ValueKey('companion-problem')), findsOneWidget);
     });
   });
@@ -466,5 +468,135 @@ void main() {
         },
       );
     }
+  });
+
+  group('coach memory sheet (consent v4)', () {
+    Map<String, Object?> lastConsent() =>
+        http.bodyOf(http.to('PUT', '/v1/me/consent').last);
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.runAsync(() => enrolNow(ctl));
+      await pumpApp(
+        tester,
+        fakeServices(companion: ctl, transfer: transfer),
+        home: const CompanionScreen(),
+      );
+      await pumpTimes(tester, 6);
+    }
+
+    test('the sheet is at most 90 words with no em dashes', () {
+      final words = '$kCompanionMemoryTitle $kCompanionMemoryBody'
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty)
+          .length;
+      expect(words, lessThanOrEqualTo(90));
+      for (final s in [
+        kCompanionMemoryTitle,
+        kCompanionMemoryBody,
+        kCompanionMemoryHealthTick,
+        kCompanionMemorySyncTitle,
+        kCompanionMemorySyncBlurb,
+      ]) {
+        expect(s, isNot(contains('\u2014')));
+      }
+    });
+
+    testWidgets(
+      'a v2 runner is offered it: tick off, switch on, no silent upgrade',
+      (tester) async {
+        await open(tester);
+        expect(ctl.memoryOffered, isTrue);
+        expect(ctl.memoryOn, isFalse);
+        expect(
+          find.byKey(const ValueKey('companion-memory-offer')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.byKey(const ValueKey('companion-memory-health-box')),
+              )
+              .value,
+          isFalse,
+        );
+        expect(
+          tester
+              .widget<Switch>(
+                find.byKey(const ValueKey('companion-memory-sync-switch')),
+              )
+              .value,
+          isTrue,
+        );
+        // Only the version-2 report has gone out so far.
+        expect(lastConsent(), {'consent_version': kCompanionBaseConsent});
+      },
+    );
+
+    testWidgets('Agree sends version 4 with the defaults', (tester) async {
+      await open(tester);
+      await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
+      await pumpTimes(tester, 4);
+      expect(lastConsent(), {
+        'consent_version': kCompanionConsentVersion,
+        'health_notes': false,
+        'training_sync': true,
+      });
+      expect(kCompanionConsentVersion, 4);
+      expect(ctl.memoryOn, isTrue);
+      expect(ctl.healthNotesOn, isFalse);
+      expect(ctl.trainingSyncOn, isTrue);
+      expect(
+        find.byKey(const ValueKey('companion-memory-offer')),
+        findsNothing,
+      );
+      expect(secrets.values[CompanionController.consentName], '4');
+    });
+
+    testWidgets('ticking health notes and switching sync off are sent', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('companion-memory-health-box')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('companion-memory-sync-switch')),
+      );
+      await pumpTimes(tester, 2);
+      await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
+      await pumpTimes(tester, 4);
+      expect(lastConsent(), {
+        'consent_version': 4,
+        'health_notes': true,
+        'training_sync': false,
+      });
+      // They survive an app restart.
+      final again = CompanionController(
+        store: secrets,
+        transfer: transfer,
+        client: CompanionClient(baseUrl: 'https://c.test', http: http),
+      );
+      await tester.runAsync(again.load);
+      expect(again.memoryOn, isTrue);
+      expect(again.healthNotesOn, isTrue);
+      expect(again.trainingSyncOn, isFalse);
+    });
+
+    testWidgets('Not now sends nothing and keeps the rest working', (
+      tester,
+    ) async {
+      await open(tester);
+      final before = http.to('PUT', '/v1/me/consent').length;
+      await tester.tap(find.byKey(const ValueKey('companion-memory-notnow')));
+      await pumpTimes(tester, 4);
+      expect(http.to('PUT', '/v1/me/consent').length, before);
+      expect(ctl.memoryOn, isFalse);
+      expect(ctl.memoryOffered, isFalse);
+      expect(ctl.consentCurrent, isTrue); // check-ins and Home carry on
+      expect(
+        find.byKey(const ValueKey('companion-memory-offer')),
+        findsNothing,
+      );
+    });
   });
 }

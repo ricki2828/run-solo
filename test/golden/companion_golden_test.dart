@@ -125,6 +125,22 @@ void main() {
     expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
   });
 
+  testWidgets('companion memory sheet 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    expect(
+      find.byKey(const ValueKey('companion-memory-offer')),
+      findsOneWidget,
+    );
+    await check(tester, 'companion_memory_sheet_360x640');
+  });
+
   testWidgets('companion weather sheet 360x640', (tester) async {
     await tester.runAsync(() => enrolNow(ctl));
     await pumpApp(
