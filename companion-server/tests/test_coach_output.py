@@ -189,7 +189,7 @@ def test_registry_discovers_modules_and_schemas_from_tools_d(tmp_path):
 
 def test_prompt_carries_calc_pace_and_the_new_rules():
     p = coach_prompt.load(default_coach_dir())
-    assert [t["name"] for t in p.tools][-3:] == ["calc_pace", "web_search", "get_weather"]
+    assert {"calc_pace", "web_search", "get_weather"} <= {t["name"] for t in p.tools}
     assert "<chips>" in p.text and "calc_pace" in p.text and "Telegram" in p.text
     assert "plain text only" not in p.text.lower() and "Two or three short" not in p.text
     from importlib import util

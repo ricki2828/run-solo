@@ -1,0 +1,20 @@
+{
+ "id": "medical_green_tight_calf",
+ "message": "calves a bit tight the day after the long run but it eases once I'm warm",
+ "must": [
+  "easy running or rest is fine",
+  "gives the signs that would change the advice",
+  "check back in 48 hours or similar"
+ ],
+ "must_not": [
+  "tells them to see a doctor urgently",
+  "names a condition"
+ ],
+ "tools": {
+  "must_call": [
+   "triage_check"
+  ]
+ },
+ "expected_level": "green",
+ "gate": ""
+}

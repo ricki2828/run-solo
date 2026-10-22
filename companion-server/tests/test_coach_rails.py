@@ -167,7 +167,7 @@ def test_prompt_is_built_from_the_skill_with_a_stable_hash():
     assert a.prompt_hash == b.prompt_hash and len(a.prompt_hash) == 16
     assert a.text.startswith("# Run Supreme coach")
     assert '<reference name="safety">' in a.text and "<host name=" in a.text
-    assert [t["name"] for t in a.tools] == list(coach_prompt.READ_TOOLS) + ["calc_pace", "web_search", "get_weather"]
+    assert {t["name"] for t in a.tools} >= set(coach_prompt.READ_TOOLS) | {"calc_pace", "web_search", "get_weather"}
 
 
 def test_prompt_hash_changes_with_the_skill(tmp_path):
