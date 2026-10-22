@@ -146,6 +146,7 @@ class Proactive:
         with db.tx(self.s.db_path) as c:
             c.execute("UPDATE coach_jobs SET state='cancelled', outcome=?, reply=NULL WHERE id=? AND state IN ('replied','running')",
                       (f"held:{why}", job_id))
+            c.execute("DELETE FROM coach_messages WHERE job_id=? AND role='coach'", (job_id,))   # the model never sees what the runner did not get
         log.info("coach proactive job=%s held: %s", job_id, why)
         return False
 
