@@ -781,6 +781,7 @@ class CoachChat:
                     fn = call.get("function") if isinstance(call.get("function"), dict) else {}
                     name = str(fn.get("name", ""))
                     result = registry.call(name, fn.get("arguments"), ctx) if registry.has(name) else tools.call(name, fn.get("arguments"))
+                    res.cost_usd, res.calls, ctx.cost_usd, ctx.calls = res.cost_usd + ctx.cost_usd, res.calls + ctx.calls, 0.0, 0
                     enc = tools.encode(result)
                     sources.append(enc)
                     tool_sources.append(enc)
