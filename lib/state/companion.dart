@@ -67,6 +67,9 @@ const String kCompanionPrivacyUrl = 'https://runsupreme.taiaroa.xyz/privacy/';
 /// 2: check-ins (readiness and skip answers, kept 14 days).
 const int kCompanionBaseConsent = 2;
 
+/// 3: the coach (chat); what the server drops a runner to when memory is turned off.
+const int kCompanionCoachConsent = 3;
+
 /// 4: coach memory (the memory sheet: notes, training numbers, optional
 /// health notes). Asked as its own step on top of version 2, never silently:
 /// a runner who says "Not now" keeps everything they had, minus memory.
@@ -423,6 +426,7 @@ class CompanionClient {
     int version, {
     bool? healthNotes,
     bool? trainingSync,
+    bool? coachMemory,
   }) => http.send(
     CompanionRequest(
       method: 'PUT',
@@ -433,6 +437,7 @@ class CompanionClient {
           'consent_version': version,
           'health_notes': ?healthNotes,
           'training_sync': ?trainingSync,
+          'coach_memory': ?coachMemory,
         }),
       ),
     ),
@@ -1061,6 +1066,61 @@ class CompanionController extends ChangeNotifier {
     notifyListeners();
     await syncConsent();
   }
+
+  /// Settings: "Turn off memory". The server deletes every coach note, drops
+  /// the runner to the check-ins and coach version and keeps everything else.
+  /// Only changes the phone once the server said yes; false when it could not.
+  Future<bool> turnOffMemory() async {
+    final t = await token();
+    if (t == null) return false;
+    try {
+      final r = await client.putConsent(
+        t,
+        kCompanionCoachConsent,
+        coachMemory: false,
+      );
+      if (!r.ok) {
+        problem = 'Could not turn memory off. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. Memory is still on. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _consent = kCompanionCoachConsent;
+    _consentSent = _consent;
+    _healthNotes = false;
+    _trainingSync = true;
+    _memoryDismissed = true;
+    try {
+      await store.write(consentName, '$_consent');
+      await store.delete(healthNotesName);
+      await store.delete(trainingSyncName);
+      await store.write(memoryDismissedName, '1');
+    } catch (e) {
+      companionLog('could not save the memory choice (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Settings: "Review" after Not now or Turn off memory shows the sheet again.
+  Future<void> reviewMemory() async {
+    _memoryDismissed = false;
+    try {
+      await store.delete(memoryDismissedName);
+    } catch (e) {
+      companionLog('could not save the memory choice (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// Whether memory was said no to (Not now, or turned off) and can be offered again.
+  bool get memoryDeclined =>
+      enrolled && consentCurrent && !memoryOn && _memoryDismissed;
 
   /// "Not now" on the memory sheet: nothing changes, nothing is sent.
   Future<void> dismissMemory() async {

@@ -103,8 +103,8 @@ const String kCompanionMemoryTitle = 'Let the coach remember you';
 
 const String kCompanionMemoryBody =
     'The coach can keep notes about your goals, your schedule, what you like, '
-    'key runs, and a short summary of your chats, so it never starts from '
-    'zero. It keeps your training numbers too: estimated race '
+    'key runs, and a short summary of your chats, so it does not start from '
+    'zero each time. It keeps your training numbers too: estimated race '
     'times, best efforts, weekly load and your plan. Your GPS tracks and '
     'heart rate recordings stay on your phone. You can see and delete every '
     'note by sending /memory in Telegram. Health notes (niggles and '
@@ -200,9 +200,17 @@ class _Heading extends StatelessWidget {
 /// A choice button. "Turn on" and "Not now" use the same one, so neither
 /// looks like the default.
 class _ChoiceButton extends StatelessWidget {
-  const _ChoiceButton({super.key, required this.label, required this.onTap});
+  const _ChoiceButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
   final String label;
   final VoidCallback? onTap;
+
+  /// The filled, recommended choice (Agree on the memory sheet).
+  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -216,7 +224,7 @@ class _ChoiceButton extends StatelessWidget {
           height: 56,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: t.bgRaised,
+            color: primary ? t.inkPrimary : t.bgRaised,
             borderRadius: BorderRadius.circular(Radii.button),
             border: Border.all(color: t.inkPrimary, width: 2),
           ),
@@ -224,7 +232,9 @@ class _ChoiceButton extends StatelessWidget {
             label,
             style: RunSoloType.body17.copyWith(
               fontWeight: FontWeight.w700,
-              color: onTap == null ? t.inkMuted : t.inkPrimary,
+              color: primary
+                  ? t.bgRaised
+                  : (onTap == null ? t.inkMuted : t.inkPrimary),
             ),
           ),
         ),
@@ -641,6 +651,11 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
             onChanged: _busy ? null : _setHeartRate,
           ),
         ),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) =>
+              CompanionMemorySettings(controller: services.companion!),
+        ),
         const _Heading('Weather'),
         ListenableBuilder(
           listenable: services.companion!,
@@ -860,6 +875,7 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
                 child: _ChoiceButton(
                   key: const ValueKey('companion-memory-agree'),
                   label: 'Agree',
+                  primary: true,
                   onTap: _busy ? null : _agree,
                 ),
               ),
@@ -873,9 +889,120 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
               ),
             ],
           ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('companion-memory-more'),
+              onPressed: () =>
+                  AppServices.of(context).transfer
+                      .openUrl(Uri.parse(kCompanionPrivacyUrl)),
+              child: const Text('More: where it is kept and who sees it'),
+            ),
+          ),
         ],
       ),
     );
+  }
+}
+
+/// Settings > Companion > Coach memory. On: the health notes tick, the
+/// training numbers switch and Turn off memory (the server deletes every
+/// note). Said no to: a Review button that brings the sheet back. Hidden when
+/// the runner is not linked or has not agreed to check-ins.
+class CompanionMemorySettings extends StatefulWidget {
+  const CompanionMemorySettings({super.key, required this.controller});
+  final CompanionController controller;
+
+  @override
+  State<CompanionMemorySettings> createState() =>
+      _CompanionMemorySettingsState();
+}
+
+class _CompanionMemorySettingsState extends State<CompanionMemorySettings> {
+  bool _busy = false;
+
+  CompanionController get c => widget.controller;
+
+  Future<void> _run(Future<Object?> Function() f) async {
+    setState(() => _busy = true);
+    await f();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (c.memoryOn) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Heading('Coach memory'),
+          _SwitchRow(
+            title: kCompanionMemoryHealthTick,
+            blurb:
+                'Niggles, injuries and illness. Off deletes the health '
+                'notes and the chat summary now.',
+            switchKey: const ValueKey('companion-memory-health-switch'),
+            on: c.healthNotesOn,
+            onChanged: _busy
+                ? null
+                : (v) => _run(
+                    () => c.acceptMemory(
+                      healthNotes: v,
+                      trainingSync: c.trainingSyncOn,
+                    ),
+                  ),
+          ),
+          _SwitchRow(
+            title: kCompanionMemorySyncTitle,
+            blurb: kCompanionMemorySyncBlurb,
+            switchKey: const ValueKey('companion-memory-sync-setting'),
+            on: c.trainingSyncOn,
+            onChanged: _busy
+                ? null
+                : (v) => _run(
+                    () => c.acceptMemory(
+                      healthNotes: c.healthNotesOn,
+                      trainingSync: v,
+                    ),
+                  ),
+          ),
+          const SizedBox(height: Space.x12),
+          _ChoiceButton(
+            key: const ValueKey('companion-memory-off'),
+            label: 'Turn off memory',
+            onTap: _busy ? null : () => _run(c.turnOffMemory),
+          ),
+          if (c.problem != null)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.x8),
+              child: Text(
+                c.problem!,
+                style: RunSoloType.body15.copyWith(color: t.semDanger),
+              ),
+            ),
+        ],
+      );
+    }
+    if (c.memoryDeclined) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Heading('Coach memory'),
+          Text(
+            'Off. The coach works without keeping notes.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          _ChoiceButton(
+            key: const ValueKey('companion-memory-review'),
+            label: 'Review',
+            onTap: c.reviewMemory,
+          ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

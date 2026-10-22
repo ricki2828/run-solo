@@ -598,5 +598,59 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets(
+      'after Agree, Settings can change the choices and turn memory off',
+      (tester) async {
+        await open(tester);
+        await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
+        await pumpTimes(tester, 4);
+        await scrollTo(
+          tester,
+          find.byKey(const ValueKey('companion-memory-health-switch')),
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('companion-memory-health-switch')),
+        );
+        await pumpTimes(tester, 4);
+        expect(lastConsent(), {
+          'consent_version': 4,
+          'health_notes': true,
+          'training_sync': true,
+        });
+        await scrollTo(
+          tester,
+          find.byKey(const ValueKey('companion-memory-off')),
+        );
+        await tester.tap(find.byKey(const ValueKey('companion-memory-off')));
+        await pumpTimes(tester, 4);
+        expect(lastConsent(), {'consent_version': 3, 'coach_memory': false});
+        expect(ctl.memoryOn, isFalse);
+        expect(ctl.consentCurrent, isTrue);
+        expect(secrets.values[CompanionController.consentName], '3');
+        expect(ctl.memoryDeclined, isTrue);
+        // and it can be brought back
+        await scrollTo(
+          tester,
+          find.byKey(const ValueKey('companion-memory-review')),
+        );
+        await tester.tap(find.byKey(const ValueKey('companion-memory-review')));
+        await pumpTimes(tester, 4);
+        expect(ctl.memoryOffered, isTrue);
+      },
+    );
+
+    testWidgets('a failed Turn off memory leaves it on and says so', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.runAsync(ctl.acceptMemory);
+      http.handler = (r) => r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : http.defaultReply(r);
+      expect(await tester.runAsync(ctl.turnOffMemory), isFalse);
+      expect(ctl.memoryOn, isTrue);
+      expect(ctl.problem, isNotNull);
+    });
   });
 }
