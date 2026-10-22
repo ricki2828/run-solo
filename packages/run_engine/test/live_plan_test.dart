@@ -54,6 +54,37 @@ void main() {
     );
   }
 
+  /// A Free run whose best 5K window sits MID-run: a 6 minute warm-up
+  /// (1.1 km) then [secs] for the window, whose own km splits are
+  /// [windowSplits] (cumulative from the window start, 4 marks inside it).
+  /// From-start splits include the warm-up.
+  LiveCandidate warmRun(int n, int secs, List<int> windowSplits) {
+    final warm = 360000;
+    final splits = [for (var k = 1; k <= 7; k++) warm + (k - 1) * secs * 200];
+    return LiveCandidate(
+      BoardInput(
+        runId: 'warm-$n',
+        date: day0.add(Duration(days: n)),
+        mode: RunMode.free,
+        efforts: {
+          BestEffortDistance.k5: BestEffort(
+            distance: BestEffortDistance.k5,
+            elapsedMs: secs * 1000,
+            startMs: warm,
+            startOffsetM: 1100,
+            splitsMs: windowSplits,
+          ),
+        },
+      ),
+      RunDerived(
+        bestEfforts: RunBestEfforts(
+          efforts: const {},
+          fromStartSplitsMs: splits,
+        ),
+      ),
+    );
+  }
+
   LiveCandidate intervals(int n, double pace, {String key = 'd400x*'}) =>
       LiveCandidate(
         BoardInput(
@@ -613,6 +644,56 @@ void main() {
         file.writeAsStringSync(text);
       }
       expect(file.readAsStringSync(), text);
+    });
+  });
+  group('chase your best: the PB window\'s own km splits', () {
+    LivePlan plan(List<LiveCandidate> runs) =>
+        LivePlanner.plan(mode: RunMode.free, runs: runs, names: names);
+
+    test(
+      'a mid-run PB window rides the board as its own cumulative splits',
+      () {
+        final p = plan([
+          warmRun(1, 1450, [290000, 580000, 870000, 1160000]),
+          warmRun(2, 1500, [300000, 600000, 900000, 1200000]),
+        ]);
+        final board = p.boards.firstWhere((b) => b.key == 'be:5000');
+        // The PB is run 1 (24:10): 4 marks inside the window, then its finish.
+        expect(board.pbSplitsMs, [290000, 580000, 870000, 1160000, 1450000]);
+      },
+    );
+
+    test(
+      'the PB is the board\'s best even when a slower run has splits too',
+      () {
+        final p = plan([
+          warmRun(1, 1600, [320000, 640000, 960000, 1280000]),
+          warmRun(2, 1450, [290000, 580000, 870000, 1160000]),
+        ]);
+        final board = p.boards.firstWhere((b) => b.key == 'be:5000');
+        expect(board.pbSplitsMs!.last, 1450000);
+      },
+    );
+
+    test(
+      'a PB whose window splits are missing or the wrong count says nothing',
+      () {
+        final none = plan([freeRun(1, 1450), freeRun(2, 1500)]);
+        expect(none.boards.first.pbSplitsMs, isNull);
+        final short = plan([
+          warmRun(1, 1450, [290000, 580000]),
+          warmRun(2, 1500, [300000, 600000, 900000, 1200000]),
+        ]);
+        expect(short.boards.first.pbSplitsMs, isNull);
+      },
+    );
+
+    test('a non-increasing split says nothing', () {
+      final p = plan([
+        warmRun(1, 1450, [290000, 580000, 580000, 1160000]),
+        warmRun(2, 1500, [300000, 600000, 900000, 1200000]),
+      ]);
+      expect(p.boards.first.pbSplitsMs, isNull);
     });
   });
 }

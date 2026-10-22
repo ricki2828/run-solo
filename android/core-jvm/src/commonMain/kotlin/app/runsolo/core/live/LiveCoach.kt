@@ -237,7 +237,7 @@ class LiveCoach(
         val plan = checkIn?.takeIf { splitsOn && !goalCooldown }
         val fire = if (goalCooldown) null else compareAtKm(km, active)
         // A catch-up past several kms (a GPS jump or dropout) interpolates the crossing: no gap is worth saying then.
-        val chaseCue = if (goalCooldown) null else chaseAtKm(km, active, trustTime = !skipped)
+        val chaseCue = if (goalCooldown) null else chaseAtKm(km, active, trustTime = !skipped && (splitMs == null || ChaseCompare.plausible(1, splitMs)))
         val snapNow = if (plan != null && plan.level != VoiceLevel.minimal) snap?.invoke() else null
         val gain = snapNow?.climbM?.let { c -> climbAtLastKm?.let { c - it } }
         snapNow?.climbM?.let { climbAtLastKm = it }
@@ -397,6 +397,10 @@ class LiveCoach(
         return c.atKm(km, board?.takeIf { trustTime }?.let { ChaseCompare.vsBest(it, km, activeMs) }, board?.label)
     }
 
+    /** The km and active ms of the last goal km cue seen (0, 0 = Start), for the jump guard. */
+    private var chaseCueKm = 0
+    private var chaseCueMs = 0L
+
     /**
      * The chase line for a km of a distance goal (the km projection cue it rides; [stepElapsedMs] = active ms from
      * Start, a goal has no warm-up), or null. The base is the goal's own board.
@@ -408,7 +412,11 @@ class LiveCoach(
         val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
         val key = GoalCoach.boardKey(step)
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key }
-        return c.atKm(index, board?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }, board?.label)
+        // The same jump guard as the Free km: the span since the last km cue must be running pace.
+        val trust = ChaseCompare.plausible(index - chaseCueKm, stepElapsedMs - chaseCueMs)
+        chaseCueKm = index
+        chaseCueMs = stepElapsedMs
+        return c.atKm(index, board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }, board?.label)
     }
 
     /**

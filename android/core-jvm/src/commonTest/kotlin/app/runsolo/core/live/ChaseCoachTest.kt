@@ -21,7 +21,8 @@ class ChaseCoachTest {
     private fun fiveK(vararg entries: Pair<String, List<Long>>) = LiveBoard(
         key = "be:5000", label = "5K", kind = LiveBoardKind.distance, targetM = 5_000.0,
         entries = entries.map { (id, s) -> LiveEntry(id, 0, fromStartSplitsMs = s, finalMetric = s.last().toDouble()) },
-        bestMs = entries.minOfOrNull { it.second.last().toDouble() },
+        // The PB window's own splits: for these even-shaped runs the fastest finisher's.
+        pbSplitsMs = entries.minByOrNull { it.second.last() }?.second,
     )
 
     /** An even-paced 5K: km k at k * [perKmMs]. */
@@ -33,60 +34,56 @@ class ChaseCoachTest {
     // ---- the maths ----
 
     @Test
-    fun `base is the single fastest 5K read at the same km`() {
+    fun `base is the PB window read at the same km`() {
         val g = assertNotNull(ChaseCompare.vsBest(fiveK(slower, best), 3, 880_000))
-        assertEquals("best", g.baseRunId)
+        assertEquals("be:5000", g.boardKey)
         assertEquals(880_000L - 870_000L, g.deltaMs)
         assertEquals(-5_000L, ChaseCompare.vsBest(fiveK(best), 2, 575_000)!!.deltaMs)
     }
 
     @Test
-    fun `a fast starter is not blended in - the base is the run with the fastest whole 5K`() {
-        // "fade" is quickest at km 1 to 3 but ends slower than "steady": steady is the base at every km.
-        val fade = "fade" to listOf(270_000L, 540_000L, 810_000L, 1_200_000L, 1_600_000L)
-        val steady = "steady" to even(300_000)
-        val board = fiveK(fade, steady)
-        for (km in 1..5) assertEquals("steady", ChaseCompare.vsBest(board, km, 1_000L * km)!!.baseRunId)
-        assertEquals(0L, ChaseCompare.vsBest(board, 3, 900_000)!!.deltaMs)
+    fun `a PB set mid-run races its window pace - a 6 minute warm-up changes nothing`() {
+        // Real shape: 6 min jog, then a 5K window of 24:10. The board carries the WINDOW's km splits (cumulative from the
+        // window start), not the run's clock. A live run at 4:50/km from Start is level with it.
+        val window = listOf(290_000L, 580_000L, 870_000L, 1_160_000L, 1_450_000L)
+        val board = fiveK().copy(pbSplitsMs = window)
+        assertEquals(0L, ChaseCompare.vsBest(board, 3, 870_000)!!.deltaMs)
+        assertEquals(-20_000L, ChaseCompare.vsBest(board, 5, 1_430_000)!!.deltaMs)
+        assertEquals(15_000L, ChaseCompare.vsBest(board, 1, 305_000)!!.deltaMs)
     }
 
     @Test
-    fun `a PB that cannot be a base is never replaced by a slower run`() {
-        val short = "short" to listOf(200_000L, 400_000L, 600_000L) // 3 splits for a 5K board
-        val zero = "zero" to listOf(0L, 100_000L, 200_000L, 300_000L, 400_000L)
-        val flat = "flat" to listOf(100_000L, 200_000L, 200_000L, 300_000L, 400_000L) // not strictly increasing
-        for (bad in listOf(short, zero, flat)) {
-            // The bad run is the fastest finish, so it is the PB; a slower run must not stand in for it.
-            assertNull(ChaseCompare.vsBest(fiveK(bad, slower), 1, 300_000), bad.first)
-        }
+    fun `a PB window that bridged a 20 s GPS dropout compares at the true time through the gap`() {
+        // 5K at about 4:10/km, a 20 s dropout inside km 2: the engine bridged it, so the window still counts the true
+        // time and km 2 onward carry the 20 s.
+        val window = listOf(250_000L, 520_000L, 770_000L, 1_020_000L, 1_270_000L)
+        val board = fiveK().copy(pbSplitsMs = window)
+        assertEquals(10_000L, ChaseCompare.vsBest(board, 4, 1_030_000)!!.deltaMs)
+        assertEquals(-20_000L, ChaseCompare.vsBest(board, 5, 1_250_000)!!.deltaMs)
     }
 
     @Test
-    fun `the PB run missing from the board - a slower entry is not your best`() {
-        // The engine dropped the real PB (no splits); the board still knows its finish.
-        val board = fiveK(slower).copy(bestMs = 1_200_000.0)
-        assertNull(ChaseCompare.vsBest(board, 2, 600_000))
-        assertNull(ChaseCompare.vsBest(fiveK(slower).copy(bestMs = null), 2, 600_000), "best unknown")
+    fun `a PB without usable window splits is silent - short - zero - flat - missing`() {
+        val short = listOf(200_000L, 400_000L, 600_000L)
+        val zero = listOf(0L, 100_000L, 200_000L, 300_000L, 400_000L)
+        val flat = listOf(100_000L, 200_000L, 200_000L, 300_000L, 400_000L)
+        for (bad in listOf(short, zero, flat)) assertNull(ChaseCompare.vsBest(fiveK().copy(pbSplitsMs = bad), 1, 300_000))
+        assertNull(ChaseCompare.vsBest(fiveK(best).copy(pbSplitsMs = null), 1, 300_000))
     }
 
     @Test
-    fun `a PB set mid-run does not agree with its from-start time - silent`() {
-        // 5K window of 24:10 after a 6 min warm-up: from Start the run needed 30:10 to reach 5 km.
-        val warm = "warm" to listOf(500_000L, 800_000L, 1_100_000L, 1_400_000L, 1_810_000L)
-        val board = fiveK(warm).copy(bestMs = 1_450_000.0, entries = listOf(LiveEntry("warm", 0, fromStartSplitsMs = warm.second, finalMetric = 1_450_000.0)))
-        assertNull(ChaseCompare.vsBest(board, 3, 900_000))
-        val within = board.copy(entries = listOf(LiveEntry("warm", 0, fromStartSplitsMs = warm.second, finalMetric = 1_808_000.0)), bestMs = 1_808_000.0)
-        assertNotNull(ChaseCompare.vsBest(within, 3, 900_000), "within 3 s of its best effort")
+    fun `a faster run on the board never stands in for a PB with no splits`() {
+        // Another run is on the board with from-start splits, but the board's PB window has none: no cue.
+        assertNull(ChaseCompare.vsBest(fiveK(slower).copy(pbSplitsMs = null), 2, 600_000))
     }
 
     @Test
-    fun `a PB with a bridged GPS dropout is compared against - the splits run through the gap`() {
-        // The PB had a 20 s dropout at km 1.2: the engine bridges it, so every km is present and the run is the base.
-        val gapPb = "gap" to listOf(250_000L, 500_000L, 750_000L, 1_000_000L, 1_250_000L)
-        val board = fiveK(gapPb, slower).copy(bestMs = 1_250_000.0)
-        val g = assertNotNull(ChaseCompare.vsBest(board, 3, 760_000))
-        assertEquals("gap", g.baseRunId)
-        assertEquals(10_000L, g.deltaMs)
+    fun `a km faster than 2 minutes is a jump not running`() {
+        assertTrue(ChaseCompare.plausible(1, 250_000))
+        assertTrue(ChaseCompare.plausible(2, 240_000))
+        assertFalse(ChaseCompare.plausible(1, 119_000))
+        assertFalse(ChaseCompare.plausible(2, 200_000))
+        assertFalse(ChaseCompare.plausible(0, 500_000))
     }
 
     @Test
@@ -104,7 +101,7 @@ class ChaseCoachTest {
         val half = LiveBoard(
             key = "be:21097", label = "Half", kind = LiveBoardKind.distance, targetM = 21_097.5,
             entries = listOf(LiveEntry("h", 0, fromStartSplitsMs = List(21) { (it + 1) * 330_000L }, finalMetric = 6_930_000.0)),
-            bestMs = 6_930_000.0,
+            pbSplitsMs = List(21) { (it + 1) * 330_000L },
         )
         assertEquals(21, ChaseCompare.boardKm(half))
         assertEquals(10_000L, ChaseCompare.vsBest(half, 19, 19 * 330_000L + 10_000)!!.deltaMs)
@@ -112,7 +109,7 @@ class ChaseCoachTest {
 
     // ---- the policy ----
 
-    private fun gap(deltaMs: Long, board: String = "be:5000") = ChaseCompare.Gap(deltaMs, "r", board)
+    private fun gap(deltaMs: Long, board: String = "be:5000") = ChaseCompare.Gap(deltaMs, board)
 
     private fun chase(furthest: Double? = null, goal: Double? = null, fired: List<JournalLine.CueFired> = emptyList()) =
         ChaseCoach(CoachChoice.chase, furthest, goal, fired)
@@ -377,7 +374,7 @@ class ChaseCoachTest {
         val tenK = LiveBoard(
             "be:10000", "10K", LiveBoardKind.distance, 10_000.0,
             listOf(LiveEntry("t", 0, fromStartSplitsMs = List(10) { (it + 1) * 300_000L }, finalMetric = 3_000_000.0)),
-            bestMs = 3_000_000.0,
+            pbSplitsMs = List(10) { (it + 1) * 300_000L },
         )
         val coach = LiveCoach(ctx("chase", fiveK(best), tenK), RunMode.free, null)
         walk(coach, 5, 290_000) // level with the best 5K all the way: nothing to say
@@ -393,6 +390,27 @@ class ChaseCoachTest {
         assertFalse(fire.overlay)
         assertEquals("10 seconds up on your best 5K.", coach.chaseAtCue(CueKind.projection, 2, 570_000)!!.text)
         assertEquals("2 k to go, 20 seconds up on your best 5K.", coach.chaseAtCue(CueKind.projection, 3, 850_000)!!.text)
+    }
+
+    @Test
+    fun `goal run - a GPS jump that brings a km early says no gap`() {
+        val spec = SessionSpec.goalDistance(5_000, "5K")
+        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.intervals, spec)
+        // km 1 and 2 at running pace: km 2 is 10 s up on the best.
+        coach.chaseAtCue(CueKind.projection, 1, 290_000)
+        assertEquals("10 seconds up on your best 5K.", coach.chaseAtCue(CueKind.projection, 2, 570_000)!!.text)
+        // A jump pushes km 3 in 40 s after km 2: it would read "up on your best" by minutes. Only the distance to go.
+        assertEquals("2 k to go.", coach.chaseAtCue(CueKind.projection, 3, 610_000)!!.text)
+        // Back on pace, km 4 is a 4:30 span over one km: a gap is said again.
+        assertTrue(coach.chaseAtCue(CueKind.projection, 4, 880_000)!!.text.contains(" up on your best 5K"))
+    }
+
+    @Test
+    fun `free run - a km in under 2 minutes after a jump says no gap`() {
+        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
+        walk(coach, 1, 290_000)
+        val k = cross(coach, 2, 290_000 + 60_000) // km 2 only 60 s after km 1
+        assertNull(k?.chase)
     }
 
     @Test

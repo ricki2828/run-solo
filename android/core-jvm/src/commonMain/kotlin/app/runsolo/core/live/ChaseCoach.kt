@@ -55,20 +55,21 @@ data class ChaseCue(
 )
 
 /**
- * The comparison maths for "chase your best", pure. The base is ONE real earlier run, never a blend: the run behind
- * the board's best finish ([LiveBoard.bestMs], the dropout-bridged best effort the runner's PB shows), read at the
- * same km as the live run. That run must be on the board with usable from-start splits (the engine bridges short GPS
- * dropouts in them, so a PB that held one still races), and its from-start time over the board distance must agree
- * with the PB within [AGREE_MS]: a PB set mid-run (after a warm-up) is not a from-Start pace to race, so the cue stays
- * silent rather than call a different run "your best". Never a fall back to a slower run. Short, non-positive or
- * non-increasing splits, an unknown best, or a run past the board's distance: no comparison (null), never a guess.
+ * The comparison maths for "chase your best", pure. The base is the runner's PB itself: the board's [LiveBoard.pbSplitsMs],
+ * the PB window's own cumulative time at each km (dropout-bridged by the engine, the same effort Home shows as the PB),
+ * read at the same km as the live run. The window may sit mid-run (after a warm-up): the live run races its pace, not
+ * its clock position, so "up on your best 5K" stays true. A PB with no usable splits, a run past the board's
+ * distance or no time yet: no comparison (null), never a guess and never another run.
  */
 object ChaseCompare {
-    /** The PB run's from-start time may differ from its best effort by this much (interpolation, a bridged hole). */
-    const val AGREE_MS = 3_000L
+    /**
+     * A km faster than this (2:00/km) is not running but a GPS jump: the crossing time is not trustworthy, so no gap is
+     * said off it.
+     */
+    const val MIN_KM_MS = 120_000L
 
-    /** [deltaMs] = live active ms at the km minus the base run's split there; negative = ahead. [boardKey] says which board it is read on. */
-    data class Gap(val deltaMs: Long, val baseRunId: String, val boardKey: String)
+    /** [deltaMs] = live active ms at the km minus the PB window's split there; negative = ahead. [boardKey] says which board it is read on. */
+    data class Gap(val deltaMs: Long, val boardKey: String)
 
     /** The board's whole km (5000 m is 5; a Half's 21097.5 m is 21); null when it has no distance. */
     fun boardKm(board: LiveBoard): Int? {
@@ -80,14 +81,13 @@ object ChaseCompare {
         if (board.kind != LiveBoardKind.distance || activeMs <= 0) return null
         val n = boardKm(board) ?: return null
         if (km < 1 || km > n) return null
-        val best = board.bestMs?.takeIf { it.isFinite() && it > 0 } ?: return null
-        val pb = board.entries.minByOrNull { it.finalMetric } ?: return null
-        // The PB itself must be here (a run without usable splits is dropped from the board, and then a slower run is not "best").
-        if (pb.finalMetric > best + AGREE_MS) return null
-        val splits = pb.fromStartSplitsMs ?: return null
-        if (!usable(splits, n) || abs(splits[n - 1] - pb.finalMetric) > AGREE_MS) return null
-        return Gap(activeMs - splits[km - 1], pb.runId, board.key)
+        val splits = board.pbSplitsMs ?: return null
+        if (!usable(splits, n)) return null
+        return Gap(activeMs - splits[km - 1], board.key)
     }
+
+    /** True when [ms] of active time over [kms] whole km is running pace, not a jump. */
+    fun plausible(kms: Int, ms: Long): Boolean = kms >= 1 && ms >= kms * MIN_KM_MS
 
     private fun usable(s: List<Long>, n: Int): Boolean {
         if (s.size < n || s[0] <= 0) return false

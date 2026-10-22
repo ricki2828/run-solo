@@ -542,7 +542,7 @@ class LiveEntry {
 /// goal's board may have 1 (a second Half can still be a new best, #78).
 class LiveBoard {
   LiveBoard({
-    this.bestMs,
+    this.pbSplitsMs,
     required this.key,
     required this.label,
     required this.kind,
@@ -550,9 +550,10 @@ class LiveBoard {
     required this.entries,
   });
 
-  /// Distance boards: the best finish (ms) over every earlier run, the PB
-  /// Home shows. Null = unknown (the chase cue then says nothing).
-  double? bestMs;
+  /// Distance boards: the PB's own window split at each whole km, cumulative
+  /// ms from the window start (km 1 .. the board's km), dropout-bridged: the
+  /// pace "chase your best" races. Null = unknown (the chase cue says nothing).
+  List<int>? pbSplitsMs;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;
@@ -570,7 +571,7 @@ class LiveBoard {
 
   List<Object?> _toList() {
     return <Object?>[
-      bestMs,
+      pbSplitsMs,
       key,
       label,
       kind,
@@ -585,7 +586,7 @@ class LiveBoard {
   static LiveBoard decode(Object result) {
     result as List<Object?>;
     return LiveBoard(
-      bestMs: result[0] as double?,
+      pbSplitsMs: (result[0] as List<Object?>?)?.cast<int>(),
       key: result[1]! as String,
       label: result[2]! as String,
       kind: result[3]! as LiveBoardKind,
@@ -603,7 +604,7 @@ class LiveBoard {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(bestMs, other.bestMs) && _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
+    return _deepEquals(pbSplitsMs, other.pbSplitsMs) && _deepEquals(key, other.key) && _deepEquals(label, other.label) && _deepEquals(kind, other.kind) && _deepEquals(targetM, other.targetM) && _deepEquals(entries, other.entries);
   }
 
   @override

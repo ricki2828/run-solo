@@ -249,12 +249,13 @@ class LiveBoard {
     required this.kind,
     this.targetM,
     required this.entries,
-    this.bestMs,
+    this.pbSplitsMs,
   });
 
-  /// Distance boards: the best finish (ms) over every earlier run, the PB
-  /// Home shows. Null = unknown (the chase cue then says nothing).
-  double? bestMs;
+  /// Distance boards: the PB's own window split at each whole km, cumulative
+  /// ms from the window start (km 1 .. the board's km), dropout-bridged: the
+  /// pace "chase your best" races. Null = unknown (the chase cue says nothing).
+  List<int>? pbSplitsMs;
 
   /// The comparison key (`be:5000`, an intervals key, `cooper`, a course).
   String key;

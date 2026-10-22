@@ -45,15 +45,17 @@ class LiveBoardPlan {
     required this.kind,
     this.targetM,
     required this.entries,
-    this.bestMs,
+    this.pbSplitsMs,
   });
 
-  /// A distance board's best finish (ms) over EVERY earlier run, the number
-  /// the runner's PB shows (dropout-bridged window). [entries] may not hold
-  /// that run (it needs from-start splits), so "chase your best" checks its
-  /// base against this and says nothing when they disagree. Null off
-  /// distance boards.
-  final double? bestMs;
+  /// A distance board's PB window (the run behind the board's best, the
+  /// number the runner's PB shows): its cumulative time at each whole km of
+  /// the window, km 1 up to the board's distance. These are the window's own
+  /// splits (dropout-bridged), so the base is exactly the PB wherever in its
+  /// run it sat; "chase your best" races it. Null off the standard 5K/10K/
+  /// half/marathon boards, or when the PB's splits are missing or disagree
+  /// with its finish.
+  final List<int>? pbSplitsMs;
 
   final String key;
   final String label;
@@ -169,8 +171,8 @@ abstract final class LivePlanner {
           kind: kind,
           targetM: m,
           entries: entries,
-          bestMs: kind == LiveBoardPlanKind.distance && board.ranked.isNotEmpty
-              ? board.ranked.first.metric * 1000
+          pbSplitsMs: kind == LiveBoardPlanKind.distance
+              ? _pbSplits(board, byId)
               : null,
         ),
       );
@@ -315,6 +317,31 @@ abstract final class LivePlanner {
       ),
       LiveBoardPlanKind.cooper || LiveBoardPlanKind.distanceInTime => null,
     };
+  }
+
+  /// The PB window's cumulative km splits for a standard distance board: the
+  /// effort's own `splitsMs` (every 1 km strictly inside the window) plus its
+  /// finish when that is a whole km (5K, 10K). Null when the PB run has no
+  /// such effort, the count is not the board's km, or the finish disagrees
+  /// with the board's metric by over 1.5 s (a stale or mismatched effort).
+  static List<int>? _pbSplits(
+    Leaderboard board,
+    Map<String, LiveCandidate> byId,
+  ) {
+    final d = BestEffortDistance.ofKey(board.key);
+    final pb = board.pb;
+    if (d == null || pb == null) return null;
+    final e = byId[pb.runId]?.input.efforts[d];
+    if (e == null) return null;
+    final km = (d.metres / 1000).round();
+    final out = [...e.splitsMs];
+    if (out.length == km - 1) out.add(e.elapsedMs);
+    if (out.length != km) return null;
+    if ((e.elapsedMs - pb.metric * 1000).abs() > 1500) return null;
+    for (var i = 0; i < out.length; i++) {
+      if (out[i] <= 0 || (i > 0 && out[i] <= out[i - 1])) return null;
+    }
+    return out;
   }
 
   static List<LiveEntryPlan> _entries(
