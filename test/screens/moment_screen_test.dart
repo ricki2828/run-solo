@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/screens/moment_screen.dart';
 import 'package:run_solo/state/progress_snapshot.dart';
+import 'package:run_solo/theme/lanes.dart';
+import 'package:run_solo/theme/theme.dart';
 
 import '../helpers.dart';
 
@@ -15,6 +18,7 @@ const _moment = Moment(
 );
 
 void main() {
+  momentLegibilityTests();
   testWidgets('moment shows its figure; Nice closes, Share is offered', (
     tester,
   ) async {
@@ -68,5 +72,36 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('story-next')));
     await settleAnimations(tester);
     expect(find.byKey(const ValueKey('weekly-story')), findsNothing);
+  });
+}
+
+void momentLegibilityTests() {
+  test('count-up keeps digit width and ends on the figure', () {
+    expect(countUpFigure('26:41', 0), '00:00');
+    expect(countUpFigure('26:41', 0.5), '13:20');
+    expect(countUpFigure('LEVEL 14', 0.5), 'LEVEL 07');
+    expect(countUpFigure('26:41', 1), '26:41');
+  });
+
+  test('every moment kind has 4.5:1 ink and the PB is cyan', () {
+    for (final tokens in [RunSoloTokens.dark, RunSoloTokens.light]) {
+      for (final k in MomentKind.values) {
+        final m = Moment(id: 'x', kind: k, eyebrow: 'e', big: '1', detail: 'd');
+        final fill = momentColour(tokens, m);
+        expect(
+          contrastRatio(readableOn(fill), fill),
+          greaterThanOrEqualTo(4.5),
+        );
+      }
+      const pb = Moment(
+        id: 'p',
+        kind: MomentKind.pb,
+        eyebrow: 'e',
+        big: '1',
+        detail: 'd',
+        lane: engine.IdentityLane.speed,
+      );
+      expect(momentColour(tokens, pb), tokens.accentArc);
+    }
   });
 }

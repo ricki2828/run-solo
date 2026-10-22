@@ -82,6 +82,25 @@ void main() {
     });
   });
 
+  group('route card', () {
+    testWidgets('a stationary track gets no map card', (tester) async {
+      final first = plain.samples.firstWhere((s) => s.lat != null);
+      final still = plain.copyWith(
+        samples: [
+          for (final s in plain.samples)
+            s.lat == null ? s : s.copyWith(lat: first.lat, lon: first.lon),
+        ],
+      );
+      await openDetail(tester, still);
+      expect(find.byKey(const ValueKey('fake-map')), findsNothing);
+    });
+
+    testWidgets('a run with a real line keeps its map card', (tester) async {
+      await openDetail(tester, plain);
+      expect(find.byKey(const ValueKey('fake-map')), findsOneWidget);
+    });
+  });
+
   group('store', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('runsolo-route-'));
