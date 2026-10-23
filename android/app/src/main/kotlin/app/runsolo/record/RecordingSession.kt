@@ -33,9 +33,11 @@ import app.runsolo.core.model.Units
 import app.runsolo.core.live.ChaseCue
 import app.runsolo.core.live.CheckInPlan
 import app.runsolo.core.live.CoachPrompter
+import app.runsolo.core.live.HeadsetKeys
 import app.runsolo.core.live.HeadsetPresses
 import app.runsolo.core.live.Prompt
 import app.runsolo.core.live.PromptAnswer
+import app.runsolo.core.live.PromptChoice
 import app.runsolo.core.live.PromptEffect
 import app.runsolo.core.live.PromptSource
 import app.runsolo.core.live.CueComposer
@@ -176,7 +178,7 @@ class RecordingSession(
         this.context,
         onLap = { lap(LapSource.volumeKey) },
         onUnavailable = { volumeKeyUnavailableOnce() },
-        onPromptPress = { headsetPress() },
+        onPromptPress = { key -> headsetPress(key) },
     )
 
     /** Volume-key laps need a mode that takes laps at all (plan §18.2): Free never registers the MediaSession. */
@@ -230,6 +232,11 @@ class RecordingSession(
     private var pendingPrompt: Prompt? = null
     private var pendingOpenAt = 0L
     private var promptEffectDirty = false
+
+    /** Run time of the last prompt tick (the pause hold), and when the open question's window must start at the latest. */
+    private var lastPromptNowMs = 0L
+    private var questionAsked = false
+    private var questionDeadline = 0L
 
     /** GOAL runs (§G): the goal-reached line, once; rebuilt on resume. */
     private var goal = GoalCoach(spec, liveContext)
@@ -597,9 +604,10 @@ class RecordingSession(
         dispatch.ticked(t, ticker.distanceM)
         // Free / Laps: a whole km crossed in this tick says its compare, if there is one.
         checkInTick(t, samples.last().hr)
-        coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
-            ?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key, it.chase) }
-        promptDecide(t)
+        val kmCue = coach.onTick(coachPrevT, coachPrevD, t, ticker.distanceM, samples.last().hr, snap = { checkInSnapshot(t) }) { core.status(it).activeMs }
+        // A prompt decided at this km carries the gap and the distance to go itself: the chase line is not said as well.
+        val prompted = promptDecide(t)
+        kmCue?.let { speakFire(null, it.base, it.fire, t, it.nudge, it.tail, it.slot, it.key, if (prompted) null else it.chase) }
         promptTick(t)
         trailMomentsTick(t)
         questTick(t)
@@ -998,8 +1006,8 @@ class RecordingSession(
         val next = if (st.stepRemainingM != null) null else st.phaseRemainingMs
         val fire = coach.atCue(o.kind, o.index, o.value, core.phase, core.stepIndex, st.phaseActiveMs, next)
         val chase = coach.chaseAtCue(o.kind, o.index, st.phaseActiveMs)
-        speakFire(o.kind, cueText(o), fire, o.t, coach.nudgeAtCue(o.kind, core.phase), chase = chase)
-        promptDecide(o.t)
+        val prompted = promptDecide(o.t)
+        speakFire(o.kind, cueText(o), fire, o.t, coach.nudgeAtCue(o.kind, core.phase), chase = if (prompted) null else chase)
         RecorderEventBus.emit(CueEvent(kind = o.kind.toPigeon(), value = o.value))
     }
 
@@ -1203,8 +1211,8 @@ class RecordingSession(
         val vc = coachLines ?: return
         if (replay != null || !cues.enabled) return
         if (promptEffectDirty) {
-            // A prompt's push or ease off: the rest of the run aims at the tighter or looser target.
-            vc.applyEffect(prompter.effect, coach.chasePaceSecPerKm())
+            // After a restore: a push or ease off from before the kill still holds (an answer in this process applies at once).
+            vc.applyEffect(prompter.effect)
             promptEffectDirty = false
         }
         val st = core.status(t)
@@ -1247,55 +1255,90 @@ class RecordingSession(
     // ---- mid-run two-button prompts (decisions 22-Oct) ----
 
     /**
-     * After a km or a rep end: the rules may decide a prompt. It opens [PROMPT_DELAY_MS] later so the km cue and any
-     * moment overlay have gone (never stacked), only while recording, never in a replay.
+     * After a km or a rep end: the rules may decide a prompt (true). The headset is armed at once (a press before the
+     * question opens is ignored, never a lap); the question opens when the km cue's speech is done (never stacked on it
+     * or on a moment overlay), only in a recording, never in a replay.
      */
-    private fun promptDecide(t: Long) {
+    private fun promptDecide(t: Long): Boolean {
         val facts = coach.takeKmFacts()
         val rep = coach.takeRepEnd()
-        if (replay != null || !cues.enabled) return
+        if (replay != null || !cues.enabled) return false
         val st = core.status(t)
-        if (st.state != RecorderState.recording || core.autoPaused) return
-        if (pendingPrompt != null || prompter.open != null) return
+        if (st.state != RecorderState.recording || core.autoPaused) return false
+        if (pendingPrompt != null || prompter.open != null) return false
         val p = facts?.let { prompter.atKm(it, st.elapsedMs, ticker.distanceM) }
             ?: rep?.let { (r, n) -> prompter.atRepEnd(r, n, st.elapsedMs, ticker.distanceM) }
-            ?: return
+            ?: return false
         pendingPrompt = p
         pendingOpenAt = st.elapsedMs + PROMPT_DELAY_MS
+        lapInput.holdForPrompt(true)
+        return true
     }
 
-    /** Once a tick: a timeout holds the target; a decided prompt whose delay is up opens (voice, buttons, headset window). */
+    /**
+     * Once a tick. A decided prompt opens once the speech before it is done; its answer window starts when the question
+     * itself has been said (the TTS reports done, with the estimate plus slack as a fallback so it can never hang) and
+     * waits while the run is paused; a timeout holds the target.
+     */
     private fun promptTick(t: Long) {
         if (replay != null) return
-        val now = core.status(t).elapsedMs
+        val st = core.status(t)
+        val now = st.elapsedMs
+        val paused = st.state == RecorderState.paused || core.autoPaused
+        if (paused && prompter.open != null) prompter.hold(now - lastPromptNowMs)
+        lastPromptNowMs = now
+        val open = prompter.open
+        if (open != null && !prompter.windowStarted && ((questionAsked && !cues.speaking) || t >= questionDeadline)) {
+            prompter.startWindow(now)
+        }
         prompter.tick(now)?.let { resolvePrompt(it, t) }
         val p = pendingPrompt ?: return
         if (now < pendingOpenAt || prompter.open != null) return
+        if (cues.speechBusyUntil > t && now < pendingOpenAt + PROMPT_MAX_WAIT_MS) return // the km cue is still being said
         pendingPrompt = null
-        if (core.state != RecorderState.recording || core.autoPaused) return
-        val open = p.copy(openedAtMs = now)
-        prompter.opened(open, ticker.distanceM)
-        lapInput.holdForPrompt(true)
-        cues.announce(open.text, CueSlot.structure)
-        logSaid(open.text)
-        RecorderEventBus.emit(
-            PromptEvent(
-                id = open.id.toLong(), kind = open.kind.key, text = open.text,
-                options = open.options.map { it.label }, timeoutMs = open.timeoutMs, km = open.km.toLong(),
-            ),
-        )
-        Log.i(TAG, "prompt ${open.kind.key}#${open.id} open at km ${open.km}")
+        if (finished) {
+            lapInput.holdForPrompt(false)
+            return
+        }
+        val asked = p.copy(openedAtMs = now)
+        prompter.opened(asked, ticker.distanceM)
+        cues.announce(asked.text, CueSlot.structure)
+        logSaid(asked.text)
+        questionAsked = true
+        questionDeadline = maxOf(cues.speechBusyUntil, t) + PROMPT_SLACK_MS
+        RecorderEventBus.emit(promptEvent(asked, now, t))
+        Log.i(TAG, "prompt ${asked.kind.key}#${asked.id} open at km ${asked.km}")
     }
 
-    /** The prompt was answered or timed out: close the window, journal it, say it, tell the screen, hand the effect on. */
+    private fun promptEvent(p: Prompt, now: Long, t: Long) = PromptEvent(
+        id = p.id.toLong(), kind = p.kind.key, text = p.text,
+        options = p.options.map { it.label }, timeoutMs = prompter.remainingMs(now) ?: p.timeoutMs, km = p.km.toLong(),
+        leadMs = if (prompter.windowStarted) 0L else (maxOf(cues.speechBusyUntil, t) - t).coerceAtLeast(0L),
+    )
+
+    /** The open prompt for a status snapshot (a screen that missed the event shows its buttons from this). */
+    private fun promptStatus(t: Long): PromptEvent? {
+        val p = prompter.open ?: return null
+        return promptEvent(p, core.status(t).elapsedMs, t)
+    }
+
+    /** The prompt was answered or timed out: journal it, say it, hand the effect to the voice coach, tell the screen. */
     private fun resolvePrompt(a: PromptAnswer, t: Long) {
-        lapInput.holdForPrompt(false)
+        lapInput.holdForPrompt(false) // the window closes; a press in the next 0.7 s is still ignored, not a lap
+        questionAsked = false
         writer.append(CoachPrompter.line(a, System.currentTimeMillis(), t))
-        promptEffectDirty = true
+        // The effect reaches the voice coach now; what it actually applies (a push for a runner already far off the
+        // target is dropped; no target, none) is what the screen's band follows.
+        val applied = if (a.choice == PromptChoice.hold) null else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
         cues.announce(a.spoken, CueSlot.structure)
         logSaid(a.spoken)
-        RecorderEventBus.emit(PromptResolvedEvent(id = a.prompt.id.toLong(), choice = a.choice.key, source = a.source.key))
-        Log.i(TAG, "prompt ${a.prompt.kind.key}#${a.prompt.id} -> ${a.choice.key} (${a.source.key})")
+        RecorderEventBus.emit(
+            PromptResolvedEvent(
+                id = a.prompt.id.toLong(), choice = a.choice.key, source = a.source.key,
+                paceFactor = applied?.paceFactor ?: 1.0, oneRep = applied?.oneRep ?: false,
+            ),
+        )
+        Log.i(TAG, "prompt ${a.prompt.kind.key}#${a.prompt.id} -> ${a.choice.key} (${a.source.key}) x${applied?.paceFactor}")
     }
 
     /** The screen's button (or a test): [optionIndex] of the open prompt [promptId]. */
@@ -1306,13 +1349,19 @@ class RecordingSession(
         prompter.answer(promptId, optionIndex, source, core.status(t).elapsedMs)?.let { resolvePrompt(it, t) }
     }
 
-    /** A headphone press while a prompt is open: one = the first answer (once no second follows), two quick = the second. */
+    /**
+     * A headphone key while a prompt is armed: [key] is [HeadsetKeys.COUNT] for a counted press (one = the first answer
+     * once no second follows, two quick = the second), or 0 / 1 for a key that picks outright (MEDIA_NEXT = the second).
+     * Before the question has opened, or just after it closed, it is ignored on purpose: never a stray lap.
+     */
     @Synchronized
-    fun headsetPress() {
+    fun headsetPress(key: Int = HeadsetKeys.COUNT) {
         if (finished || prompter.open == null) return
         val t = clock()
-        prompter.headsetPress(core.status(t).elapsedMs)?.let {
-            resolvePrompt(it, t)
+        val now = core.status(t).elapsedMs
+        val answer = if (key == HeadsetKeys.COUNT) prompter.headsetPress(now) else prompter.headsetOption(key, now)
+        if (answer != null) {
+            resolvePrompt(answer, t)
             return
         }
         if (prompter.headsetPending) handler.postDelayed({ settleHeadset() }, HeadsetPresses.DOUBLE_MS + 30)
@@ -1522,6 +1571,7 @@ class RecordingSession(
             route = routeProgress(),
             trail = trailProgress(),
             questDoneId = questDoneId,
+            prompt = promptStatus(t),
         )
     }
 
@@ -1639,8 +1689,12 @@ class RecordingSession(
         private const val TURN_STRIP_M = 300.0
         private const val GHOST_MAX_STEP_MS = 5_000L
 
-        /** A decided prompt waits this long so the km cue and any moment overlay are gone first. */
+        /** A decided prompt waits this long so the km cue and any moment overlay are gone first, and no longer than [PROMPT_MAX_WAIT_MS] for speech to finish. */
         private const val PROMPT_DELAY_MS = 2_000L
+        private const val PROMPT_MAX_WAIT_MS = 6_000L
+
+        /** The answer window starts at the latest this long after the question's estimated end, if no TTS done ever comes. */
+        private const val PROMPT_SLACK_MS = 2_000L
 
         /** A known climb is called out from this far ahead. */
         private const val GHOST_CLIMB_AHEAD_M = 200.0

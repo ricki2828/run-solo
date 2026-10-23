@@ -491,6 +491,9 @@ class FakeRecorderGateway implements RecorderGateway {
     promptAnswers.add((promptId, optionIndex));
   }
 
+  /// The prompt a status snapshot reports as open (tests): what a screen that missed the event re-reads.
+  PromptEvent? openPrompt;
+
   /// A mid-run prompt opened (tests).
   void emitPrompt(PromptEvent e) => _emit(e);
 
@@ -585,6 +588,7 @@ class FakeRecorderGateway implements RecorderGateway {
     pausedAtElapsedMs: _state == RecorderState.paused ? _pausedAtMs : null,
     finishRequests: _finishRequests == 0 ? null : _finishRequests,
     tipsMuted: _state == RecorderState.idle ? null : tipsMuted,
+    prompt: openPrompt,
     autoPaused: _autoPaused,
     elevGainM: elevGainM,
     elevLossM: elevLossM,

@@ -1530,6 +1530,10 @@ struct RecorderStatus: Hashable {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   var tipsMuted: Bool? = nil
+  /// The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+  /// is what is left), so a screen that missed the event can show its buttons.
+  /// Null = none.
+  var prompt: PromptEvent? = nil
   /// `state == paused` and the recorder paused itself (the runner stopped,
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
   /// pause on top of it makes it false.
@@ -1585,19 +1589,20 @@ struct RecorderStatus: Hashable {
     let pausedAtElapsedMs: Int64? = nilOrValue(pigeonVar_list[16])
     let finishRequests: Int64? = nilOrValue(pigeonVar_list[17])
     let tipsMuted: Bool? = nilOrValue(pigeonVar_list[18])
-    let autoPaused: Bool? = nilOrValue(pigeonVar_list[19])
-    let elevGainM: Double? = nilOrValue(pigeonVar_list[20])
-    let elevLossM: Double? = nilOrValue(pigeonVar_list[21])
-    let gradePct: Double? = nilOrValue(pigeonVar_list[22])
-    let retracing: Bool? = nilOrValue(pigeonVar_list[23])
-    let retraceSame: Bool? = nilOrValue(pigeonVar_list[24])
-    let backToStartM: Double? = nilOrValue(pigeonVar_list[25])
-    let climbAheadM: Double? = nilOrValue(pigeonVar_list[26])
-    let descentAheadM: Double? = nilOrValue(pigeonVar_list[27])
-    let heightVsStartM: Double? = nilOrValue(pigeonVar_list[28])
-    let route: RouteProgress? = nilOrValue(pigeonVar_list[29])
-    let trail: TrailProgress? = nilOrValue(pigeonVar_list[30])
-    let questDoneId: String? = nilOrValue(pigeonVar_list[31])
+    let prompt: PromptEvent? = nilOrValue(pigeonVar_list[19])
+    let autoPaused: Bool? = nilOrValue(pigeonVar_list[20])
+    let elevGainM: Double? = nilOrValue(pigeonVar_list[21])
+    let elevLossM: Double? = nilOrValue(pigeonVar_list[22])
+    let gradePct: Double? = nilOrValue(pigeonVar_list[23])
+    let retracing: Bool? = nilOrValue(pigeonVar_list[24])
+    let retraceSame: Bool? = nilOrValue(pigeonVar_list[25])
+    let backToStartM: Double? = nilOrValue(pigeonVar_list[26])
+    let climbAheadM: Double? = nilOrValue(pigeonVar_list[27])
+    let descentAheadM: Double? = nilOrValue(pigeonVar_list[28])
+    let heightVsStartM: Double? = nilOrValue(pigeonVar_list[29])
+    let route: RouteProgress? = nilOrValue(pigeonVar_list[30])
+    let trail: TrailProgress? = nilOrValue(pigeonVar_list[31])
+    let questDoneId: String? = nilOrValue(pigeonVar_list[32])
 
     return RecorderStatus(
       state: state,
@@ -1619,6 +1624,7 @@ struct RecorderStatus: Hashable {
       pausedAtElapsedMs: pausedAtElapsedMs,
       finishRequests: finishRequests,
       tipsMuted: tipsMuted,
+      prompt: prompt,
       autoPaused: autoPaused,
       elevGainM: elevGainM,
       elevLossM: elevLossM,
@@ -1655,6 +1661,7 @@ struct RecorderStatus: Hashable {
       pausedAtElapsedMs,
       finishRequests,
       tipsMuted,
+      prompt,
       autoPaused,
       elevGainM,
       elevLossM,
@@ -1674,7 +1681,7 @@ struct RecorderStatus: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1698,6 +1705,7 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: pausedAtElapsedMs, hasher: &hasher)
     deepHashPlatformApi(value: finishRequests, hasher: &hasher)
     deepHashPlatformApi(value: tipsMuted, hasher: &hasher)
+    deepHashPlatformApi(value: prompt, hasher: &hasher)
     deepHashPlatformApi(value: autoPaused, hasher: &hasher)
     deepHashPlatformApi(value: elevGainM, hasher: &hasher)
     deepHashPlatformApi(value: elevLossM, hasher: &hasher)
@@ -2623,9 +2631,15 @@ struct PromptEvent: RecorderEvent {
   /// The two answers, first = the first button: display labels ("Push",
   /// "Hold", "Ease off").
   var options: [String]
+  /// The answer window, ms: it starts when the question has been said, not
+  /// when it was queued, and waits while the run is paused. In a status
+  /// snapshot (a screen that missed the event) this is what is left.
   var timeoutMs: Int64
   /// The whole km (or the rep) it fell on.
   var km: Int64
+  /// Roughly how long the question still has to be said before the window
+  /// starts, ms (0 once it has). The countdown bar waits this long.
+  var leadMs: Int64
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -2636,6 +2650,7 @@ struct PromptEvent: RecorderEvent {
     let options = pigeonVar_list[3] as! [String]
     let timeoutMs = pigeonVar_list[4] as! Int64
     let km = pigeonVar_list[5] as! Int64
+    let leadMs = pigeonVar_list[6] as! Int64
 
     return PromptEvent(
       id: id,
@@ -2643,7 +2658,8 @@ struct PromptEvent: RecorderEvent {
       text: text,
       options: options,
       timeoutMs: timeoutMs,
-      km: km
+      km: km,
+      leadMs: leadMs
     )
   }
   func toList() -> [Any?] {
@@ -2654,13 +2670,14 @@ struct PromptEvent: RecorderEvent {
       options,
       timeoutMs,
       km,
+      leadMs,
     ]
   }
   static func == (lhs: PromptEvent, rhs: PromptEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.text, rhs.text) && deepEqualsPlatformApi(lhs.options, rhs.options) && deepEqualsPlatformApi(lhs.timeoutMs, rhs.timeoutMs) && deepEqualsPlatformApi(lhs.km, rhs.km)
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.text, rhs.text) && deepEqualsPlatformApi(lhs.options, rhs.options) && deepEqualsPlatformApi(lhs.timeoutMs, rhs.timeoutMs) && deepEqualsPlatformApi(lhs.km, rhs.km) && deepEqualsPlatformApi(lhs.leadMs, rhs.leadMs)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2671,6 +2688,7 @@ struct PromptEvent: RecorderEvent {
     deepHashPlatformApi(value: options, hasher: &hasher)
     deepHashPlatformApi(value: timeoutMs, hasher: &hasher)
     deepHashPlatformApi(value: km, hasher: &hasher)
+    deepHashPlatformApi(value: leadMs, hasher: &hasher)
   }
 }
 
@@ -2682,6 +2700,12 @@ struct PromptResolvedEvent: RecorderEvent {
   var id: Int64
   var choice: String
   var source: String
+  /// The factor the voice coach now applies to the target pace (1 = none:
+  /// a hold, a timeout, no target, or a push the runner was too far off for):
+  /// the screen's target band follows it so screen and voice agree.
+  var paceFactor: Double
+  /// The effect lasts one rep only (a between-reps answer).
+  var oneRep: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -2689,11 +2713,15 @@ struct PromptResolvedEvent: RecorderEvent {
     let id = pigeonVar_list[0] as! Int64
     let choice = pigeonVar_list[1] as! String
     let source = pigeonVar_list[2] as! String
+    let paceFactor = pigeonVar_list[3] as! Double
+    let oneRep = pigeonVar_list[4] as! Bool
 
     return PromptResolvedEvent(
       id: id,
       choice: choice,
-      source: source
+      source: source,
+      paceFactor: paceFactor,
+      oneRep: oneRep
     )
   }
   func toList() -> [Any?] {
@@ -2701,13 +2729,15 @@ struct PromptResolvedEvent: RecorderEvent {
       id,
       choice,
       source,
+      paceFactor,
+      oneRep,
     ]
   }
   static func == (lhs: PromptResolvedEvent, rhs: PromptResolvedEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source)
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source) && deepEqualsPlatformApi(lhs.paceFactor, rhs.paceFactor) && deepEqualsPlatformApi(lhs.oneRep, rhs.oneRep)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2715,6 +2745,8 @@ struct PromptResolvedEvent: RecorderEvent {
     deepHashPlatformApi(value: id, hasher: &hasher)
     deepHashPlatformApi(value: choice, hasher: &hasher)
     deepHashPlatformApi(value: source, hasher: &hasher)
+    deepHashPlatformApi(value: paceFactor, hasher: &hasher)
+    deepHashPlatformApi(value: oneRep, hasher: &hasher)
   }
 }
 

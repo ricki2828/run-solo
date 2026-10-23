@@ -1086,12 +1086,12 @@ class _RecordingScreenState extends State<RecordingScreen>
                 ),
                 // The mid-run two-button coach prompt (last 2 km, between reps,
                 // well ahead, falling behind): over everything, takes taps,
-                // gone when answered or after its 8 s. Not on the finish
-                // screen or while paused.
+                // gone when answered or after its 8 s. Stays up while paused
+                // (a runner at the lights can tap; the window waits); not on
+                // the finish screen.
                 ValueListenableBuilder<PromptEvent?>(
                   valueListenable: ctl.prompt,
-                  builder: (context, p, _) =>
-                      p == null || pausedNow || _finishing
+                  builder: (context, p, _) => p == null || _finishing
                       ? const SizedBox.shrink()
                       : InrunPromptOverlay(
                           key: ValueKey('inrun-prompt-overlay-${p.id}'),

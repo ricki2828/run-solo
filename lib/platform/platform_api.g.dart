@@ -1577,6 +1577,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.prompt,
     this.autoPaused,
     this.elevGainM,
     this.elevLossM,
@@ -1641,6 +1642,11 @@ class RecorderStatus {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
+
+  /// The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+  /// is what is left), so a screen that missed the event can show its buttons.
+  /// Null = none.
+  PromptEvent? prompt;
 
   /// `state == paused` and the recorder paused itself (the runner stopped,
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
@@ -1708,6 +1714,7 @@ class RecorderStatus {
       pausedAtElapsedMs,
       finishRequests,
       tipsMuted,
+      prompt,
       autoPaused,
       elevGainM,
       elevLossM,
@@ -1749,19 +1756,20 @@ class RecorderStatus {
       pausedAtElapsedMs: result[16] as int?,
       finishRequests: result[17] as int?,
       tipsMuted: result[18] as bool?,
-      autoPaused: result[19] as bool?,
-      elevGainM: result[20] as double?,
-      elevLossM: result[21] as double?,
-      gradePct: result[22] as double?,
-      retracing: result[23] as bool?,
-      retraceSame: result[24] as bool?,
-      backToStartM: result[25] as double?,
-      climbAheadM: result[26] as double?,
-      descentAheadM: result[27] as double?,
-      heightVsStartM: result[28] as double?,
-      route: result[29] as RouteProgress?,
-      trail: result[30] as TrailProgress?,
-      questDoneId: result[31] as String?,
+      prompt: result[19] as PromptEvent?,
+      autoPaused: result[20] as bool?,
+      elevGainM: result[21] as double?,
+      elevLossM: result[22] as double?,
+      gradePct: result[23] as double?,
+      retracing: result[24] as bool?,
+      retraceSame: result[25] as bool?,
+      backToStartM: result[26] as double?,
+      climbAheadM: result[27] as double?,
+      descentAheadM: result[28] as double?,
+      heightVsStartM: result[29] as double?,
+      route: result[30] as RouteProgress?,
+      trail: result[31] as TrailProgress?,
+      questDoneId: result[32] as String?,
     );
   }
 
@@ -1774,7 +1782,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId);
   }
 
   @override
@@ -2802,6 +2810,7 @@ class PromptEvent extends RecorderEvent {
     required this.options,
     required this.timeoutMs,
     required this.km,
+    this.leadMs = 0,
   });
 
   int id;
@@ -2816,10 +2825,17 @@ class PromptEvent extends RecorderEvent {
   /// "Hold", "Ease off").
   List<String> options;
 
+  /// The answer window, ms: it starts when the question has been said, not
+  /// when it was queued, and waits while the run is paused. In a status
+  /// snapshot (a screen that missed the event) this is what is left.
   int timeoutMs;
 
   /// The whole km (or the rep) it fell on.
   int km;
+
+  /// Roughly how long the question still has to be said before the window
+  /// starts, ms (0 once it has). The countdown bar waits this long.
+  int leadMs;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -2829,6 +2845,7 @@ class PromptEvent extends RecorderEvent {
       options,
       timeoutMs,
       km,
+      leadMs,
     ];
   }
 
@@ -2844,6 +2861,7 @@ class PromptEvent extends RecorderEvent {
       options: (result[3]! as List<Object?>).cast<String>(),
       timeoutMs: result[4]! as int,
       km: result[5]! as int,
+      leadMs: result[6]! as int,
     );
   }
 
@@ -2856,7 +2874,7 @@ class PromptEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(kind, other.kind) && _deepEquals(text, other.text) && _deepEquals(options, other.options) && _deepEquals(timeoutMs, other.timeoutMs) && _deepEquals(km, other.km);
+    return _deepEquals(id, other.id) && _deepEquals(kind, other.kind) && _deepEquals(text, other.text) && _deepEquals(options, other.options) && _deepEquals(timeoutMs, other.timeoutMs) && _deepEquals(km, other.km) && _deepEquals(leadMs, other.leadMs);
   }
 
   @override
@@ -2871,6 +2889,8 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.id,
     required this.choice,
     required this.source,
+    this.paceFactor = 1.0,
+    this.oneRep = false,
   });
 
   int id;
@@ -2879,11 +2899,21 @@ class PromptResolvedEvent extends RecorderEvent {
 
   String source;
 
+  /// The factor the voice coach now applies to the target pace (1 = none:
+  /// a hold, a timeout, no target, or a push the runner was too far off for):
+  /// the screen's target band follows it so screen and voice agree.
+  double paceFactor;
+
+  /// The effect lasts one rep only (a between-reps answer).
+  bool oneRep;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
       choice,
       source,
+      paceFactor,
+      oneRep,
     ];
   }
 
@@ -2896,6 +2926,8 @@ class PromptResolvedEvent extends RecorderEvent {
       id: result[0]! as int,
       choice: result[1]! as String,
       source: result[2]! as String,
+      paceFactor: result[3]! as double,
+      oneRep: result[4]! as bool,
     );
   }
 
@@ -2908,7 +2940,7 @@ class PromptResolvedEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source);
+    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep);
   }
 
   @override

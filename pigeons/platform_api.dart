@@ -603,6 +603,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.prompt,
     this.autoPaused,
     this.elevGainM,
     this.elevLossM,
@@ -654,6 +655,11 @@ class RecorderStatus {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
+
+  /// The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+  /// is what is left), so a screen that missed the event can show its buttons.
+  /// Null = none.
+  PromptEvent? prompt;
 
   /// `state == paused` and the recorder paused itself (the runner stopped,
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
@@ -1293,6 +1299,7 @@ class PromptEvent extends RecorderEvent {
     required this.options,
     required this.timeoutMs,
     required this.km,
+    this.leadMs = 0,
   });
   int id;
 
@@ -1305,10 +1312,18 @@ class PromptEvent extends RecorderEvent {
   /// The two answers, first = the first button: display labels ("Push",
   /// "Hold", "Ease off").
   List<String> options;
+
+  /// The answer window, ms: it starts when the question has been said, not
+  /// when it was queued, and waits while the run is paused. In a status
+  /// snapshot (a screen that missed the event) this is what is left.
   int timeoutMs;
 
   /// The whole km (or the rep) it fell on.
   int km;
+
+  /// Roughly how long the question still has to be said before the window
+  /// starts, ms (0 once it has). The countdown bar waits this long.
+  int leadMs;
 }
 
 /// The open prompt was answered or timed out: the screen drops its buttons.
@@ -1318,10 +1333,20 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.id,
     required this.choice,
     required this.source,
+    this.paceFactor = 1.0,
+    this.oneRep = false,
   });
   int id;
   String choice;
   String source;
+
+  /// The factor the voice coach now applies to the target pace (1 = none:
+  /// a hold, a timeout, no target, or a push the runner was too far off for):
+  /// the screen's target band follows it so screen and voice agree.
+  double paceFactor;
+
+  /// The effect lasts one rep only (a between-reps answer).
+  bool oneRep;
 }
 
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"

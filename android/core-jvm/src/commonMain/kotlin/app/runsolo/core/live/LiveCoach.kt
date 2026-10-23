@@ -78,18 +78,6 @@ class LiveCoach(
 
     fun takeRepEnd(): Pair<Int, Int>? = repEnd.also { repEnd = null }
 
-    /**
-     * The PB window's pace (s/km) the chase races, for a run with no target of its own: a push tightens it. The first
-     * board with PB splits; null when there are none.
-     */
-    fun chasePaceSecPerKm(): Double? {
-        val b = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.pbSplitsMs != null } ?: return null
-        val n = ChaseCompare.boardKm(b) ?: return null
-        val splits = b.pbSplitsMs ?: return null
-        if (splits.size < n) return null
-        return splits[n - 1] / 1_000.0 / n
-    }
-
     /** The choice this run was started with (`chase` / `steady`), or null; the run file records it. */
     val coachChoice: CoachChoice? get() = chase?.choice
 

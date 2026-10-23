@@ -8,8 +8,11 @@ import android.media.session.PlaybackState
 import android.content.Intent
 import android.view.KeyEvent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import app.runsolo.core.live.HeadsetKeys
 
 /**
  * Volume-key LAP (plan §3, W8): opt-in, on by default only in Laps mode (never in Free, which
@@ -34,34 +37,50 @@ class LapInput(
     private val onUnavailable: (() -> Unit)? = null,
     private val keysReachSession: Boolean = SUPPORTED,
     /**
-     * A press while a coach prompt is open ([holdForPrompt]) goes here instead of taking a lap: one press = the first
-     * answer, two quick presses = the second (the session counts them). Never called outside a prompt window, so a
-     * press then is exactly the lap press it always was.
+     * A press while a coach prompt is armed ([holdForPrompt]) goes here instead of taking a lap, with
+     * [HeadsetKeys.COUNT] for a press to be counted (one = the first answer, two quick = the second) or 0 / 1 for a key
+     * that picks an option outright (MEDIA_NEXT, which most Bluetooth earbuds send for a double tap). Outside the window
+     * and its short grace a press is exactly the lap press it always was.
      */
-    private val onPromptPress: (() -> Unit)? = null,
+    private val onPromptPress: ((Int) -> Unit)? = null,
 ) {
     private val context = context.applicationContext
     private var session: MediaSession? = null
     private var lastPressT = -DEBOUNCE_MS // a press at elapsedRealtime < 400 ms (Robolectric's clock starts near 0) is not debounced
     private var unavailableReported = false
 
-    /** A coach prompt is open: presses answer it. Written on the recorder thread, read on the main thread. */
+    /**
+     * A coach prompt is armed (from the moment it is decided until it is answered): presses answer it, or are ignored
+     * while its question is not open yet. Written on the recorder thread, read on the main thread.
+     */
     @Volatile
     private var promptOpen = false
 
-    /** The session exists only for the prompt window (no volume-key laps in this mode): released when it closes. */
+    /** After a prompt closes a press is still ignored until then (elapsedRealtime): never a stray lap from the tail of a double press. */
+    @Volatile
+    private var graceUntil = 0L
+
+    /** The session exists only for the prompt window (no volume-key laps in this mode): released when its grace is over. */
+    @Volatile
     private var promptOnly = false
+
+    private val main = Handler(Looper.getMainLooper())
 
     /** Whether the volume-key MediaSession is registered (tests). */
     val registered: Boolean
         get() = session != null
 
     private fun press(source: String): Boolean {
-        if (promptOpen) {
-            val answer = onPromptPress
-            if (answer != null) {
+        val answer = onPromptPress
+        if (answer != null) {
+            if (promptOpen) {
                 Log.i(TAG, "prompt press from $source")
-                answer()
+                answer(HeadsetKeys.COUNT)
+                return true
+            }
+            if (SystemClock.elapsedRealtime() < graceUntil) {
+                // The prompt has just closed: the tail of a double press is not a lap.
+                Log.i(TAG, "press from $source ignored: prompt just closed")
                 return true
             }
         }
@@ -73,6 +92,7 @@ class LapInput(
         return true
     }
 
+    @Synchronized
     fun enable() {
         if (session != null) return
         if (!keysReachSession) {
@@ -92,39 +112,59 @@ class LapInput(
      * where they reach an app session, the volume keys answer it. With no volume-key lap session in this mode a
      * session is made for the window only and released after, so music apps get their buttons back at once.
      */
+    @Synchronized
     fun holdForPrompt(open: Boolean) {
         promptOpen = open
         if (open) {
-            if (session == null) {
+            graceUntil = 0L
+            val s = session
+            if (s == null) {
                 session = buildSession(volumeKeys = keysReachSession)
                 promptOnly = true
+            } else {
+                // Be the session that most recently played: Android hands the media buttons to it, not to the music app.
+                s.setPlaybackState(playing())
+                s.isActive = true
             }
-        } else if (promptOnly) {
-            promptOnly = false
-            disable()
+        } else {
+            graceUntil = SystemClock.elapsedRealtime() + GRACE_MS
+            if (promptOnly) main.postDelayed({ releasePromptOnly() }, GRACE_MS + 50)
         }
     }
+
+    @Synchronized
+    private fun releasePromptOnly() {
+        if (promptOpen || !promptOnly) return
+        promptOnly = false
+        disable()
+    }
+
+    private fun playing(): PlaybackState = PlaybackState.Builder()
+        .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE)
+        .setState(PlaybackState.STATE_PLAYING, 0, 1f, SystemClock.elapsedRealtime())
+        .build()
 
     private fun buildSession(volumeKeys: Boolean): MediaSession {
         val s = MediaSession(context, "RunSolo lap")
         s.setCallback(object : MediaSession.Callback() {
             @Suppress("DEPRECATION")
             override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                if (!promptOpen) return false
+                val inGrace = !promptOpen && SystemClock.elapsedRealtime() < graceUntil
+                if (!promptOpen && !inGrace) return false
                 val e = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
-                if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount != 0) return false
-                return when (e.keyCode) {
-                    KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> press("headset")
-                    else -> false
+                val action = HeadsetKeys.answerFor(e.keyCode) ?: return false
+                // Taken (never passed on to the music app) whatever its phase, so a track does not skip or pause.
+                if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount != 0) return true
+                if (inGrace) {
+                    Log.i(TAG, "key ${e.keyCode} ignored: prompt just closed")
+                    return true
                 }
+                Log.i(TAG, "prompt key ${e.keyCode} -> $action")
+                onPromptPress?.invoke(action)
+                return true
             }
         })
-        s.setPlaybackState(
-            PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE)
-                .setState(PlaybackState.STATE_PLAYING, 0, 1f, SystemClock.elapsedRealtime())
-                .build(),
-        )
+        s.setPlaybackState(playing())
         if (volumeKeys) {
             s.setPlaybackToRemote(object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 50, 50) {
                 override fun onAdjustVolume(direction: Int) {
@@ -138,6 +178,7 @@ class LapInput(
         return s
     }
 
+    @Synchronized
     fun disable() {
         promptOnly = false
         session?.let {
@@ -150,6 +191,9 @@ class LapInput(
     companion object {
         private const val TAG = "RunSolo/lapinput"
         private const val DEBOUNCE_MS = 400L
+
+        /** A press this soon after a prompt closes is still the prompt's (a double press split across its end): ignored, never a lap. */
+        const val GRACE_MS = 700L
 
         /** Volume keys reach an app's session everywhere but Android 14 (see the class doc). */
         val SUPPORTED: Boolean

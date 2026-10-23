@@ -488,7 +488,48 @@ class RecordingController extends ChangeNotifier {
   void _openPrompt(PromptEvent e) {
     moment.value = null; // never stacked on a moment
     prompt.value = e;
-    _promptDeadlineMs = (_lastTickElapsedMs ?? 0) + e.timeoutMs + 2000;
+    // The window starts once the question is said (leadMs) and waits through a pause (_expirePrompt stretches
+    // this while paused); this only covers a lost resolved event.
+    _promptDeadlineMs =
+        (_lastTickElapsedMs ?? 0) + e.leadMs + e.timeoutMs + 2000;
+    _promptLastMs = _lastTickElapsedMs;
+  }
+
+  int? _promptLastMs;
+
+  CoachTarget? _baseCoachTarget;
+  bool _oneRepTarget = false;
+
+  /// The voice coach's target moved (push tightens, ease off loosens, only while the runner is within reach of it):
+  /// the screen's band follows, so screen and voice agree. [oneRep] = it lasts the next rep only (cleared when that
+  /// rep's work phase ends).
+  void _applyTargetFactor(double factor, bool oneRep) {
+    final base = _baseCoachTarget ??= coachTarget;
+    if (base == null) return;
+    coachTarget = factor == 1.0
+        ? base
+        : CoachTarget(
+            paceSecPerKm: base.paceSecPerKm * factor,
+            slowerIsFine: base.slowerIsFine,
+            bandSecPerKm: base.bandSecPerKm,
+          );
+    _oneRepTarget = oneRep && factor != 1.0;
+    _oneRepSeenWork = false;
+  }
+
+  bool _oneRepSeenWork = false;
+
+  /// A rep-only target ends with the work phase it was for.
+  void _endOneRepTarget(Phase phase) {
+    if (!_oneRepTarget) return;
+    if (phase == Phase.work) {
+      _oneRepSeenWork = true;
+    } else if (_oneRepSeenWork) {
+      _oneRepTarget = false;
+      _oneRepSeenWork = false;
+      final base = _baseCoachTarget;
+      if (base != null) coachTarget = base;
+    }
   }
 
   /// A lost resolved event cannot strand the buttons: past the window and a
@@ -496,11 +537,18 @@ class RecordingController extends ChangeNotifier {
   void _expirePrompt() {
     final due = _promptDeadlineMs;
     final at = _lastTickElapsedMs;
-    if (due != null && at != null && at > due) _clearPrompt();
+    if (due == null || at == null) return;
+    final last = _promptLastMs ?? at;
+    _promptLastMs = at;
+    // The window waits while the run is paused (a runner at the lights can still answer): so does this.
+    final deadline = _snap.paused ? due + (at - last) : due;
+    _promptDeadlineMs = deadline;
+    if (at > deadline) _clearPrompt();
   }
 
   void _clearPrompt() {
     _promptDeadlineMs = null;
+    _promptLastMs = null;
     prompt.value = null;
   }
 
@@ -627,6 +675,9 @@ class RecordingController extends ChangeNotifier {
     // only until the first status read.
     final pausedAt = s.pausedAtElapsedMs;
     if (pausedAt != null) _pausedAtMs = pausedAt;
+    // A prompt the event missed (a screen that re-attached mid-question): its buttons come back from the snapshot.
+    final open = s.prompt;
+    if (open != null && prompt.value == null) _openPrompt(open);
     final finish = s.finishRequests ?? 0;
     if (finish > _finishSeen) {
       _finishSeen = finish;
@@ -754,6 +805,9 @@ class RecordingController extends ChangeNotifier {
     _clearPending();
     moment.value = null; // nor a moment
     _clearPrompt(); // nor a prompt
+    _baseCoachTarget = null; // nor a moved target band
+    _oneRepTarget = false;
+    _oneRepSeenWork = false;
     lastCompare.value = null; // never a card from the previous run
     lastCompareAt = null;
     _tracker = engine.HrZoneTracker(zones: _zones());
@@ -892,6 +946,8 @@ class RecordingController extends ChangeNotifier {
         _openPrompt(e);
       case PromptResolvedEvent():
         if (prompt.value?.id == e.id) _clearPrompt();
+        // A hold changes nothing; a push or ease off moves the band the voice now judges by.
+        if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
       case GoalEvent():
         lastGoal.value = e;
         try {
@@ -1064,6 +1120,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onPhase(PhaseEvent p) {
+    _endOneRepTarget(p.phase);
     // Shown at the press already (LapPendingEvent): keep the running
     // countdown rather than jump it back to full.
     final shown = p.phase == _snap.phase && p.repIndex == _snap.repIndex;

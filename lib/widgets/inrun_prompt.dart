@@ -60,10 +60,20 @@ class InrunPromptOverlay extends StatefulWidget {
 class _InrunPromptOverlayState extends State<InrunPromptOverlay>
     with SingleTickerProviderStateMixin {
   // The countdown bar: full to empty over the prompt's own window.
+  // The bar waits out the question (leadMs, an estimate) and then runs down the answer window.
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: Duration(milliseconds: widget.prompt.timeoutMs),
+    duration: Duration(
+      milliseconds: widget.prompt.leadMs + widget.prompt.timeoutMs,
+    ),
   )..forward();
+
+  double get _bar {
+    final lead = widget.prompt.leadMs;
+    final total = lead + widget.prompt.timeoutMs;
+    final spent = _c.value * total;
+    return (1 - ((spent - lead) / widget.prompt.timeoutMs)).clamp(0.0, 1.0);
+  }
 
   @override
   void dispose() {
@@ -147,7 +157,7 @@ class _InrunPromptOverlayState extends State<InrunPromptOverlay>
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       key: const ValueKey('inrun-prompt-bar'),
-                      value: 1 - _c.value,
+                      value: _bar,
                       minHeight: 8,
                       color: figure,
                       backgroundColor: bone.withValues(alpha: 0.18),

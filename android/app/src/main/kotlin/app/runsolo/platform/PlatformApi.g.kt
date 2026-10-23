@@ -1711,6 +1711,12 @@ data class RecorderStatus (
    */
   val tipsMuted: Boolean? = null,
   /**
+   * The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+   * is what is left), so a screen that missed the event can show its buttons.
+   * Null = none.
+   */
+  val prompt: PromptEvent? = null,
+  /**
    * `state == paused` and the recorder paused itself (the runner stopped,
    * Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
    * pause on top of it makes it false.
@@ -1773,20 +1779,21 @@ data class RecorderStatus (
       val pausedAtElapsedMs = pigeonVar_list[16] as Long?
       val finishRequests = pigeonVar_list[17] as Long?
       val tipsMuted = pigeonVar_list[18] as Boolean?
-      val autoPaused = pigeonVar_list[19] as Boolean?
-      val elevGainM = pigeonVar_list[20] as Double?
-      val elevLossM = pigeonVar_list[21] as Double?
-      val gradePct = pigeonVar_list[22] as Double?
-      val retracing = pigeonVar_list[23] as Boolean?
-      val retraceSame = pigeonVar_list[24] as Boolean?
-      val backToStartM = pigeonVar_list[25] as Double?
-      val climbAheadM = pigeonVar_list[26] as Double?
-      val descentAheadM = pigeonVar_list[27] as Double?
-      val heightVsStartM = pigeonVar_list[28] as Double?
-      val route = pigeonVar_list[29] as RouteProgress?
-      val trail = pigeonVar_list[30] as TrailProgress?
-      val questDoneId = pigeonVar_list[31] as String?
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, autoPaused, elevGainM, elevLossM, gradePct, retracing, retraceSame, backToStartM, climbAheadM, descentAheadM, heightVsStartM, route, trail, questDoneId)
+      val prompt = pigeonVar_list[19] as PromptEvent?
+      val autoPaused = pigeonVar_list[20] as Boolean?
+      val elevGainM = pigeonVar_list[21] as Double?
+      val elevLossM = pigeonVar_list[22] as Double?
+      val gradePct = pigeonVar_list[23] as Double?
+      val retracing = pigeonVar_list[24] as Boolean?
+      val retraceSame = pigeonVar_list[25] as Boolean?
+      val backToStartM = pigeonVar_list[26] as Double?
+      val climbAheadM = pigeonVar_list[27] as Double?
+      val descentAheadM = pigeonVar_list[28] as Double?
+      val heightVsStartM = pigeonVar_list[29] as Double?
+      val route = pigeonVar_list[30] as RouteProgress?
+      val trail = pigeonVar_list[31] as TrailProgress?
+      val questDoneId = pigeonVar_list[32] as String?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, prompt, autoPaused, elevGainM, elevLossM, gradePct, retracing, retraceSame, backToStartM, climbAheadM, descentAheadM, heightVsStartM, route, trail, questDoneId)
     }
   }
   fun toList(): List<Any?> {
@@ -1810,6 +1817,7 @@ data class RecorderStatus (
       pausedAtElapsedMs,
       finishRequests,
       tipsMuted,
+      prompt,
       autoPaused,
       elevGainM,
       elevLossM,
@@ -1833,7 +1841,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.retracing, other.retracing) && PlatformApiPigeonUtils.deepEquals(this.retraceSame, other.retraceSame) && PlatformApiPigeonUtils.deepEquals(this.backToStartM, other.backToStartM) && PlatformApiPigeonUtils.deepEquals(this.climbAheadM, other.climbAheadM) && PlatformApiPigeonUtils.deepEquals(this.descentAheadM, other.descentAheadM) && PlatformApiPigeonUtils.deepEquals(this.heightVsStartM, other.heightVsStartM) && PlatformApiPigeonUtils.deepEquals(this.route, other.route) && PlatformApiPigeonUtils.deepEquals(this.trail, other.trail) && PlatformApiPigeonUtils.deepEquals(this.questDoneId, other.questDoneId)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.prompt, other.prompt) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.retracing, other.retracing) && PlatformApiPigeonUtils.deepEquals(this.retraceSame, other.retraceSame) && PlatformApiPigeonUtils.deepEquals(this.backToStartM, other.backToStartM) && PlatformApiPigeonUtils.deepEquals(this.climbAheadM, other.climbAheadM) && PlatformApiPigeonUtils.deepEquals(this.descentAheadM, other.descentAheadM) && PlatformApiPigeonUtils.deepEquals(this.heightVsStartM, other.heightVsStartM) && PlatformApiPigeonUtils.deepEquals(this.route, other.route) && PlatformApiPigeonUtils.deepEquals(this.trail, other.trail) && PlatformApiPigeonUtils.deepEquals(this.questDoneId, other.questDoneId)
   }
 
   override fun hashCode(): Int {
@@ -1857,6 +1865,7 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.pausedAtElapsedMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.finishRequests)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.tipsMuted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.prompt)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.autoPaused)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevGainM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.elevLossM)
@@ -2782,9 +2791,19 @@ data class PromptEvent (
    * "Hold", "Ease off").
    */
   val options: List<String>,
+  /**
+   * The answer window, ms: it starts when the question has been said, not
+   * when it was queued, and waits while the run is paused. In a status
+   * snapshot (a screen that missed the event) this is what is left.
+   */
   val timeoutMs: Long,
   /** The whole km (or the rep) it fell on. */
-  val km: Long
+  val km: Long,
+  /**
+   * Roughly how long the question still has to be said before the window
+   * starts, ms (0 once it has). The countdown bar waits this long.
+   */
+  val leadMs: Long
 ) : RecorderEvent()
  {
   companion object {
@@ -2795,7 +2814,8 @@ data class PromptEvent (
       val options = pigeonVar_list[3] as List<String>
       val timeoutMs = pigeonVar_list[4] as Long
       val km = pigeonVar_list[5] as Long
-      return PromptEvent(id, kind, text, options, timeoutMs, km)
+      val leadMs = pigeonVar_list[6] as Long
+      return PromptEvent(id, kind, text, options, timeoutMs, km, leadMs)
     }
   }
   fun toList(): List<Any?> {
@@ -2806,6 +2826,7 @@ data class PromptEvent (
       options,
       timeoutMs,
       km,
+      leadMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2816,7 +2837,7 @@ data class PromptEvent (
       return true
     }
     val other = other as PromptEvent
-    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.text, other.text) && PlatformApiPigeonUtils.deepEquals(this.options, other.options) && PlatformApiPigeonUtils.deepEquals(this.timeoutMs, other.timeoutMs) && PlatformApiPigeonUtils.deepEquals(this.km, other.km)
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.text, other.text) && PlatformApiPigeonUtils.deepEquals(this.options, other.options) && PlatformApiPigeonUtils.deepEquals(this.timeoutMs, other.timeoutMs) && PlatformApiPigeonUtils.deepEquals(this.km, other.km) && PlatformApiPigeonUtils.deepEquals(this.leadMs, other.leadMs)
   }
 
   override fun hashCode(): Int {
@@ -2827,6 +2848,7 @@ data class PromptEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.options)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.timeoutMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.km)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.leadMs)
     return result
   }
 }
@@ -2840,7 +2862,15 @@ data class PromptEvent (
 data class PromptResolvedEvent (
   val id: Long,
   val choice: String,
-  val source: String
+  val source: String,
+  /**
+   * The factor the voice coach now applies to the target pace (1 = none:
+   * a hold, a timeout, no target, or a push the runner was too far off for):
+   * the screen's target band follows it so screen and voice agree.
+   */
+  val paceFactor: Double,
+  /** The effect lasts one rep only (a between-reps answer). */
+  val oneRep: Boolean
 ) : RecorderEvent()
  {
   companion object {
@@ -2848,7 +2878,9 @@ data class PromptResolvedEvent (
       val id = pigeonVar_list[0] as Long
       val choice = pigeonVar_list[1] as String
       val source = pigeonVar_list[2] as String
-      return PromptResolvedEvent(id, choice, source)
+      val paceFactor = pigeonVar_list[3] as Double
+      val oneRep = pigeonVar_list[4] as Boolean
+      return PromptResolvedEvent(id, choice, source, paceFactor, oneRep)
     }
   }
   fun toList(): List<Any?> {
@@ -2856,6 +2888,8 @@ data class PromptResolvedEvent (
       id,
       choice,
       source,
+      paceFactor,
+      oneRep,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2866,7 +2900,7 @@ data class PromptResolvedEvent (
       return true
     }
     val other = other as PromptResolvedEvent
-    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.paceFactor, other.paceFactor) && PlatformApiPigeonUtils.deepEquals(this.oneRep, other.oneRep)
   }
 
   override fun hashCode(): Int {
@@ -2874,6 +2908,8 @@ data class PromptResolvedEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.id)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.choice)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.paceFactor)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.oneRep)
     return result
   }
 }

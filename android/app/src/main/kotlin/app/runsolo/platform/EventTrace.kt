@@ -126,12 +126,15 @@ object EventTrace {
                 m["id"] = e.id
                 m["km"] = e.km
                 m["text"] = e.text
+                m["leadMs"] = e.leadMs
             }
             is PromptResolvedEvent -> {
                 m["kind"] = "promptResolved"
                 m["id"] = e.id
                 m["choice"] = e.choice
                 m["source"] = e.source
+                m["paceFactor"] = e.paceFactor
+                m["oneRep"] = e.oneRep
             }
             is GoalEvent -> {
                 m["kind"] = "goal"

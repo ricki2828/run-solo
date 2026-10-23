@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/state/recording_controller.dart';
+import 'package:run_solo/state/voice_coach_plan.dart';
 import 'package:run_solo/state/inrun_moments.dart';
 import 'package:run_solo/widgets/inrun_prompt.dart';
 
+import '../helpers.dart';
 import 'inrun_moment_test.dart' show moment, openRun, step;
 
 /// The mid-run two-button coach prompt on the record screen (decisions
@@ -211,5 +215,163 @@ void main() {
     expect(InrunPromptOverlay.eyebrow('aheadOfPb'), 'AHEAD');
     expect(InrunPromptOverlay.eyebrow('betweenReps'), 'NEXT REP');
     expect(InrunPromptOverlay.eyebrow('future'), 'COACH');
+  });
+
+  group('the screen follows the voice', () {
+    Future<(FakeRecorderGateway, RecordingController)> startRun(
+      WidgetTester tester, {
+      CoachTarget? target,
+      RecordMode mode = RecordMode.free,
+      SessionSpec? spec,
+    }) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..scriptedHr = 150
+        ..liveSecPerKm = 300;
+      final services = fakeServices(recorder: fake);
+      services.recording.coachTarget = target;
+      await services.recording.start(mode, spec, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 6);
+      return (fake, services.recording);
+    }
+
+    const base = CoachTarget(paceSecPerKm: 300);
+
+    testWidgets('a push moves the screen band with the voice target', (
+      tester,
+    ) async {
+      final (fake, ctl) = await startRun(tester, target: base);
+      await open(tester, fake, prompt(id: 1));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 1,
+          choice: 'push',
+          source: 'tap',
+          paceFactor: 0.97,
+        ),
+      );
+      await tester.pump();
+      expect(ctl.coachTarget!.paceSecPerKm, closeTo(291, 1e-9));
+      expect(ctl.coachTarget!.bandSecPerKm, base.bandSecPerKm);
+    });
+
+    testWidgets('a hold, a timeout and a push that was not applied leave the '
+        'band alone', (tester) async {
+      final (fake, ctl) = await startRun(tester, target: base);
+      await open(tester, fake, prompt(id: 1));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(id: 1, choice: 'hold', source: 'timeout'),
+      );
+      await tester.pump();
+      expect(ctl.coachTarget!.paceSecPerKm, 300);
+      // A push the coach dropped (the runner was too far off) arrives with factor 1.
+      await open(tester, fake, prompt(id: 2));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(id: 2, choice: 'push', source: 'tap'),
+      );
+      await tester.pump();
+      expect(ctl.coachTarget!.paceSecPerKm, 300);
+    });
+
+    testWidgets('an ease off loosens it and a later answer starts from the '
+        'plan target again', (tester) async {
+      final (fake, ctl) = await startRun(tester, target: base);
+      await open(tester, fake, prompt(id: 1));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 1,
+          choice: 'ease',
+          source: 'headset',
+          paceFactor: 1.04,
+        ),
+      );
+      await tester.pump();
+      expect(ctl.coachTarget!.paceSecPerKm, closeTo(312, 1e-9));
+      await open(tester, fake, prompt(id: 2));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 2,
+          choice: 'push',
+          source: 'tap',
+          paceFactor: 0.97,
+        ),
+      );
+      await tester.pump();
+      expect(
+        ctl.coachTarget!.paceSecPerKm,
+        closeTo(291, 1e-9),
+        reason: '0.97 of the plan, not of 312',
+      );
+    });
+
+    testWidgets('a run with no target has no band to move', (tester) async {
+      final (fake, ctl) = await startRun(tester);
+      await open(tester, fake, prompt(id: 1));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 1,
+          choice: 'push',
+          source: 'tap',
+          paceFactor: 0.97,
+        ),
+      );
+      await tester.pump();
+      expect(ctl.coachTarget, isNull);
+    });
+
+    testWidgets('a screen that missed the event gets the buttons back from the '
+        'status snapshot', (tester) async {
+      final (fake, ctl) = await startRun(tester);
+      expect(button(0), findsNothing);
+      fake.openPrompt = prompt(id: 9);
+      await ctl.refreshStatus();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(button(0), findsOneWidget);
+      expect(ctl.prompt.value!.id, 9);
+      await tester.tap(button(0));
+      await tester.pump();
+      expect(fake.promptAnswers, [(9, 0)]);
+    });
+
+    testWidgets('the buttons stay up while the run is paused', (tester) async {
+      final (fake, ctl) = await startRun(tester);
+      await open(tester, fake, prompt(id: 4));
+      await fake.pause();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(ctl.prompt.value, isNotNull);
+      expect(button(0), findsOneWidget);
+      await tester.tap(button(1));
+      await tester.pump();
+      expect(fake.promptAnswers, [(4, 1)]);
+    });
+
+    testWidgets('the bar waits out the question before it runs down', (
+      tester,
+    ) async {
+      final (fake, _) = await startRun(tester);
+      fake.emitPrompt(
+        PromptEvent(
+          id: 5,
+          kind: 'last2k',
+          text: 'a long question',
+          options: const ['Push', 'Hold'],
+          timeoutMs: 8000,
+          km: 3,
+          leadMs: 4000,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      double bar() => tester
+          .widget<LinearProgressIndicator>(
+            find.byKey(const ValueKey('inrun-prompt-bar')),
+          )
+          .value!;
+      await tester.pump(const Duration(seconds: 3));
+      expect(bar(), 1.0, reason: 'still being said');
+      await tester.pump(const Duration(seconds: 5));
+      expect(bar(), inInclusiveRange(0.4, 0.75));
+    });
   });
 }

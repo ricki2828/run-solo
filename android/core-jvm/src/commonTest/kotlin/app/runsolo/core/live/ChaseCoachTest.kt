@@ -583,11 +583,4 @@ class ChaseCoachTest {
         assertNull(f.gapMs)
         assertNull(f.behindTargetMs)
     }
-
-    @Test
-    fun `the chase pace the PB window ran at - for a run with no target`() {
-        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
-        assertEquals(290.0, coach.chasePaceSecPerKm()!!, 1e-9)
-        assertNull(LiveCoach(ctx("chase"), RunMode.free, null).chasePaceSecPerKm())
-    }
 }
