@@ -229,6 +229,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         active()?.lap(source.toCore())
     }
 
+    override fun answerPrompt(promptId: Long, optionIndex: Long) {
+        active()?.answerPrompt(promptId.toInt(), optionIndex.toInt())
+    }
+
     override fun startReps() {
         active()?.startReps()
     }

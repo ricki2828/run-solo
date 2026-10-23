@@ -2607,6 +2607,117 @@ struct CueEvent: RecorderEvent {
   }
 }
 
+/// A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+/// asked [text], the screen shows [options] as two big buttons, and nothing
+/// answered by [timeoutMs] holds the current target. Answer with
+/// `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+/// (one press = the first option, two = the second).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PromptEvent: RecorderEvent {
+  var id: Int64
+  /// `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`.
+  var kind: String
+  /// What the voice said, ending in the question ("... Push or hold?").
+  var text: String
+  /// The two answers, first = the first button: display labels ("Push",
+  /// "Hold", "Ease off").
+  var options: [String]
+  var timeoutMs: Int64
+  /// The whole km (or the rep) it fell on.
+  var km: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PromptEvent? {
+    let id = pigeonVar_list[0] as! Int64
+    let kind = pigeonVar_list[1] as! String
+    let text = pigeonVar_list[2] as! String
+    let options = pigeonVar_list[3] as! [String]
+    let timeoutMs = pigeonVar_list[4] as! Int64
+    let km = pigeonVar_list[5] as! Int64
+
+    return PromptEvent(
+      id: id,
+      kind: kind,
+      text: text,
+      options: options,
+      timeoutMs: timeoutMs,
+      km: km
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      id,
+      kind,
+      text,
+      options,
+      timeoutMs,
+      km,
+    ]
+  }
+  static func == (lhs: PromptEvent, rhs: PromptEvent) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.kind, rhs.kind) && deepEqualsPlatformApi(lhs.text, rhs.text) && deepEqualsPlatformApi(lhs.options, rhs.options) && deepEqualsPlatformApi(lhs.timeoutMs, rhs.timeoutMs) && deepEqualsPlatformApi(lhs.km, rhs.km)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PromptEvent")
+    deepHashPlatformApi(value: id, hasher: &hasher)
+    deepHashPlatformApi(value: kind, hasher: &hasher)
+    deepHashPlatformApi(value: text, hasher: &hasher)
+    deepHashPlatformApi(value: options, hasher: &hasher)
+    deepHashPlatformApi(value: timeoutMs, hasher: &hasher)
+    deepHashPlatformApi(value: km, hasher: &hasher)
+  }
+}
+
+/// The open prompt was answered or timed out: the screen drops its buttons.
+/// [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct PromptResolvedEvent: RecorderEvent {
+  var id: Int64
+  var choice: String
+  var source: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PromptResolvedEvent? {
+    let id = pigeonVar_list[0] as! Int64
+    let choice = pigeonVar_list[1] as! String
+    let source = pigeonVar_list[2] as! String
+
+    return PromptResolvedEvent(
+      id: id,
+      choice: choice,
+      source: source
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      id,
+      choice,
+      source,
+    ]
+  }
+  static func == (lhs: PromptResolvedEvent, rhs: PromptResolvedEvent) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PromptResolvedEvent")
+    deepHashPlatformApi(value: id, hasher: &hasher)
+    deepHashPlatformApi(value: choice, hasher: &hasher)
+    deepHashPlatformApi(value: source, hasher: &hasher)
+  }
+}
+
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
 /// threshold is the screen's; native sends the raw values.
 ///
@@ -3637,34 +3748,38 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
     case 178:
       return CueEvent.fromList(self.readValue() as! [Any?])
     case 179:
-      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
+      return PromptEvent.fromList(self.readValue() as! [Any?])
     case 180:
-      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
+      return PromptResolvedEvent.fromList(self.readValue() as! [Any?])
     case 181:
-      return CompareEvent.fromList(self.readValue() as! [Any?])
+      return GpsProbeEvent.fromList(self.readValue() as! [Any?])
     case 182:
-      return GoalEvent.fromList(self.readValue() as! [Any?])
+      return RoutePointsEvent.fromList(self.readValue() as! [Any?])
     case 183:
-      return FaultEvent.fromList(self.readValue() as! [Any?])
+      return CompareEvent.fromList(self.readValue() as! [Any?])
     case 184:
-      return StateEvent.fromList(self.readValue() as! [Any?])
+      return GoalEvent.fromList(self.readValue() as! [Any?])
     case 185:
-      return PhaseEvent.fromList(self.readValue() as! [Any?])
+      return FaultEvent.fromList(self.readValue() as! [Any?])
     case 186:
-      return HealthStatus.fromList(self.readValue() as! [Any?])
+      return StateEvent.fromList(self.readValue() as! [Any?])
     case 187:
-      return HealthLap.fromList(self.readValue() as! [Any?])
+      return PhaseEvent.fromList(self.readValue() as! [Any?])
     case 188:
-      return HealthPause.fromList(self.readValue() as! [Any?])
+      return HealthStatus.fromList(self.readValue() as! [Any?])
     case 189:
-      return HealthHrSample.fromList(self.readValue() as! [Any?])
+      return HealthLap.fromList(self.readValue() as! [Any?])
     case 190:
-      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
+      return HealthPause.fromList(self.readValue() as! [Any?])
     case 191:
-      return HealthWorkout.fromList(self.readValue() as! [Any?])
+      return HealthHrSample.fromList(self.readValue() as! [Any?])
     case 192:
-      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+      return HealthRoutePoint.fromList(self.readValue() as! [Any?])
     case 193:
+      return HealthWorkout.fromList(self.readValue() as! [Any?])
+    case 194:
+      return HealthWriteResult.fromList(self.readValue() as! [Any?])
+    case 195:
       return VoiceCoachConfig.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -3824,50 +3939,56 @@ private class PlatformApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? CueEvent {
       super.writeByte(178)
       super.writeValue(value.toList())
-    } else if let value = value as? GpsProbeEvent {
+    } else if let value = value as? PromptEvent {
       super.writeByte(179)
       super.writeValue(value.toList())
-    } else if let value = value as? RoutePointsEvent {
+    } else if let value = value as? PromptResolvedEvent {
       super.writeByte(180)
       super.writeValue(value.toList())
-    } else if let value = value as? CompareEvent {
+    } else if let value = value as? GpsProbeEvent {
       super.writeByte(181)
       super.writeValue(value.toList())
-    } else if let value = value as? GoalEvent {
+    } else if let value = value as? RoutePointsEvent {
       super.writeByte(182)
       super.writeValue(value.toList())
-    } else if let value = value as? FaultEvent {
+    } else if let value = value as? CompareEvent {
       super.writeByte(183)
       super.writeValue(value.toList())
-    } else if let value = value as? StateEvent {
+    } else if let value = value as? GoalEvent {
       super.writeByte(184)
       super.writeValue(value.toList())
-    } else if let value = value as? PhaseEvent {
+    } else if let value = value as? FaultEvent {
       super.writeByte(185)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthStatus {
+    } else if let value = value as? StateEvent {
       super.writeByte(186)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthLap {
+    } else if let value = value as? PhaseEvent {
       super.writeByte(187)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthPause {
+    } else if let value = value as? HealthStatus {
       super.writeByte(188)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthHrSample {
+    } else if let value = value as? HealthLap {
       super.writeByte(189)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthRoutePoint {
+    } else if let value = value as? HealthPause {
       super.writeByte(190)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWorkout {
+    } else if let value = value as? HealthHrSample {
       super.writeByte(191)
       super.writeValue(value.toList())
-    } else if let value = value as? HealthWriteResult {
+    } else if let value = value as? HealthRoutePoint {
       super.writeByte(192)
       super.writeValue(value.toList())
-    } else if let value = value as? VoiceCoachConfig {
+    } else if let value = value as? HealthWorkout {
       super.writeByte(193)
+      super.writeValue(value.toList())
+    } else if let value = value as? HealthWriteResult {
+      super.writeByte(194)
+      super.writeValue(value.toList())
+    } else if let value = value as? VoiceCoachConfig {
+      super.writeByte(195)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -3916,6 +4037,9 @@ protocol RecorderApi {
   func pause() throws
   func resume() throws
   func lap(source: LapSource) throws
+  /// The runner tapped option [optionIndex] of the open prompt [promptId]
+  /// (0 = the first button). A no-op when that prompt is no longer open.
+  func answerPrompt(promptId: Int64, optionIndex: Int64) throws
   /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
   /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
   /// so a manual LAP mid-rep can never be confused with starting.
@@ -4133,6 +4257,24 @@ class RecorderApiSetup {
       }
     } else {
       lapChannel.setMessageHandler(nil)
+    }
+    /// The runner tapped option [optionIndex] of the open prompt [promptId]
+    /// (0 = the first button). A no-op when that prompt is no longer open.
+    let answerPromptChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.answerPrompt\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      answerPromptChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let promptIdArg = args[0] as! Int64
+        let optionIndexArg = args[1] as! Int64
+        do {
+          try api.answerPrompt(promptId: promptIdArg, optionIndex: optionIndexArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      answerPromptChannel.setMessageHandler(nil)
     }
     /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
     /// effect and journal line as a first `lap(button)`); a no-op anywhere else,

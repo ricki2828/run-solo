@@ -4,6 +4,7 @@ import app.runsolo.core.json.Json
 import app.runsolo.core.json.double
 import app.runsolo.core.json.doubleOrNull
 import app.runsolo.core.json.int
+import app.runsolo.core.json.list
 import app.runsolo.core.json.long
 import app.runsolo.core.json.longOrNull
 import app.runsolo.core.json.obj
@@ -77,6 +78,11 @@ object JournalCodec {
             is JournalLine.CueFired -> {
                 m["k"] = "cf"; m["t"] = line.t; m["w"] = line.w
                 m["kind"] = line.kind.name; m["key"] = line.key; m["i"] = line.index; m["at"] = line.atMs
+            }
+            is JournalLine.PromptResolved -> {
+                m["k"] = "pr"; m["t"] = line.t; m["w"] = line.w
+                m["id"] = line.id; m["trig"] = line.trigger; m["km"] = line.km; m["opts"] = line.options
+                m["choice"] = line.choice; m["src"] = line.source; m["open"] = line.openedAtMs; m["at"] = line.atMs
             }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.QuestDone -> { m["k"] = "qd"; m["t"] = line.t; m["w"] = line.w; m["id"] = line.questId }
@@ -165,6 +171,11 @@ object JournalCodec {
             "hr" -> JournalLine.HrLink(t, w, m["on"] as? Boolean ?: throw IllegalArgumentException("hr.on"))
             "lctx" -> JournalLine.LiveContextLine(t, w, LiveContext.fromJson(m.obj("ctx") ?: throw IllegalArgumentException("lctx.ctx")))
             "cf" -> JournalLine.CueFired(t, w, JournalLine.FiredKind.valueOf(m.string("kind")), m.string("key"), m.int("i"), m.long("at"))
+            "pr" -> JournalLine.PromptResolved(
+                t, w, m.int("id"), m.string("trig"), m.int("km"),
+                m.list("opts").map { it as? String ?: throw IllegalArgumentException("pr.opts") },
+                m.string("choice"), m.string("src"), m.long("open"), m.long("at"),
+            )
             "tm" -> JournalLine.TipsMuted(t, w)
             "qd" -> JournalLine.QuestDone(t, w, m.string("id"))
             "route" -> JournalLine.RouteLine(t, w, FollowRoute.fromJson(m.obj("route") ?: throw IllegalArgumentException("route.route")))

@@ -915,6 +915,10 @@ abstract class RecorderApi {
   void resume();
   void lap(LapSource source);
 
+  /// The runner tapped option [optionIndex] of the open prompt [promptId]
+  /// (0 = the first button). A no-op when that prompt is no longer open.
+  void answerPrompt(int promptId, int optionIndex);
+
   /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
   /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
   /// so a manual LAP mid-rep can never be confused with starting.
@@ -1274,6 +1278,50 @@ class CueEvent extends RecorderEvent {
   /// `projection`: the projected Cooper distance in metres, or a distance
   /// step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
   double? value;
+}
+
+/// A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+/// asked [text], the screen shows [options] as two big buttons, and nothing
+/// answered by [timeoutMs] holds the current target. Answer with
+/// `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+/// (one press = the first option, two = the second).
+class PromptEvent extends RecorderEvent {
+  PromptEvent({
+    required this.id,
+    required this.kind,
+    required this.text,
+    required this.options,
+    required this.timeoutMs,
+    required this.km,
+  });
+  int id;
+
+  /// `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`.
+  String kind;
+
+  /// What the voice said, ending in the question ("... Push or hold?").
+  String text;
+
+  /// The two answers, first = the first button: display labels ("Push",
+  /// "Hold", "Ease off").
+  List<String> options;
+  int timeoutMs;
+
+  /// The whole km (or the rep) it fell on.
+  int km;
+}
+
+/// The open prompt was answered or timed out: the screen drops its buttons.
+/// [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+class PromptResolvedEvent extends RecorderEvent {
+  PromptResolvedEvent({
+    required this.id,
+    required this.choice,
+    required this.source,
+  });
+  int id;
+  String choice;
+  String source;
 }
 
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"

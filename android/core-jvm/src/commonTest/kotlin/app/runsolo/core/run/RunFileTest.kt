@@ -433,4 +433,34 @@ class RunFileTest {
         assertNull(none.coach)
         assertTrue("coach" !in none.toJson())
     }
+    @Test
+    fun `answered prompts reach the run file in order - with no Start choice the key still writes`() {
+        val text = StringBuilder(journal().decodeToString())
+            .append(JournalCodec.encode(JournalLine.PromptResolved(t0 + 10_000, w0 + 10_000, 1, "betweenReps", 2, listOf("push", "hold"), "push", "tap", 6_000, 10_000))).append('\n')
+            .append(JournalCodec.encode(JournalLine.PromptResolved(t0 + 30_000, w0 + 30_000, 2, "behindTarget", 3, listOf("push", "ease"), "hold", "timeout", 22_000, 30_000))).append('\n')
+            .toString().encodeToByteArray()
+        val f = RunFile.fromReplay(JournalReplay.read(text), w0 + 50_000)
+        val coach = f.coach!!
+        assertNull(coach.choice)
+        assertTrue(coach.cues.isEmpty())
+        assertEquals(
+            listOf(
+                RunFile.CoachLog.Prompt("betweenReps", listOf("push", "hold"), "push", "tap", 2, 6_000, 10_000),
+                RunFile.CoachLog.Prompt("behindTarget", listOf("push", "ease"), "hold", "timeout", 3, 22_000, 30_000),
+            ),
+            coach.prompts,
+        )
+        @Suppress("UNCHECKED_CAST")
+        val json = f.toJson()["coach"] as Map<String, Any?>
+        assertTrue("choice" !in json)
+        assertEquals(
+            listOf(
+                listOf("betweenReps", listOf("push", "hold"), "push", "tap", 2, 6_000L, 10_000L),
+                listOf("behindTarget", listOf("push", "ease"), "hold", "timeout", 3, 22_000L, 30_000L),
+            ),
+            json["prompts"],
+        )
+        val none = RunFile.fromReplay(JournalReplay.read(journal()), w0 + 50_000)
+        assertNull(none.coach)
+    }
 }

@@ -5,6 +5,8 @@ import android.media.AudioManager
 import android.media.VolumeProvider
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
+import android.content.Intent
+import android.view.KeyEvent
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
@@ -31,17 +33,38 @@ class LapInput(
     private val onLap: () -> Unit,
     private val onUnavailable: (() -> Unit)? = null,
     private val keysReachSession: Boolean = SUPPORTED,
+    /**
+     * A press while a coach prompt is open ([holdForPrompt]) goes here instead of taking a lap: one press = the first
+     * answer, two quick presses = the second (the session counts them). Never called outside a prompt window, so a
+     * press then is exactly the lap press it always was.
+     */
+    private val onPromptPress: (() -> Unit)? = null,
 ) {
     private val context = context.applicationContext
     private var session: MediaSession? = null
     private var lastPressT = -DEBOUNCE_MS // a press at elapsedRealtime < 400 ms (Robolectric's clock starts near 0) is not debounced
     private var unavailableReported = false
 
+    /** A coach prompt is open: presses answer it. Written on the recorder thread, read on the main thread. */
+    @Volatile
+    private var promptOpen = false
+
+    /** The session exists only for the prompt window (no volume-key laps in this mode): released when it closes. */
+    private var promptOnly = false
+
     /** Whether the volume-key MediaSession is registered (tests). */
     val registered: Boolean
         get() = session != null
 
     private fun press(source: String): Boolean {
+        if (promptOpen) {
+            val answer = onPromptPress
+            if (answer != null) {
+                Log.i(TAG, "prompt press from $source")
+                answer()
+                return true
+            }
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastPressT < DEBOUNCE_MS) return false
         lastPressT = now
@@ -60,27 +83,63 @@ class LapInput(
             }
             return
         }
+        session = buildSession(volumeKeys = true)
+        Log.i(TAG, "volume-key lap enabled")
+    }
+
+    /**
+     * A coach prompt opened ([open] true) or closed. While it is open the headset buttons (play/pause, the hook) and,
+     * where they reach an app session, the volume keys answer it. With no volume-key lap session in this mode a
+     * session is made for the window only and released after, so music apps get their buttons back at once.
+     */
+    fun holdForPrompt(open: Boolean) {
+        promptOpen = open
+        if (open) {
+            if (session == null) {
+                session = buildSession(volumeKeys = keysReachSession)
+                promptOnly = true
+            }
+        } else if (promptOnly) {
+            promptOnly = false
+            disable()
+        }
+    }
+
+    private fun buildSession(volumeKeys: Boolean): MediaSession {
         val s = MediaSession(context, "RunSolo lap")
-        s.setCallback(object : MediaSession.Callback() {})
+        s.setCallback(object : MediaSession.Callback() {
+            @Suppress("DEPRECATION")
+            override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                if (!promptOpen) return false
+                val e = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
+                if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount != 0) return false
+                return when (e.keyCode) {
+                    KeyEvent.KEYCODE_HEADSETHOOK, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> press("headset")
+                    else -> false
+                }
+            }
+        })
         s.setPlaybackState(
             PlaybackState.Builder()
                 .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE)
                 .setState(PlaybackState.STATE_PLAYING, 0, 1f, SystemClock.elapsedRealtime())
                 .build(),
         )
-        s.setPlaybackToRemote(object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 50, 50) {
-            override fun onAdjustVolume(direction: Int) {
-                Log.i(TAG, "volume key direction=$direction")
-                if (direction == AudioManager.ADJUST_SAME) return
-                press("session")
-            }
-        })
+        if (volumeKeys) {
+            s.setPlaybackToRemote(object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 50, 50) {
+                override fun onAdjustVolume(direction: Int) {
+                    Log.i(TAG, "volume key direction=$direction")
+                    if (direction == AudioManager.ADJUST_SAME) return
+                    press("session")
+                }
+            })
+        }
         s.isActive = true
-        session = s
-        Log.i(TAG, "volume-key lap enabled")
+        return s
     }
 
     fun disable() {
+        promptOnly = false
         session?.let {
             it.isActive = false
             it.release()

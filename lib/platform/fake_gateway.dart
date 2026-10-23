@@ -483,6 +483,20 @@ class FakeRecorderGateway implements RecorderGateway {
 
   int startRepsCalls = 0;
 
+  /// Coach prompt answers received, as (promptId, optionIndex).
+  final List<(int, int)> promptAnswers = [];
+
+  @override
+  Future<void> answerPrompt(int promptId, int optionIndex) async {
+    promptAnswers.add((promptId, optionIndex));
+  }
+
+  /// A mid-run prompt opened (tests).
+  void emitPrompt(PromptEvent e) => _emit(e);
+
+  /// The open prompt was answered or timed out (tests).
+  void emitPromptResolved(PromptResolvedEvent e) => _emit(e);
+
   @override
   Future<void> lap(LapSource source) async {
     if (_state != RecorderState.recording) return;

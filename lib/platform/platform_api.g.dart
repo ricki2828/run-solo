@@ -2789,6 +2789,133 @@ class CueEvent extends RecorderEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+/// asked [text], the screen shows [options] as two big buttons, and nothing
+/// answered by [timeoutMs] holds the current target. Answer with
+/// `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+/// (one press = the first option, two = the second).
+class PromptEvent extends RecorderEvent {
+  PromptEvent({
+    required this.id,
+    required this.kind,
+    required this.text,
+    required this.options,
+    required this.timeoutMs,
+    required this.km,
+  });
+
+  int id;
+
+  /// `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`.
+  String kind;
+
+  /// What the voice said, ending in the question ("... Push or hold?").
+  String text;
+
+  /// The two answers, first = the first button: display labels ("Push",
+  /// "Hold", "Ease off").
+  List<String> options;
+
+  int timeoutMs;
+
+  /// The whole km (or the rep) it fell on.
+  int km;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      kind,
+      text,
+      options,
+      timeoutMs,
+      km,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PromptEvent decode(Object result) {
+    result as List<Object?>;
+    return PromptEvent(
+      id: result[0]! as int,
+      kind: result[1]! as String,
+      text: result[2]! as String,
+      options: (result[3]! as List<Object?>).cast<String>(),
+      timeoutMs: result[4]! as int,
+      km: result[5]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PromptEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(kind, other.kind) && _deepEquals(text, other.text) && _deepEquals(options, other.options) && _deepEquals(timeoutMs, other.timeoutMs) && _deepEquals(km, other.km);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// The open prompt was answered or timed out: the screen drops its buttons.
+/// [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+class PromptResolvedEvent extends RecorderEvent {
+  PromptResolvedEvent({
+    required this.id,
+    required this.choice,
+    required this.source,
+  });
+
+  int id;
+
+  String choice;
+
+  String source;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      choice,
+      source,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PromptResolvedEvent decode(Object result) {
+    result as List<Object?>;
+    return PromptResolvedEvent(
+      id: result[0]! as int,
+      choice: result[1]! as String,
+      source: result[2]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PromptResolvedEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
 /// threshold is the screen's; native sends the raw values.
 class GpsProbeEvent extends RecorderEvent {
@@ -3927,50 +4054,56 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CueEvent) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is PromptEvent) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is RoutePointsEvent) {
+    }    else if (value is PromptResolvedEvent) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(183);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(184);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(185);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(186);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(187);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(188);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(189);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(190);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(191);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(192);
       writeValue(buffer, value.encode());
-    }    else if (value is VoiceCoachConfig) {
+    }    else if (value is HealthWorkout) {
       buffer.putUint8(193);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWriteResult) {
+      buffer.putUint8(194);
+      writeValue(buffer, value.encode());
+    }    else if (value is VoiceCoachConfig) {
+      buffer.putUint8(195);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -4099,34 +4232,38 @@ class _PigeonCodec extends StandardMessageCodec {
       case 178:
         return CueEvent.decode(readValue(buffer)!);
       case 179:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return PromptEvent.decode(readValue(buffer)!);
       case 180:
-        return RoutePointsEvent.decode(readValue(buffer)!);
+        return PromptResolvedEvent.decode(readValue(buffer)!);
       case 181:
-        return CompareEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 182:
-        return GoalEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 183:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 184:
-        return StateEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 185:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 186:
-        return HealthStatus.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 187:
-        return HealthLap.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 188:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 189:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 190:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 191:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 192:
-        return HealthWriteResult.decode(readValue(buffer)!);
+        return HealthRoutePoint.decode(readValue(buffer)!);
       case 193:
+        return HealthWorkout.decode(readValue(buffer)!);
+      case 194:
+        return HealthWriteResult.decode(readValue(buffer)!);
+      case 195:
         return VoiceCoachConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -4266,6 +4403,26 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[source]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// The runner tapped option [optionIndex] of the open prompt [promptId]
+  /// (0 = the first button). A no-op when that prompt is no longer open.
+  Future<void> answerPrompt(int promptId, int optionIndex) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.answerPrompt$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[promptId, optionIndex]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

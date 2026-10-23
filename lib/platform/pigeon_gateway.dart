@@ -34,6 +34,10 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> lap(LapSource source) => _api.lap(source);
 
   @override
+  Future<void> answerPrompt(int promptId, int optionIndex) =>
+      _api.answerPrompt(promptId, optionIndex);
+
+  @override
   Future<void> startReps() => _api.startReps();
 
   @override

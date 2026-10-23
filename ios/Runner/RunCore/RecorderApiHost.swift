@@ -47,6 +47,8 @@ final class RecorderApiHost: RecorderApi {
   func resume() throws { host.resume() }
   func lap(source: LapSource) throws { host.lap(source: source) }
   func startReps() throws { host.startReps() }
+  /// Mid-run coach prompts are Android only for now (the live coach is, too).
+  func answerPrompt(promptId: Int64, optionIndex: Int64) throws {}
   func stop() throws -> String? { try host.stop() }
   func status() throws -> RecorderStatus { host.status() }
   func recover() throws -> [OrphanJournal] {

@@ -120,6 +120,19 @@ object EventTrace {
                 m["text"] = e.text
                 m["overlay"] = e.overlay
             }
+            is PromptEvent -> {
+                m["kind"] = "prompt"
+                m["prompt"] = e.kind
+                m["id"] = e.id
+                m["km"] = e.km
+                m["text"] = e.text
+            }
+            is PromptResolvedEvent -> {
+                m["kind"] = "promptResolved"
+                m["id"] = e.id
+                m["choice"] = e.choice
+                m["source"] = e.source
+            }
             is GoalEvent -> {
                 m["kind"] = "goal"
                 m["distanceGoal"] = e.distanceGoal

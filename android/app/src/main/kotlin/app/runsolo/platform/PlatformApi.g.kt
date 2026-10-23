@@ -2763,6 +2763,122 @@ data class CueEvent (
 }
 
 /**
+ * A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+ * asked [text], the screen shows [options] as two big buttons, and nothing
+ * answered by [timeoutMs] holds the current target. Answer with
+ * `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+ * (one press = the first option, two = the second).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PromptEvent (
+  val id: Long,
+  /** `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`. */
+  val kind: String,
+  /** What the voice said, ending in the question ("... Push or hold?"). */
+  val text: String,
+  /**
+   * The two answers, first = the first button: display labels ("Push",
+   * "Hold", "Ease off").
+   */
+  val options: List<String>,
+  val timeoutMs: Long,
+  /** The whole km (or the rep) it fell on. */
+  val km: Long
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PromptEvent {
+      val id = pigeonVar_list[0] as Long
+      val kind = pigeonVar_list[1] as String
+      val text = pigeonVar_list[2] as String
+      val options = pigeonVar_list[3] as List<String>
+      val timeoutMs = pigeonVar_list[4] as Long
+      val km = pigeonVar_list[5] as Long
+      return PromptEvent(id, kind, text, options, timeoutMs, km)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      id,
+      kind,
+      text,
+      options,
+      timeoutMs,
+      km,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PromptEvent
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.kind, other.kind) && PlatformApiPigeonUtils.deepEquals(this.text, other.text) && PlatformApiPigeonUtils.deepEquals(this.options, other.options) && PlatformApiPigeonUtils.deepEquals(this.timeoutMs, other.timeoutMs) && PlatformApiPigeonUtils.deepEquals(this.km, other.km)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.id)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.kind)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.text)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.options)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.timeoutMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.km)
+    return result
+  }
+}
+
+/**
+ * The open prompt was answered or timed out: the screen drops its buttons.
+ * [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PromptResolvedEvent (
+  val id: Long,
+  val choice: String,
+  val source: String
+) : RecorderEvent()
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PromptResolvedEvent {
+      val id = pigeonVar_list[0] as Long
+      val choice = pigeonVar_list[1] as String
+      val source = pigeonVar_list[2] as String
+      return PromptResolvedEvent(id, choice, source)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      id,
+      choice,
+      source,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PromptResolvedEvent
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.id)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.choice)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
+    return result
+  }
+}
+
+/**
  * Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"
  * threshold is the screen's; native sends the raw values.
  *
@@ -3877,75 +3993,85 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
       }
       179.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GpsProbeEvent.fromList(it)
+          PromptEvent.fromList(it)
         }
       }
       180.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RoutePointsEvent.fromList(it)
+          PromptResolvedEvent.fromList(it)
         }
       }
       181.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CompareEvent.fromList(it)
+          GpsProbeEvent.fromList(it)
         }
       }
       182.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GoalEvent.fromList(it)
+          RoutePointsEvent.fromList(it)
         }
       }
       183.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          FaultEvent.fromList(it)
+          CompareEvent.fromList(it)
         }
       }
       184.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          StateEvent.fromList(it)
+          GoalEvent.fromList(it)
         }
       }
       185.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          PhaseEvent.fromList(it)
+          FaultEvent.fromList(it)
         }
       }
       186.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthStatus.fromList(it)
+          StateEvent.fromList(it)
         }
       }
       187.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthLap.fromList(it)
+          PhaseEvent.fromList(it)
         }
       }
       188.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthPause.fromList(it)
+          HealthStatus.fromList(it)
         }
       }
       189.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthHrSample.fromList(it)
+          HealthLap.fromList(it)
         }
       }
       190.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthRoutePoint.fromList(it)
+          HealthPause.fromList(it)
         }
       }
       191.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWorkout.fromList(it)
+          HealthHrSample.fromList(it)
         }
       }
       192.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          HealthWriteResult.fromList(it)
+          HealthRoutePoint.fromList(it)
         }
       }
       193.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWorkout.fromList(it)
+        }
+      }
+      194.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          HealthWriteResult.fromList(it)
+        }
+      }
+      195.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           VoiceCoachConfig.fromList(it)
         }
@@ -4155,64 +4281,72 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
         stream.write(178)
         writeValue(stream, value.toList())
       }
-      is GpsProbeEvent -> {
+      is PromptEvent -> {
         stream.write(179)
         writeValue(stream, value.toList())
       }
-      is RoutePointsEvent -> {
+      is PromptResolvedEvent -> {
         stream.write(180)
         writeValue(stream, value.toList())
       }
-      is CompareEvent -> {
+      is GpsProbeEvent -> {
         stream.write(181)
         writeValue(stream, value.toList())
       }
-      is GoalEvent -> {
+      is RoutePointsEvent -> {
         stream.write(182)
         writeValue(stream, value.toList())
       }
-      is FaultEvent -> {
+      is CompareEvent -> {
         stream.write(183)
         writeValue(stream, value.toList())
       }
-      is StateEvent -> {
+      is GoalEvent -> {
         stream.write(184)
         writeValue(stream, value.toList())
       }
-      is PhaseEvent -> {
+      is FaultEvent -> {
         stream.write(185)
         writeValue(stream, value.toList())
       }
-      is HealthStatus -> {
+      is StateEvent -> {
         stream.write(186)
         writeValue(stream, value.toList())
       }
-      is HealthLap -> {
+      is PhaseEvent -> {
         stream.write(187)
         writeValue(stream, value.toList())
       }
-      is HealthPause -> {
+      is HealthStatus -> {
         stream.write(188)
         writeValue(stream, value.toList())
       }
-      is HealthHrSample -> {
+      is HealthLap -> {
         stream.write(189)
         writeValue(stream, value.toList())
       }
-      is HealthRoutePoint -> {
+      is HealthPause -> {
         stream.write(190)
         writeValue(stream, value.toList())
       }
-      is HealthWorkout -> {
+      is HealthHrSample -> {
         stream.write(191)
         writeValue(stream, value.toList())
       }
-      is HealthWriteResult -> {
+      is HealthRoutePoint -> {
         stream.write(192)
         writeValue(stream, value.toList())
       }
-      is VoiceCoachConfig -> {
+      is HealthWorkout -> {
         stream.write(193)
+        writeValue(stream, value.toList())
+      }
+      is HealthWriteResult -> {
+        stream.write(194)
+        writeValue(stream, value.toList())
+      }
+      is VoiceCoachConfig -> {
+        stream.write(195)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -4251,6 +4385,11 @@ interface RecorderApi {
   fun pause()
   fun resume()
   fun lap(source: LapSource)
+  /**
+   * The runner tapped option [optionIndex] of the open prompt [promptId]
+   * (0 = the first button). A no-op when that prompt is no longer open.
+   */
+  fun answerPrompt(promptId: Long, optionIndex: Long)
   /**
    * The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
    * effect and journal line as a first `lap(button)`); a no-op anywhere else,
@@ -4500,6 +4639,25 @@ interface RecorderApi {
             val sourceArg = args[0] as LapSource
             val wrapped: List<Any?> = try {
               api.lap(sourceArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.answerPrompt$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val promptIdArg = args[0] as Long
+            val optionIndexArg = args[1] as Long
+            val wrapped: List<Any?> = try {
+              api.answerPrompt(promptIdArg, optionIndexArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

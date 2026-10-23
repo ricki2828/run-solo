@@ -531,4 +531,63 @@ class ChaseCoachTest {
         val k = coach.onTick(300_000, 1_050.0, 700_000, 3_050.0) { it }
         assertNull(k?.chase)
     }
+    // ---- the facts the prompt rules read ----
+
+    @Test
+    fun `a Free km leaves the gap facts once - chase has the gap and steady has none`() {
+        val chase = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
+        walk(chase, 1, 290_000)
+        chase.takeKmFacts()
+        cross(chase, 2, 570_000)
+        val f = assertNotNull(chase.takeKmFacts())
+        assertEquals(2, f.km)
+        assertEquals(-10_000L, f.gapMs)
+        assertEquals("5K", f.label)
+        assertTrue(f.chase)
+        assertNull(f.goalDistanceM)
+        assertNull(chase.takeKmFacts(), "handed over once")
+        val steady = LiveCoach(ctx("steady", fiveK(best)), RunMode.free, null)
+        walk(steady, 1, 290_000)
+        cross(steady, 2, 570_000)
+        val s = assertNotNull(steady.takeKmFacts())
+        assertNull(s.gapMs)
+        assertFalse(s.chase)
+        // No choice, or a jump: no facts or no gap.
+        val none = LiveCoach(ctx(null, fiveK(best)), RunMode.free, null)
+        walk(none, 2, 290_000)
+        assertNull(none.takeKmFacts())
+    }
+
+    @Test
+    fun `a goal km leaves the goal distance and how far behind the target`() {
+        val spec = SessionSpec.goalDistance(5_000, "5K")
+        val context = ctx("chase", fiveK(best)).copy(target = app.runsolo.core.model.LiveTarget(5_000.0, 1_400_000, false))
+        val coach = LiveCoach(context, RunMode.intervals, spec)
+        // Km 3 at 14:40: the even split of 23:20 is 14:00, so 40 s behind the target (and 10 s off the PB window).
+        coach.chaseAtCue(CueKind.projection, 3, 880_000)
+        val f = assertNotNull(coach.takeKmFacts())
+        assertEquals(5_000.0, f.goalDistanceM)
+        assertEquals(40_000L, f.behindTargetMs)
+        assertEquals(10_000L, f.gapMs)
+    }
+
+    @Test
+    fun `a jump leaves no gap and no behind in the facts`() {
+        val spec = SessionSpec.goalDistance(5_000, "5K")
+        val context = ctx("chase", fiveK(best)).copy(target = app.runsolo.core.model.LiveTarget(5_000.0, 1_400_000, false))
+        val coach = LiveCoach(context, RunMode.intervals, spec)
+        coach.chaseAtCue(CueKind.projection, 1, 290_000)
+        coach.takeKmFacts()
+        coach.chaseAtCue(CueKind.projection, 2, 330_000) // km 2 in 40 s
+        val f = assertNotNull(coach.takeKmFacts())
+        assertNull(f.gapMs)
+        assertNull(f.behindTargetMs)
+    }
+
+    @Test
+    fun `the chase pace the PB window ran at - for a run with no target`() {
+        val coach = LiveCoach(ctx("chase", fiveK(best)), RunMode.free, null)
+        assertEquals(290.0, coach.chasePaceSecPerKm()!!, 1e-9)
+        assertNull(LiveCoach(ctx("chase"), RunMode.free, null).chasePaceSecPerKm())
+    }
 }

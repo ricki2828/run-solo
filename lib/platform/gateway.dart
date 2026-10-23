@@ -92,6 +92,10 @@ abstract class RecorderGateway {
   Future<void> resume();
   Future<void> lap(LapSource source);
 
+  /// The runner tapped button [optionIndex] (0 = the first) of the open coach
+  /// prompt [promptId]. A no-op when that prompt is no longer open.
+  Future<void> answerPrompt(int promptId, int optionIndex);
+
   /// 4x4 "Start 4x4" button: ends the untimed warm-up and begins rep 1. A
   /// no-op outside warm-up, so a LAP mid-rep is never taken as starting.
   Future<void> startReps();

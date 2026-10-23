@@ -842,26 +842,30 @@ List<Object?> readListField(Map<String, Object?> json, String key) =>
     _readList(json, key);
 Map<String, Object?> asMapField(Object? v, String what) => _asMap(v, what);
 
-/// What the runner chose at Start for a Free or goal run and every chase line
-/// the recorder said under it (core-jvm `RunFile.CoachLog`). Optional key
-/// `coach`, written only when the run carried a choice. [cues] stays an open
-/// list of `[kind, km, tMs]` rows so the later mid-run buttons can log their
-/// prompts and answers beside the chase lines. `kind` is the chase kind
-/// (`ahead`, `behind`, `slipping`, `furthest`, `last2k`); `tMs` is run time.
+/// What the runner chose at Start for a Free or goal run, every chase line the
+/// recorder said under it, and every mid-run two-button prompt (core-jvm
+/// `RunFile.CoachLog`). Optional key `coach`, written only when the run
+/// carried a choice or a prompt. [choice] is null on a run with no Start choice
+/// (an interval session). [cues] are `[kind, km, tMs]` rows (`kind`: `ahead`,
+/// `behind`, `slipping`, `furthest`, `last2k`); [prompts] are the answered
+/// prompts, which feed the later post-run line. `tMs` is elapsed time from
+/// Start, pauses included.
 class CoachLog {
-  const CoachLog({required this.choice, this.cues = const []});
+  const CoachLog({this.choice, this.cues = const [], this.prompts = const []});
 
   /// `chase` or `steady` (see `CoachChoice`); kept as the stored name so a
   /// choice from a newer build survives a round trip.
-  final String choice;
+  final String? choice;
   final List<CoachCue> cues;
+  final List<CoachPromptLog> prompts;
 
   Map<String, Object?> toJson() => {
-    'choice': choice,
+    if (choice != null) 'choice': choice,
     'cues': [for (final c in cues) c.toJson()],
+    if (prompts.isNotEmpty) 'prompts': [for (final p in prompts) p.toJson()],
   };
 
-  static const Set<String> _keys = {'choice', 'cues'};
+  static const Set<String> _keys = {'choice', 'cues', 'prompts'};
 
   factory CoachLog.fromJson(Object? json) {
     if (json is! Map<String, Object?>) {
@@ -873,16 +877,21 @@ class CoachLog {
       }
     }
     final choice = json['choice'];
-    if (choice is! String || choice.isEmpty) {
+    if (choice != null && (choice is! String || choice.isEmpty)) {
       throw RunFileFormatException('coach.choice must be a string');
     }
     final raw = json['cues'] ?? const <Object?>[];
     if (raw is! List) {
       throw RunFileFormatException('coach.cues must be a list');
     }
+    final rawPrompts = json['prompts'] ?? const <Object?>[];
+    if (rawPrompts is! List) {
+      throw RunFileFormatException('coach.prompts must be a list');
+    }
     return CoachLog(
-      choice: choice,
+      choice: choice as String?,
       cues: [for (final c in raw) CoachCue.fromJson(c)],
+      prompts: [for (final p in rawPrompts) CoachPromptLog.fromJson(p)],
     );
   }
 
@@ -890,12 +899,20 @@ class CoachLog {
   bool operator ==(Object other) =>
       other is CoachLog &&
       other.choice == choice &&
-      other.cues.length == cues.length &&
-      [for (var i = 0; i < cues.length; i++) cues[i] == other.cues[i]]
-          .every((e) => e);
+      _listEq(other.cues, cues) &&
+      _listEq(other.prompts, prompts);
 
   @override
-  int get hashCode => Object.hash(choice, Object.hashAll(cues));
+  int get hashCode =>
+      Object.hash(choice, Object.hashAll(cues), Object.hashAll(prompts));
+
+  static bool _listEq<T>(List<T> a, List<T> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 
 /// One logged cue: its [kind], the whole [km] it fell on and the run time.
@@ -928,4 +945,93 @@ class CoachCue {
 
   @override
   int get hashCode => Object.hash(kind, km, tMs);
+}
+
+/// One answered mid-run prompt: what triggered it (`last2k`, `behindTarget`,
+/// `aheadOfPb`, `betweenReps`), the two [options] offered (first = single
+/// headset press), the [choice] (`push`, `hold` or `ease`; `hold` on a
+/// timeout), its [source] (`tap`, `headset` or `timeout`), the whole [km] (or
+/// rep) it fell on, and when it opened and was answered (elapsed ms).
+class CoachPromptLog {
+  const CoachPromptLog({
+    required this.trigger,
+    required this.options,
+    required this.choice,
+    required this.source,
+    required this.km,
+    required this.openedMs,
+    required this.answeredMs,
+  });
+
+  final String trigger;
+  final List<String> options;
+  final String choice;
+  final String source;
+  final int km;
+  final int openedMs;
+  final int answeredMs;
+
+  /// Time from the prompt opening to the answer: a short one is a decisive tap.
+  int get reactionMs => answeredMs - openedMs;
+
+  List<Object> toJson() => [
+    trigger,
+    options,
+    choice,
+    source,
+    km,
+    openedMs,
+    answeredMs,
+  ];
+
+  factory CoachPromptLog.fromJson(Object? json) {
+    if (json is! List ||
+        json.length != 7 ||
+        json[0] is! String ||
+        json[1] is! List ||
+        (json[1] as List).any((o) => o is! String) ||
+        json[2] is! String ||
+        json[3] is! String ||
+        json[4] is! int ||
+        json[5] is! int ||
+        json[6] is! int) {
+      throw RunFileFormatException(
+        'coach prompt must be [trigger, [options], choice, source, km, '
+        'openedMs, answeredMs]',
+      );
+    }
+    return CoachPromptLog(
+      trigger: json[0] as String,
+      options: [for (final o in json[1] as List) o as String],
+      choice: json[2] as String,
+      source: json[3] as String,
+      km: json[4] as int,
+      openedMs: json[5] as int,
+      answeredMs: json[6] as int,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CoachPromptLog &&
+      other.trigger == trigger &&
+      other.choice == choice &&
+      other.source == source &&
+      other.km == km &&
+      other.openedMs == openedMs &&
+      other.answeredMs == answeredMs &&
+      other.options.length == options.length &&
+      [for (var i = 0; i < options.length; i++) options[i] == other.options[i]]
+          .every((e) => e);
+
+  @override
+  int get hashCode => Object.hash(
+    trigger,
+    choice,
+    source,
+    km,
+    openedMs,
+    answeredMs,
+    Object.hashAll(options),
+  );
 }

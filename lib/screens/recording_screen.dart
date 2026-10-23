@@ -25,6 +25,7 @@ import '../widgets/compare_card.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/gps_bar.dart';
 import '../widgets/inrun_moment.dart';
+import '../widgets/inrun_prompt.dart';
 import '../widgets/lap_button.dart';
 import '../widgets/odometer_distance.dart';
 import '../widgets/pace_dial.dart';
@@ -1081,6 +1082,23 @@ class _RecordingScreenState extends State<RecordingScreen>
                               ctl.moment.value = null;
                             }
                           },
+                        ),
+                ),
+                // The mid-run two-button coach prompt (last 2 km, between reps,
+                // well ahead, falling behind): over everything, takes taps,
+                // gone when answered or after its 8 s. Not on the finish
+                // screen or while paused.
+                ValueListenableBuilder<PromptEvent?>(
+                  valueListenable: ctl.prompt,
+                  builder: (context, p, _) =>
+                      p == null || pausedNow || _finishing
+                      ? const SizedBox.shrink()
+                      : InrunPromptOverlay(
+                          key: ValueKey('inrun-prompt-overlay-${p.id}'),
+                          prompt: p,
+                          accent: flood.background,
+                          reduced: reduced,
+                          onChoose: ctl.answerPrompt,
                         ),
                 ),
                 if (_finishing)

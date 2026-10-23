@@ -68,6 +68,28 @@ class VoiceCoach(private val config: Config) {
     data class Line(val kind: Kind, val text: String)
 
     private var segment: Int? = null
+
+    // A mid-run prompt's effect (push / ease off): a factor on the target pace and on the gap between pace checks.
+    private var effect = PromptEffect.NONE
+    private var fallbackPace: Double? = null
+
+    /**
+     * The runner answered a two-button prompt ([CoachPrompter]): the rest of the run aims at [PromptEffect.targetPace]
+     * of the target and checks at [PromptEffect.everyFactor] of the usual gap. [fallbackPaceSecPerKm] is the pace to
+     * tighten on a run with no target of its own (a chase run: the PB pace); null leaves such a run alone. The pace
+     * trackers restart so the next checks judge the new target, not the old one.
+     */
+    fun applyEffect(e: PromptEffect, fallbackPaceSecPerKm: Double?) {
+        effect = e
+        fallbackPace = fallbackPaceSecPerKm?.takeIf { it.isFinite() && it > 0 }
+        checked = false
+        offStreak = 0
+        dueSinceT = null
+    }
+
+    /** The target the checks use now: the plan's, or the fallback once an effect applies, times the effect's factor. */
+    private val targetPace: Double?
+        get() = (config.targetPaceSecPerKm ?: fallbackPace.takeIf { effect != PromptEffect.NONE })?.let { effect.targetPace(it) }
     private var nextEvalMs = FIRST_EVAL_MS
     private var dueSinceT: Long? = null
     private var lastWasOnPace = false
@@ -139,7 +161,7 @@ class VoiceCoach(private val config: Config) {
      * same way twice running is what makes a line; one noisy check never does.
      */
     private fun check(i: Input) {
-        val target = config.targetPaceSecPerKm ?: return
+        val target = targetPace ?: return
         if (i.paceSecPerKm == null || i.segmentActiveMs < nextCheckMs || window.size < MIN_SAMPLES) return
         nextCheckMs = i.segmentActiveMs + CHECK_EVERY_MS
         checkDelta = window.average() - target
@@ -155,7 +177,7 @@ class VoiceCoach(private val config: Config) {
     }
 
     private fun status(i: Input, quiet: Boolean): Line? {
-        if (config.targetPaceSecPerKm == null || !checked || i.paceSecPerKm == null) return null
+        if (targetPace == null || !checked || i.paceSecPerKm == null) return null
         if (i.segmentActiveMs < nextEvalMs) return null
         if (checkDir != 0 && offStreak < 2) return null // wait for the second check
         if (i.msToPhaseEnd != null && i.msToPhaseEnd <= NEAR_END_MS) return null
@@ -188,7 +210,7 @@ class VoiceCoach(private val config: Config) {
     }
 
     private fun skipSlot(i: Input) {
-        nextEvalMs = i.segmentActiveMs + EVERY_MS
+        nextEvalMs = i.segmentActiveMs + (EVERY_MS * effect.everyFactor).toLong()
         dueSinceT = null
     }
 

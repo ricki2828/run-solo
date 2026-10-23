@@ -469,6 +469,41 @@ class RecordingController extends ChangeNotifier {
   final ValueNotifier<InrunMoment?> moment = ValueNotifier(null);
   final InrunMomentDetector _moments = InrunMomentDetector();
 
+  /// The open mid-run two-button coach prompt, for the record screen's buttons
+  /// (null = none). Set when native opens one, cleared when it is answered or
+  /// times out (native owns the 8 s clock; a safety timer here only covers a
+  /// lost event). While one is open no moment overlay is shown.
+  final ValueNotifier<PromptEvent?> prompt = ValueNotifier(null);
+  int? _promptDeadlineMs;
+
+  /// The runner tapped option [index] of the open prompt: the buttons go at
+  /// once, the recorder applies the choice.
+  void answerPrompt(int index) {
+    final p = prompt.value;
+    if (p == null) return;
+    _clearPrompt();
+    unawaited(_gateway.answerPrompt(p.id, index));
+  }
+
+  void _openPrompt(PromptEvent e) {
+    moment.value = null; // never stacked on a moment
+    prompt.value = e;
+    _promptDeadlineMs = (_lastTickElapsedMs ?? 0) + e.timeoutMs + 2000;
+  }
+
+  /// A lost resolved event cannot strand the buttons: past the window and a
+  /// 2 s grace (the next event of any kind finds it) they go.
+  void _expirePrompt() {
+    final due = _promptDeadlineMs;
+    final at = _lastTickElapsedMs;
+    if (due != null && at != null && at > due) _clearPrompt();
+  }
+
+  void _clearPrompt() {
+    _promptDeadlineMs = null;
+    prompt.value = null;
+  }
+
   /// The runner's units for the moment text (a km or a mile); the screen
   /// keeps it current.
   Units momentUnits = Units.km;
@@ -479,7 +514,8 @@ class RecordingController extends ChangeNotifier {
     try {
       if (!_snap.recording) return;
       final m = _moments.observe(_snap, momentUnits);
-      if (m != null) moment.value = m;
+      // A prompt owns the screen: the moment is dropped, never stacked on it.
+      if (m != null && prompt.value == null) moment.value = m;
     } catch (_) {}
   }
 
@@ -652,6 +688,7 @@ class RecordingController extends ChangeNotifier {
       clearFault: s.journalOk,
     );
     _detectMoment();
+    _expirePrompt();
     notifyListeners();
   }
 
@@ -716,6 +753,7 @@ class RecordingController extends ChangeNotifier {
     _finishPending = false;
     _clearPending();
     moment.value = null; // nor a moment
+    _clearPrompt(); // nor a prompt
     lastCompare.value = null; // never a card from the previous run
     lastCompareAt = null;
     _tracker = engine.HrZoneTracker(zones: _zones());
@@ -850,6 +888,10 @@ class RecordingController extends ChangeNotifier {
       case CompareEvent():
         lastCompareAt = _now();
         lastCompare.value = e;
+      case PromptEvent():
+        _openPrompt(e);
+      case PromptResolvedEvent():
+        if (prompt.value?.id == e.id) _clearPrompt();
       case GoalEvent():
         lastGoal.value = e;
         try {
@@ -865,6 +907,7 @@ class RecordingController extends ChangeNotifier {
         }
     }
     _detectMoment();
+    _expirePrompt();
     notifyListeners();
   }
 
@@ -1136,6 +1179,7 @@ class RecordingController extends ChangeNotifier {
     _sub?.cancel();
     _clearPending();
     lapPulse.dispose();
+    prompt.dispose();
     moment.dispose();
     lastCompare.dispose();
     lastGoal.dispose();
