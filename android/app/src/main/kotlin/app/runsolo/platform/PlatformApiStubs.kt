@@ -22,6 +22,8 @@ class RecorderApiStub : RecorderApi {
 
     override fun startReps() = Unit
 
+    override fun answerPrompt(promptId: Long, optionIndex: Long) = Unit
+
     override fun stop(): String? = null
 
     override fun status(): RecorderStatus =

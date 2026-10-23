@@ -1577,6 +1577,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.prompt,
     this.autoPaused,
     this.elevGainM,
     this.elevLossM,
@@ -1641,6 +1642,11 @@ class RecorderStatus {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
+
+  /// The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+  /// is what is left), so a screen that missed the event can show its buttons.
+  /// Null = none.
+  PromptEvent? prompt;
 
   /// `state == paused` and the recorder paused itself (the runner stopped,
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
@@ -1708,6 +1714,7 @@ class RecorderStatus {
       pausedAtElapsedMs,
       finishRequests,
       tipsMuted,
+      prompt,
       autoPaused,
       elevGainM,
       elevLossM,
@@ -1749,19 +1756,20 @@ class RecorderStatus {
       pausedAtElapsedMs: result[16] as int?,
       finishRequests: result[17] as int?,
       tipsMuted: result[18] as bool?,
-      autoPaused: result[19] as bool?,
-      elevGainM: result[20] as double?,
-      elevLossM: result[21] as double?,
-      gradePct: result[22] as double?,
-      retracing: result[23] as bool?,
-      retraceSame: result[24] as bool?,
-      backToStartM: result[25] as double?,
-      climbAheadM: result[26] as double?,
-      descentAheadM: result[27] as double?,
-      heightVsStartM: result[28] as double?,
-      route: result[29] as RouteProgress?,
-      trail: result[30] as TrailProgress?,
-      questDoneId: result[31] as String?,
+      prompt: result[19] as PromptEvent?,
+      autoPaused: result[20] as bool?,
+      elevGainM: result[21] as double?,
+      elevLossM: result[22] as double?,
+      gradePct: result[23] as double?,
+      retracing: result[24] as bool?,
+      retraceSame: result[25] as bool?,
+      backToStartM: result[26] as double?,
+      climbAheadM: result[27] as double?,
+      descentAheadM: result[28] as double?,
+      heightVsStartM: result[29] as double?,
+      route: result[30] as RouteProgress?,
+      trail: result[31] as TrailProgress?,
+      questDoneId: result[32] as String?,
     );
   }
 
@@ -1774,7 +1782,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId);
   }
 
   @override
@@ -2782,6 +2790,157 @@ class CueEvent extends RecorderEvent {
       return true;
     }
     return _deepEquals(kind, other.kind) && _deepEquals(value, other.value);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+/// asked [text], the screen shows [options] as two big buttons, and nothing
+/// answered by [timeoutMs] holds the current target. Answer with
+/// `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+/// (one press = the first option, two = the second).
+class PromptEvent extends RecorderEvent {
+  PromptEvent({
+    required this.id,
+    required this.kind,
+    required this.text,
+    required this.options,
+    required this.timeoutMs,
+    required this.km,
+    this.leadMs = 0,
+  });
+
+  int id;
+
+  /// `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`.
+  String kind;
+
+  /// What the voice said, ending in the question ("... Push or hold?").
+  String text;
+
+  /// The two answers, first = the first button: display labels ("Push",
+  /// "Hold", "Ease off").
+  List<String> options;
+
+  /// The answer window, ms: it starts when the question has been said, not
+  /// when it was queued, and waits while the run is paused. In a status
+  /// snapshot (a screen that missed the event) this is what is left.
+  int timeoutMs;
+
+  /// The whole km (or the rep) it fell on.
+  int km;
+
+  /// Roughly how long the question still has to be said before the window
+  /// starts, ms (0 once it has). The countdown bar waits this long.
+  int leadMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      kind,
+      text,
+      options,
+      timeoutMs,
+      km,
+      leadMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PromptEvent decode(Object result) {
+    result as List<Object?>;
+    return PromptEvent(
+      id: result[0]! as int,
+      kind: result[1]! as String,
+      text: result[2]! as String,
+      options: (result[3]! as List<Object?>).cast<String>(),
+      timeoutMs: result[4]! as int,
+      km: result[5]! as int,
+      leadMs: result[6]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PromptEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(kind, other.kind) && _deepEquals(text, other.text) && _deepEquals(options, other.options) && _deepEquals(timeoutMs, other.timeoutMs) && _deepEquals(km, other.km) && _deepEquals(leadMs, other.leadMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// The open prompt was answered or timed out: the screen drops its buttons.
+/// [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+class PromptResolvedEvent extends RecorderEvent {
+  PromptResolvedEvent({
+    required this.id,
+    required this.choice,
+    required this.source,
+    this.paceFactor = 1.0,
+    this.oneRep = false,
+  });
+
+  int id;
+
+  String choice;
+
+  String source;
+
+  /// The factor the voice coach now applies to the target pace (1 = none:
+  /// a hold, a timeout, no target, or a push the runner was too far off for):
+  /// the screen's target band follows it so screen and voice agree.
+  double paceFactor;
+
+  /// The effect lasts one rep only (a between-reps answer).
+  bool oneRep;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      choice,
+      source,
+      paceFactor,
+      oneRep,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PromptResolvedEvent decode(Object result) {
+    result as List<Object?>;
+    return PromptResolvedEvent(
+      id: result[0]! as int,
+      choice: result[1]! as String,
+      source: result[2]! as String,
+      paceFactor: result[3]! as double,
+      oneRep: result[4]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PromptResolvedEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep);
   }
 
   @override
@@ -3927,50 +4086,56 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CueEvent) {
       buffer.putUint8(178);
       writeValue(buffer, value.encode());
-    }    else if (value is GpsProbeEvent) {
+    }    else if (value is PromptEvent) {
       buffer.putUint8(179);
       writeValue(buffer, value.encode());
-    }    else if (value is RoutePointsEvent) {
+    }    else if (value is PromptResolvedEvent) {
       buffer.putUint8(180);
       writeValue(buffer, value.encode());
-    }    else if (value is CompareEvent) {
+    }    else if (value is GpsProbeEvent) {
       buffer.putUint8(181);
       writeValue(buffer, value.encode());
-    }    else if (value is GoalEvent) {
+    }    else if (value is RoutePointsEvent) {
       buffer.putUint8(182);
       writeValue(buffer, value.encode());
-    }    else if (value is FaultEvent) {
+    }    else if (value is CompareEvent) {
       buffer.putUint8(183);
       writeValue(buffer, value.encode());
-    }    else if (value is StateEvent) {
+    }    else if (value is GoalEvent) {
       buffer.putUint8(184);
       writeValue(buffer, value.encode());
-    }    else if (value is PhaseEvent) {
+    }    else if (value is FaultEvent) {
       buffer.putUint8(185);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthStatus) {
+    }    else if (value is StateEvent) {
       buffer.putUint8(186);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthLap) {
+    }    else if (value is PhaseEvent) {
       buffer.putUint8(187);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthPause) {
+    }    else if (value is HealthStatus) {
       buffer.putUint8(188);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthHrSample) {
+    }    else if (value is HealthLap) {
       buffer.putUint8(189);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthRoutePoint) {
+    }    else if (value is HealthPause) {
       buffer.putUint8(190);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWorkout) {
+    }    else if (value is HealthHrSample) {
       buffer.putUint8(191);
       writeValue(buffer, value.encode());
-    }    else if (value is HealthWriteResult) {
+    }    else if (value is HealthRoutePoint) {
       buffer.putUint8(192);
       writeValue(buffer, value.encode());
-    }    else if (value is VoiceCoachConfig) {
+    }    else if (value is HealthWorkout) {
       buffer.putUint8(193);
+      writeValue(buffer, value.encode());
+    }    else if (value is HealthWriteResult) {
+      buffer.putUint8(194);
+      writeValue(buffer, value.encode());
+    }    else if (value is VoiceCoachConfig) {
+      buffer.putUint8(195);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -4099,34 +4264,38 @@ class _PigeonCodec extends StandardMessageCodec {
       case 178:
         return CueEvent.decode(readValue(buffer)!);
       case 179:
-        return GpsProbeEvent.decode(readValue(buffer)!);
+        return PromptEvent.decode(readValue(buffer)!);
       case 180:
-        return RoutePointsEvent.decode(readValue(buffer)!);
+        return PromptResolvedEvent.decode(readValue(buffer)!);
       case 181:
-        return CompareEvent.decode(readValue(buffer)!);
+        return GpsProbeEvent.decode(readValue(buffer)!);
       case 182:
-        return GoalEvent.decode(readValue(buffer)!);
+        return RoutePointsEvent.decode(readValue(buffer)!);
       case 183:
-        return FaultEvent.decode(readValue(buffer)!);
+        return CompareEvent.decode(readValue(buffer)!);
       case 184:
-        return StateEvent.decode(readValue(buffer)!);
+        return GoalEvent.decode(readValue(buffer)!);
       case 185:
-        return PhaseEvent.decode(readValue(buffer)!);
+        return FaultEvent.decode(readValue(buffer)!);
       case 186:
-        return HealthStatus.decode(readValue(buffer)!);
+        return StateEvent.decode(readValue(buffer)!);
       case 187:
-        return HealthLap.decode(readValue(buffer)!);
+        return PhaseEvent.decode(readValue(buffer)!);
       case 188:
-        return HealthPause.decode(readValue(buffer)!);
+        return HealthStatus.decode(readValue(buffer)!);
       case 189:
-        return HealthHrSample.decode(readValue(buffer)!);
+        return HealthLap.decode(readValue(buffer)!);
       case 190:
-        return HealthRoutePoint.decode(readValue(buffer)!);
+        return HealthPause.decode(readValue(buffer)!);
       case 191:
-        return HealthWorkout.decode(readValue(buffer)!);
+        return HealthHrSample.decode(readValue(buffer)!);
       case 192:
-        return HealthWriteResult.decode(readValue(buffer)!);
+        return HealthRoutePoint.decode(readValue(buffer)!);
       case 193:
+        return HealthWorkout.decode(readValue(buffer)!);
+      case 194:
+        return HealthWriteResult.decode(readValue(buffer)!);
+      case 195:
         return VoiceCoachConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -4266,6 +4435,26 @@ class RecorderApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[source]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// The runner tapped option [optionIndex] of the open prompt [promptId]
+  /// (0 = the first button). A no-op when that prompt is no longer open.
+  Future<void> answerPrompt(int promptId, int optionIndex) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.answerPrompt$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[promptId, optionIndex]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

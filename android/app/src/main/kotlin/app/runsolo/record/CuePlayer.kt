@@ -237,6 +237,9 @@ class CuePlayer(context: Context, private val now: () -> Long = { SystemClock.el
     /** When the speech queued so far will be done, on the session's clock (voice coaching only speaks when this has passed). */
     val speechBusyUntil: Long get() = synchronized(this) { speech.busyUntil }
 
+    /** True while an utterance is queued or being said (the TTS has not reported done): a prompt's window waits for it. */
+    val speaking: Boolean get() = synchronized(this) { inFlight > 0 }
+
     /**
      * Like [speechBusyUntil], and on the Coach level not before the budget's gap has opened: voice coaching keeps its own
      * cooldown, so it must not fire a line the budget would then drop.

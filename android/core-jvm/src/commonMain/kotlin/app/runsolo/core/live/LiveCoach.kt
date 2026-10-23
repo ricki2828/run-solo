@@ -68,6 +68,16 @@ class LiveCoach(
         fired = fired,
     )
 
+    /** The km facts the prompt rules read, left by the chase path at a whole km; [takeKmFacts] hands them over once. */
+    private var kmFacts: KmFacts? = null
+
+    fun takeKmFacts(): KmFacts? = kmFacts.also { kmFacts = null }
+
+    /** The rep an interval session just finished (rep, reps), left at a rep end for the between-reps prompt; [takeRepEnd] hands it over once. */
+    private var repEnd: Pair<Int, Int>? = null
+
+    fun takeRepEnd(): Pair<Int, Int>? = repEnd.also { repEnd = null }
+
     /** The choice this run was started with (`chase` / `steady`), or null; the run file records it. */
     val coachChoice: CoachChoice? get() = chase?.choice
 
@@ -398,7 +408,10 @@ class LiveCoach(
         // A jump spills into the next km (the time it moved is still in that km's split): no gap there either.
         val trustTime = !distrust && !chaseSpill
         chaseSpill = distrust
-        return c.atKm(km, board?.takeIf { trustTime }?.let { ChaseCompare.vsBest(it, km, activeMs) }, board?.pbSplitsLabel ?: board?.label)
+        val gap = board?.takeIf { trustTime }?.let { ChaseCompare.vsBest(it, km, activeMs) }
+        val chasing = c.choice == CoachChoice.chase
+        kmFacts = KmFacts(km, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true, null, null, chasing)
+        return c.atKm(km, gap, board?.pbSplitsLabel ?: board?.label)
     }
 
     /** The km and active ms of the last goal km cue seen (0, 0 = Start), for the jump guard. */
@@ -425,7 +438,14 @@ class LiveCoach(
         chaseSpill = distrust
         chaseCueKm = index
         chaseCueMs = stepElapsedMs
-        return c.atKm(index, board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }, board?.pbSplitsLabel ?: board?.label)
+        val gap = board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
+        val chasing = c.choice == CoachChoice.chase
+        val behind = context?.target?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
+        kmFacts = KmFacts(
+            index, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true,
+            step.value.toDouble(), behind, chasing,
+        )
+        return c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
     }
 
     /**
@@ -434,6 +454,11 @@ class LiveCoach(
      * ms into the current step; [nextDurationMs] = the length of a timed step starting now.
      */
     fun atCue(kind: CueKind, index: Int?, value: Double?, phase: Phase, stepIndex: Int?, stepElapsedMs: Long, nextDurationMs: Long?): Fire? {
+        // A rep ended in an interval session (a preset, never a goal): the between-reps prompt reads it, board or not.
+        val sp = spec
+        if (sp != null && mode == RunMode.intervals && !sp.isGoal && sp.steps.isNotEmpty() && !muted && !minimalVoice && isRepEnd(kind, phase, sp)) {
+            repEnd = livePaces.size to sp.reps
+        }
         context ?: return null
         val s = spec ?: return null
         // A GOAL run (§G) is one step, not reps: its end is the goal line (GoalCoach); a km of a

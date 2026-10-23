@@ -297,4 +297,29 @@ class LiveCoachTest {
         assertEquals("8 seconds up on your predicted 24:30.", f.text)
         assertTrue(coach.atCue(CueKind.projection, 2, 1_440_000.0, Phase.work, 0, 580_000, null) == null, "once per km")
     }
+    @Test
+    fun `a rep end in an interval session leaves the between-reps hook once - a board is not needed`() {
+        val board = reps(listOf(240.0, 240.0, 240.0, 240.0))
+        val coach = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
+        val l = Laps(coach)
+        l.warmUp()
+        l.rep(0, 235.0)
+        assertNull(coach.takeRepEnd(), "nothing before the cue")
+        repEnd(coach, 1)
+        assertEquals(1 to fourHundreds.reps, coach.takeRepEnd())
+        assertNull(coach.takeRepEnd(), "handed over once")
+        // No history at all (no live context): the hook still fires, the prompt only needs the session.
+        val bare = LiveCoach(null, RunMode.intervals, fourHundreds)
+        val bl = Laps(bare)
+        bl.warmUp()
+        bl.rep(0, 235.0)
+        bare.atCue(CueKind.start, null, null, Phase.recovery, 1, 0, 90_000)
+        assertEquals(1 to fourHundreds.reps, bare.takeRepEnd())
+        // Tips muted: no voice, so no prompt.
+        val muted = LiveCoach(ctx(board), RunMode.intervals, fourHundreds)
+        muted.muted = true
+        Laps(muted).apply { warmUp(); rep(0, 235.0) }
+        repEnd(muted, 1)
+        assertNull(muted.takeRepEnd())
+    }
 }

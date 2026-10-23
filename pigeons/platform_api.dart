@@ -603,6 +603,7 @@ class RecorderStatus {
     this.pausedAtElapsedMs,
     this.finishRequests,
     this.tipsMuted,
+    this.prompt,
     this.autoPaused,
     this.elevGainM,
     this.elevLossM,
@@ -654,6 +655,11 @@ class RecorderStatus {
   /// nothing to compare, or Coaching tips off in Settings), false while tips
   /// are on, true once "Mute tips" was tapped (app or notification).
   bool? tipsMuted;
+
+  /// The mid-run coach prompt that is open right now (its [PromptEvent.timeoutMs]
+  /// is what is left), so a screen that missed the event can show its buttons.
+  /// Null = none.
+  PromptEvent? prompt;
 
   /// `state == paused` and the recorder paused itself (the runner stopped,
   /// Settings -> Auto-pause), not the runner. Null/false otherwise. A manual
@@ -914,6 +920,10 @@ abstract class RecorderApi {
   void pause();
   void resume();
   void lap(LapSource source);
+
+  /// The runner tapped option [optionIndex] of the open prompt [promptId]
+  /// (0 = the first button). A no-op when that prompt is no longer open.
+  void answerPrompt(int promptId, int optionIndex);
 
   /// The "Start reps" action: ends the untimed warm-up and starts rep 1 (same
   /// effect and journal line as a first `lap(button)`); a no-op anywhere else,
@@ -1274,6 +1284,69 @@ class CueEvent extends RecorderEvent {
   /// `projection`: the projected Cooper distance in metres, or a distance
   /// step's projected finish in ms; `minuteMark`: the minute. Null otherwise.
   double? value;
+}
+
+/// A mid-run two-button coach prompt opened (decisions 22-Oct): the voice has
+/// asked [text], the screen shows [options] as two big buttons, and nothing
+/// answered by [timeoutMs] holds the current target. Answer with
+/// `RecorderApi.answerPrompt(id, optionIndex)`; the headset answers natively
+/// (one press = the first option, two = the second).
+class PromptEvent extends RecorderEvent {
+  PromptEvent({
+    required this.id,
+    required this.kind,
+    required this.text,
+    required this.options,
+    required this.timeoutMs,
+    required this.km,
+    this.leadMs = 0,
+  });
+  int id;
+
+  /// `last2k`, `behindTarget`, `aheadOfPb` or `betweenReps`.
+  String kind;
+
+  /// What the voice said, ending in the question ("... Push or hold?").
+  String text;
+
+  /// The two answers, first = the first button: display labels ("Push",
+  /// "Hold", "Ease off").
+  List<String> options;
+
+  /// The answer window, ms: it starts when the question has been said, not
+  /// when it was queued, and waits while the run is paused. In a status
+  /// snapshot (a screen that missed the event) this is what is left.
+  int timeoutMs;
+
+  /// The whole km (or the rep) it fell on.
+  int km;
+
+  /// Roughly how long the question still has to be said before the window
+  /// starts, ms (0 once it has). The countdown bar waits this long.
+  int leadMs;
+}
+
+/// The open prompt was answered or timed out: the screen drops its buttons.
+/// [choice] is `push`, `hold` or `ease`; [source] `tap`, `headset` or `timeout`.
+class PromptResolvedEvent extends RecorderEvent {
+  PromptResolvedEvent({
+    required this.id,
+    required this.choice,
+    required this.source,
+    this.paceFactor = 1.0,
+    this.oneRep = false,
+  });
+  int id;
+  String choice;
+  String source;
+
+  /// The factor the voice coach now applies to the target pace (1 = none:
+  /// a hold, a timeout, no target, or a push the runner was too far off for):
+  /// the screen's target band follows it so screen and voice agree.
+  double paceFactor;
+
+  /// The effect lasts one rep only (a between-reps answer).
+  bool oneRep;
 }
 
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"

@@ -111,6 +111,26 @@ sealed class JournalLine {
     enum class FiredKind { compare, nudge, chase }
 
     /**
+     * `pr`: a mid-run two-button prompt was answered or timed out ([CoachPrompter]). [trigger] is its `PromptKind` key,
+     * [options] the two answers offered (first = single headset press), [choice] the pick (`hold` on a timeout),
+     * [source] `tap`, `headset` or `timeout`, [km] the whole km (or the rep) it fell on, [openedAtMs] and [atMs] run
+     * time. Restore counts it toward the cap and the spacing and keeps its effect. An older build reads it as a bad
+     * line and skips it. Not a run event.
+     */
+    data class PromptResolved(
+        override val t: Long,
+        override val w: Long,
+        val id: Int,
+        val trigger: String,
+        val km: Int,
+        val options: List<String>,
+        val choice: String,
+        val source: String,
+        val openedAtMs: Long,
+        val atMs: Long,
+    ) : JournalLine()
+
+    /**
      * `tm`: "Mute tips" was tapped (notification or app, LV2). Restore keeps the run muted, so a
      * kill never brings the compare speech and nudges back. An older build reads it as a bad line
      * and skips it. Not a run event.

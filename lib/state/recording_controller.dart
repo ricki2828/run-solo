@@ -469,6 +469,89 @@ class RecordingController extends ChangeNotifier {
   final ValueNotifier<InrunMoment?> moment = ValueNotifier(null);
   final InrunMomentDetector _moments = InrunMomentDetector();
 
+  /// The open mid-run two-button coach prompt, for the record screen's buttons
+  /// (null = none). Set when native opens one, cleared when it is answered or
+  /// times out (native owns the 8 s clock; a safety timer here only covers a
+  /// lost event). While one is open no moment overlay is shown.
+  final ValueNotifier<PromptEvent?> prompt = ValueNotifier(null);
+  int? _promptDeadlineMs;
+
+  /// The runner tapped option [index] of the open prompt: the buttons go at
+  /// once, the recorder applies the choice.
+  void answerPrompt(int index) {
+    final p = prompt.value;
+    if (p == null) return;
+    _clearPrompt();
+    unawaited(_gateway.answerPrompt(p.id, index));
+  }
+
+  void _openPrompt(PromptEvent e) {
+    moment.value = null; // never stacked on a moment
+    prompt.value = e;
+    // The window starts once the question is said (leadMs) and waits through a pause (_expirePrompt stretches
+    // this while paused); this only covers a lost resolved event.
+    _promptDeadlineMs =
+        (_lastTickElapsedMs ?? 0) + e.leadMs + e.timeoutMs + 2000;
+    _promptLastMs = _lastTickElapsedMs;
+  }
+
+  int? _promptLastMs;
+
+  CoachTarget? _baseCoachTarget;
+  bool _oneRepTarget = false;
+
+  /// The voice coach's target moved (push tightens, ease off loosens, only while the runner is within reach of it):
+  /// the screen's band follows, so screen and voice agree. [oneRep] = it lasts the next rep only (cleared when that
+  /// rep's work phase ends).
+  void _applyTargetFactor(double factor, bool oneRep) {
+    final base = _baseCoachTarget ??= coachTarget;
+    if (base == null) return;
+    coachTarget = factor == 1.0
+        ? base
+        : CoachTarget(
+            paceSecPerKm: base.paceSecPerKm * factor,
+            slowerIsFine: base.slowerIsFine,
+            bandSecPerKm: base.bandSecPerKm,
+          );
+    _oneRepTarget = oneRep && factor != 1.0;
+    _oneRepSeenWork = false;
+  }
+
+  bool _oneRepSeenWork = false;
+
+  /// A rep-only target ends with the work phase it was for.
+  void _endOneRepTarget(Phase phase) {
+    if (!_oneRepTarget) return;
+    if (phase == Phase.work) {
+      _oneRepSeenWork = true;
+    } else if (_oneRepSeenWork) {
+      _oneRepTarget = false;
+      _oneRepSeenWork = false;
+      final base = _baseCoachTarget;
+      if (base != null) coachTarget = base;
+    }
+  }
+
+  /// A lost resolved event cannot strand the buttons: past the window and a
+  /// 2 s grace (the next event of any kind finds it) they go.
+  void _expirePrompt() {
+    final due = _promptDeadlineMs;
+    final at = _lastTickElapsedMs;
+    if (due == null || at == null) return;
+    final last = _promptLastMs ?? at;
+    _promptLastMs = at;
+    // The window waits while the run is paused (a runner at the lights can still answer): so does this.
+    final deadline = _snap.paused ? due + (at - last) : due;
+    _promptDeadlineMs = deadline;
+    if (at > deadline) _clearPrompt();
+  }
+
+  void _clearPrompt() {
+    _promptDeadlineMs = null;
+    _promptLastMs = null;
+    prompt.value = null;
+  }
+
   /// The runner's units for the moment text (a km or a mile); the screen
   /// keeps it current.
   Units momentUnits = Units.km;
@@ -479,7 +562,8 @@ class RecordingController extends ChangeNotifier {
     try {
       if (!_snap.recording) return;
       final m = _moments.observe(_snap, momentUnits);
-      if (m != null) moment.value = m;
+      // A prompt owns the screen: the moment is dropped, never stacked on it.
+      if (m != null && prompt.value == null) moment.value = m;
     } catch (_) {}
   }
 
@@ -591,6 +675,9 @@ class RecordingController extends ChangeNotifier {
     // only until the first status read.
     final pausedAt = s.pausedAtElapsedMs;
     if (pausedAt != null) _pausedAtMs = pausedAt;
+    // A prompt the event missed (a screen that re-attached mid-question): its buttons come back from the snapshot.
+    final open = s.prompt;
+    if (open != null && prompt.value == null) _openPrompt(open);
     final finish = s.finishRequests ?? 0;
     if (finish > _finishSeen) {
       _finishSeen = finish;
@@ -652,6 +739,7 @@ class RecordingController extends ChangeNotifier {
       clearFault: s.journalOk,
     );
     _detectMoment();
+    _expirePrompt();
     notifyListeners();
   }
 
@@ -716,6 +804,10 @@ class RecordingController extends ChangeNotifier {
     _finishPending = false;
     _clearPending();
     moment.value = null; // nor a moment
+    _clearPrompt(); // nor a prompt
+    _baseCoachTarget = null; // nor a moved target band
+    _oneRepTarget = false;
+    _oneRepSeenWork = false;
     lastCompare.value = null; // never a card from the previous run
     lastCompareAt = null;
     _tracker = engine.HrZoneTracker(zones: _zones());
@@ -850,6 +942,12 @@ class RecordingController extends ChangeNotifier {
       case CompareEvent():
         lastCompareAt = _now();
         lastCompare.value = e;
+      case PromptEvent():
+        _openPrompt(e);
+      case PromptResolvedEvent():
+        if (prompt.value?.id == e.id) _clearPrompt();
+        // A hold changes nothing; a push or ease off moves the band the voice now judges by.
+        if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
       case GoalEvent():
         lastGoal.value = e;
         try {
@@ -865,6 +963,7 @@ class RecordingController extends ChangeNotifier {
         }
     }
     _detectMoment();
+    _expirePrompt();
     notifyListeners();
   }
 
@@ -1021,6 +1120,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onPhase(PhaseEvent p) {
+    _endOneRepTarget(p.phase);
     // Shown at the press already (LapPendingEvent): keep the running
     // countdown rather than jump it back to full.
     final shown = p.phase == _snap.phase && p.repIndex == _snap.repIndex;
@@ -1136,6 +1236,7 @@ class RecordingController extends ChangeNotifier {
     _sub?.cancel();
     _clearPending();
     lapPulse.dispose();
+    prompt.dispose();
     moment.dispose();
     lastCompare.dispose();
     lastGoal.dispose();

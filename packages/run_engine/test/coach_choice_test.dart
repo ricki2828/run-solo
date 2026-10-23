@@ -185,4 +185,94 @@ void main() {
       );
     });
   });
+  group('run file coach prompts', () {
+    final text = File('test/fixtures/contract/free_run_no_laps.json')
+        .readAsStringSync();
+    final run = RunFileCodec.decode(text);
+
+    const prompt = CoachPromptLog(
+      trigger: 'last2k',
+      options: ['push', 'hold'],
+      choice: 'push',
+      source: 'headset',
+      km: 6,
+      openedMs: 1_790_000,
+      answeredMs: 1_794_500,
+    );
+
+    test('answered prompts survive an encode and decode, with the choice', () {
+      final logged = run.copyWith(
+        coach: const CoachLog(
+          choice: 'chase',
+          cues: [CoachCue('ahead', 2, 570000)],
+          prompts: [
+            prompt,
+            CoachPromptLog(
+              trigger: 'behindTarget',
+              options: ['push', 'ease'],
+              choice: 'hold',
+              source: 'timeout',
+              km: 3,
+              openedMs: 900_000,
+              answeredMs: 908_000,
+            ),
+          ],
+        ),
+      );
+      final back = RunFileCodec.decode(RunFileCodec.encode(logged));
+      expect(back.coach, logged.coach);
+      expect(back.coach!.prompts.first.reactionMs, 4500);
+      expect(back.coach!.prompts.last.source, 'timeout');
+      expect(RunFileCodec.encode(back), RunFileCodec.encode(logged));
+    });
+
+    test('an interval run has prompts and no Start choice', () {
+      final logged = run.copyWith(coach: const CoachLog(prompts: [prompt]));
+      final json = jsonDecode(RunFileCodec.encode(logged)) as Map;
+      final coach = json['coach'] as Map;
+      expect(coach.containsKey('choice'), isFalse);
+      final back = RunFileCodec.decode(RunFileCodec.encode(logged));
+      expect(back.coach!.choice, isNull);
+      expect(back.coach!.prompts.single, prompt);
+    });
+
+    test('the Kotlin writer shape: prompts [[trigger, [options], ...]]', () {
+      final json = jsonDecode(text) as Map<String, Object?>;
+      json['coach'] = {
+        'cues': <Object?>[],
+        'prompts': [
+          [
+            'betweenReps',
+            ['push', 'hold'],
+            'push',
+            'tap',
+            2,
+            700000,
+            703200,
+          ],
+        ],
+      };
+      final read = RunFileCodec.decode(jsonEncode(json));
+      expect(read.coach!.prompts.single.trigger, 'betweenReps');
+      expect(read.coach!.prompts.single.options, ['push', 'hold']);
+      expect(read.coach!.prompts.single.reactionMs, 3200);
+    });
+
+    test('a bad prompt row is refused', () {
+      Object? decode(Object? row) {
+        final json = jsonDecode(text) as Map<String, Object?>;
+        json['coach'] = {
+          'cues': <Object?>[],
+          'prompts': [row],
+        };
+        return RunFileCodec.decode(jsonEncode(json));
+      }
+
+      expect(
+        () => decode(['last2k', 'push', 'push', 'tap', 6, 1, 2]),
+        throwsA(isA<RunFileFormatException>()),
+      );
+      expect(() => decode(['last2k']), throwsA(isA<RunFileFormatException>()));
+    });
+  });
 }

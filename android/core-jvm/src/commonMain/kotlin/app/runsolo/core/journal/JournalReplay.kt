@@ -68,6 +68,8 @@ data class Replay(
     val route: FollowRoute? = null,
     /** A `qd` line: the quest completed in this run before a kill; restore never fires its beat again. */
     val questDoneId: String? = null,
+    /** Every `pr` line, in journal order: mid-run prompts already answered, for the cap, spacing, effect and the run record. */
+    val prompts: List<JournalLine.PromptResolved> = emptyList(),
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it.isPauseEdge }.let { it is RunEvent.Pause || it is RunEvent.AutoPause }
@@ -106,6 +108,7 @@ object JournalReplay {
         val cuesFired = ArrayList<JournalLine.CueFired>()
         var tipsMuted = false
         var questDoneId: String? = null
+        val prompts = ArrayList<JournalLine.PromptResolved>()
         var route: FollowRoute? = null
         var clockJumps = 0
         var outOfOrder = 0
@@ -140,6 +143,7 @@ object JournalReplay {
             if (line is JournalLine.LiveContextLine) { if (liveContext == null) liveContext = line.context; continue }
             if (line is JournalLine.CueFired) { cuesFired.add(line); continue }
             if (line is JournalLine.TipsMuted) { tipsMuted = true; continue }
+            if (line is JournalLine.PromptResolved) { prompts.add(line); continue }
             if (line is JournalLine.QuestDone) { if (questDoneId == null) questDoneId = line.questId; continue }
             if (line is JournalLine.RouteLine) { if (route == null) route = line.route; continue }
             val runT: Long
@@ -173,7 +177,7 @@ object JournalReplay {
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
                         is JournalLine.LiveContextLine, is JournalLine.CueFired,
-                        is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine -> throw IllegalStateException()
+                        is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine, is JournalLine.PromptResolved -> throw IllegalStateException()
                     },
                 )
             }
@@ -201,6 +205,7 @@ object JournalReplay {
             tipsMuted = tipsMuted,
             route = route,
             questDoneId = questDoneId,
+            prompts = prompts,
         )
     }
 }

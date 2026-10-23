@@ -68,6 +68,41 @@ class VoiceCoach(private val config: Config) {
     data class Line(val kind: Kind, val text: String)
 
     private var segment: Int? = null
+
+    // A mid-run prompt's effect (push / ease off): a factor on the target pace and on the gap between pace checks.
+    private var effect = PromptEffect.NONE
+
+    /** A one-rep effect lives until the segment after the one it first sees. */
+    private var effectSegment: Int? = null
+
+    /**
+     * The runner answered a two-button prompt ([CoachPrompter]). The effect applies to the plan's own target only: a run
+     * with no target (a Free run) gets nothing new, so an answer never switches pace checks on. A push is applied only
+     * while the runner is within [PUSH_WITHIN_SEC] of the target (a runner already far off the target gets no tighter
+     * one to be scolded by); an ease off loosens the target, quietens "Pick it up" and spaces the checks. The pace
+     * trackers restart. Returns the effect that actually applies, for the screen's target band.
+     */
+    fun applyEffect(e: PromptEffect): PromptEffect {
+        val target = config.targetPaceSecPerKm
+        val avg = if (window.size >= MIN_SAMPLES) window.average() else null
+        val applied = when {
+            target == null || e == PromptEffect.NONE -> PromptEffect.NONE
+            e.quietSlow -> e
+            avg == null || avg - target <= PUSH_WITHIN_SEC -> e
+            else -> PromptEffect.NONE
+        }
+        effect = applied
+        effectSegment = null
+        checked = false
+        offStreak = 0
+        dueSinceT = null
+        return applied
+    }
+
+    /** The target the checks use now: the plan's, times the effect's factor. */
+    private val targetPace: Double?
+        get() = config.targetPaceSecPerKm?.let { effect.targetPace(it) }
+
     private var nextEvalMs = FIRST_EVAL_MS
     private var dueSinceT: Long? = null
     private var lastWasOnPace = false
@@ -97,6 +132,14 @@ class VoiceCoach(private val config: Config) {
         if (i.segment == null) {
             aboveSinceT = null
             return null
+        }
+        // A between-reps answer lasts one rep: it is gone once the segment after the first one it saw begins.
+        if (effect.oneRep) {
+            val seen = effectSegment
+            if (seen == null) effectSegment = i.segment else if (seen != i.segment) {
+                effect = PromptEffect.NONE
+                effectSegment = null
+            }
         }
         i.paceSecPerKm?.let {
             window.addLast(it)
@@ -139,7 +182,7 @@ class VoiceCoach(private val config: Config) {
      * same way twice running is what makes a line; one noisy check never does.
      */
     private fun check(i: Input) {
-        val target = config.targetPaceSecPerKm ?: return
+        val target = targetPace ?: return
         if (i.paceSecPerKm == null || i.segmentActiveMs < nextCheckMs || window.size < MIN_SAMPLES) return
         nextCheckMs = i.segmentActiveMs + CHECK_EVERY_MS
         checkDelta = window.average() - target
@@ -155,7 +198,7 @@ class VoiceCoach(private val config: Config) {
     }
 
     private fun status(i: Input, quiet: Boolean): Line? {
-        if (config.targetPaceSecPerKm == null || !checked || i.paceSecPerKm == null) return null
+        if (targetPace == null || !checked || i.paceSecPerKm == null) return null
         if (i.segmentActiveMs < nextEvalMs) return null
         if (checkDir != 0 && offStreak < 2) return null // wait for the second check
         if (i.msToPhaseEnd != null && i.msToPhaseEnd <= NEAR_END_MS) return null
@@ -175,6 +218,8 @@ class VoiceCoach(private val config: Config) {
                 Line(Kind.status, "Ease off, $secs $unit fast")
             }
             1 -> {
+                // After "ease off" the coach does not say "Pick it up" for the rest of the run.
+                if (effect.quietSlow) return null
                 lastWasOnPace = false
                 Line(Kind.status, "Pick it up, $secs $unit slow")
             }
@@ -188,11 +233,14 @@ class VoiceCoach(private val config: Config) {
     }
 
     private fun skipSlot(i: Input) {
-        nextEvalMs = i.segmentActiveMs + EVERY_MS
+        nextEvalMs = i.segmentActiveMs + (EVERY_MS * effect.everyFactor).toLong()
         dueSinceT = null
     }
 
     companion object {
+        /** A push tightens the target only while the runner is within this of it (s/km). */
+        const val PUSH_WITHIN_SEC = 10.0
+
         /** The target band when the plan has none: ±5 s/km. */
         const val DEFAULT_BAND_SEC = 5.0
 

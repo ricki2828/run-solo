@@ -75,12 +75,24 @@ data class RunFile(
     val coach: CoachLog? = null,
 ) {
     /**
-     * What the runner chose at Start and every chase line the recorder said ([app.runsolo.core.live.ChaseCoach]),
-     * in journal order. Written as `coach: {choice, cues: [[kind, km, t], ...]}`; `t` = elapsed ms from Start (pauses included). The cues
-     * list stays an open list so the later mid-run buttons can log their prompts and answers beside it.
+     * What the runner chose at Start ([choice], null on a run with no Start choice, e.g. intervals), every chase line the
+     * recorder said ([cues]) and every mid-run two-button prompt ([prompts]), in journal order. Written as
+     * `coach: {choice?, cues: [[kind, km, t]], prompts?: [[trigger, [options], choice, source, km, openedT, answeredT]]}`;
+     * `t` = elapsed ms from Start (pauses included). The later post-run line reads the prompts.
      */
-    data class CoachLog(val choice: String, val cues: List<Cue>) {
+    data class CoachLog(val choice: String?, val cues: List<Cue>, val prompts: List<Prompt> = emptyList()) {
         data class Cue(val kind: String, val km: Int, val tMs: Long)
+
+        /** One answered prompt: the trigger, the two options, the pick (`hold` on a timeout), its source and where it fell. */
+        data class Prompt(
+            val trigger: String,
+            val options: List<String>,
+            val choice: String,
+            val source: String,
+            val km: Int,
+            val openedMs: Long,
+            val answeredMs: Long,
+        )
     }
 
     /** The planned route as the recorder had it, and the run-time spans `[t0, t1]` spent off it. */
@@ -132,7 +144,18 @@ data class RunFile(
     ).apply {
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
-        coach?.let { c -> put("coach", linkedMapOf("choice" to c.choice, "cues" to c.cues.map { listOf(it.kind, it.km, it.tMs) })) }
+        coach?.let { c ->
+            put(
+                "coach",
+                linkedMapOf<String, Any?>().apply {
+                    if (c.choice != null) put("choice", c.choice)
+                    put("cues", c.cues.map { listOf(it.kind, it.km, it.tMs) })
+                    if (c.prompts.isNotEmpty()) {
+                        put("prompts", c.prompts.map { listOf(it.trigger, it.options, it.choice, it.source, it.km, it.openedMs, it.answeredMs) })
+                    }
+                },
+            )
+        }
         route?.let { fr ->
             val ele = fr.route.elevM
             put(
@@ -293,10 +316,15 @@ data class RunFile(
 
         /** The Start choice and the chase lines said under it; null when the run carried no choice. */
         private fun coachLog(r: Replay): CoachLog? {
-            val choice = CoachChoice.parse(r.liveContext?.coachChoice) ?: return null
+            val choice = CoachChoice.parse(r.liveContext?.coachChoice)
+            val prompts = r.prompts.map {
+                CoachLog.Prompt(it.trigger, it.options, it.choice, it.source, it.km, it.openedAtMs, it.atMs)
+            }
+            if (choice == null && prompts.isEmpty()) return null
             return CoachLog(
-                choice.key,
-                r.cuesFired.filter { it.kind == JournalLine.FiredKind.chase }.map { CoachLog.Cue(it.key, it.index, it.atMs) },
+                choice?.key,
+                if (choice == null) emptyList() else r.cuesFired.filter { it.kind == JournalLine.FiredKind.chase }.map { CoachLog.Cue(it.key, it.index, it.atMs) },
+                prompts,
             )
         }
 
