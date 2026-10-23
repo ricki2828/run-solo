@@ -141,7 +141,8 @@ def test_race_debrief_two_hours_after_the_finish(cc, fakes):
     assert tick(cc) == 1
     assert jobs(cc)[0]["msg_mac"] == f"proactive:race:{cc.uid}:race1"
     assert "10 km in 1:00:00" in fakes.coach_calls[0]["messages"][-1]["content"]
-    assert tick(cc, T0 + 40 * H) == 0   # the same race is 45 h old by now (and already debriefed)
+    tick(cc, T0 + 40 * H)               # the same race is 45 h old by now (and already debriefed); only a morning message may follow
+    assert [j["msg_mac"].split(":")[1] for j in jobs(cc)].count("race") == 1
 
 
 def test_race_too_fresh_gets_nothing(cc, fakes):
@@ -425,3 +426,196 @@ def test_a_proactive_job_stranded_running_is_cancelled_at_startup_flag_off(tmp_p
             c.uid, "proactive:race:x:y", "proactive", "running", iso(T0), iso(T0))
     with TestClient(app) as c2:   # the lifespan runs again, as a restart would
         assert rows(c2.app.state.svc and c, "SELECT state, outcome FROM coach_jobs") == [{"state": "cancelled", "outcome": "restart"}]
+
+
+# ------------------------------------------------------------------------------------------------- the run debrief and the day message
+def real_run(c, hours_ago, *, rid="g1", typ="tempo", real=1, km=5.0, now=T0, session="5K goal", goal=1, **extra):
+    end = now - hours_ago * H
+    cols = dict(user_id=c.uid, run_id=rid, start_utc=iso(end - H / 2), end_utc=iso(end), utc_offset_min=780, zone_id="Pacific/Auckland",
+                type=typ, duration_s=1800, distance_m=int(km * 1000), pace_s_per_km=360.0, true_pace_s_per_km=350.0, received_at=iso(end),
+                real_upload=real, session_name=session, goal_reached=goal, feel="right", zone_min="[0,4,20,6,0]")
+    cols.update(extra)
+    sql(c, f"INSERT INTO runs ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", *cols.values())
+
+
+def turn(fakes):
+    t = fakes.coach_calls[-1]["messages"][-1]["content"]
+    return t if isinstance(t, str) else "".join(p.get("text", "") for p in t)
+
+
+def test_a_goal_run_gets_a_debrief_once_and_a_second_run_the_same_day_does_not(cc, fakes):
+    real_run(cc, 2)
+    fakes.coach_queue = [coach_text("Steady 5K, level pace all the way. Thursday's tempo is next.\n<chips>Good one|Tough one|Tell you more</chips>")]
+    assert tick(cc) == 1
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:run:{cc.uid}:g1"
+    t = turn(fakes)
+    assert "5 km in 30:00" in t and "5K goal (goal reached)" in t and "true pace 5:50/km" in t
+    assert "how it felt, as the runner tapped it: right" in t and "[0,4,20,6,0]" in t
+    assert tick(cc, T0 + timedelta(minutes=10)) == 0                      # the same run: once
+    real_run(cc, 0.5, rid="g2", session="Easy")
+    assert tick(cc, T0 + 1 * H) == 0                                      # a second run the same day: the cap
+    assert len(jobs(cc)) == 1 and len(fakes.coach_calls) == 1
+
+
+def test_the_debrief_compares_with_the_earlier_runs(cc, fakes):
+    real_run(cc, 30, rid="old", typ="easy", session="Easy", km=6)
+    real_run(cc, 2)
+    fakes.coach_queue = [coach_text("Good run.")]
+    assert tick(cc) == 1
+    assert "Their previous runs, newest first:" in turn(fakes) and "6 km" in turn(fakes)
+
+
+def test_a_race_keeps_its_own_opener(cc, fakes):
+    real_run(cc, 5, rid="race1", typ="race", session=None, goal=None)
+    fakes.coach_queue = [coach_text("What a result.")]
+    assert tick(cc) == 1
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:race:{cc.uid}:race1"
+
+
+def test_a_too_fresh_a_too_short_or_a_non_real_run_is_skipped(cc, fakes):
+    real_run(cc, 0.05, rid="fresh")                       # 3 minutes ago
+    real_run(cc, 3, rid="short", km=0.6)
+    real_run(cc, 3, rid="replay", real=0)
+    real_run(cc, 3, rid="old_row", real=None)
+    assert tick(cc) == 0 and fakes.coach_calls == [] and jobs(cc) == []
+
+
+def test_a_run_in_quiet_hours_waits_for_the_morning_and_is_skipped_after_12_hours(tmp_path, fakes):
+    with TestClient(build(tmp_path, fakes, default_quiet=(21 * 60 + 30, 7 * 60))) as c:
+        c.svc = c.app.state.svc
+        c.token = enrol(c)
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(c.token))
+        c.put("/v1/me/timezone", json={"zone_id": "Pacific/Auckland"}, headers=auth(c.token))
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        sql(c, "UPDATE users SET last_inbound_at=NULL")
+        real_run(c, 0, rid="late")                                       # finished at T0 = 19:30 local
+        assert tick(c, T0 + 3 * H) == 0 and tick(c, T0 + 9 * H) == 0     # 22:30 and 04:30: quiet
+        assert fakes.coach_calls == []
+        fakes.coach_queue = [coach_text("Nice one last night.")]
+        assert tick(c, T0 + 11 * H + timedelta(minutes=40)) == 1         # 07:10 local, 11 h 40 min old: inside 12 h
+        assert jobs(c)[0]["msg_mac"] == f"proactive:run:{c.uid}:late"
+
+
+def test_a_run_whose_next_allowed_time_is_past_12_hours_is_skipped(tmp_path, fakes):
+    with TestClient(build(tmp_path, fakes, default_quiet=(21 * 60 + 30, 8 * 60))) as c:   # quiet until 08:00
+        c.svc = c.app.state.svc
+        c.token = enrol(c)
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(c.token))
+        c.put("/v1/me/timezone", json={"zone_id": "Pacific/Auckland"}, headers=auth(c.token))
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        sql(c, "UPDATE users SET last_inbound_at=NULL")
+        real_run(c, 0, rid="late")                                       # 19:30 local; 08:00 is 12 h 30 min later
+        tick(c, T0 + 12 * H + timedelta(minutes=40))     # a morning message may go; the debrief may not
+        assert all(j["msg_mac"].split(":")[1] != "run" for j in jobs(c))
+
+
+def test_a_red_flag_holds_the_debrief(cc, fakes):
+    real_run(cc, 2)
+    chat_job(cc, 20, triage="red", mac="r")
+    assert tick(cc) == 0 and fakes.coach_calls == []
+    sql(cc, "DELETE FROM coach_jobs")
+    sql(cc, "INSERT INTO health_flags (user_id, kind, state, source, set_at) VALUES (?,?,?,?,?)", cc.uid, "wellbeing", "active", "rail", iso(T0))
+    assert tick(cc) == 0 and fakes.coach_calls == []
+
+
+def test_an_amber_window_makes_the_debrief_amber_and_drops_the_next_session_line(cc, fakes):
+    real_run(cc, 2, plan_next_day="2026-10-23", plan_next_session_name="Tempo", plan_next_type="quality")
+    chat_job(cc, 30, triage="amber", mac="a")
+    fakes.coach_queue = [coach_text("A steady one. How is the leg?")]
+    assert tick(cc) == 1
+    assert "Do not give paces" in turn(fakes) and "next planned session" not in turn(fakes)
+
+
+def test_a_clear_week_gives_the_next_session_line(cc, fakes):
+    real_run(cc, 2, plan_next_day="2026-10-23", plan_next_session_name="Tempo", plan_next_type="quality")
+    fakes.coach_queue = [coach_text("Good one.")]
+    assert tick(cc) == 1
+    assert "The app's next planned session: Tempo on 2026-10-23." in turn(fakes) and "get_plan" in turn(fakes)
+
+
+# a Wednesday evening to Thursday morning in Auckland: T0 + 12 h is 07:30 on Thursday 22 Oct
+MORNING = T0 + 12 * H
+
+
+def plan_today(c, day="2026-10-22", name="Tempo", hours_before=40, now=MORNING):
+    real_run(c, hours_before, rid="p0", typ="easy", session="Easy", now=now, real=0,
+             plan_next_type="quality", plan_next_day=day, plan_next_session_name=name, plan_next_pace_lo=300.0, plan_next_pace_hi=310.0)
+
+
+def test_the_morning_message_names_todays_session_and_the_week_and_fires_once_per_local_day(cc, fakes):
+    plan_today(cc)
+    fakes.coach_queue = [coach_text("Morning. Tempo today.\n<chips>Sounds good|Need to change it</chips>")]
+    assert tick(cc, MORNING) == 1
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:day:{cc.uid}:2026-10-22"
+    t = turn(fakes)
+    assert "today's session is Tempo" in t and "target pace 5:00 to 5:10 per km" in t and "runs done since Monday: 0" in t
+    assert tick(cc, MORNING + timedelta(minutes=30)) == 0                 # once a day
+    assert tick(cc, MORNING + 2 * H) == 0
+    fakes.coach_queue = [coach_text("How is the week looking?")]
+    assert tick(cc, MORNING + 24 * H) == 1                                # the next local date is a new key (the plan has run out: a question)
+    assert [j["msg_mac"].split(":")[-1] for j in jobs(cc)] == ["2026-10-22", "2026-10-23"]
+    assert "how is the week looking" in turn(fakes).lower()
+
+
+def test_the_morning_message_is_never_sent_in_quiet_hours_or_after_noon(cc, fakes):
+    plan_today(cc)
+    assert tick(cc, T0 + 10 * H) == 0          # 05:30 local, before 06:30
+    assert tick(cc, T0 + 17 * H) == 0          # 12:30 local: too late for a good morning
+    assert fakes.coach_calls == [] and jobs(cc) == []
+
+
+def test_the_morning_message_waits_out_a_late_quiet_window(tmp_path, fakes):
+    with TestClient(build(tmp_path, fakes, default_quiet=(21 * 60 + 30, 8 * 60))) as c:
+        c.svc = c.app.state.svc
+        c.token = enrol(c)
+        c.put("/v1/me/consent", json={"consent_version": 3}, headers=auth(c.token))
+        c.put("/v1/me/timezone", json={"zone_id": "Pacific/Auckland"}, headers=auth(c.token))
+        c.uid = rows(c, "SELECT id FROM users")[0]["id"]
+        sql(c, "UPDATE users SET last_inbound_at=NULL")
+        plan_today(c)
+        assert tick(c, MORNING) == 0               # 07:30 local, quiet until 08:00
+        fakes.coach_queue = [coach_text("Morning.")]
+        assert tick(c, MORNING + timedelta(minutes=40)) == 1   # 08:10 local
+
+
+def test_a_run_debrief_the_same_morning_suppresses_the_day_message(cc, fakes):
+    plan_today(cc)
+    real_run(cc, 3, rid="dawn", now=MORNING)                              # finished 3 h before, 04:30 local
+    fakes.coach_queue = [coach_text("Early start. Nice 5K.")]
+    assert tick(cc, MORNING) == 1
+    assert jobs(cc)[0]["msg_mac"].startswith(f"proactive:run:{cc.uid}")
+    assert tick(cc, MORNING + 1 * H) == 0 and len(jobs(cc)) == 1
+
+
+def test_a_rest_day_after_yesterdays_run_is_left_to_the_run_debrief(cc, fakes):
+    # yesterday's run (11:30 local on the 21st) carries the plan: the next session is tomorrow, so today is a rest day
+    real_run(cc, 20, rid="yday", now=MORNING, plan_next_type="quality", plan_next_day="2026-10-23", plan_next_session_name="Tempo")
+    assert tick(cc, MORNING) == 0 and fakes.coach_calls == []
+
+
+def test_with_no_plan_it_asks_how_the_week_looks_only_after_three_quiet_days(cc, fakes, monkeypatch):
+    orig = type(cc.svc)._ci_state
+    monkeypatch.setattr(type(cc.svc), "_ci_state",
+                        lambda self, c, user, now, *, answers=True: (*orig(self, c, user, now, answers=answers)[:4], None))   # no plan, no default week
+    sql(cc, "UPDATE users SET last_inbound_at=?", iso(MORNING - 2 * 24 * H))      # wrote two days ago
+    assert tick(cc, MORNING) == 0
+    sql(cc, "UPDATE users SET last_inbound_at=?", iso(MORNING - 4 * 24 * H))
+    fakes.coach_queue = [coach_text("How is the week looking?\n<chips>Going well|Tough week</chips>")]
+    assert tick(cc, MORNING) == 1
+    assert "how is the week looking" in turn(fakes).lower()
+
+
+def test_an_amber_window_keeps_the_morning_message_gentle(cc, fakes):
+    plan_today(cc)
+    chat_job(cc, 30, triage="amber", mac="a", now=MORNING)
+    fakes.coach_queue = [coach_text("Morning. Easy does it.")]
+    assert tick(cc, MORNING) == 1
+    assert "Do not give paces" in turn(fakes) and "target pace" not in turn(fakes)
+
+
+
+def test_a_rest_day_with_no_run_yesterday_still_gets_a_message(cc, fakes):
+    plan_today(cc, day="2026-10-23")
+    fakes.coach_queue = [coach_text("Rest day today.")]
+    assert tick(cc, MORNING) == 1
+    assert "today is a rest day in the plan" in turn(fakes)
