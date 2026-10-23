@@ -587,10 +587,85 @@ def test_a_run_debrief_the_same_morning_suppresses_the_day_message(cc, fakes):
     assert tick(cc, MORNING + 1 * H) == 0 and len(jobs(cc)) == 1
 
 
-def test_a_rest_day_after_yesterdays_run_is_left_to_the_run_debrief(cc, fakes):
+def test_a_rest_day_after_a_run_is_skipped_only_when_that_run_was_debriefed(cc, fakes):
     # yesterday's run (11:30 local on the 21st) carries the plan: the next session is tomorrow, so today is a rest day
     real_run(cc, 20, rid="yday", now=MORNING, plan_next_type="quality", plan_next_day="2026-10-23", plan_next_session_name="Tempo")
-    assert tick(cc, MORNING) == 0 and fakes.coach_calls == []
+    # no debrief was ever sent for it (it came before deploy, was capped or held): the morning message still goes
+    fakes.coach_queue = [coach_text("Rest day today.")]
+    assert tick(cc, MORNING) == 1
+    assert "today is a rest day in the plan" in turn(fakes)
+    sql(cc, "DELETE FROM coach_jobs")
+    # a debrief that really went out covers it
+    sql(cc, "INSERT INTO coach_jobs (user_id, msg_mac, kind, state, created_at) VALUES (?,?,?,?,?)",
+        cc.uid, f"proactive:run:{cc.uid}:yday", "proactive", "sent", iso(MORNING - 10 * H))
+    assert tick(cc, MORNING) == 0
+    sql(cc, "UPDATE coach_jobs SET state='cancelled'")                  # a debrief that was cancelled does not
+    fakes.coach_queue = [coach_text("Rest day today.")]
+    assert tick(cc, MORNING) == 1
+
+
+def test_fri_23_oct_after_the_22_oct_run_with_no_debrief_the_morning_message_goes(cc, fakes):
+    sql(cc, "UPDATE users SET zone_id='Asia/Singapore'")
+    fri = datetime(2026, 10, 22, 23, 30, tzinfo=timezone.utc)                    # Fri 23 Oct 07:30 SGT
+    real_run(cc, 18, rid="thu", now=fri, session="5K goal", plan_next_type="easy", plan_next_day="2026-10-26", plan_next_session_name="Easy")
+    fakes.coach_queue = [coach_text("Rest day today.")]
+    assert tick(cc, fri) == 1
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:day:{cc.uid}:2026-10-23"
+
+
+def test_monday_a_morning_note_at_07_then_the_run_debrief_at_12_40_and_nothing_else(cc, fakes):
+    sql(cc, "UPDATE users SET zone_id='Asia/Singapore'")
+    sql(cc, "INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", cc.uid, "runs_per_week", "4", iso(T0))
+    sun_night = datetime(2026, 10, 25, 23, 0, tzinfo=timezone.utc)               # Mon 26 Oct 07:00 SGT
+    noon_end = datetime(2026, 10, 26, 4, 27, tzinfo=timezone.utc)                 # the run ends 12:27 SGT
+    real_run(cc, 80, rid="sat", now=sun_night, session="5K goal", plan_next_type="easy", plan_next_day="2026-10-26",
+             plan_next_session_name="Easy", plan_next_m=5000)
+    fakes.coach_queue = [coach_text("Morning. Easy 5 today.")]
+    assert tick(cc, sun_night) == 1
+    assert jobs(cc)[0]["msg_mac"] == f"proactive:day:{cc.uid}:2026-10-26"
+    real_run(cc, 0, rid="mon", now=noon_end, session="5K goal", typ="easy")
+    fakes.coach_queue = [coach_text("Good one. Tuesday next.")]
+    assert tick(cc, noon_end + timedelta(minutes=13)) == 1                       # 12:40 SGT: the debrief goes
+    assert [j["msg_mac"].split(":")[1] for j in jobs(cc)] == ["day", "run"]
+    chat_job(cc, 60, niggle="green", now=noon_end, mac="n")
+    fakes.coach_queue = [coach_text("How's the knee?")]
+    assert tick(cc, noon_end + timedelta(minutes=30)) == 0                       # never a third, and no second debrief
+    assert len(jobs(cc)) == 2
+
+
+def test_two_runs_the_same_day_still_get_one_debrief_after_a_morning_note(cc, fakes):
+    plan_today(cc)
+    fakes.coach_queue = [coach_text("Morning.")]
+    assert tick(cc, MORNING) == 1
+    real_run(cc, 2, rid="a", now=MORNING + 5 * H)
+    fakes.coach_queue = [coach_text("Nice.")]
+    assert tick(cc, MORNING + 5 * H) == 1
+    real_run(cc, 0.5, rid="b", now=MORNING + 8 * H)
+    assert tick(cc, MORNING + 8 * H) == 0
+    assert [j["msg_mac"].split(":")[1] for j in jobs(cc)] == ["day", "run"]
+
+
+def test_the_facts_block_for_his_profile_takes_the_count_from_runs_per_week(cc, fakes):
+    """Ricki: memory runs_per_week 4, usual_days weekdays. The planned count is 4, never the 5 weekdays."""
+    sql(cc, "INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", cc.uid, "runs_per_week", "4", iso(T0))
+    sql(cc, "INSERT INTO memory (user_id, key, value, updated_at) VALUES (?,?,?,?)", cc.uid, "usual_days", "weekdays", iso(T0))
+    for i in range(3):                                                                # three runs since Monday; the last carries the plan
+        extra = dict(plan_next_type="quality", plan_next_day="2026-10-23", plan_next_session_name="Tempo") if i == 2 else {}
+        real_run(cc, 40 - 10 * i, rid=f"w{i}", now=MORNING, session="5K goal", **extra)
+    sql(cc, "UPDATE coach_jobs SET state='cancelled'")
+    fakes.coach_queue = [coach_text("Morning.")]
+    assert tick(cc, MORNING) == 1
+    t = turn(fakes)
+    assert "runs done since Monday: 3; the runner's planned runs a week: 4" in t
+    assert "usual run days" not in t and "(usual" not in t
+    assert "the next session is on Friday 23 Oct" in t
+
+
+def test_with_no_runs_per_week_the_planned_count_is_left_out(cc, fakes):
+    plan_today(cc)
+    fakes.coach_queue = [coach_text("Morning.")]
+    assert tick(cc, MORNING) == 1
+    assert "planned runs a week" not in turn(fakes)
 
 
 def test_with_no_plan_it_asks_how_the_week_looks_only_after_three_quiet_days(cc, fakes, monkeypatch):
@@ -610,7 +685,9 @@ def test_an_amber_window_keeps_the_morning_message_gentle(cc, fakes):
     chat_job(cc, 30, triage="amber", mac="a", now=MORNING)
     fakes.coach_queue = [coach_text("Morning. Easy does it.")]
     assert tick(cc, MORNING) == 1
-    assert "Do not give paces" in turn(fakes) and "target pace" not in turn(fakes)
+    t = turn(fakes)
+    assert "care window" in t and "do not name, size or push" in t
+    assert "Tempo" not in t and "target pace" not in t and "km" not in t.split("Facts from the plan and the app:")[1].split("How the week")[0]
 
 
 

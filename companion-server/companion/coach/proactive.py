@@ -16,6 +16,8 @@ coach_jobs): the same model loop (`CoachChat._agent`: tools, validator, repair t
 chips, retry), the same gate (`CoachChat.gate`: flag, allowlist, consent, pause), the same quiet hours and kill switch as the
 check-ins. What is new is only the decision "is there a reason, and is it allowed right now?".
 
+At most one proactive message a day, except that a `run` debrief may be the second (after the morning note, say).
+
 Every one of these must hold, re-read from the database at the moment of enqueue (the last four again just before the send,
 and before every retry of it):
   - COMPANION_COACH_PROACTIVE on, the runner on COMPANION_COACH_PROACTIVE_ALLOWLIST (empty = nobody) as well as the chat allowlist, and
@@ -287,10 +289,15 @@ class Proactive:
         qs, qe = self.svc._quiet(user)
         if in_quiet(now, zone, qs, qe):
             return None
-        # one a day, counting anything proactive that was started (a cancelled one never reached the runner)
-        if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND kind='proactive' AND state<>'cancelled' AND created_at>=? LIMIT 1",
-                     (uid, budget.day_start(now, zone))).fetchone():
+        # One a day, counting anything proactive that was started (a cancelled one never reached the runner), with one exception:
+        # a run debrief may follow another message the same day (the morning note), because the debrief is the point and the
+        # run happens after the note. Never two debriefs, never two of anything else: at most 2 a day, the second only `run`.
+        today_jobs = [r["msg_mac"] for r in c.execute(
+            "SELECT msg_mac FROM coach_jobs WHERE user_id=? AND kind='proactive' AND state<>'cancelled' AND created_at>=?",
+            (uid, budget.day_start(now, zone)))]
+        if len(today_jobs) >= 2 or any(m.split(":")[1] == "run" for m in today_jobs if m.count(":") >= 2):
             return None
+        triggers = (self._run,) if today_jobs else (self._niggle, self._run, self._race, self._heat, self._day)
         if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND kind IN ('chat','briefing') AND state IN ('pending','running','merged') LIMIT 1",
                      (uid,)).fetchone():
             return None
@@ -303,7 +310,7 @@ class Proactive:
         if c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND triage IN ('red','red72') AND COALESCE(replied_at, created_at) > ? LIMIT 1",
                      (uid, window)).fetchone():
             return None
-        for trigger in (self._niggle, self._run, self._race, self._heat, self._day):
+        for trigger in triggers:
             out = trigger(c, user, zone, now, window, wx or {})
             if out is not None:
                 key, message, mode = out
@@ -354,12 +361,12 @@ class Proactive:
         if r["session_name"]:
             facts.append(f"session: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
                                                            " (goal not reached)" if r["goal_reached"] == 0 else ""))
-        if r["pace_s_per_km"]:
+        if r["pace_s_per_km"] and not amber:
             facts.append(f"pace {pace(r['pace_s_per_km'])}")
-        if r["true_pace_s_per_km"]:
+        if r["true_pace_s_per_km"] and not amber:
             facts.append(f"true pace {pace(r['true_pace_s_per_km'])}")
         if r["zone_min"]:
-            facts.append(f"minutes in each heart rate zone: {r['zone_min']}")
+            facts.append(f"minutes in each heart rate zone (z1 easiest, z5 hardest): {r['zone_min']}")
         if r["feel"]:
             facts.append(f"how it felt, as the runner tapped it: {r['feel']}")
         if r["pb"]:
@@ -372,7 +379,7 @@ class Proactive:
             bits = [f"{round(x['distance_m'] / 1000, 1):g} km", _hm(x["duration_s"])]
             if x["session_name"]:
                 bits.append(x["session_name"])
-            if x["pace_s_per_km"]:
+            if x["pace_s_per_km"] and not amber:
                 bits.append(pace(x["pace_s_per_km"]))
             if x["feel"]:
                 bits.append(f"felt {x['feel']}")
@@ -470,19 +477,23 @@ class Proactive:
             return key, note(text), "amber" if amber else None
         rest_today = res.day != today
         if rest_today:
-            # a rest day after a run is the run debrief's: it already spoke (or skipped on a quiet or capped day)
+            # a rest day after a run is the run debrief's, but only when that debrief really went out
             y = (local - timedelta(days=1)).date()
-            for r in c.execute("SELECT start_utc FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 AND start_utc >= ? "
-                               "ORDER BY start_utc DESC LIMIT 6", (uid, iso(now - timedelta(days=2)))):
-                if to_local(parse_iso(r["start_utc"]), zone).date() == y:
-                    return None
+            for r in c.execute("SELECT run_id, start_utc FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 AND start_utc >= ? "
+                               "ORDER BY start_utc DESC LIMIT 6", (uid, iso(now - timedelta(days=2)))).fetchall():
+                if to_local(parse_iso(r["start_utc"]), zone).date() == y and c.execute(
+                        "SELECT 1 FROM coach_jobs WHERE msg_mac=? AND state<>'cancelled'",
+                        (f"proactive:run:{uid}:{r['run_id']}",)).fetchone():
+                    return None   # that run was debriefed
         monday = today - timedelta(days=today.weekday())
         done = sum(1 for r in c.execute("SELECT start_utc, distance_m FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 AND "
                                         "start_utc >= ?", (uid, iso(now - timedelta(days=8)))).fetchall()
                    if r["distance_m"] >= RUN_MIN_M and to_local(parse_iso(r["start_utc"]), zone).date() >= monday)
         last = c.execute("SELECT start_utc, distance_m, duration_s, session_name FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 "
                          "ORDER BY start_utc DESC LIMIT 1", (uid,)).fetchone()
-        week = f"runs done since Monday: {done}" + (f" (usual run days a week: {len(usual)})" if usual else "")
+        rpw = c.execute("SELECT value FROM memory WHERE user_id=? AND key='runs_per_week'", (uid,)).fetchone()
+        planned_n = int(rpw["value"]) if rpw and str(rpw["value"]).isdigit() and 0 < int(rpw["value"]) <= 7 else None
+        week = f"runs done since Monday: {done}" + (f"; the runner's planned runs a week: {planned_n}" if planned_n else "")
         if last:
             ld = to_local(parse_iso(last["start_utc"]), zone).strftime("%A %d %b")
             week += (f"; last run {ld}: {round(last['distance_m'] / 1000, 1):g} km in {_hm(last['duration_s'])}"
@@ -490,9 +501,11 @@ class Proactive:
         else:
             week += "; no run on record yet"
         pl = res.planned
-        if rest_today:
-            today_line = (f"today is a rest day in the plan; the next session is on {res.day.strftime('%A')}"
-                          + (" and its details are in get_plan" if not amber else ""))
+        if amber:
+            today_line = "the runner is in a care window: do not name, size or push today's session"
+        elif rest_today:
+            today_line = (f"today is a rest day in the plan; the next session is on {res.day.strftime('%A %d %b')}"
+                          " and its details are in get_plan")
         else:
             name = pl.session_name if pl is not None and pl.session_name and res.type == pl.type else None
             bits = [name or {"easy": "an easy run", "long": "a long run", "quality": "a quality session"}.get(res.type, "a session")]
@@ -501,7 +514,7 @@ class Proactive:
                     bits.append(f"{round(pl.distance_m / 1000, 1):g} km")
                 elif pl.minutes:
                     bits.append(f"{pl.minutes} min")
-                if pl.pace_lo_s and pl.pace_hi_s and not amber:
+                if pl.pace_lo_s and pl.pace_hi_s:
                     bits.append(f"target pace {int(pl.pace_lo_s // 60)}:{int(pl.pace_lo_s % 60):02d} to "
                                 f"{int(pl.pace_hi_s // 60)}:{int(pl.pace_hi_s % 60):02d} per km")
             today_line = "today's session is " + ", ".join(bits) + ("; it was moved to today" if res.moved else "")
@@ -509,8 +522,8 @@ class Proactive:
                 f"and the app: {today_line}. How the week is tracking: {week}. "
                 "Write a short good-morning in your own words: what today is, in one line (use get_plan for the detail, and only "
                 "figures a tool or these facts give), then one line on how the week is going. "
-                + ("Do not give paces or push-on advice: the runner is in a care window, so keep it gentle and do not push the "
-                   "session. " if amber else "")
+                + ("Do not mention today's session, paces or push-on advice: the runner is in a care window, so say good morning "
+                   "and ask how they are feeling, gently. " if amber else "")
                 + "If coach_memory in your turn holds something relevant, use it and say where it came from in plain words, once; "
                 "never recite it. Two to four lines, no medical talk. "
                 f"Finish with the quick replies <chips>{DAY_CHIPS}</chips>.")
