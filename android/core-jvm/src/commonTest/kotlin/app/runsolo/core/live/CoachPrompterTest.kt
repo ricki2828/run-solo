@@ -158,7 +158,7 @@ class CoachPrompterTest {
     }
 
     @Test
-    fun `at most 3 a run and never while one is open`() {
+    fun `between reps asks at most twice and never after the first rep`() {
         val p = CoachPrompter(distanceGate = false)
         var now = 600_000L
         var opened = 0
@@ -172,8 +172,29 @@ class CoachPrompterTest {
             }
             now += 300_000
         }
+        assertEquals(CoachPrompter.MAX_REP_PROMPTS, opened)
+        assertEquals(2, p.prompts)
+        assertNull(CoachPrompter(distanceGate = false).atRepEnd(1, 10, 600_000, 2_000.0), "rep 1 has nothing to compare")
+    }
+
+    @Test
+    fun `at most 3 a run counting every kind and never while one is open`() {
+        val p = CoachPrompter()
+        var opened = 0
+        var dist = 2_002.0
+        var now = 600_000L
+        repeat(6) {
+            val q = p.atKm(facts((dist / 1000).toInt(), gapMs = -30_000), now, dist)
+            if (q != null) {
+                p.opened(q, dist)
+                opened++
+                assertNull(p.atKm(facts((dist / 1000).toInt() + 1, gapMs = -30_000), now + 300_000, dist + 2_000), "one is open")
+                p.answer(q.id, 0, PromptSource.tap, now + 2_000)
+            }
+            dist += 2_000.0
+            now += 700_000
+        }
         assertEquals(CoachPrompter.MAX_PROMPTS, opened)
-        assertEquals(3, p.prompts)
     }
 
     @Test

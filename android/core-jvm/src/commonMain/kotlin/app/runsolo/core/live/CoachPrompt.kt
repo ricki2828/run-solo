@@ -216,6 +216,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     private var last2kDone = false
     private var easedOff = false
     private var behindAsked = false
+    private var repPrompts = 0
     private var prevBehindMs: Long? = null
     private var windowStartMs: Long? = null
     private var windowShiftMs = 0L
@@ -235,6 +236,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
             lastOpenedMs = a.prompt.openedAtMs
             if (a.prompt.kind == PromptKind.last2k) last2kDone = true
             if (a.prompt.kind == PromptKind.behindTarget) behindAsked = true
+            if (a.prompt.kind == PromptKind.betweenReps) repPrompts++
             effect = if (a.prompt.kind == PromptKind.betweenReps) PromptEffect.NONE else effect.after(a.choice, a.prompt.kind)
             if (a.choice == PromptChoice.ease) easedOff = true
             nextId = maxOf(nextId, a.prompt.id + 1)
@@ -287,7 +289,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
     /** A rep ended in an interval session: [rep] of [reps]. Never after the last rep. */
     fun atRepEnd(rep: Int, reps: Int, nowMs: Long, distanceM: Double): Prompt? {
-        if (rep >= reps || !gapOk(nowMs, distanceM)) return null
+        // Not after the first rep (nothing to compare yet) and at most twice: a 4x4 does not spend every prompt on its reps.
+        if (rep < 2 || rep >= reps || repPrompts >= MAX_REP_PROMPTS || !gapOk(nowMs, distanceM)) return null
         return make(PromptKind.betweenReps, rep, listOf(PromptChoice.push, PromptChoice.hold), "Rep $rep done. Push the next one or hold?", nowMs)
     }
 
@@ -305,6 +308,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         lastOpenedM = distanceM
         if (p.kind == PromptKind.last2k) last2kDone = true
         if (p.kind == PromptKind.behindTarget) behindAsked = true
+        if (p.kind == PromptKind.betweenReps) repPrompts++
         open = p
         windowStartMs = null
         windowShiftMs = 0
@@ -404,6 +408,9 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
     companion object {
         const val MAX_PROMPTS = 3
+
+        /** Of those, at most this many between reps. */
+        const val MAX_REP_PROMPTS = 2
         const val TIMEOUT_MS = 8_000L
 
         /** Never in the first km: nothing before 1.5 km, so the km 1 mark itself (about 1 000 m) is inside it. */
