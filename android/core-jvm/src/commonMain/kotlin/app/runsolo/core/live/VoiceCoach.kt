@@ -103,6 +103,20 @@ class VoiceCoach(private val config: Config) {
     private val targetPace: Double?
         get() = config.targetPaceSecPerKm?.let { effect.targetPace(it) }
 
+    private var nextEvalMs = FIRST_EVAL_MS
+    private var dueSinceT: Long? = null
+    private var lastWasOnPace = false
+
+    // Smoothed pace: the last [WINDOW_SAMPLES] moving ticks (about 30 s), checked every [CHECK_EVERY_MS].
+    private val window = ArrayDeque<Double>()
+    private var nextCheckMs = CHECK_EVERY_MS
+    private var checkDir = 0 // -1 fast, 0 on target, +1 slow; only meaningful once checked
+    private var checked = false
+    private var offStreak = 0
+    private var checkDelta = 0.0
+    private var aboveSinceT: Long? = null
+    private var lastDriftT: Long? = null
+
     fun tick(i: Input): Line? {
         if (!config.full) return null
         if (i.segment != segment) {
