@@ -313,7 +313,7 @@ void main() {
       ).toList()).join();
       final lines = text.split('\n');
       lines[1] = lines[1].replaceFirst(
-        '"schema":${engine.RunFile.schema}',
+        '"schema":${engine.RunFile.phoneSchema}',
         '"schema":${engine.RunFile.schema + 1}',
       );
       final result = await RunTransfer(
