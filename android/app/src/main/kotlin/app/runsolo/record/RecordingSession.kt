@@ -233,8 +233,7 @@ class RecordingSession(
     private var pendingOpenAt = 0L
     private var promptEffectDirty = false
 
-    /** Run time of the last prompt tick (the pause hold), and when the open question's window must start at the latest. */
-    private var lastPromptNowMs = 0L
+    /** Whether the open question has been said, and when its window must start at the latest. */
     private var questionAsked = false
     private var questionDeadline = 0L
 
@@ -1285,8 +1284,9 @@ class RecordingSession(
         val st = core.status(t)
         val now = st.elapsedMs
         val paused = st.state == RecorderState.paused || core.autoPaused
-        if (paused && prompter.open != null) prompter.hold(now - lastPromptNowMs)
-        lastPromptNowMs = now
+        // A pause by hand (not auto-pause, which is the lights): a long one closes the open prompt quietly.
+        val manual = st.state == RecorderState.paused && !core.autoPaused
+        prompter.pauseTick(now, paused, manual)?.let { resolvePrompt(it, t) }
         val open = prompter.open
         if (open != null && !prompter.windowStarted && ((questionAsked && !cues.speaking) || t >= questionDeadline)) {
             prompter.startWindow(now)
@@ -1296,7 +1296,8 @@ class RecordingSession(
         if (now < pendingOpenAt || prompter.open != null) return
         if (cues.speechBusyUntil > t && now < pendingOpenAt + PROMPT_MAX_WAIT_MS) return // the km cue is still being said
         pendingPrompt = null
-        if (finished) {
+        // Paused by hand since it was decided: never asked (it would keep the headset armed through the stop).
+        if (finished || manual) {
             lapInput.holdForPrompt(false)
             return
         }
@@ -1330,8 +1331,10 @@ class RecordingSession(
         // The effect reaches the voice coach now; what it actually applies (a push for a runner already far off the
         // target is dropped; no target, none) is what the screen's band follows.
         val applied = if (a.choice == PromptChoice.hold) null else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
-        cues.announce(a.spoken, CueSlot.structure)
-        logSaid(a.spoken)
+        a.spoken?.let {
+            cues.announce(it, CueSlot.structure)
+            logSaid(it)
+        }
         RecorderEventBus.emit(
             PromptResolvedEvent(
                 id = a.prompt.id.toLong(), choice = a.choice.key, source = a.source.key,

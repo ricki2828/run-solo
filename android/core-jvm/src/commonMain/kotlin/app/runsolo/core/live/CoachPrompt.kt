@@ -78,10 +78,13 @@ data class PromptAnswer(
     val atMs: Long,
     /** Run time the answer window started (the question had been said); [Prompt.openedAtMs] when it never started. */
     val windowStartMs: Long = prompt.openedAtMs,
+    /** Closed without a word: the runner stopped the run (a long manual pause), so "No answer. Holding." would be noise. */
+    val quiet: Boolean = false,
 ) {
-    /** The spoken acknowledgement. */
-    val spoken: String
+    /** The spoken acknowledgement; null for a [quiet] close. */
+    val spoken: String?
         get() = when {
+            quiet -> null
             source == PromptSource.timeout -> "No answer. Holding."
             choice == PromptChoice.push -> "Pushing."
             choice == PromptChoice.ease -> "Easing off."
@@ -221,6 +224,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     private var windowStartMs: Long? = null
     private var windowShiftMs = 0L
     private val presses = HeadsetPresses()
+    private var lastPauseTickMs: Long? = null
+    private var manualSinceMs: Long? = null
 
     /** The prompt on screen, or null. */
     var open: Prompt? = null
@@ -328,6 +333,31 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (open != null && windowStartMs != null && deltaMs > 0) windowShiftMs += deltaMs
     }
 
+    /**
+     * Once a tick at run time [nowMs]: a pause ([paused], auto or by hand) freezes the open window for the time since the
+     * last tick ([hold]); an unbroken pause by hand ([manual]) past [MANUAL_PAUSE_CLOSE_MS] closes the open prompt as a
+     * quiet hold ([manualPause]), returned for the caller to journal. Auto-pause (the lights) never closes it.
+     */
+    fun pauseTick(nowMs: Long, paused: Boolean, manual: Boolean): PromptAnswer? {
+        val last = lastPauseTickMs ?: nowMs
+        lastPauseTickMs = nowMs
+        if (paused) hold(nowMs - last)
+        val since = if (manual) manualSinceMs ?: nowMs else null
+        manualSinceMs = since
+        return since?.let { manualPause(nowMs - it, nowMs) }
+    }
+
+    /**
+     * The runner has paused the run by hand for [pausedMs] so far (one unbroken pause) at [nowMs]. Past
+     * [MANUAL_PAUSE_CLOSE_MS] the open prompt closes as a quiet hold: a water or cafe stop is not the time to answer,
+     * and the headset buttons go back to the music app. A shorter stop (the lights) only freezes the window ([hold]).
+     */
+    fun manualPause(pausedMs: Long, nowMs: Long): PromptAnswer? {
+        val p = open ?: return null
+        if (pausedMs < MANUAL_PAUSE_CLOSE_MS) return null
+        return resolve(p, PromptChoice.hold, PromptSource.timeout, nowMs).copy(quiet = true)
+    }
+
     /** Ms left in the open prompt's window at [nowMs] (the whole window before it starts); null when none is open. */
     fun remainingMs(nowMs: Long): Long? {
         val p = open ?: return null
@@ -415,6 +445,9 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
         /** Never in the first km: nothing before 1.5 km, so the km 1 mark itself (about 1 000 m) is inside it. */
         const val FIRST_KM_M = 1_500.0
+
+        /** A manual pause this long with a prompt open closes it as a quiet hold ([manualPause]). */
+        const val MANUAL_PAUSE_CLOSE_MS = 30_000L
 
         /** At least this much run time between two prompts. */
         const val MIN_GAP_MS = 240_000L
