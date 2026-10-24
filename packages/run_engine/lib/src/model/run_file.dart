@@ -434,8 +434,10 @@ class FollowedRoute {
 ///   refusing the unknown mode name.
 /// - 8 (watch run): the file may carry `watch` ([WatchInfo]: the Garmin
 ///   watch model and the track sample-rate steps), written only for a run a
-///   watch recorded. Every other key is schema 7's, so a schema-7 file reads
-///   as-is (no watch). An older build says "newer app" on any schema-8 file.
+///   watch recorded, and only such a run is written as schema 8; a
+///   phone-recorded run stays schema 7. Every other key is schema 7's, so a
+///   schema-7 file reads as-is (no watch). An older build says "newer app"
+///   on a watch run only.
 class RunFile {
   RunFile({
     required this.id,
@@ -459,14 +461,22 @@ class RunFile {
     this.readSchema = schema,
   });
 
-  /// The schema this build writes.
+  /// The newest schema this build reads, and the one it writes for a watch run
+  /// ([watch] set). A phone-recorded run is written as [phoneSchema].
   static const int schema = 8;
+
+  /// The schema of a run with no `watch` block, so a build from before schema 8
+  /// still reads every phone-recorded run.
+  static const int phoneSchema = 7;
+
+  /// The schema [toJson] writes for this run: 8 with a watch block, else 7.
+  int get writeSchema => watch != null ? schema : phoneSchema;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
 
   /// The schema the decoded bytes carried (1..3); [schema] for a run built
-  /// in memory. Not serialised: [toJson] always writes [schema]. The store
+  /// in memory. Not serialised: [toJson] writes [writeSchema]. The store
   /// uses it to know a file was migrated on read.
   final int readSchema;
 
@@ -557,7 +567,7 @@ class RunFile {
   );
 
   Map<String, Object?> toJson() => {
-    'schema': schema,
+    'schema': writeSchema,
     'id': id,
     'device': device,
     'app': app,
@@ -625,6 +635,9 @@ class RunFile {
       if (!known) {
         throw RunFileNewerVersionException('unknown key "$k"');
       }
+    }
+    if (json['watch'] != null && schemaValue < 8) {
+      throw RunFileFormatException('watch needs schema 8, got $schemaValue');
     }
     final id = _readString(json, 'id');
     if (!idPattern.hasMatch(id)) {

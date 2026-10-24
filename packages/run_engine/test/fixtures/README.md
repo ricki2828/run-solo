@@ -39,7 +39,7 @@ test in `golden_fixtures_test.dart` fails until you do.
 `android/core-jvm/src/test/fixtures/contract/` (CI `diff -r`s the two copies, subdirs
 included). Schema-2 files sit at the top level; the four Phase-1 schema-1 files are frozen
 read-only under `contract/schema1/` (§18.7) and must decode with v1 `free` → `laps`.
-Top-level files are the current writer's output (schema 8); `contract/schema2/`..`schema6/` are frozen older output.
+Top-level files are the current writer's output (schema 7; the four `watch_run_*` files are schema 8); `contract/schema2/`..`schema6/` are frozen older output.
 
 The four `watch_run_*` files (Garmin G6) are real output of core-jvm `WatchRunImporter` from hand-specified watch
 payloads (`WatchPayloadFixtures.kt`): `watch_run_5s_track` (one rate step, a 5 s track), `watch_run_thinned` (5 s

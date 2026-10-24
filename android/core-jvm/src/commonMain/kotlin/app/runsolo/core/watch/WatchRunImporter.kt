@@ -8,7 +8,7 @@ import app.runsolo.core.run.RunFile
 import app.runsolo.core.run.RunPaths
 
 /**
- * Turns a [WatchRunPayload] into a run file, durably and idempotently by run id, and says whether the
+ * Turns a [WatchRunPayload] into a run file (schema 8, the only schema that carries `watch`), durably and idempotently by run id, and says whether the
  * watch may be ACKed (plan §3.5, B2).
  *
  * The caller (the Android transport layer) sends the ACK for a run id **only** when [import] has returned
@@ -41,8 +41,14 @@ class WatchRunImporter(private val fs: FileSystem) {
         data class Failed(val reason: String) : Result() { override val ack get() = false }
     }
 
-    fun import(payloadBytes: ByteArray): Result {
+    /**
+     * [payloadBytes] are the watch's UTF-8 JSON exactly as reassembled; [expectedCrc] is the unsigned CRC-32 the
+     * watch sent with them (see [WatchRunPayload] for the algorithm). The CRC is checked over the raw bytes
+     * before anything is parsed.
+     */
+    fun import(payloadBytes: ByteArray, expectedCrc: Long): Result {
         if (payloadBytes.size > WatchRunPayload.MAX_BYTES) return Result.Rejected("payload larger than ${WatchRunPayload.MAX_BYTES} bytes")
+        if (WatchRunPayload.crc32(payloadBytes) != expectedCrc) return Result.Rejected("payload CRC mismatch")
         val payload = try {
             WatchRunPayload.parse(decodeUtf8(payloadBytes))
         } catch (e: WatchRunPayload.Invalid) {

@@ -130,10 +130,13 @@ object WatchPayloadFixtures {
         )
     }
 
+    /** The payload as the watch sends it: its bytes and their CRC-32. */
+    fun wire(body: Map<String, Any?>): Pair<ByteArray, Long> = encodeUtf8(Json.write(body)).let { it to WatchRunPayload.crc32(it) }
+
     /** What the importer writes for [body], decoded to the run file's JSON as the contract fixtures hold it. */
     fun importedJson(body: Map<String, Any?>): String {
         val fs = FakeFileSystem()
-        val result = WatchRunImporter(fs).import(encodeUtf8(WatchRunPayload.sign(body)))
+        val result = wire(body).let { (b, c) -> WatchRunImporter(fs).import(b, c) }
         check(result is WatchRunImporter.Result.Imported) { "fixture payload rejected: $result" }
         return Json.write(RunFile.readJson(fs.readBytes(RunPaths.runFile(body["runId"] as String))))
     }

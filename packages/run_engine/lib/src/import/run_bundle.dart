@@ -39,7 +39,7 @@ class RunBundleCodec {
 
   static String encode(RunBundle bundle) => jsonEncode({
     'kind': kind,
-    'schema': RunFile.schema,
+    'schema': bundle.run.writeSchema,
     'run': bundle.run.toJson(),
     'sidecar': bundle.sidecar?.toJson(),
   });

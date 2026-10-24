@@ -24,7 +24,7 @@ void main() {
       final text = RunBundleCodec.encode(bundle);
       final j = jsonDecode(text) as Map<String, Object?>;
       expect(j['kind'], RunBundleCodec.kind);
-      expect(j['schema'], 8);
+      expect(j['schema'], 7);
       final back = RunBundleCodec.decode(text);
       expect(RunBundleCodec.encode(back), text);
       expect(back.sidecar!.notes, 'windy');

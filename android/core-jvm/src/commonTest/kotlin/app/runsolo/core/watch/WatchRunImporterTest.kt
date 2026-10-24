@@ -22,8 +22,9 @@ import kotlin.test.assertTrue
 class WatchRunImporterTest {
     private val fs = FakeFileSystem()
 
-    private fun bytes(body: Map<String, Any?>) = encodeUtf8(WatchRunPayload.sign(body))
-    private fun import(body: Map<String, Any?>, on: FakeFileSystem = fs) = WatchRunImporter(on).import(bytes(body))
+    private fun bytes(body: Map<String, Any?>) = encodeUtf8(Json.write(body))
+    private fun importRaw(raw: ByteArray, on: FakeFileSystem = fs) = WatchRunImporter(on).import(raw, WatchRunPayload.crc32(raw))
+    private fun import(body: Map<String, Any?>, on: FakeFileSystem = fs) = importRaw(bytes(body), on)
     private fun runFiles(on: FakeFileSystem = fs) = on.snapshotPaths().filter { it.endsWith(".json.gz") }
 
     private fun fixture() = WatchPayloadFixtures.fiveSecondTrack()
@@ -124,17 +125,54 @@ class WatchRunImporterTest {
         val broke = object : app.runsolo.core.fs.FileSystem by fs {
             override fun writeBytes(path: String, bytes: ByteArray) = throw app.runsolo.core.platform.IOException("ENOSPC")
         }
-        val r = WatchRunImporter(broke).import(bytes(fixture()))
+        val r = bytes(fixture()).let { WatchRunImporter(broke).import(it, WatchRunPayload.crc32(it)) }
         assertIs<WatchRunImporter.Result.Failed>(r)
         assertFalse(r.ack)
         assertTrue(runFiles().isEmpty())
     }
 
+    @Test
+    fun `crc check value and the contract the monkey c side implements`() {
+        assertEquals(0xCBF43926L, WatchRunPayload.crc32(encodeUtf8("123456789")))
+        assertEquals(0L, WatchRunPayload.crc32(ByteArray(0)))
+    }
+
+    @Test
+    fun `a payload the watch built by hand - any key order whitespace and float spelling - imports and acks`() {
+        val text = """
+            {"samples":[[0, null, null, null, null, null, 0.000, 140],
+                        [5000, -33.868800, 151.209300, 20.000, 4.0, 3.00, 15.0, 141],
+                        [600000,null,null,null,null,null,1800.0,150]],
+             "rateChanges" : [ [0,5] ],
+             "laps":[{"kind":"manual","d1":1800.0,"d0":0,"t1":600000,"t0":0,"i":0}],
+             "units":"km","mode":"free","tz":"UTC","endEpochMs":1758672600000,"startEpochMs":1758672000000,
+             "appVersion":"0.1.0","model":"fenix7","runId":"gw-hand","v":1,
+             "gaps":[],"pauses":[]}
+        """.trimIndent()
+        val raw = encodeUtf8(text)
+        assertTrue(text != Json.write(Json.parseObject(text)), "not Kotlin-canonical")
+        val r = importRaw(raw)
+        assertIs<WatchRunImporter.Result.Imported>(r)
+        assertTrue(r.ack)
+        val m = RunFile.readJson(fs.readBytes(RunPaths.runFile("gw-hand")))
+        assertEquals(8L, m["schema"])
+        assertEquals(1800.0, ((m.list("samples").last() as List<*>)[6] as Number).toDouble())
+    }
+
+    @Test
+    fun `the crc is over the sender's bytes - the same content with other spacing needs its own crc`() {
+        val a = bytes(fixture())
+        val b = encodeUtf8(decodeUtf8(a).replace(",\"runId\":", ", \"runId\":"))
+        assertTrue(!a.contentEquals(b))
+        assertRejected(b, "crc of the other spelling", crc = WatchRunPayload.crc32(a))
+        assertIs<WatchRunImporter.Result.Imported>(importRaw(b))
+    }
+
     // ---- rejection writes nothing ----
 
-    private fun assertRejected(payload: ByteArray, why: String) {
+    private fun assertRejected(payload: ByteArray, why: String, crc: Long = WatchRunPayload.crc32(payload)) {
         val before = fs.snapshotPaths()
-        val r = WatchRunImporter(fs).import(payload)
+        val r = WatchRunImporter(fs).import(payload, crc)
         assertIs<WatchRunImporter.Result.Rejected>(r, why)
         assertFalse(r.ack, why)
         assertEquals(before, fs.snapshotPaths(), "$why: the file system is unchanged")
@@ -148,10 +186,12 @@ class WatchRunImporterTest {
         assertRejected(encodeUtf8("not json at all"), "malformed")
         assertRejected(encodeUtf8("[1,2]"), "not an object")
         val good = bytes(fixture())
-        assertRejected(good.copyOf(good.size / 2), "truncated")
-        assertRejected(encodeUtf8(decodeUtf8(good).replace("forerunner265", "forerunner965")), "wrong hash")
-        val noHash = LinkedHashMap(Json.parseObject(decodeUtf8(good))).also { it.remove("payloadHash") }
-        assertRejected(encodeUtf8(Json.write(noHash)), "no hash")
+        val goodCrc = WatchRunPayload.crc32(good)
+        assertRejected(good.copyOf(good.size / 2), "truncated in transit", crc = goodCrc)
+        assertRejected(good.copyOf(good.size / 2), "truncated at the sender, crc of what was sent")
+        assertRejected(encodeUtf8(decodeUtf8(good).replace("forerunner265", "forerunner965")), "bytes changed", crc = goodCrc)
+        assertRejected(good, "crc off by one", crc = goodCrc xor 1L)
+        assertRejected(good, "crc missing", crc = 0L)
         assertRejected(ByteArray(WatchRunPayload.MAX_BYTES + 1), "oversize")
     }
 

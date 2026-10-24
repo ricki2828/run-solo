@@ -40,8 +40,8 @@ import kotlin.math.pow
  * hand-built. Checked into `src/test/fixtures/contract/` and copied verbatim into
  * `packages/run_engine/test/fixtures/contract/`; [ContractFixturesTest] fails when the
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
- * schema 8 (`watch`, written only by the four `watch_run_*` fixtures, which go through `WatchRunImporter`; otherwise
- * schema 7's, so a regenerate changes every other file only by the version). `contract/schema1/`,
+ * schema 7 (`route`, the followed route; otherwise schema 6's), except the four `watch_run_*` fixtures, which go through
+ * `WatchRunImporter` and are schema 8 (`watch`): only a watch run is written as 8. `contract/schema1/`,
  * `contract/schema2/`, `contract/schema3/`, `contract/schema4/`, `contract/schema5/` and `contract/schema6/` are frozen output of the older writers: never
  * regenerated, schema6 pins that files written before the followed route still read, schema5 pins that files written before the trail mode still read, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.

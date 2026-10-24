@@ -17,7 +17,7 @@ void main() {
 
     test('this build writes schema 6', () {
       final j = jsonDecode(RunFileCodec.encode(lapsRun)) as Map;
-      expect(j['schema'], 8);
+      expect(j['schema'], 7);
       expect(j['mode'], 'laps');
     });
 
@@ -31,7 +31,7 @@ void main() {
       expect(run.laps.length, lapsRun.laps.length);
       final again = RunFileCodec.encode(run);
       expect(again, RunFileCodec.encode(lapsRun));
-      expect(RunFileCodec.decode(again).readSchema, 8);
+      expect(RunFileCodec.decode(again).readSchema, 7);
     });
 
     test('a schema-1 fourByFour file is unchanged by the bump', () {

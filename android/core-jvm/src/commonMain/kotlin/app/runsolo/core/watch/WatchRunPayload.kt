@@ -9,9 +9,10 @@ import app.runsolo.core.run.RunFile
  * A finished run as the Garmin watch sends it, reassembled from chunks by the transport layer (G4/G5) and
  * handed to [WatchRunImporter]. Pure data plus [parse]; nothing here touches storage.
  *
- * Wire form (UTF-8 JSON object, [VERSION] 1). Rows reuse the run file's shapes so the importer maps them 1:1:
+ * Wire form: a UTF-8 JSON object, [VERSION] 1. Rows reuse the run file's shapes so the importer maps them 1:1.
+ * Key order, whitespace and number formatting are the sender's business; the parser takes any valid JSON.
  * ```
- * { "v": 1, "payloadHash": "<8 hex>", "runId": "gw-<hex>", "model": "forerunner265", "appVersion": "0.1.0",
+ * { "v": 1, "runId": "gw-<hex>", "model": "forerunner265", "appVersion": "0.1.0",
  *   "startEpochMs": .., "endEpochMs": .., "tz": "..", "units": "km", "mode": "free",
  *   "laps":   [{"i":0,"t0":..,"t1":..,"d0":..,"d1":..,"kind":"manual"}],
  *   "pauses": [[t0,t1] | [t0,t1,"auto"]],  "gaps": [[t0,t1]],
@@ -19,10 +20,14 @@ import app.runsolo.core.run.RunFile
  *   "rateChanges": [[atMs, rateS], ..],
  *   "coach": {"choice"?: "..", "cues": [[kind,km,tMs]], "prompts"?: [[trigger,[options],choice,source,km,openedMs,answeredMs]]} }
  * ```
- * `payloadHash` is [hashOf] the body: CRC-32 (IEEE), 8 lowercase hex digits, over the UTF-8 of
- * `Json.write(body without payloadHash)` where body is the parsed map (key order and number formatting as
- * `Json` writes them). A sender that is not Kotlin must therefore produce that canonical text, or send a hash
- * computed by the transport over exactly the bytes it carries (open point for G4).
+ * Integers (times, indexes, counts) must be written as integers, not `5000.0`.
+ *
+ * **Integrity contract (whole payload).** The watch builds the JSON as a string, UTF-8 encodes it, and computes
+ * CRC-32 over exactly those bytes: the algorithm is CRC-32/ISO-HDLC (the zlib/PNG/gzip CRC): reflected polynomial
+ * 0xEDB88320, initial value 0xFFFFFFFF, final XOR 0xFFFFFFFF, bytes processed in order, no framing, no trailing
+ * newline unless it is part of the bytes. The CRC travels outside the body (the transport envelope or final
+ * chunk header) as an unsigned 32-bit value, and the receiver passes the reassembled bytes untouched together
+ * with that value to [WatchRunImporter.import]. Check value: CRC-32("123456789") = 0xCBF43926.
  */
 data class WatchRunPayload(
     val runId: String,
@@ -48,29 +53,14 @@ data class WatchRunPayload(
         const val MAX_BYTES = 2_000_000
         const val MAX_RATE_S = 3600
 
-        /** CRC-32 (IEEE 802.3) of [bytes], 8 lowercase hex digits. */
-        fun crc32Hex(bytes: ByteArray): String {
+        /** CRC-32/ISO-HDLC of [bytes] as an unsigned 32-bit value (see the class comment for the contract). */
+        fun crc32(bytes: ByteArray): Long {
             var crc = -1
             for (b in bytes) {
                 crc = crc xor (b.toInt() and 0xFF)
                 repeat(8) { crc = if ((crc and 1) != 0) (crc ushr 1) xor 0xEDB88320.toInt() else crc ushr 1 }
             }
-            return (crc.inv().toLong() and 0xFFFFFFFFL).toString(16).padStart(8, '0')
-        }
-
-        /** The canonical hash of a payload body (the parsed map, with or without its `payloadHash`). */
-        fun hashOf(body: Map<String, Any?>): String {
-            val canonical = LinkedHashMap(body)
-            canonical.remove("payloadHash")
-            return crc32Hex(app.runsolo.core.platform.encodeUtf8(Json.write(canonical)))
-        }
-
-        /** Body + its `payloadHash`, as the wire text. Used by tests and by any Kotlin sender. */
-        fun sign(body: Map<String, Any?>): String {
-            val out = LinkedHashMap(body)
-            out.remove("payloadHash")
-            out["payloadHash"] = hashOf(body)
-            return Json.write(out)
+            return crc.inv().toLong() and 0xFFFFFFFFL
         }
 
         /** Parses and fully validates [text]; throws [Invalid] on anything the run file reader would refuse. */
@@ -83,8 +73,6 @@ data class WatchRunPayload(
             @Suppress("UNCHECKED_CAST")
             val m = root as? Map<String, Any?> ?: throw Invalid("top level must be an object")
             if (m["v"] != VERSION.toLong()) throw Invalid("unsupported payload version ${m["v"]}")
-            val hash = m["payloadHash"] as? String ?: throw Invalid("payloadHash missing")
-            if (hash != hashOf(m)) throw Invalid("payload hash mismatch")
 
             val runId = str(m, "runId")
             if (!safeId(runId)) throw Invalid("unsafe runId")

@@ -62,19 +62,20 @@ void main() {
       expect(two.rateChanges, hasLength(3));
     });
 
-    test('a phone-recorded run writes schema 8 with no watch key', () {
+    test('a phone-recorded run stays schema 7 with no watch key', () {
       final run = load('free_run_no_laps');
       expect(run.watch, isNull);
       final j = jsonDecode(RunFileCodec.encode(run)) as Map<String, Object?>;
-      expect(j['schema'], 8);
+      expect(j['schema'], 7);
       expect(j.containsKey('watch'), isFalse);
+      expect(run.writeSchema, 7);
     });
   });
 
   group('older and newer files', () {
     test('a schema-7 file still reads, with no watch', () {
-      final v7 = text('free_run_no_laps')
-          .replaceFirst('"schema":8,', '"schema":7,');
+      final v7 = text('free_run_no_laps');
+      expect(v7, contains('"schema":7,'));
       final run = RunFileCodec.decode(v7);
       expect(run.readSchema, 7);
       expect(run.watch, isNull);
@@ -87,6 +88,11 @@ void main() {
       );
       expect(run.readSchema, 6);
       expect(run.watch, isNull);
+    });
+
+    test('a watch block in a schema-7 file is malformed', () {
+      final j = json('watch_run_5s_track')..['schema'] = 7;
+      expect(() => RunFile.fromJson(j), throwsA(isA<RunFileFormatException>()));
     });
 
     test('a v8 file with a watch block is refused by a schema-7 reader: the key is outside its set', () {
@@ -217,6 +223,24 @@ void main() {
       final run = load('watch_run_5s_track');
       expect(run.copyWith(watch: null).watch, isNull);
       expect(run.copyWith(mode: RunMode.free).watch, run.watch);
+    });
+
+    test('an edited watch run stays schema 8 and a phone run stays 7', () {
+      final watch = load('watch_run_thinned');
+      final edited = watch.copyWith(laps: [watch.laps.first]);
+      expect(edited.writeSchema, 8);
+      expect((jsonDecode(RunFileCodec.encode(edited)) as Map)['schema'], 8);
+      final phone = load('free_run_no_laps').copyWith(mode: RunMode.free);
+      expect(phone.writeSchema, 7);
+    });
+
+    test('the export bundle schema follows the file', () {
+      int bundleSchema(RunFile r) =>
+          (jsonDecode(RunBundleCodec.encode(RunBundle(run: r)))
+                  as Map)['schema']
+              as int;
+      expect(bundleSchema(load('watch_run_thinned')), 8);
+      expect(bundleSchema(load('free_run_no_laps')), 7);
     });
 
     test('an export bundle round-trips it', () {

@@ -66,7 +66,7 @@ final class RecorderHostTests: XCTestCase {
     XCTAssertTrue(reopened.orphans().isEmpty)
     XCTAssertEqual(try reopened.finalise(runId: "replay-4x4"), path) // idempotent: already committed
     let run = try reopened.readRunFile(runId: "replay-4x4")
-    XCTAssertEqual(run["schema"] as? Int, 8)
+    XCTAssertEqual(run["schema"] as? Int, 7)
     XCTAssertNotEqual(run as NSDictionary, try fixture("replay_4x4")) // shorter than the full run
   }
 
@@ -117,7 +117,7 @@ final class RecorderHostTests: XCTestCase {
     XCTAssertNil(try host.stop())
 
     let file = try host.readRunFile(runId: "live-1")
-    XCTAssertEqual(file["schema"] as? Int, 8)
+    XCTAssertEqual(file["schema"] as? Int, 7)
     XCTAssertEqual(events.compactMap { $0 as? LapEvent }.count, 1)
     XCTAssertGreaterThan(events.compactMap { $0 as? TickEvent }.count, 140)
     XCTAssertEqual(events.compactMap { ($0 as? StateEvent)?.state }, [.recording, .paused, .recording, .idle])
