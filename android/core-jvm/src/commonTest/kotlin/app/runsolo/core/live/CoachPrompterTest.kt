@@ -309,6 +309,63 @@ class CoachPrompterTest {
     }
 
     @Test
+    fun `a long manual pause closes the open prompt as a quiet hold and a short one only waits`() {
+        val p = CoachPrompter()
+        val q = open(p, at = 900_000)
+        assertNull(p.manualPause(29_999, q.openedAtMs + 29_999), "the lights: still open")
+        assertNotNull(p.open)
+        val a = assertNotNull(p.manualPause(CoachPrompter.MANUAL_PAUSE_CLOSE_MS, q.openedAtMs + 30_000))
+        assertEquals(PromptChoice.hold, a.choice)
+        assertEquals(PromptSource.timeout, a.source)
+        assertTrue(a.quiet)
+        assertNull(a.spoken, "nothing said to a runner who stopped")
+        assertNull(p.open, "the headset is free again")
+        assertEquals(PromptEffect.NONE, p.effect)
+        assertNull(p.manualPause(60_000, q.openedAtMs + 60_000), "closed once")
+        assertNull(p.tick(q.openedAtMs + 60_000))
+        assertEquals(1, p.prompts, "it still counts toward the cap")
+        // The journal line is an ordinary timeout hold.
+        assertEquals("timeout", CoachPrompter.line(a, 0, 0).source)
+    }
+
+    @Test
+    fun `a manual pause before the question is said closes it too - nothing open is nothing`() {
+        assertNull(CoachPrompter().manualPause(120_000, 900_000))
+        val r = CoachPrompter()
+        val a = assertNotNull(r.atKm(facts(3, goal = 5_000.0), 900_000, 3_002.0))
+        r.opened(a, 3_002.0)
+        assertFalse(r.windowStarted)
+        assertTrue(assertNotNull(r.manualPause(30_000, 930_000)).quiet)
+    }
+
+    @Test
+    fun `once a tick - auto-pause only waits and an unbroken manual pause of 30 s closes the prompt quietly`() {
+        val p = CoachPrompter()
+        val q = open(p, at = 900_000)
+        var t = q.openedAtMs
+        fun tick(paused: Boolean, manual: Boolean = paused, s: Int = 1): PromptAnswer? {
+            var out: PromptAnswer? = null
+            repeat(s) {
+                t += 1_000
+                out = p.pauseTick(t, paused, manual) ?: p.tick(t)
+                if (out != null) return out
+            }
+            return out
+        }
+        assertNull(p.pauseTick(t, paused = false, manual = false))
+        assertNull(tick(paused = true, manual = false, s = 60), "a minute at the lights (auto-pause): open and frozen")
+        assertEquals(CoachPrompter.TIMEOUT_MS, p.remainingMs(t))
+        assertNull(tick(paused = true, s = 20), "a 20 s stop by hand")
+        assertNull(tick(paused = false, s = 2), "running again: 2 s of window used")
+        assertNull(tick(paused = true, s = 30), "a second stop is counted from its own start: 29 s so far")
+        val a = assertNotNull(tick(paused = true))
+        assertTrue(a.quiet)
+        assertEquals(PromptSource.timeout, a.source)
+        assertNull(p.open)
+        assertNull(tick(paused = true, s = 40), "nothing open: nothing more")
+    }
+
+    @Test
     fun `an input just before the timeout beats it - a waiting single press is an answer not a hold`() {
         val p = CoachPrompter()
         val q = open(p)

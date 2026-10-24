@@ -60,7 +60,10 @@ class LapInput(
     @Volatile
     private var graceUntil = 0L
 
-    /** The session exists only for the prompt window (no volume-key laps in this mode): released when its grace is over. */
+    /**
+     * The session exists only for the prompt window (no volume-key laps in this mode): released when its grace is over.
+     * Only then do volume keys answer a prompt.
+     */
     @Volatile
     private var promptOnly = false
 
@@ -72,7 +75,10 @@ class LapInput(
 
     private fun press(source: String): Boolean {
         val answer = onPromptPress
-        if (answer != null) {
+        // Volume keys answer a prompt only where they take no laps (the prompt's own session). Where the runner opted in
+        // to volume-key laps (intervals) a press stays the lap it always was, even mid-prompt: a "start the next rep"
+        // press is never swallowed or turned into an answer. The headset buttons still answer there.
+        if (answer != null && promptOnly) {
             if (promptOpen) {
                 Log.i(TAG, "prompt press from $source")
                 answer(HeadsetKeys.COUNT)
@@ -109,7 +115,7 @@ class LapInput(
 
     /**
      * A coach prompt opened ([open] true) or closed. While it is open the headset buttons (play/pause, the hook) and,
-     * where they reach an app session, the volume keys answer it. With no volume-key lap session in this mode a
+     * where they reach an app session and take no laps, the volume keys answer it. With no volume-key lap session in this mode a
      * session is made for the window only and released after, so music apps get their buttons back at once.
      */
     @Synchronized
@@ -149,33 +155,41 @@ class LapInput(
         s.setCallback(object : MediaSession.Callback() {
             @Suppress("DEPRECATION")
             override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                val inGrace = !promptOpen && SystemClock.elapsedRealtime() < graceUntil
-                if (!promptOpen && !inGrace) return false
                 val e = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
-                val action = HeadsetKeys.answerFor(e.keyCode) ?: return false
-                // Taken (never passed on to the music app) whatever its phase, so a track does not skip or pause.
-                if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount != 0) return true
-                if (inGrace) {
-                    Log.i(TAG, "key ${e.keyCode} ignored: prompt just closed")
-                    return true
-                }
-                Log.i(TAG, "prompt key ${e.keyCode} -> $action")
-                onPromptPress?.invoke(action)
-                return true
+                return mediaKey(e)
             }
         })
         s.setPlaybackState(playing())
         if (volumeKeys) {
             s.setPlaybackToRemote(object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 50, 50) {
-                override fun onAdjustVolume(direction: Int) {
-                    Log.i(TAG, "volume key direction=$direction")
-                    if (direction == AudioManager.ADJUST_SAME) return
-                    press("session")
-                }
+                override fun onAdjustVolume(direction: Int) = volumeKey(direction)
             })
         }
         s.isActive = true
         return s
+    }
+
+    /** A headphone key reached the session: true when it is taken (never passed on to the music app). */
+    internal fun mediaKey(e: KeyEvent): Boolean {
+        val inGrace = !promptOpen && SystemClock.elapsedRealtime() < graceUntil
+        if (!promptOpen && !inGrace) return false
+        val action = HeadsetKeys.answerFor(e.keyCode) ?: return false
+        // Taken (never passed on to the music app) whatever its phase, so a track does not skip or pause.
+        if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount != 0) return true
+        if (inGrace) {
+            Log.i(TAG, "key ${e.keyCode} ignored: prompt just closed")
+            return true
+        }
+        Log.i(TAG, "prompt key ${e.keyCode} -> $action")
+        onPromptPress?.invoke(action)
+        return true
+    }
+
+    /** A volume key reached the session's remote volume provider. */
+    internal fun volumeKey(direction: Int) {
+        Log.i(TAG, "volume key direction=$direction")
+        if (direction == AudioManager.ADJUST_SAME) return
+        press("session")
     }
 
     @Synchronized
