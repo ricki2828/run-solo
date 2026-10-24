@@ -285,7 +285,10 @@ def test_the_privacy_page_says_what_the_coach_consent_sheet_says():
     import os
     import re
     root = os.path.join(os.path.dirname(__file__), "..", "..")
-    dart = open(os.path.join(root, "lib", "screens", "companion_screen.dart")).read()
+    path = os.path.join(root, "lib", "screens", "companion_screen.dart")
+    if not os.path.exists(path) and not os.environ.get("CI"):   # the host deploy copy has no app tree; CI always does
+        pytest.skip("app source not present (server-only deploy copy)")
+    dart = open(path).read()
     m = re.search(r"const String kCompanionCoachBody =((?:\s*'[^']*')+);", dart)
     assert m, "kCompanionCoachBody not found"
     body = "".join(re.findall(r"'([^']*)'", m.group(1)))
