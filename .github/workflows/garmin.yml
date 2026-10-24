@@ -1,0 +1,219 @@
+name: garmin
+
+# Connect IQ watch app (Phase 0 spike, garmin/). Manual, or on changes under garmin/** (and this
+# file). Never part of the normal PR gate, same rule as ios.yml.
+#   Verify a branch with:  gh workflow run garmin.yml --ref <branch>
+#
+# Runner is pinned to ubuntu-22.04: the simulator needs webkit2gtk-4.0, which Ubuntu 24.04 dropped.
+#
+# LICENCE (Connect IQ Developer Agreement, updated 6-Aug-2024, read 24-Oct-2026): the licence is
+# personal, non-sublicensable, "for the sole purpose of developing and testing Applications", and
+# bars you from "upload[ing] to or host[ing] on any website or server ... or redistribut[ing] the
+# Program Materials". So: the SDK is downloaded straight from Garmin on every run and is NOT cached
+# or republished by this workflow (the repo is public). The Devices bundle only comes out of the
+# GUI SDK Manager (Garmin SSO login, no headless path exists); it is fetched from a private URL the
+# account holder controls (secret GARMIN_DEVICES_URL). Whether hosting that bundle privately for CI
+# is within "personal use" is Ricki's call; see garmin/SIDELOAD.md section "CI setup".
+#
+# Secrets (all optional here, none ever printed):
+#   GARMIN_DEVICES_URL         URL of devices.tar.gz = tar of ~/.Garmin/ConnectIQ/Devices (selected devices)
+#   GARMIN_DEVICES_SHA256      optional sha256 of that file
+#   GARMIN_DEV_KEY_DER_BASE64  base64 of the developer key (DER). Absent: an ephemeral key is generated
+#                              per run (fine for sideloading the spike, NOT for store updates).
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: Connect IQ SDK version (from sdks.json)
+        default: '9.3.0'
+  push:
+    branches: [main]
+    paths: ['garmin/**', 'android/app/src/dogfood/**', '.github/workflows/garmin.yml']
+  pull_request:
+    paths: ['garmin/**', 'android/app/src/dogfood/**', '.github/workflows/garmin.yml']
+
+concurrency:
+  group: garmin-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SDK_VERSION: ${{ inputs.sdk_version || '9.3.0' }}
+
+jobs:
+  static:
+    name: static checks + SDK download
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    outputs:
+      have_devices: ${{ steps.pre.outputs.have_devices }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - id: pre
+        name: Preflight (which secrets exist; value never printed)
+        env:
+          DEVICES_URL: ${{ secrets.GARMIN_DEVICES_URL }}
+          DEV_KEY: ${{ secrets.GARMIN_DEV_KEY_DER_BASE64 }}
+        run: |
+          [ -n "$DEVICES_URL" ] && echo "have_devices=true" >> "$GITHUB_OUTPUT" || echo "have_devices=false" >> "$GITHUB_OUTPUT"
+          if [ -z "$DEVICES_URL" ]; then
+            echo "::warning title=Garmin build skipped::secret GARMIN_DEVICES_URL is not set, so no .prg is compiled. Only static checks ran. See garmin/SIDELOAD.md, CI setup."
+          fi
+          [ -n "$DEV_KEY" ] || echo "::notice::GARMIN_DEV_KEY_DER_BASE64 not set: the build job will use an ephemeral key."
+      - name: App id agrees across manifest, Rez string and Android
+        run: python3 -I garmin/tools/check_ids.py
+      - name: XML well-formed and products.txt sane
+        run: |
+          python3 -I - <<'PY'
+          import re, xml.dom.minidom as m
+          for f in ["garmin/manifest.xml", "garmin/resources/strings/strings.xml", "garmin/resources/drawables/drawables.xml"]:
+              m.parse(f)
+          ids = [l.split('#')[0].strip() for l in open("garmin/products.txt")]
+          ids = [i for i in ids if i]
+          assert ids and len(ids) == len(set(ids)) and all(re.fullmatch(r"[a-z0-9_]+", i) for i in ids), "bad products.txt"
+          print(len(ids), "products")
+          PY
+      - name: Download SDK straight from Garmin (not cached, not republished)
+        run: |
+          set -euo pipefail
+          url="$(python3 -I - <<'PY'
+          import json, os, urllib.request
+          d = json.load(urllib.request.urlopen("https://developer.garmin.com/downloads/connect-iq/sdks/sdks.json"))
+          v = os.environ["SDK_VERSION"]
+          print("https://developer.garmin.com/downloads/connect-iq/sdks/" + next(x["linux"] for x in d if x["version"] == v))
+          PY
+          )"
+          mkdir -p "$RUNNER_TEMP/ciq" && curl -fsSL "$url" -o "$RUNNER_TEMP/sdk.zip"
+          python3 -I -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2], [n for n in zipfile.ZipFile(sys.argv[1]).namelist() if n.startswith('bin/')])" "$RUNNER_TEMP/sdk.zip" "$RUNNER_TEMP/ciq"
+          java -cp "$RUNNER_TEMP/ciq/bin/monkeybrains.jar" com.garmin.monkeybrains.Monkeybrains -v
+          echo "### SDK $SDK_VERSION downloads and the compiler starts" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: compile .prg per device
+    needs: static
+    if: ${{ needs.static.outputs.have_devices == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: SDK (from Garmin) and Devices bundle (from the private URL)
+        env:
+          DEVICES_URL: ${{ secrets.GARMIN_DEVICES_URL }}
+          DEVICES_SHA256: ${{ secrets.GARMIN_DEVICES_SHA256 }}
+        run: |
+          set -euo pipefail
+          url="$(python3 -I - <<'PY'
+          import json, os, urllib.request
+          d = json.load(urllib.request.urlopen("https://developer.garmin.com/downloads/connect-iq/sdks/sdks.json"))
+          print("https://developer.garmin.com/downloads/connect-iq/sdks/" + next(x["linux"] for x in d if x["version"] == os.environ["SDK_VERSION"]))
+          PY
+          )"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/sdk.zip"
+          mkdir -p "$RUNNER_TEMP/ciq"
+          python3 -I -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/sdk.zip" "$RUNNER_TEMP/ciq"
+          chmod +x "$RUNNER_TEMP"/ciq/bin/*
+          echo "CIQ_SDK=$RUNNER_TEMP/ciq" >> "$GITHUB_ENV"
+          curl -fsSL "$DEVICES_URL" -o "$RUNNER_TEMP/devices.tar.gz"
+          if [ -n "$DEVICES_SHA256" ]; then echo "$DEVICES_SHA256  $RUNNER_TEMP/devices.tar.gz" | sha256sum -c -; fi
+          mkdir -p "$HOME/.Garmin/ConnectIQ/Devices"
+          tar -xzf "$RUNNER_TEMP/devices.tar.gz" -C "$HOME/.Garmin/ConnectIQ/Devices" --strip-components=0
+          ls "$HOME/.Garmin/ConnectIQ/Devices" | head -100
+      - name: Developer key (secret, else ephemeral)
+        env:
+          DEV_KEY: ${{ secrets.GARMIN_DEV_KEY_DER_BASE64 }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/developer_key.der"
+          if [ -n "$DEV_KEY" ]; then
+            echo "$DEV_KEY" | base64 -d > "$key"; echo "KEY_KIND=repo secret" >> "$GITHUB_ENV"
+          else
+            openssl genrsa -out "$RUNNER_TEMP/k.pem" 4096 2>/dev/null
+            openssl pkcs8 -topk8 -inform PEM -outform DER -in "$RUNNER_TEMP/k.pem" -out "$key" -nocrypt
+            echo "KEY_KIND=EPHEMERAL (fine for sideload, not for store updates)" >> "$GITHUB_ENV"
+          fi
+          echo "CIQ_KEY=$key" >> "$GITHUB_ENV"
+      - name: Compile
+        run: OUT="$GITHUB_WORKSPACE/garmin/out" garmin/tools/build.sh
+      - name: Job summary
+        run: |
+          { echo "### Garmin spike build (SDK $SDK_VERSION, key: $KEY_KIND)"; cat garmin/out/build-report.md; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Package assets
+        run: |
+          sha7="${GITHUB_SHA::7}"
+          mkdir -p garmin/dist
+          for f in garmin/out/*.prg; do cp "$f" "garmin/dist/run-supreme-spike-$(basename "$f" .prg)-$sha7.prg"; done
+          cp garmin/SIDELOAD.md garmin/dist/SIDELOAD.md
+          ls -l garmin/dist
+      - name: Publish to release garmin-spike-latest (main or manual runs)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tools/ci_release.sh put garmin-spike-latest "Garmin spike .prg ${GITHUB_SHA::7}" "Phase 0 Garmin spike builds, one .prg per device. sha ${{ github.sha }}, CI run ${{ github.run_id }}, key: $KEY_KIND. Replaced on every run. Install guide: SIDELOAD.md." --replace-assets garmin/dist/*
+      - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          name: garmin-spike-prg
+          path: garmin/dist/
+          retention-days: 5
+          if-no-files-found: error
+
+  simulator-smoke:
+    # Best effort and NON-GATING. Written without being able to run it (the author's host is
+    # aarch64, the simulator is x86_64 + GUI). If it fails, read the log before trusting it either way.
+    name: simulator smoke (xvfb, best effort)
+    needs: build
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.0-37 libgtk-3-0 libusb-1.0-0 libsecret-1-0 libpng16-16
+      - name: SDK + Devices again, then boot simulator and sideload one build
+        env:
+          DEVICES_URL: ${{ secrets.GARMIN_DEVICES_URL }}
+          DEVICES_SHA256: ${{ secrets.GARMIN_DEVICES_SHA256 }}
+          DEV_KEY: ${{ secrets.GARMIN_DEV_KEY_DER_BASE64 }}
+        run: |
+          set -euo pipefail
+          url="$(python3 -I - <<'PY'
+          import json, os, urllib.request
+          d = json.load(urllib.request.urlopen("https://developer.garmin.com/downloads/connect-iq/sdks/sdks.json"))
+          print("https://developer.garmin.com/downloads/connect-iq/sdks/" + next(x["linux"] for x in d if x["version"] == os.environ["SDK_VERSION"]))
+          PY
+          )"
+          curl -fsSL "$url" -o "$RUNNER_TEMP/sdk.zip"; mkdir -p "$RUNNER_TEMP/ciq"
+          python3 -I -c "import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/sdk.zip" "$RUNNER_TEMP/ciq"
+          chmod +x "$RUNNER_TEMP"/ciq/bin/*
+          curl -fsSL "$DEVICES_URL" -o "$RUNNER_TEMP/devices.tar.gz"
+          mkdir -p "$HOME/.Garmin/ConnectIQ/Devices"; tar -xzf "$RUNNER_TEMP/devices.tar.gz" -C "$HOME/.Garmin/ConnectIQ/Devices"
+          key="$RUNNER_TEMP/k.der"
+          if [ -n "$DEV_KEY" ]; then echo "$DEV_KEY" | base64 -d > "$key"; else
+            openssl genrsa -out "$RUNNER_TEMP/k.pem" 4096 2>/dev/null; openssl pkcs8 -topk8 -inform PEM -outform DER -in "$RUNNER_TEMP/k.pem" -out "$key" -nocrypt; fi
+          export CIQ_SDK="$RUNNER_TEMP/ciq" CIQ_KEY="$key" OUT="$RUNNER_TEMP/out"
+          garmin/tools/build.sh
+          dev="$(ls "$OUT"/*.prg | head -1 | xargs basename | sed 's/\.prg$//')"
+          export PATH="$RUNNER_TEMP/ciq/bin:$PATH"
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" bash -c '
+            connectiq & sleep 15
+            timeout 60 monkeydo "'"$OUT"'/'"$dev"'.prg" "'"$dev"'" > "'"$RUNNER_TEMP"'/monkeydo.log" 2>&1 || true
+            cat "'"$RUNNER_TEMP"'/monkeydo.log"
+            ! grep -qi "Unhandled Exception\|Out of memory\|Error" "'"$RUNNER_TEMP"'/monkeydo.log"
+          '

@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Phase 0 Garmin spike (dogfood flavour only, so Play builds never contain the Connect IQ
+         Mobile SDK, its exported binding service or its package query). Its own launcher entry:
+         the normal app is untouched. Remove with the spike. -->
+    <application>
+        <activity
+            android:name="app.runsolo.garmin.GarminSpikeActivity"
+            android:exported="true"
+            android:label="Garmin Spike"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.runsolo.garmin.spike">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

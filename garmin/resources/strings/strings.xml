@@ -1,0 +1,5 @@
+<strings>
+    <string id="AppName">RS Spike</string>
+    <!-- Must equal the manifest id and GarminSpike.APP_ID; build.sh enforces it. -->
+    <string id="AppId">41321ac77d204b33b9f974642f1c733e</string>
+</strings>
