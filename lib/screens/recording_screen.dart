@@ -931,9 +931,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ink: NightSession.semWarn,
                             compact: compact,
                           ),
+                        // The map page says OFF ROUTE in its to-go row.
                         if (route != null &&
                             route.endCue == null &&
                             route.off &&
+                            !(hasPage2 && _page == 1) &&
                             !pausedNow)
                           RouteEndCard.off(
                             fill: NightSession.bgBase,
@@ -1825,8 +1827,15 @@ class _Vitals extends StatelessWidget {
         s.hr != null;
     final hr = repMax ? s.stepMaxHr : s.hr;
     final pct = hr == null || maxHr <= 0 ? null : (hr * 100 / maxHr).round();
-    Widget cell(String title, Widget value, {IconData? icon}) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    Widget cell(
+      String title,
+      Widget value, {
+      IconData? icon,
+      bool end = false,
+    }) => Column(
+      crossAxisAlignment: end
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
@@ -1836,7 +1845,13 @@ class _Vitals extends StatelessWidget {
               Icon(icon, size: 12, color: t.hrZone),
               const SizedBox(width: Space.x4),
             ],
-            Text(title, style: label),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(title, softWrap: false, style: label),
+              ),
+            ),
           ],
         ),
         value,
@@ -1882,13 +1897,20 @@ class _Vitals extends StatelessWidget {
                       ),
                     ],
                   ),
+                  // One line, scaled down rather than run into TOTAL
+                  // (24-Oct review #10, font scale 1.3).
                   if (s.zone > 0 && s.hr != null)
                     ExcludeSemantics(
-                      child: Text(
-                        HrZones.label(s.zone, paired: true),
-                        key: const ValueKey('vitals-zone'),
-                        style: label.copyWith(
-                          color: HrZones.labelOn(s.zone, secondary),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          HrZones.label(s.zone, paired: true),
+                          key: const ValueKey('vitals-zone'),
+                          softWrap: false,
+                          style: label.copyWith(
+                            color: HrZones.labelOn(s.zone, secondary),
+                          ),
                         ),
                       ),
                     ),
@@ -1898,6 +1920,8 @@ class _Vitals extends StatelessWidget {
             ),
           ),
         ),
+      // TOTAL sits flush right beside a heart rate, so the zone label under
+      // the bpm has the gap between them (24-Oct review #10).
       if (showTotal)
         Expanded(
           child: cell(
@@ -1908,6 +1932,7 @@ class _Vitals extends StatelessWidget {
               softWrap: false,
               style: number,
             ),
+            end: s.hrPaired,
           ),
         ),
     ];
@@ -2605,6 +2630,13 @@ class _SegmentPace extends StatelessWidget {
   /// label, keeping their space.
   final bool hideAverage;
 
+  static double _lineHeight(BuildContext context, TextStyle style) =>
+      (TextPainter(
+        text: TextSpan(text: '0', style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout()).height;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
@@ -2618,6 +2650,22 @@ class _SegmentPace extends StatelessWidget {
       Phase.recovery => 'RECOVERY AVERAGE',
       _ => 'SEGMENT AVERAGE',
     };
+    // No average yet (the first seconds of a rep, or no fix): never a bare
+    // "--", which at this size reads as two broken bars (24-Oct review #11).
+    // A muted word says why; the dial already has the current pace.
+    final settling = segmentAvg == null;
+    final avgText = !settling
+        ? Fmt.pace(segmentAvg, units)
+        : (s.gpsLost || s.showEndRep ? 'NO GPS' : 'SETTLING');
+    final unit = units == Units.mi ? 'mi' : 'km';
+    final caption = settling ? title : '$title /$unit';
+    final paceStyle =
+        primaryStyle(compact, secondary: s.phase == Phase.recovery).copyWith(
+          color: s.phase == Phase.recovery || settling
+              ? secondary
+              : t.inkPrimary,
+          fontWeight: FontWeight.w700,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -2631,29 +2679,44 @@ class _SegmentPace extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  Fmt.pace(segmentAvg, units),
-                  key: const ValueKey('segment-avg'),
-                  softWrap: false,
-                  // The biggest number in a rep; second to the countdown in a
-                  // recovery. The FittedBox only shrinks it for a wide value.
-                  style:
-                      primaryStyle(
-                        compact,
-                        secondary: s.phase == Phase.recovery,
-                      ).copyWith(
-                        color: s.phase == Phase.recovery
-                            ? secondary
-                            : t.inkPrimary,
-                        fontWeight: FontWeight.w700,
+              if (settling)
+                // The word is a status, not a number: 56 sp, in the pace's
+                // own height so nothing moves when the average arrives.
+                SizedBox(
+                  height: _lineHeight(context, paceStyle),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        avgText,
+                        key: const ValueKey('segment-avg'),
+                        softWrap: false,
+                        style: paceStyle.copyWith(
+                          fontSize: RunSoloType.runSize(56),
+                        ),
                       ),
+                    ),
+                  ),
+                )
+              else
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    avgText,
+                    key: const ValueKey('segment-avg'),
+                    softWrap: false,
+                    // The biggest number in a rep; second to the countdown in
+                    // a recovery. The FittedBox only shrinks it for a wide
+                    // value.
+                    style: paceStyle,
+                  ),
                 ),
-              ),
               Text(
-                '$title /${units == Units.mi ? 'mi' : 'km'}',
+                caption,
+                key: const ValueKey('segment-avg-caption'),
                 style: RunSoloType.runCaption.copyWith(color: secondary),
               ),
             ],

@@ -588,6 +588,26 @@ void main() {
     }
   });
 
+  // 24-Oct review #10: the zone label under the bpm never runs into TOTAL,
+  // at 360 x 640, and at font scale 1.3 (360 x 800: the whole screen at
+  // 1.3 on 640 is the font-scale pass, #26).
+  for (final (scale, h) in [(1.0, 640), (1.3, 800)]) {
+    testWidgets('laps header: zone label clear of TOTAL at text x$scale', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final (fake, _) = await openRecording(tester, mode: RecordMode.laps);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      fake.advance(const Duration(seconds: 95));
+      await settle(tester);
+      final zone = tester.getRect(find.byKey(const ValueKey('vitals-zone')));
+      final total = tester.getRect(find.byKey(const ValueKey('vitals-total')));
+      expect(zone.right, lessThanOrEqualTo(total.left));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   group('elevation (secondary figures)', () {
     testWidgets(
       'a free run shows climb and grade at 36 sp or more, under the hero',
