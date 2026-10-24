@@ -17,7 +17,7 @@ void main() {
 
     test('this build writes schema 6', () {
       final j = jsonDecode(RunFileCodec.encode(lapsRun)) as Map;
-      expect(j['schema'], 7);
+      expect(j['schema'], 8);
       expect(j['mode'], 'laps');
     });
 
@@ -31,7 +31,7 @@ void main() {
       expect(run.laps.length, lapsRun.laps.length);
       final again = RunFileCodec.encode(run);
       expect(again, RunFileCodec.encode(lapsRun));
-      expect(RunFileCodec.decode(again).readSchema, 7);
+      expect(RunFileCodec.decode(again).readSchema, 8);
     });
 
     test('a schema-1 fourByFour file is unchanged by the bump', () {
@@ -65,9 +65,9 @@ void main() {
       );
     });
 
-    test('schema 8 is newer, schema 0 and an unknown mode are malformed', () {
+    test('schema 9 is newer, schema 0 and an unknown mode are malformed', () {
       expect(
-        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 8),
+        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 9),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(

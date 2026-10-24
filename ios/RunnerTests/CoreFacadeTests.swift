@@ -25,7 +25,7 @@ final class CoreFacadeTests: XCTestCase {
   func testReplay4x4MatchesTheKotlinFixture() throws {
     XCTAssertTrue(CoreFacade.shared.replayKinds().contains("4x4"))
     let got = try CoreFacade.shared.replayRunFile(kind: "4x4", rootDir: scratchDir())
-    XCTAssertEqual(got["schema"] as? Int, 7) // RunFile.SCHEMA
+    XCTAssertEqual(got["schema"] as? Int, 8) // RunFile.SCHEMA
     XCTAssertEqual(got as NSDictionary, try fixture("replay_4x4"))
   }
 

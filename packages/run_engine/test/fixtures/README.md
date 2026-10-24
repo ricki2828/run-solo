@@ -39,6 +39,13 @@ test in `golden_fixtures_test.dart` fails until you do.
 `android/core-jvm/src/test/fixtures/contract/` (CI `diff -r`s the two copies, subdirs
 included). Schema-2 files sit at the top level; the four Phase-1 schema-1 files are frozen
 read-only under `contract/schema1/` (§18.7) and must decode with v1 `free` → `laps`.
+Top-level files are the current writer's output (schema 8); `contract/schema2/`..`schema6/` are frozen older output.
+
+The four `watch_run_*` files (Garmin G6) are real output of core-jvm `WatchRunImporter` from hand-specified watch
+payloads (`WatchPayloadFixtures.kt`): `watch_run_5s_track` (one rate step, a 5 s track), `watch_run_thinned` (5 s
+then no track from 6 min, with `coach`), `watch_run_two_step_degrade` (5 s, 10 s, none: three `rateChanges`) and
+`watch_run_splits_only` (no track, distance and laps only). They carry the schema-8 `watch` block; every other
+fixture omits the key. Read by `watch_run_test.dart`.
 
 **(b) `real/`** — the founder's 4x4s converted via `TcxImporter`/`GpxImporter` (they import
 as `laps`, never 4x4 by lap count, so each carries a sidecar `run_type_override: fourByFour`), checked

@@ -16,7 +16,7 @@ void main() {
     final run = load('${dir.path}/followed_route.json');
 
     test('the planned route and the one off-route span', () {
-      expect(run.readSchema, 7);
+      expect(run.readSchema, 8);
       final r = run.route!;
       expect(r.id, 'contract-route');
       expect(r.name, 'Park loop');

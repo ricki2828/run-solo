@@ -432,6 +432,10 @@ class FollowedRoute {
 ///   no session). Every other key is schema 5's, so a schema-5 file reads
 ///   as-is. The bump makes an older build say "newer app" instead of
 ///   refusing the unknown mode name.
+/// - 8 (watch run): the file may carry `watch` ([WatchInfo]: the Garmin
+///   watch model and the track sample-rate steps), written only for a run a
+///   watch recorded. Every other key is schema 7's, so a schema-7 file reads
+///   as-is (no watch). An older build says "newer app" on any schema-8 file.
 class RunFile {
   RunFile({
     required this.id,
@@ -451,11 +455,12 @@ class RunFile {
     this.elevSrc,
     this.route,
     this.coach,
+    this.watch,
     this.readSchema = schema,
   });
 
   /// The schema this build writes.
-  static const int schema = 7;
+  static const int schema = 8;
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -503,6 +508,10 @@ class RunFile {
   /// The pre-run choice and the chase lines said under it; null when the
   /// runner was not asked. Optional key `coach`.
   final CoachLog? coach;
+
+  /// The Garmin watch that recorded this run and how its track was sampled,
+  /// null for a phone-recorded run. Optional key `watch`.
+  final WatchInfo? watch;
   final List<Sample> samples;
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
@@ -523,6 +532,7 @@ class RunFile {
     Object? elevSrc = _unset,
     Object? route = _unset,
     Object? coach = _unset,
+    Object? watch = _unset,
   }) => RunFile(
     id: id ?? this.id,
     device: device,
@@ -543,6 +553,7 @@ class RunFile {
     elevSrc: identical(elevSrc, _unset) ? this.elevSrc : elevSrc as ElevSource?,
     route: identical(route, _unset) ? this.route : route as FollowedRoute?,
     coach: identical(coach, _unset) ? this.coach : coach as CoachLog?,
+    watch: identical(watch, _unset) ? this.watch : watch as WatchInfo?,
   );
 
   Map<String, Object?> toJson() => {
@@ -565,6 +576,7 @@ class RunFile {
       'nudges_fired': [for (final n in nudgesFired) n.toJson()],
     if (route != null) 'route': route!.toJson(),
     if (coach != null) 'coach': coach!.toJson(),
+    if (watch != null) 'watch': watch!.toJson(),
   };
 
   /// Strict: unknown schema, unknown or missing keys, wrong types, naive
@@ -590,6 +602,7 @@ class RunFile {
     'nudges_fired',
     'route',
     'coach',
+    'watch',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -668,6 +681,7 @@ class RunFile {
           ? null
           : FollowedRoute.fromJson(json['route']),
       coach: json['coach'] == null ? null : CoachLog.fromJson(json['coach']),
+      watch: json['watch'] == null ? null : WatchInfo.fromJson(json['watch']),
       readSchema: schemaValue,
     );
   }
@@ -913,6 +927,102 @@ class CoachLog {
     }
     return true;
   }
+}
+
+/// The Garmin watch that recorded a run and how it sampled the track (core-jvm
+/// `RunFile.WatchInfo`). Optional key `watch`, written only for a watch run.
+/// [rateChanges] are `[atMs, rateS]` steps from the run start: the first is at
+/// 0, `atMs` strictly ascends, `rateS` is seconds between samples and 0 means
+/// no track (splits and laps only). The run's distance, splits and laps are the
+/// watch's own figures; the track is display data.
+class WatchInfo {
+  const WatchInfo({required this.model, required this.rateChanges});
+
+  /// `garmin:<model>`, e.g. `garmin:forerunner265`.
+  final String model;
+  final List<RateChange> rateChanges;
+
+  /// More than one step: the watch lowered the sample rate during the run.
+  bool get trackThinned => rateChanges.length > 1;
+
+  Map<String, Object?> toJson() => {
+    'model': model,
+    'rateChanges': [for (final r in rateChanges) r.toJson()],
+  };
+
+  static const Set<String> _keys = {'model', 'rateChanges'};
+
+  factory WatchInfo.fromJson(Object? json) {
+    if (json is! Map<String, Object?>) {
+      throw RunFileFormatException('watch must be an object');
+    }
+    for (final k in json.keys) {
+      if (!_keys.contains(k)) {
+        throw RunFileNewerVersionException('unknown watch key "$k"');
+      }
+    }
+    final model = json['model'];
+    if (model is! String || model.isEmpty) {
+      throw RunFileFormatException('watch.model must be a non-empty string');
+    }
+    final raw = json['rateChanges'];
+    if (raw is! List || raw.isEmpty) {
+      throw RunFileFormatException(
+        'watch.rateChanges must be a non-empty list',
+      );
+    }
+    final changes = [for (final r in raw) RateChange.fromJson(r)];
+    if (changes.first.atMs != 0) {
+      throw RunFileFormatException('watch.rateChanges must start at 0');
+    }
+    for (var i = 1; i < changes.length; i++) {
+      if (changes[i].atMs <= changes[i - 1].atMs) {
+        throw RunFileFormatException('watch.rateChanges must ascend');
+      }
+    }
+    return WatchInfo(model: model, rateChanges: changes);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WatchInfo &&
+      other.model == model &&
+      CoachLog._listEq(other.rateChanges, rateChanges);
+
+  @override
+  int get hashCode => Object.hash(model, Object.hashAll(rateChanges));
+}
+
+/// One step of the watch's track sampling: from [atMs] on, a sample every
+/// [rateS] seconds (0 = no track).
+class RateChange {
+  const RateChange(this.atMs, this.rateS);
+
+  final int atMs;
+  final int rateS;
+
+  List<Object> toJson() => [atMs, rateS];
+
+  factory RateChange.fromJson(Object? json) {
+    if (json is! List ||
+        json.length != 2 ||
+        json[0] is! int ||
+        json[1] is! int ||
+        (json[0] as int) < 0 ||
+        (json[1] as int) < 0) {
+      throw RunFileFormatException(
+        'watch rate change must be [atMs >= 0, rateS >= 0]',
+      );
+    }
+    return RateChange(json[0] as int, json[1] as int);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is RateChange && other.atMs == atMs && other.rateS == rateS;
+
+  @override
+  int get hashCode => Object.hash(atMs, rateS);
 }
 
 /// One logged cue: its [kind], the whole [km] it fell on and the run time.
