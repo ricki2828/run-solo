@@ -88,9 +88,10 @@ enum PlatformHost {
     DiagnosticsChannel.register(with: messenger, log: diagnostics)
     // One location source for the probe and the recorder (P3).
     let source = LocationSource()
+    let cues = CuePlayer(log: { diagnostics.log("cues", $0) })
     let host = RecorderHost(
-      root: StorageDirs.support, trace: { diagnostics.log("recorder", $0) }, send: { RecorderEventBus.shared.send($0) })
-    let recorder = RecorderApiHost(host: host, source: source, log: diagnostics)
+      root: StorageDirs.support, cues: cues, trace: { diagnostics.log("recorder", $0) }, send: { RecorderEventBus.shared.send($0) })
+    let recorder = RecorderApiHost(host: host, source: source, cues: cues, log: diagnostics)
     recorder.probe = GpsProbe(source: source) { RecorderEventBus.shared.send($0) }
     RecorderApiSetup.setUp(binaryMessenger: messenger, api: recorder)
     StorageApiSetup.setUp(binaryMessenger: messenger, api: StorageApiStub())
