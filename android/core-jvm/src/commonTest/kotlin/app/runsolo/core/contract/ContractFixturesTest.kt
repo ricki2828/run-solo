@@ -101,7 +101,7 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `watch fixtures - only the four watch runs carry a watch block, built by the importer`() {
+    fun `watch fixtures - only the four watch runs carry a watch block built by the importer`() {
         val expected = mapOf(
             "watch_run_5s_track" to listOf(listOf(0L, 5L)),
             "watch_run_thinned" to listOf(listOf(0L, 5L), listOf(360_000L, 0L)),

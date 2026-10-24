@@ -43,7 +43,7 @@ class WatchRunImporterTest {
     }
 
     @Test
-    fun `app killed between receiving the run and writing it - nothing committed, no ack, a rerun imports once`() {
+    fun `app killed between receiving the run and writing it - nothing committed and no ack so a rerun imports once`() {
         fs.crashBefore = "rename"
         assertFailsWith<FakeFileSystem.Crash> { import(fixture()) } // no Result: the caller cannot ACK
         assertFalse(fs.exists(RunPaths.runFile(id)), "no committed file")
@@ -76,7 +76,7 @@ class WatchRunImporterTest {
     }
 
     @Test
-    fun `power loss after the rename before the directory fsync - the run is gone, so the retry imports it again`() {
+    fun `power loss after the rename before the directory fsync - the run is gone so the retry imports it again`() {
         fs.crashBefore = "fsyncDir"
         assertFailsWith<FakeFileSystem.Crash> { import(fixture()) }
         fs.powerLoss()
@@ -103,7 +103,7 @@ class WatchRunImporterTest {
     }
 
     @Test
-    fun `the same run id delivered twice, or already archived, is one file and an ack both times`() {
+    fun `the same run id delivered twice or already archived is one file and an ack both times`() {
         assertTrue(import(fixture()).ack)
         assertTrue(import(fixture()).ack)
         assertEquals(1, runFiles().size)
