@@ -9,7 +9,8 @@ name: ci
 #   plus a rotated slice of the emulator work to fit the GitHub-hosted budget: smoke on API 36
 #   and on 34 or 29 on alternate days, and 4 of the 13 replay kinds by day of year (every kind
 #   every 3-4 days). Tags, workflow_dispatch and PRs labelled `full-ci` run the whole set:
-#   smoke 29/34/36 and all 13 replays. The release AAB runs on tags and dispatch only;
+#   smoke 29/34/36 and all 13 replays. The release AAB runs on tags and dispatch only; it goes to
+#   Google Play (play-upload) on tags and on a dispatch with play_upload ticked (docs/RELEASE.md);
 #   topo-surface.yml on tags, dispatch and `full-ci` only.
 # - Kotlin/Native on macOS: only when android/core-jvm, ios or pigeons changed, on main, with
 #   `full-ci`, tags or dispatch. Never on the nightly or on Flutter-only PRs.
@@ -25,6 +26,16 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      play_upload:
+        description: 'Upload the release AAB to Google Play (docs/RELEASE.md). Off: build only.'
+        type: boolean
+        default: false
+      play_track:
+        description: 'Play track for the upload (internal, alpha = closed testing, beta, production)'
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
 
 concurrency:
   # Label noise gets its own group so an unrelated label cannot cancel a real run.
@@ -600,9 +611,17 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - name: Verify release tag and pubspec version
+      - name: Verify release tag and derive the versionCode (docs/RELEASE.md)
         # Manual dispatch is allowed from any ref; only version-shaped tags are release refs.
         # A tag must match the versionName in pubspec before a signed bundle is made.
+        # versionCode is never hand-bumped: it is this workflow's run_number plus the repo variable
+        # ANDROID_VERSION_CODE_OFFSET (default 0; raise it only if ci.yml is renamed and
+        # run_number restarts). run_number only grows, so every Play upload gets a new code.
+        # The pubspec build number is a floor (Play already holds +4); a derived code at or
+        # below it fails the job instead of being rejected by Play.
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          VERSION_CODE_OFFSET: ${{ vars.ANDROID_VERSION_CODE_OFFSET || '0' }}
         run: |
           python3 - <<'PYCODE'
           import os, re
@@ -611,14 +630,29 @@ jobs:
                             Path('pubspec.yaml').read_text(), re.MULTILINE)
           if not match:
               raise SystemExit('pubspec.yaml needs version: MAJOR.MINOR.PATCH+positiveBuildNumber')
-          version, build = match.groups()
+          version, floor = match.groups()
           ref = os.environ['GITHUB_REF']
           if ref.startswith('refs/tags/') and ref != f'refs/tags/v{version}':
               raise SystemExit(f'{ref} does not match pubspec version v{version}')
+          build = int(os.environ['RUN_NUMBER']) + int(os.environ['VERSION_CODE_OFFSET'])
+          if build <= int(floor):
+              raise SystemExit(f'derived versionCode {build} is not above the pubspec floor {floor}; raise ANDROID_VERSION_CODE_OFFSET')
+          if build > 2100000000:
+              raise SystemExit(f'versionCode {build} is above the Play maximum')
           with open(os.environ['GITHUB_ENV'], 'a') as env:
               env.write(f'RELEASE_VERSION={version}\nRELEASE_BUILD={build}\n')
-          print(f'Release version {version}+{build}; ref {ref}')
+          print(f'Release version {version}+{build} (pubspec floor +{floor}); ref {ref}')
           PYCODE
+      # Same stamping as the dogfood build: pubspec and version.dart move together, in the runner
+      # only (nothing is committed), so flutter.versionCode in build.gradle.kts picks it up.
+      - name: Stamp the release version (${{ github.run_number }} + offset)
+        run: |
+          V="$RELEASE_VERSION+$RELEASE_BUILD"
+          sed -i "s/^version: .*/version: $V/" pubspec.yaml
+          sed -i "s/const String kAppVersion = '[^']*';/const String kAppVersion = '$V';/" lib/app/version.dart
+          grep -n '^version:' pubspec.yaml
+          grep -n 'kAppVersion' lib/app/version.dart
+          echo "### Play versionCode ${RELEASE_BUILD} (versionName ${RELEASE_VERSION})" >> "$GITHUB_STEP_SUMMARY"
       - name: Decode upload keystore (repo secrets RUN_SOLO_UPLOAD_*)
         env:
           KS_B64: ${{ secrets.RUN_SOLO_UPLOAD_KEYSTORE_BASE64 }}
@@ -738,6 +772,96 @@ jobs:
             build/symbols-play
           if-no-files-found: error
           retention-days: 14
+
+
+  play-upload:
+    # Google Play upload (docs/RELEASE.md). Runs after release-aab on a v* tag, or on a manual
+    # dispatch with play_upload ticked (a plain dispatch only builds, as before). Without the
+    # PLAY_SERVICE_ACCOUNT_JSON secret it skips with a notice and stays green.
+    # Track: the dispatch input, else repo variable PLAY_TRACK, else internal. Status: repo
+    # variable PLAY_RELEASE_STATUS (completed by default; use draft while the app has never been
+    # published). Release notes: store/play/release-notes/whatsnew-<locale>.
+    name: Play upload
+    needs: [release-aab]
+    if: ${{ needs.release-aab.result == 'success' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.play_upload)) }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Check for the Play service account secret
+        id: gate
+        env:
+          PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SA" ]; then
+            echo "::notice title=Play upload skipped::PLAY_SERVICE_ACCOUNT_JSON is not set (docs/RELEASE.md). The signed AAB is on the ci-aab-${{ github.run_id }} release for a manual upload."
+            echo "### Play upload skipped: PLAY_SERVICE_ACCOUNT_JSON secret not set" >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: ${{ steps.gate.outputs.ready == 'true' }}
+        with:
+          sparse-checkout: |
+            store/play/release-notes
+            tools/ci_release.sh
+          sparse-checkout-cone-mode: false
+      - name: Download the AAB, mapping and native symbols from this run's release
+        if: ${{ steps.gate.outputs.ready == 'true' && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          for f in app-play-release.aab mapping.txt native-debug-symbols.zip release-manifest.json; do
+            tools/ci_release.sh get "ci-aab-${{ github.run_id }}" dist "$f"
+          done
+          ls -la dist
+      - uses: actions/download-artifact@v4
+        if: ${{ steps.gate.outputs.ready == 'true' && vars.USE_ARTIFACTS == '1' }}
+        with:
+          pattern: run-solo-play-*
+          path: dist
+          merge-multiple: true
+      - name: Flatten the artifact download
+        if: ${{ steps.gate.outputs.ready == 'true' && vars.USE_ARTIFACTS == '1' }}
+        run: |
+          for f in app-play-release.aab mapping.txt native-debug-symbols.zip release-manifest.json; do
+            src=$(find dist -name "$f" -type f | head -1)
+            [ -n "$src" ] || { echo "::error::$f missing from the artifacts"; exit 1; }
+            [ "$src" = "dist/$f" ] || mv "$src" "dist/$f"
+          done
+      - name: Resolve track and status
+        if: ${{ steps.gate.outputs.ready == 'true' }}
+        env:
+          INPUT_TRACK: ${{ inputs.play_track }}
+          VAR_TRACK: ${{ vars.PLAY_TRACK }}
+          VAR_STATUS: ${{ vars.PLAY_RELEASE_STATUS }}
+        run: |
+          track="${INPUT_TRACK:-${VAR_TRACK:-internal}}"
+          status="${VAR_STATUS:-completed}"
+          case "$track" in internal|alpha|beta|production) ;; *) echo "::error::unknown Play track '$track'"; exit 1 ;; esac
+          case "$status" in completed|draft|inProgress|halted) ;; *) echo "::error::unknown Play status '$status'"; exit 1 ;; esac
+          ls store/play/release-notes/whatsnew-* > /dev/null || { echo "::error::no store/play/release-notes/whatsnew-<locale> file"; exit 1; }
+          for f in store/play/release-notes/whatsnew-*; do
+            n=$(wc -m < "$f"); [ "$n" -le 500 ] || { echo "::error::$f is $n characters; Play allows 500"; exit 1; }
+          done
+          echo "TRACK=$track" >> "$GITHUB_ENV"
+          echo "STATUS=$status" >> "$GITHUB_ENV"
+          echo "### Play upload: track $track, status $status, $(python3 -c "import json;m=json.load(open('dist/release-manifest.json'));print(m['version_name']+'+'+str(m['version_code']))")" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to Google Play
+        if: ${{ steps.gate.outputs.ready == 'true' }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.runsupreme
+          releaseFiles: dist/app-play-release.aab
+          track: ${{ env.TRACK }}
+          status: ${{ env.STATUS }}
+          whatsNewDirectory: store/play/release-notes
+          mappingFile: dist/mapping.txt
+          debugSymbols: dist/native-debug-symbols.zip
 
   emulator:
     name: emulator smoke (API ${{ matrix.api-level }})
