@@ -124,7 +124,7 @@ void main() {
     final text = await exportText([clone(base, 1), clone(base, 2)]);
     final lines = text.split('\n');
     lines[1] = lines[1].replaceFirst(
-      '"schema":${RunFile.schema}',
+      '"schema":${RunFile.phoneSchema}',
       '"schema":${RunFile.schema + 1}',
     );
     final skipped = <Object>[];

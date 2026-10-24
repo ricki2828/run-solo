@@ -65,9 +65,9 @@ void main() {
       );
     });
 
-    test('schema 8 is newer, schema 0 and an unknown mode are malformed', () {
+    test('schema 9 is newer, schema 0 and an unknown mode are malformed', () {
       expect(
-        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 8),
+        () => RunFile.fromJson(lapsRun.toJson()..['schema'] = 9),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(

@@ -65,6 +65,8 @@ void main() {
           ? 5
           : f.path.contains('/schema6/')
           ? 6
+          : f.path.contains('/watch_run_')
+          ? 8
           : 7;
       expect(run.readSchema, expectedSchema, reason: f.path);
       expect(text, contains('"schema":$expectedSchema,'), reason: f.path);
@@ -525,7 +527,7 @@ void main() {
         fileOf('trail_run', schema: 6).readAsStringSync(),
       ).toJson();
       // Re-encoding rewrites it as the current schema; the frozen bytes say 6.
-      expect(json['schema'], RunFile.schema);
+      expect(json['schema'], RunFile.phoneSchema);
       expect(json['mode'], 'trail');
     });
   });

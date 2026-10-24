@@ -59,10 +59,10 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every current fixture is schema 7 - intervals and cooper carry a session preset is gone`() {
+    fun `every current fixture is schema 7 or 8 for a watch run - intervals and cooper carry a session preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
-            assertEquals(7L, m["schema"], name)
+            assertEquals(if (name.startsWith("watch_run_")) 8L else 7L, m["schema"], name)
             assertTrue(m["mode"] in setOf("intervals", "laps", "free", "cooper", "trail"), "$name mode=${m["mode"]}")
             assertTrue(!m.containsKey("preset"), "$name still has preset")
             assertTrue(m.containsKey("session"), "$name has no session key")
@@ -97,6 +97,40 @@ class ContractFixturesTest {
         // No other fixture follows a route: the key is absent, not empty.
         for ((name, json) in ContractFixtures.all()) {
             if (name != "followed_route") assertTrue(!Json.parseObject(json).containsKey("route"), name)
+        }
+    }
+
+    @Test
+    fun `watch fixtures - only the four watch runs carry a watch block built by the importer`() {
+        val expected = mapOf(
+            "watch_run_5s_track" to listOf(listOf(0L, 5L)),
+            "watch_run_thinned" to listOf(listOf(0L, 5L), listOf(360_000L, 0L)),
+            "watch_run_two_step_degrade" to listOf(listOf(0L, 5L), listOf(240_000L, 10L), listOf(420_000L, 0L)),
+            "watch_run_splits_only" to listOf(listOf(0L, 0L)),
+        )
+        for ((name, json) in ContractFixtures.all()) {
+            val m = Json.parseObject(json)
+            val rates = expected[name]
+            if (rates == null) {
+                assertTrue(!m.containsKey("watch"), "$name is phone-recorded: the key is absent, not null")
+            } else {
+                assertEquals("free", m["mode"], name)
+                assertEquals("garmin:forerunner265", m["device"], name)
+                assertEquals(rates, (m["watch"] as Map<*, *>)["rateChanges"], name)
+            }
+        }
+    }
+
+    @Test
+    fun `schema-7 fixtures are frozen - schema 7 no watch key and byte-equal to what the writer still emits for a phone run`() {
+        val files = File(ContractFixtures.SCHEMA7_DIR).listFiles { f -> f.name.endsWith(".json") }!!
+        assertTrue(files.size >= 6)
+        for (f in files) {
+            val m = Json.parseObject(f.readText())
+            assertEquals(7L, m["schema"], f.name)
+            assertTrue(!m.containsKey("watch"), f.name)
+            // A phone-recorded run is still written as schema 7: the generator reproduces the frozen bytes.
+            assertEquals(f.readText(), ContractFixtures.all().getValue(f.nameWithoutExtension) + "\n", f.name)
         }
     }
 

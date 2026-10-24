@@ -46,6 +46,12 @@ import kotlin.math.roundToLong
  * Schema 7 (followed route): `route` holds the planned route the run followed (`pts`: `[lat, lon]` or
  * `[lat, lon, ele]`) and `off`, the run-time spans `[t0, t1]` spent off it, worked out at finalise by running
  * the recorder's own [RouteFollower] over the journal's samples. Written only when the run followed a route.
+ *
+ * Schema 8 (watch run): `watch` (`{model, rateChanges: [[atMs, rateS], ...]}`) says the run was recorded by a
+ * Garmin watch and imported by [WatchRunImporter]; `rateChanges` lists every track sample-rate step from the run
+ * start (`rateS` 0 = no track), so more than one entry means the watch thinned the track. Written only for a
+ * watch run, and only a watch run is written as schema 8: a phone-recorded run stays schema 7, so an older build
+ * still reads it. Every other key is schema 7's.
  */
 data class RunFile(
     val id: String,
@@ -73,7 +79,18 @@ data class RunFile(
     val route: FollowedRoute? = null,
     /** The pre-run choice and the chase lines said under it (optional key `coach`); null = the runner was not asked. */
     val coach: CoachLog? = null,
+    /** Set when a Garmin watch recorded the run (the file is then schema 8); null = recorded by the phone (schema 7). */
+    val watch: WatchInfo? = null,
 ) {
+    /**
+     * The watch that recorded the run and its track sample-rate steps. `rateChanges` is `[atMs, rateS]` pairs, first
+     * at 0, `atMs` ascending; `rateS` is seconds between samples, 0 = no track (splits and laps only).
+     */
+    data class WatchInfo(val model: String, val rateChanges: List<Pair<Long, Int>>) {
+        /** More than one step: the watch lowered the sample rate during the run. */
+        val trackThinned: Boolean get() = rateChanges.size > 1
+    }
+
     /**
      * What the runner chose at Start ([choice], null on a run with no Start choice, e.g. intervals), every chase line the
      * recorder said ([cues]) and every mid-run two-button prompt ([prompts]), in journal order. Written as
@@ -122,7 +139,7 @@ data class RunFile(
     val elapsedMs: Long get() = endEpochMs - startEpochMs
 
     fun toJson(): Map<String, Any?> = linkedMapOf(
-        "schema" to SCHEMA,
+        "schema" to if (watch != null) WATCH_SCHEMA else SCHEMA,
         "id" to id,
         "device" to device,
         "app" to app,
@@ -172,6 +189,9 @@ data class RunFile(
                 ),
             )
         }
+        watch?.let { w ->
+            put("watch", linkedMapOf("model" to w.model, "rateChanges" to w.rateChanges.map { listOf(it.first, it.second) }))
+        }
     }
 
     fun toGzipBytes(): ByteArray {
@@ -180,6 +200,9 @@ data class RunFile(
 
     companion object {
         const val SCHEMA = 7
+
+        /** Written (and only written) when [watch] is set: a build older than this cannot read the file. */
+        const val WATCH_SCHEMA = 8
 
         private fun round6(v: Double): Double = (v * 1e6).roundToLong() / 1e6
 

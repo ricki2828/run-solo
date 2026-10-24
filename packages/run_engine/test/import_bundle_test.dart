@@ -77,12 +77,12 @@ void main() {
         'sidecar': null,
       };
       expect(
-        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 8})),
+        () => RunBundleCodec.decode(jsonEncode({...base, 'schema': 9})),
         throwsA(isA<RunFileNewerVersionException>()),
       );
       expect(
         () => RunBundleCodec.decode(
-          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 8}),
+          jsonEncode({...base, 'run': fourByFour.toJson()..['schema'] = 9}),
         ),
         throwsA(isA<RunFileNewerVersionException>()),
       );
