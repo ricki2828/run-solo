@@ -45,7 +45,7 @@ say: watch model, phone model, Android version, and anything odd (app closed its
 - This does not touch your Run Supreme data.
 
 ---
-## CI setup (for Ricki; delete before sending to a tester)
+## CI setup, now optional (for Ricki; delete before sending to a tester)
 Workflow: `.github/workflows/garmin.yml`. Without secrets it runs static checks only and says so.
 To get compiled `.prg` files add repo secrets (names only, never commit values):
 - `GARMIN_DEVICES_URL`: the Devices bundle. One-time, on a laptop: install the Connect IQ SDK
@@ -61,3 +61,9 @@ To get compiled `.prg` files add repo secrets (names only, never commit values):
   key (back it up off the repo).
 Then: `gh workflow run garmin.yml --ref <branch>`; builds publish to the `garmin-spike-latest`
 release (manual/main runs) or a 5-day PR artifact.
+
+## Building on the host (current path)
+CI is static checks only on purpose: the Garmin licence bars hosting the SDK/device files and the
+repo is public. On the server: `garmin/tools/fetch-devices.sh` (Ricki, once: accepts the licence,
+logs in to Garmin, downloads the devices) then `garmin/tools/build-local.sh` (builds the `.prg`
+files into `~/.cache/run-supreme-garmin/out`, key in `~/.secrets/run-supreme/garmin`).
