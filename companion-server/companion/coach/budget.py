@@ -46,6 +46,13 @@ def month_spend(c, now: datetime) -> float:
     return card_spend(c, now) + _ledger_sum(c, month_start(now))
 
 
+def user_month_spend(c, user_id: str, now: datetime) -> float:
+    """One runner's model spend this month: their chat calls (ledger) and their card calls."""
+    cards = float(c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE user_id=? AND ts >= ?",
+                            (user_id, month_start(now))).fetchone()[0])
+    return cards + _ledger_sum(c, month_start(now), user_id)
+
+
 def chat_headroom(c, s: Settings, now: datetime) -> float:
     cards = card_spend(c, now)
     card_hold = max(0.0, s.coach_card_reserve_usd - cards)
@@ -76,9 +83,12 @@ def daily_msgs(c, user_id: str, now: datetime, zone_id: str | None = None) -> in
 
 def reserve(c, s: Settings, user_id: str, job_id: int, est: float, now: datetime, prompt_hash: str | None = None,
             zone_id: str | None = None, *, purpose: str = "chat") -> tuple[int | None, str]:
-    """Inside the caller's write transaction. -> (ledger id, "") or (None, why): 'month_cap' or 'daily_usd'."""
+    """Inside the caller's write transaction. -> (ledger id, "") or (None, why): 'month_cap' (everyone), 'user_month' (this
+    runner's own month) or 'daily_usd'."""
     if est > chat_headroom(c, s, now):
         return None, "month_cap"
+    if s.user_monthly_cap_usd > 0 and user_month_spend(c, user_id, now) + est > s.user_monthly_cap_usd:
+        return None, "user_month"
     if _ledger_sum(c, day_start(now, zone_id), user_id) + est > s.coach_daily_usd:
         return None, "daily_usd"
     model = s.coach_screen_model if purpose == "screen" else s.coach_model

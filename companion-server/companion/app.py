@@ -110,6 +110,7 @@ class ConsentIn(BaseModel):
     # Consent v4 sub-choices; omitted = leave as stored. Only kept while consent is at or above the memory version.
     health_notes: StrictBool | None = None   # "Keep health notes too" (default off)
     training_sync: StrictBool | None = None  # training-numbers sync (default on)
+    coach_chat: StrictBool | None = None     # False = turn the coach chat off: delete chats and memory, drop to check-ins only
     coach_memory: StrictBool | None = None   # False = turn coach memory off: delete it, drop to v3, keep check-ins and the coach
 
 
@@ -284,7 +285,7 @@ def create_app(settings: Settings, http: httpx.Client | None = None, *, run_work
         """The app calls this when the runner taps Agree on the companion consent card (and may repeat it). The latest
         value wins, so a lower one withdraws check-ins. Check-ins need a value at or above the server's requirement."""
         try:
-            ok = svc.set_checkin_consent(uid, body.consent_version, health_notes=body.health_notes, training_sync=body.training_sync, coach_memory=body.coach_memory)
+            ok = svc.set_checkin_consent(uid, body.consent_version, health_notes=body.health_notes, training_sync=body.training_sync, coach_memory=body.coach_memory, coach_chat=body.coach_chat)
         except NotFound:
             raise HTTPException(404, "gone")
         return {"status": "ok" if ok else "ignored"}   # ignored: a lower report, or a v4 grant from a runner below the coach version

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
   tester_no INTEGER,                         -- T1, T2 ...: the number the operator CLI and the logs use instead of a name; never reused
   ops_paused INTEGER NOT NULL DEFAULT 0,     -- paused by the operator or the rate limiter; only `ops resume` clears it (the runner's own RESUME does not)
   ops_paused_reason TEXT,                    -- 'ops' | 'rate'
+  coach_consent_at TEXT,                           -- when the runner agreed to the coach chat in the app (consent 3); NULL = never, or withdrawn
   memory_health_optin INTEGER NOT NULL DEFAULT 0,  -- consent v4 "Keep health notes too" tick (default off); only meaningful at consent >= 4
   memory_sync_optin INTEGER NOT NULL DEFAULT 1,    -- consent v4 training-numbers sync switch (default on); only meaningful at consent >= 4
   UNIQUE (channel, chat_ref)
@@ -510,7 +511,7 @@ def init(path: str) -> None:
                 if "duplicate column" not in str(e):
                     raise
         for col, typ in (("tester_no", "INTEGER"), ("ops_paused", "INTEGER NOT NULL DEFAULT 0"), ("ops_paused_reason", "TEXT"),
-                         ("memory_health_optin", "INTEGER NOT NULL DEFAULT 0"), ("memory_sync_optin", "INTEGER NOT NULL DEFAULT 1")):
+                         ("coach_consent_at", "TEXT"), ("memory_health_optin", "INTEGER NOT NULL DEFAULT 0"), ("memory_sync_optin", "INTEGER NOT NULL DEFAULT 1")):
             if col not in cols:  # databases created before the tester rails
                 try:
                     c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
