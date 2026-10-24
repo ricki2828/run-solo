@@ -18,24 +18,24 @@ Tagline = 4-6 words (feature graphic, first screenshot). Short description max 8
 
 | | Tagline | Short description | Chars |
 |---|---|---|---|
-| 1 | Track progress. Get better. | Run scores, honest verdicts and trail runs. See what is improving. No account. | 78 |
-| 2 | Know where you are improving | Four run scores, a clear next session and honest verdicts. Private, no account. | 79 |
-| 3 | Scores that show your progress | See your run scores move, then get one clear session to improve. No account. | 76 |
-| 4 | Intervals, trails and real progress | 4x4 and interval runs, trail runs and run scores in one private app. No account. | 80 |
-| 5 | Every run type, one score | Mix 4x4s, trails and easy runs and still see your progress. Private, no account. | 80 |
+| 1 | Track progress. Get better. | Run scores, honest verdicts and trail runs. See what is improving. Free. | 72 |
+| 2 | Know where you are improving | Four run scores, a clear next session and honest verdicts. Free, no ads. | 72 |
+| 3 | Scores that show your progress | See your run scores move, then get one clear session to improve. Free. | 70 |
+| 4 | Intervals, trails and real progress | 4x4 and interval runs, trail runs and run scores in one app. Free, no ads. | 74 |
+| 5 | Every run type, one score | Mix 4x4s, trails and easy runs and still see your progress. Free, no ads. | 73 |
 
 Recommended: **1, "Track progress. Get better."** It says the two things Home does, works for someone who mixes 4x4s, trails and free runs, and is short enough to be the biggest text on the feature graphic. Option 5 is the runner-up if we want the mixed-runs point explicit.
 
 ## Positioning (founder approved 4-Oct-2026)
 
-- Website (`docs/index.html`) names competitors: "Strava is where you show your runs; Run Supreme is where you get better at them, with no account and nothing uploaded." and "Runna gives you a plan that charges you every year; Run Supreme tells you honestly how you're progressing and what to run next, free, on your phone."
+- Website (`docs/index.html`) names competitors: "Strava is where you show your runs; Run Supreme is where you get better at them, with no account to create." and "Runna gives you a plan that charges you every year; Run Supreme tells you honestly how you're progressing and what to run next, free, on your phone."
 - Play listing does NOT name them. Play's metadata policy asks for honest, relevant text with no unrelated references and no brand use without permission; it does not ban comparisons outright, but a named rival in the description risks a keyword-stuffing or brand flag and a trademark complaint. The description carries the same claim without the names. The existing "works with Strava" line stays (plain compatibility).
 
 ## Full description (max 4000)
 
 Run Supreme shows you how your running is going, whatever mix of runs you do.
 
-Run Supreme is where you get better at your runs, with no account and nothing uploaded. It tells you honestly how you are progressing and what to run next, free, on your phone.
+Run Supreme is where you get better at your runs. It tells you honestly how you are progressing and what to run next, free, on your phone. There is no account to create.
 
 Your Home screen opens with where you stand, in plain words, against research-based norms for your age and sex. Under that are four scores: AEROBIC, SPEED, MID and LONG, each in its own colour. Each is a percentile estimate from your own runs. You see what moved, and over what period. Then comes one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
 
@@ -71,6 +71,6 @@ Also
 - Send any run to Health Connect, Intervals.icu, or as a TCX or GPX file (works with Strava)
 
 Private by default
-No account. No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. Map tiles for the standard map come from Google, which sees the map area you view and your IP address. An offline map download tells our map host which region you picked and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
+No feed. No ads. Your runs, routes and heart rate stay on your phone unless you choose to send them. The optional Run coach is off until you turn it on. If you do, a short summary of each run (no GPS points, and no heart rate trace unless you turn on Heart rate on cards) and, unless you switch it off, an outline of the route with the first and last stretch cut off goes to our server in Germany, and the coach writes to you in Telegram. The coach is answered by an AI provider (OpenRouter and Anthropic, in the US, with zero data retention): it receives what you type to the coach, your run summaries and check-in answers, and it writes short spoken briefings for your next run. If you agree to memory, the coach also keeps short notes about you; you can see them by sending /memory in Telegram. You can delete all of it in the app or at runsupreme.taiaroa.xyz/delete. Map tiles for the standard map come from Google, which sees the map area you view and your IP address. An offline map download tells our map host which region you picked and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
 
 Run Supreme is a training tool, not medical advice. Scores and estimates are guides based on research, not measurements of your health.

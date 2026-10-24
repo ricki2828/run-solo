@@ -153,6 +153,11 @@ class Settings:
     coach_chat: bool = False
     # Who may use it: user ids (u_...), T-numbers (T3) or "telegram:<chat id>". Empty = nobody, even with the flag on.
     coach_allowlist: frozenset[str] = frozenset()
+    # COMPANION_COACH_OPEN=1: any enrolled runner who agreed to the coach in the app (consent 3 or more) gets chat, with no
+    # allowlist entry. It also opens the spoken session briefings (they ride on the chat gate). Off by default. Proactive keeps its
+    # own allowlist, memory its consent-4 gate, and every cap below still applies, briefings included. Operators
+    # (COMPANION_COACH_MEMORY_OVERRIDE) are exempt from the per-runner monthly cap and daily message limit, never from the shared ceiling.
+    coach_open: bool = False
     coach_consent_required: int = 3
     # Coach memory (Phase 0): facts, chat notes and training numbers are read and written only for a runner whose consent is at
     # or above this (the app's consent v4 sheet). The coach allowlist does NOT grant memory (chat requires it, so every chat
@@ -163,10 +168,10 @@ class Settings:
     coach_model: str = "anthropic/claude-sonnet-5.5"
     # All model spend in a month (cards + chat). Chat stops when it would cross the cap less what the cards still have
     # reserved (coach_card_reserve_usd minus the cards' spend this month), so chat can never starve the cards.
-    coach_monthly_cap_usd: float = 50.0
+    coach_monthly_cap_usd: float = 30.0   # ONE ceiling for everyone: cards + chat. The card writer keeps its own, lower, cap inside it.
     coach_card_reserve_usd: float = 5.0
     # Per runner, per UTC day, counted from the database (a restart does not reset them, eng-review B9).
-    coach_daily_msgs: int = 40
+    coach_daily_msgs: int = 30            # chat turns per runner per local day
     coach_daily_usd: float = 1.5
     coach_max_tokens: int = 2000   # Sonnet 5.5 thinking is mandatory and counts here
     coach_max_tool_turns: int = 6
@@ -259,9 +264,10 @@ class Settings:
             coach_memory_override=_csv(e.get("COMPANION_COACH_MEMORY_OVERRIDE")),
             memory_consent_required=_posint(e.get("COMPANION_MEMORY_CONSENT_REQUIRED"), 4),
             coach_model=(e.get("COMPANION_COACH_MODEL") or "anthropic/claude-sonnet-5.5").strip(),
-            coach_monthly_cap_usd=_posfloat(e.get("COMPANION_COACH_MONTHLY_CAP_USD"), 50.0),
+            coach_monthly_cap_usd=_posfloat(e.get("COMPANION_COACH_MONTHLY_CAP_USD"), 30.0),
             coach_card_reserve_usd=_posfloat(e.get("COMPANION_COACH_CARD_RESERVE_USD"), 5.0),
-            coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 40),
+            coach_daily_msgs=_posint(e.get("COMPANION_COACH_DAILY_MSGS"), 30),
+            coach_open=_flag(e.get("COMPANION_COACH_OPEN")),
             coach_daily_usd=_posfloat(e.get("COMPANION_COACH_DAILY_USD"), 1.5),
             coach_repair_turns=min(_nonneg(e.get("COMPANION_COACH_REPAIR_TURNS"), 1), 2),
             coach_show_cost=_csv(e.get("COMPANION_COACH_SHOW_COST")),

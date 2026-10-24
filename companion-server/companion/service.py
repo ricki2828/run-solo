@@ -425,6 +425,11 @@ class Service(CheckinMixin, MeasureMixin):
         self.coach = CoachChat(self)   # inert unless COMPANION_COACH_CHAT, an allowlist and a compiled skill
         self.purge_health_when_off()   # one-off clean-up of notes saved before the health tick existed (idempotent)
 
+    def coach_available_for(self, u: dict) -> bool:
+        """Can this runner have a coach at all? The coach is on, and open mode is on or the runner is on the chat allowlist. The
+        app offers the coach and memory sheets only when this is true, so nobody agrees to a service that is not there."""
+        return bool(self.coach.enabled and (self.s.coach_open or self.coach.allowlisted(u)))
+
     def purge_health_when_off(self) -> int:
         """Health notes (facts that mention injury, pain or illness, and the chat summary that may hold them) go for every runner whose
         "Keep health notes too" tick is off. Run at start-up: it removes what was saved before the tick existed (Ricki's PR4 rows),
@@ -546,6 +551,8 @@ class Service(CheckinMixin, MeasureMixin):
                     c.execute("UPDATE enrolments SET state='denied' WHERE nonce=?", (nonce,))
                     c.execute("INSERT INTO enrol_refused (day, n) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET n = n + 1",
                               (now.strftime("%Y-%m-%d"),))
+                    add_alert(c, f"testfull:{now.strftime('%Y-%m-%d')}", "Run Supreme: the test is full, a runner was turned away",
+                              f"COMPANION_MAX_USERS={self.s.max_users} places are taken. Raise it to let more runners in (one alert a day).", now)
                     log.info("enrolment refused: test full")
                     return TEST_FULL
                 uid = _opaque_user_id()
@@ -1072,6 +1079,8 @@ class Service(CheckinMixin, MeasureMixin):
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"],
+                "coach_consent_at": u["coach_consent_at"], "coach_available": self.coach_available_for(dict(u)),
+                "coach_link": (f"https://t.me/{self.s.telegram_bot}" if self.s.telegram_bot and u["channel"] == "telegram" else None),
                 "memory_health_notes": bool(u["memory_health_optin"]), "memory_training_sync": bool(u["memory_sync_optin"]), "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
@@ -1146,7 +1155,8 @@ class Service(CheckinMixin, MeasureMixin):
 
     def set_checkin_consent(self, uid: str, version: int, c=None, source: str = "app",
                             health_notes: bool | None = None, training_sync: bool | None = None,
-                            coach_memory: bool | None = None) -> bool:
+                            coach_memory: bool | None = None, coach_chat: bool | None = None,
+                            now: datetime | None = None) -> bool:
         """Record the consent version the runner agreed to. Returns False when an app report was ignored.
         An app report is a routine re-statement of the version its consent screen shows (every run upload repeats it),
         so a positive report BELOW the stored version never lowers it: the operator may have seeded a higher one (v3,
@@ -1165,6 +1175,16 @@ class Service(CheckinMixin, MeasureMixin):
             if cur is None:
                 raise NotFound()
             stored = cur["checkin_consent"]
+            if coach_chat is False:
+                # "Turn off the coach" (in the app): chats, briefings and memory are deleted, the runner drops to the check-ins
+                # version. Below the coach version already: nothing to turn off, consent is never raised by this.
+                if (stored or 0) >= self.s.coach_consent_required:
+                    c.execute("UPDATE users SET checkin_consent=?, coach_consent_at=NULL, memory_health_optin=0, memory_sync_optin=1 "
+                              "WHERE id=?", (self.s.checkin_consent_required, uid))
+                    self.coach.withdraw(c, uid)
+                    c.execute("DELETE FROM coach_memory WHERE user_id=?", (uid,))
+                log.info("coach chat turned off user=%s via %s", uid, source)
+                return
             if coach_memory is False:
                 # "Turn off memory": delete the notes. Only a runner the server holds at v4 or above is dropped to the coach
                 # version; below that the request never touches consent (it must not raise a v2 runner to v3).
@@ -1186,7 +1206,10 @@ class Service(CheckinMixin, MeasureMixin):
                 log.info("consent report version=%s ignored, stored=%s user=%s via %s", version, stored, uid, source)
                 return
             c.execute("UPDATE users SET checkin_consent=? WHERE id=?", (version, uid))
+            if version >= self.s.coach_consent_required and (stored or 0) < self.s.coach_consent_required:
+                c.execute("UPDATE users SET coach_consent_at=? WHERE id=?", (iso(now or now_utc()), uid))   # agreed to the coach just now
             if version < self.s.coach_consent_required:
+                c.execute("UPDATE users SET coach_consent_at=NULL WHERE id=?", (uid,))
                 self.coach.withdraw(c, uid)   # below the coach version: chat history purged, nothing queued is answered
             if version >= self.s.memory_consent_required:
                 if stored is None or stored < self.s.memory_consent_required:   # a fresh v4 grant starts from the defaults

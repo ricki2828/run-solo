@@ -25,7 +25,7 @@ void main() {
         '/v1/me' => const CompanionReply(
           200,
           '{"profile":{"quiet_start_min":1260,"quiet_end_min":420,'
-          '"checkin_consent":3},'
+          '"checkin_consent":3,"coach_available":true},'
           '"runs_received":[{"feel":"easy"},{"feel":"right"},{"feel":"right"},'
           '{"feel":"hard"},{}],"messages_sent_30d":6,"chat_name":"Ricki",'
           '"memory":{"goal_type":"first_5k","race_month":"2026-11",'
@@ -124,6 +124,48 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('companion-agree')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
+  });
+
+  testWidgets('companion coach sheet 360x640', (tester) async {
+    final plain = FakeCompanionHttp();
+    http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+        ? const CompanionReply(
+            200,
+            '{"profile":{"checkin_consent":2,"coach_available":true},"chat_name":"Ricki"}',
+          )
+        : plain.defaultReply(r);
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    expect(find.byKey(const ValueKey('companion-coach-offer')), findsOneWidget);
+    await check(tester, 'companion_coach_sheet_360x640');
+  });
+
+  testWidgets('companion coach sheet buttons 360x640', (tester) async {
+    final plain = FakeCompanionHttp();
+    http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+        ? const CompanionReply(
+            200,
+            '{"profile":{"checkin_consent":2,"coach_available":true},"chat_name":"Ricki"}',
+          )
+        : plain.defaultReply(r);
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -200));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('companion-coach-agree')), findsOneWidget);
+    await check(tester, 'companion_coach_sheet_buttons_360x640');
   });
 
   testWidgets('companion memory sheet 360x640', (tester) async {

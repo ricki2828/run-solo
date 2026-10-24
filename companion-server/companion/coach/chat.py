@@ -47,7 +47,10 @@ FALLBACK_TEXT = "That one got away from me. Ask it again, or tap one of these."
 FALLBACK_CHIPS = ("How was my last run?", "What's next in my plan?")
 FALLBACK = validator.with_chips(FALLBACK_TEXT, FALLBACK_CHIPS)
 DAILY_CAP = "That's all the chat I've got in me today. Ask me again tomorrow; your run cards still come as normal."
-BUDGET = "The coach chat is resting for now. Your run cards still come as normal."
+BUDGET = ("The coach chat has reached its monthly limit, so it is resting until the 1st. Your run cards still come as "
+          "normal, and I'll be back then.")
+USER_MONTH = ("You've used your share of coach chat for this month, so I'm resting until the 1st. Your run cards still come "
+              "as normal.")
 MAX_CHAT_CHARS = 2000
 MAX_SEND_ATTEMPTS = 5
 STALE_GRACE_S = 30
@@ -66,7 +69,7 @@ FALLBACK_ALERT_SHARE = 0.2
 SCREEN_ALERT_SHARE = 0.05
 SCREEN_ALERT_MIN_JOBS = 10
 FALLBACK_ALERT_MIN_JOBS = 5
-CAP_OUTCOMES = ("daily_cap", "daily_usd", "month_cap")
+CAP_OUTCOMES = ("daily_cap", "daily_usd", "month_cap", "user_month")
 
 
 class _NotCoach(Exception):
@@ -181,7 +184,7 @@ class CoachChat:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.s.coach_chat and self.prompt is not None and self.s.coach_allowlist)
+        return bool(self.s.coach_chat and self.prompt is not None and (self.s.coach_allowlist or self.s.coach_open))
 
     # ------------------------------------------------------------------------------------------ gate (B1)
     def allowlisted(self, u: Any, a: frozenset[str] | None = None) -> bool:
@@ -198,7 +201,7 @@ class CoachChat:
                       (uid,)).fetchone()
         if not u:
             return "gone"
-        if not self.allowlisted(u):
+        if not (self.s.coach_open or self.allowlisted(u)):
             return "allowlist"
         if u["checkin_consent"] is None or u["checkin_consent"] < self.s.coach_consent_required:
             return "consent"
@@ -587,20 +590,41 @@ class CoachChat:
                 c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode, primary))
             over = None
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
-            if budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
+            if uid not in self.s.coach_memory_override and budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
                 over = (DAILY_CAP, "daily_cap")
             else:
                 ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars, first=True), now,
                                                 self.prompt.prompt_hash if self.prompt else None, u["zone_id"])
                 if ledger_id is None:
-                    over = (BUDGET if why == "month_cap" else DAILY_CAP, why)
+                    over = ({"month_cap": BUDGET, "user_month": USER_MONTH}.get(why, DAILY_CAP), why)
             if over:
+                self._cap_alert(c, u, over[1], now)
                 if soft_kind:   # no classifier over the caps: an ambiguous red flag fails towards the safety reply
                     self._safety_now(c, u, primary, soft_kind, f"soft:{soft_kind}:{over[1]}", now, "soft hit over cap")
                 else:
                     self._reply_now(c, uid, primary, over[0], over[1], now)
                 return True
         return Claimed(primary, uid, batch, ledger_id, chars, history, message, soft_kind, u["zone_id"] or "UTC", mode)
+
+    def _cap_alert(self, c, u: dict, why: str, now: datetime) -> None:
+        """One ops alert (Telegram, via the alerts table) the first time a cap bites: the whole-month cap once a month, a
+        runner's own cap or daily limit once per runner per period. Text carries the tester tag, never a message."""
+        who = tag(u["tester_no"])
+        month = now.strftime("%Y-%m")
+        day = iso(now)[:10]
+        if why == "month_cap":
+            key, title = f"capfire:month:{month}", "Run Supreme coach: the monthly cap is reached, chat now answers with a notice"
+            body = f"Cards + chat spend reached COMPANION_COACH_MONTHLY_CAP_USD (US${self.s.coach_monthly_cap_usd:g}). Runners are told the coach is resting until the 1st."
+        elif why == "user_month":
+            key, title = f"capfire:user:{u['id']}:{month}", f"Run Supreme coach: {who} hit the per-runner monthly cap"
+            body = f"{who} reached US${self.s.user_monthly_cap_usd:g} this month and is told the coach is resting until the 1st."
+        elif why == "daily_usd":
+            key, title = f"capfire:dailyusd:{u['id']}:{day}", f"Run Supreme coach: {who} hit the daily spend limit"
+            body = f"{who} reached US${self.s.coach_daily_usd:g} today and is told to ask again tomorrow."
+        else:
+            key, title = f"capfire:daily:{u['id']}:{day}", f"Run Supreme coach: {who} hit the daily message limit"
+            body = f"{who} sent more than {self.s.coach_daily_msgs} messages today and is told to ask again tomorrow."
+        add_alert(c, key, title, body, now)
 
     def _safety_now(self, c, u: dict, job_id: int, kind: str, outcome: str, now: datetime, where: str) -> None:
         """The fixed safety reply on this job (no model), the flag and the deduped alert, in the caller's transaction."""
