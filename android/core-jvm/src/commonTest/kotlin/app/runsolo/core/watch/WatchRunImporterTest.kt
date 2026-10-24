@@ -4,6 +4,7 @@ import app.runsolo.core.fs.FakeFileSystem
 import app.runsolo.core.gps.Geo
 import app.runsolo.core.json.Json
 import app.runsolo.core.json.list
+import app.runsolo.core.platform.decodeUtf8
 import app.runsolo.core.platform.encodeUtf8
 import app.runsolo.core.reconcile.IndexRow
 import app.runsolo.core.reconcile.Reconciler
@@ -148,8 +149,8 @@ class WatchRunImporterTest {
         assertRejected(encodeUtf8("[1,2]"), "not an object")
         val good = bytes(fixture())
         assertRejected(good.copyOf(good.size / 2), "truncated")
-        assertRejected(encodeUtf8(String(good, Charsets.UTF_8).replace("forerunner265", "forerunner965")), "wrong hash")
-        val noHash = LinkedHashMap(Json.parseObject(String(good, Charsets.UTF_8))).also { it.remove("payloadHash") }
+        assertRejected(encodeUtf8(decodeUtf8(good).replace("forerunner265", "forerunner965")), "wrong hash")
+        val noHash = LinkedHashMap(Json.parseObject(decodeUtf8(good))).also { it.remove("payloadHash") }
         assertRejected(encodeUtf8(Json.write(noHash)), "no hash")
         assertRejected(ByteArray(WatchRunPayload.MAX_BYTES + 1), "oversize")
     }
@@ -253,7 +254,7 @@ class WatchRunImporterTest {
 
     @Test
     fun `a phone-recorded run has no watch key`() {
-        val file = WatchRunImporter.toRunFile(WatchRunPayload.parse(String(bytes(fixture()), Charsets.UTF_8))).copy(watch = null)
+        val file = WatchRunImporter.toRunFile(WatchRunPayload.parse(decodeUtf8(bytes(fixture())))).copy(watch = null)
         assertFalse(file.toJson().containsKey("watch"))
     }
 
