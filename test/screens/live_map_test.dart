@@ -337,16 +337,11 @@ void main() {
     expect(find.byKey(_map), findsNothing);
     Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
     final size = fig('free-distance').style!.fontSize!;
-    expect(size, greaterThanOrEqualTo(64));
-    expect(fig('timer').style!.fontSize, lessThan(size));
-    // 21-Oct review: average pace is demoted; the current-pace dial is the
-    // second-largest number.
-    expect(fig('run-average').style!.fontSize, lessThan(size));
-    final dial = fig('dial-pace').style!.fontSize!;
-    expect(dial, greaterThanOrEqualTo(56));
-    expect(dial, lessThan(size));
-    expect(dial, greaterThan(fig('timer').style!.fontSize!));
-    expect(dial, greaterThan(fig('run-average').style!.fontSize!));
+    expect(size, greaterThanOrEqualTo(48));
+    // 24-Oct review #1: distance, time, average pace and the dial at one size.
+    expect(fig('timer').style!.fontSize, size);
+    expect(fig('run-average').style!.fontSize, size);
+    expect(fig('dial-pace').style!.fontSize, size);
 
     await tester.tap(find.byKey(_toggle));
     await settleAnimations(tester);

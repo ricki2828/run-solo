@@ -15,12 +15,13 @@ String trailGap(int ms) {
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// The gap as a signed figure, number first: "+12 s" ahead, "\u22128 s"
-/// behind, "+1:05" / "\u22120:42" from a minute. Positive [ms] is ahead.
+/// The gap in words, number first: "12 s AHEAD", "8 s BEHIND", "1:05
+/// AHEAD", "LEVEL". Never a sign: "+45 s" means slower on the boards and
+/// faster here, so the words carry it and colour backs them up (24-Oct
+/// review #3). Positive [ms] is ahead.
 String trailGapFigure(int ms) {
-  final g = trailGap(ms);
-  if ((ms.abs() / 1000).round() < 1) return g;
-  return '${ms > 0 ? '+' : '\u2212'}$g';
+  if ((ms.abs() / 1000).round() < 1) return 'LEVEL';
+  return '${trailGap(ms)} ${ms > 0 ? 'AHEAD' : 'BEHIND'}';
 }
 
 /// "12 s ahead of best", "8 s behind last", "Level with best": the spoken
@@ -31,8 +32,8 @@ String trailGapLine(int ms, String against) {
 }
 
 /// The gap to the run being raced, number first like DISTANCE and TIME: a
-/// small "VS BEST" (or "VS LAST") label, the signed gap big, and the other
-/// run's gap smaller underneath. Ahead is mint, behind is vermillion, on a
+/// small "VS BEST" (or "VS LAST") label, the gap in words big ("12 s
+/// AHEAD"), and the other run's gap smaller underneath ("8 s behind last"). Ahead is mint, behind is vermillion, on a
 /// dark plate so both read on any zone flood (the plate's ground is the
 /// app's near-black in both themes). [page2] is the one-figure form for the
 /// top of the map page.
@@ -133,7 +134,7 @@ class TrailGhostReadout extends StatelessWidget {
                 ),
                 if (showLast && !page2 && other != null)
                   _figure(
-                    'vs $otherName ${trailGapFigure(other)}',
+                    trailGapLine(other, otherName),
                     RunSoloType.runSize(36),
                     _tone(other),
                     const ValueKey('trail-ghost-last'),

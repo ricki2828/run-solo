@@ -544,62 +544,49 @@ void main() {
     expect(find.byType(RecordingScreen), findsOneWidget);
   });
 
-  // Founder 3-Oct: distance and time are one size, distance first. 21-Oct UI
-  // review reverses the average pace: it is demoted so the current-pace dial
-  // is the second-largest number.
-  group(
-    'free and trail: distance first, then the dial, then time and pace',
-    () {
-      for (final mode in [RecordMode.free, RecordMode.trail]) {
-        for (final h in [800, 640]) {
-          testWidgets('${mode.name} at 360 x $h', (tester) async {
-            final (fake, _) = await openRecording(tester, mode: mode);
-            tester.view.physicalSize = Size(1080, h * 3.0);
-            fake.advance(const Duration(seconds: 120));
-            await settle(tester);
-            Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
-            final distance = fig('free-distance');
-            final time = fig('timer');
-            final pace = fig('run-average');
-            final size = distance.style!.fontSize!;
-            expect(size, greaterThanOrEqualTo(36));
-            expect(time.style!.fontSize, lessThan(size));
-            expect(pace.style!.fontSize, lessThan(size));
-            // Same ink on all three, in Bone.
-            expect(distance.style!.color, RunSoloTokens.dark.inkPrimary);
-            expect(time.style!.color, distance.style!.color);
-            expect(pace.style!.color, distance.style!.color);
-            // Distance first (above), then time, then pace (beside it).
-            Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
-            expect(at('free-distance').top, lessThan(at('timer').top));
-            // Page 1 has room now: stacked, or time and pace side by side.
-            expect(at('timer').top, lessThanOrEqualTo(at('run-average').top));
-            // Bigger than before the route readouts moved to the map page
-            // (52 / 64 sp at 640 / 800 dp tall).
-            expect(size, greaterThan(h == 640 ? 52 : 64));
-            // The PACE cluster: the speedo is always there, 36 sp or more.
-            expect(find.byType(PaceDial), findsOneWidget);
-            final dial = tester.widget<Text>(
-              find.byKey(const ValueKey('dial-pace')),
-            );
-            expect(dial.style!.fontSize, greaterThanOrEqualTo(56));
-            expect(dial.style!.fontSize, lessThan(size));
-            if (h == 800) {
-              expect(dial.style!.fontSize, greaterThanOrEqualTo(72));
-            }
-            expect(dial.style!.fontSize, greaterThan(pace.style!.fontSize!));
-            expect(dial.style!.fontSize, greaterThan(time.style!.fontSize!));
-            expect(
-              at('dial-pace').top,
-              greaterThan(at('run-average').bottom),
-              reason: 'PACE cluster sits under the RUN trio',
-            );
-            expect(tester.takeException(), isNull);
-          });
-        }
+  // Founder 3-Oct, restored by the 24-Oct UI review (#1): distance, time and
+  // average pace at one size, distance first, time and pace side by side.
+  group('free and trail: distance, time and pace equal, then the dial', () {
+    for (final mode in [RecordMode.free, RecordMode.trail]) {
+      for (final h in [800, 640]) {
+        testWidgets('${mode.name} at 360 x $h', (tester) async {
+          final (fake, _) = await openRecording(tester, mode: mode);
+          tester.view.physicalSize = Size(1080, h * 3.0);
+          fake.advance(const Duration(seconds: 120));
+          await settle(tester);
+          Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
+          final distance = fig('free-distance');
+          final time = fig('timer');
+          final pace = fig('run-average');
+          final size = distance.style!.fontSize!;
+          expect(size, greaterThanOrEqualTo(48));
+          expect(time.style!.fontSize, size);
+          expect(pace.style!.fontSize, size);
+          // Same ink on all three, in Bone.
+          expect(distance.style!.color, RunSoloTokens.dark.inkPrimary);
+          expect(time.style!.color, distance.style!.color);
+          expect(pace.style!.color, distance.style!.color);
+          // Distance first (above), then time and pace side by side.
+          Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
+          expect(at('free-distance').top, lessThan(at('timer').top));
+          expect(at('timer').top, at('run-average').top);
+          expect(at('timer').left, lessThan(at('run-average').left));
+          // The PACE cluster: the speedo is always there, at the trio's size.
+          expect(find.byType(PaceDial), findsOneWidget);
+          final dial = tester.widget<Text>(
+            find.byKey(const ValueKey('dial-pace')),
+          );
+          expect(dial.style!.fontSize, size);
+          expect(
+            at('dial-pace').top,
+            greaterThan(at('run-average').bottom),
+            reason: 'PACE cluster sits under the RUN trio',
+          );
+          expect(tester.takeException(), isNull);
+        });
       }
-    },
-  );
+    }
+  });
 
   group('elevation (secondary figures)', () {
     testWidgets(

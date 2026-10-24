@@ -60,7 +60,7 @@ Future<void> openRun(
   await pumpApp(tester, services, pushRoute: Routes.recording);
   tester.view.physicalSize = Size(1080, height * 3.0);
   await pumpTimes(tester, 4);
-  // About 7.4 km at 4:30/km: a two-digit distance for the odometer.
+  // About 7.4 km at 4:30/km: one whole-km wheel on the odometer.
   fake.advance(const Duration(seconds: 2000));
   await pumpTimes(tester, 5);
   await settleAnimations(tester);
@@ -106,7 +106,7 @@ void main() {
     ) async {
       kOdometerDistance = true;
       await openRun(tester, hr: zones[z]!, mapPage: false);
-      expect(find.byKey(const ValueKey('odo-cell-0')), findsWidgets);
+      expect(find.byKey(const ValueKey('odo-cell-w0')), findsWidgets);
       await golden(tester, 'run_page1_odometer_${z}_360x800');
     });
   }
@@ -114,6 +114,8 @@ void main() {
   testWidgets('the flag drives the odometer', (tester) async {
     kOdometerDistance = true;
     await openRun(tester, hr: zones['z3']!, mapPage: false);
-    expect(find.byKey(const ValueKey('odo-cell-0')), findsWidgets);
+    expect(find.byKey(const ValueKey('odo-cell-w0')), findsWidgets);
+    // 7.41 km: one whole-km wheel, no padded leading zero (review #23).
+    expect(find.byKey(const ValueKey('odo-cell-w1')), findsNothing);
   });
 }

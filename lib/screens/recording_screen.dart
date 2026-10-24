@@ -1990,11 +1990,9 @@ class _FreeRunBlock extends StatelessWidget {
   /// Short screen (< 720 dp): each number one step down.
   final bool compact;
 
-  /// The current pace is the second-largest number on the screen (21-Oct UI
-  /// review): 56 px numerals or more in every plan. Average pace is demoted
-  /// to the small [AuxFigure] size.
-  static double _dialPaceSize(double size) =>
-      RunSoloType.runSize((size * 0.8).clamp(36.0, 72.0));
+  /// The dial's current pace at the trio's size (24-Oct review #1): the
+  /// dial, not a size step, is what sets it apart.
+  static double _dialPaceSize(double size) => size;
 
   static double _textH(TextStyle style) {
     final p = TextPainter(
@@ -2004,15 +2002,13 @@ class _FreeRunBlock extends StatelessWidget {
     return p.height;
   }
 
-  /// The RUN trio's height at [size]: stacked is three full rows, otherwise
-  /// distance, then time and pace side by side.
-  static double _trioH(double size, {required bool stacked}) {
-    final label = _textH(RunSoloType.runLabel);
-    final row = label + _textH(RunSoloType.display44.copyWith(fontSize: size));
-    // Stacked: distance and time big, the average pace a small third row;
-    // otherwise time and average pace share the second row.
-    final aux = stacked ? label + _textH(AuxFigure.style) : 0.0;
-    return 2 * row + aux + (stacked ? 2 : 1) * Space.x4;
+  /// The RUN trio's height at [size]: distance, then time and average pace
+  /// side by side, all at [size].
+  static double _trioH(double size) {
+    final row =
+        _textH(RunSoloType.runLabel) +
+        _textH(RunSoloType.display44.copyWith(fontSize: size));
+    return 2 * row + Space.x4;
   }
 
   @override
@@ -2048,23 +2044,13 @@ class _FreeRunBlock extends StatelessWidget {
                 RunSoloType.runSize(compact ? 76 : 96),
                 half,
                 big: true,
-                stacked: true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 72 : 88),
-                half,
-                stacked: true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 64 : 80),
-                112,
-                stacked: true,
               ),
               _FreePlan(
                 RunSoloType.runSize(compact ? 60 : 72),
                 half,
                 big: true,
               ),
+              _FreePlan(RunSoloType.runSize(compact ? 60 : 72), half),
               _FreePlan(RunSoloType.runSize(compact ? 56 : 64), half),
               _FreePlan(RunSoloType.runSize(compact ? 52 : 56), 112),
               _FreePlan(RunSoloType.runSize(44), 112),
@@ -2085,11 +2071,7 @@ class _FreeRunBlock extends StatelessWidget {
               }
             }
             final plan = fit ?? plans.last;
-            final size = EqualFigures.sizeFor(
-              width,
-              plan.trioCap,
-              stacked: plan.stacked,
-            );
+            final size = EqualFigures.sizeFor(width, plan.trioCap);
             final dial = plan.big
                 ? Center(
                     child: SizedBox(
@@ -2125,7 +2107,6 @@ class _FreeRunBlock extends StatelessWidget {
                   ValueKey('run-average'),
                 ],
                 size: size,
-                stacked: plan.stacked,
                 labelColor: secondary,
                 valueColor: t.inkPrimary,
                 odometer: kOdometerDistance
@@ -2201,7 +2182,7 @@ class _FreeRunBlock extends StatelessWidget {
   }
 
   double _planH(_FreePlan p, double width, double minGap) {
-    final size = EqualFigures.sizeFor(width, p.trioCap, stacked: p.stacked);
+    final size = EqualFigures.sizeFor(width, p.trioCap);
     final label = _textH(RunSoloType.runLabel);
     final double pace;
     if (p.big) {
@@ -2220,26 +2201,19 @@ class _FreeRunBlock extends StatelessWidget {
     final ghost = trail == null
         ? 0.0
         : TrailGhostReadout.heightFor(trail!, size);
-    return ghost + _trioH(size, stacked: p.stacked) + minGap + pace;
+    return ghost + _trioH(size) + minGap + pace;
   }
 }
 
-class _FreeBlockSizes {
-  /// Time sits below the dial's pace (0.8 of [size], capped at 72): distance
-  /// first, the current pace second.
-  static double time(double size) => (size * 0.8).clamp(36.0, 72.0) * 0.92;
-}
-
-/// Free / Trail numbers: distance big, time a step down and equal, the run's average
-/// pace demoted to the small [AuxFigure] size so the current-pace dial under
-/// them is the second-largest read (21-Oct UI review, finding 3). [figures]
-/// is distance, time, average pace; [size] the shared big size.
+/// Free / Trail numbers (founder 3-Oct, restored 24-Oct UI review #1):
+/// distance, time and average pace at ONE size, distance first on its own
+/// row, time and average pace side by side under it. [figures] is distance,
+/// time, average pace; [size] the shared size.
 class _FreeFigures extends StatelessWidget {
   const _FreeFigures({
     required this.figures,
     required this.valueKeys,
     required this.size,
-    required this.stacked,
     required this.labelColor,
     required this.valueColor,
     this.odometer,
@@ -2247,21 +2221,18 @@ class _FreeFigures extends StatelessWidget {
   final List<LiveFigure> figures;
   final List<Key> valueKeys;
   final double size;
-  final bool stacked;
   final Color labelColor;
   final Color valueColor;
   final Widget Function(TextStyle style)? odometer;
 
   @override
   Widget build(BuildContext context) {
-    final big = RunSoloType.display44.copyWith(
+    final style = RunSoloType.display44.copyWith(
       fontSize: size,
       fontWeight: FontWeight.w700,
       color: valueColor,
     );
-    final mid = big.copyWith(fontSize: _FreeBlockSizes.time(size));
-    final small = AuxFigure.style.copyWith(color: valueColor);
-    Widget one(int i, TextStyle style) => Column(
+    Widget one(int i) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2283,41 +2254,28 @@ class _FreeFigures extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        one(0, big),
+        one(0),
         const SizedBox(height: Space.x4),
-        if (stacked) ...[
-          one(1, mid),
-          const SizedBox(height: Space.x4),
-          one(2, small),
-        ] else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(child: one(1, mid)),
-              const SizedBox(width: Space.x16),
-              Expanded(child: one(2, small)),
-            ],
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: one(1)),
+            const SizedBox(width: Space.x16),
+            Expanded(child: one(2)),
+          ],
+        ),
       ],
     );
   }
 }
 
 class _FreePlan {
-  const _FreePlan(
-    this.trioCap,
-    this.dialWidth, {
-    this.big = false,
-    this.stacked = false,
-  });
+  const _FreePlan(this.trioCap, this.dialWidth, {this.big = false});
   final double trioCap;
   final double dialWidth;
 
   /// The stacked speedo (arc, then the pace under it) when there is room.
   final bool big;
-
-  /// Distance, time and pace each on a full-width row.
-  final bool stacked;
 }
 
 /// The two run pages: 1 the numbers, 2 the map and route readouts.
