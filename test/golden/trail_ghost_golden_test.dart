@@ -94,13 +94,13 @@ void main() {
     expect(trailGapLine(300, 'best'), 'Level with best');
   });
 
-  test('gap figure is signed and number first', () {
-    expect(trailGapFigure(12000), '+12 s');
-    expect(trailGapFigure(-8400), '−8 s');
-    expect(trailGapFigure(65000), '+1:05');
-    expect(trailGapFigure(-102000), '−1:42');
-    expect(trailGapFigure(-42000), '−42 s');
-    expect(trailGapFigure(300), '0 s');
+  test('gap figure is in words, number first', () {
+    expect(trailGapFigure(12000), '12 s AHEAD');
+    expect(trailGapFigure(-8400), '8 s BEHIND');
+    expect(trailGapFigure(65000), '1:05 AHEAD');
+    expect(trailGapFigure(-102000), '1:42 BEHIND');
+    expect(trailGapFigure(-42000), '42 s BEHIND');
+    expect(trailGapFigure(300), 'LEVEL');
   });
 
   testWidgets('no trail matched: no readout, no gap', (tester) async {
@@ -111,7 +111,7 @@ void main() {
 
   testWidgets('matched ahead of best: mint, page 1', (tester) async {
     await openRun(tester, progress: trail(best: 12000), hr: 124);
-    expect(find.text('+12 s'), findsOneWidget);
+    expect(find.text('12 s AHEAD'), findsOneWidget);
     expect(find.text('VS BEST'), findsOneWidget);
     // The gap is at least as big as TIME (the trio size; TIME steps down
     // below it since the 21-Oct review), in whatever plan the screen chose.
@@ -146,8 +146,8 @@ void main() {
       progress: trail(best: -8000, last: 5000, lastIsBest: false),
       hr: 140,
     );
-    expect(find.text('−8 s'), findsOneWidget);
-    expect(find.text('vs last +5 s'), findsOneWidget);
+    expect(find.text('8 s BEHIND'), findsOneWidget);
+    expect(find.text('5 s ahead of last'), findsOneWidget);
     await golden(tester, 'trail_ghost_behind_z3_360x800');
   });
 
@@ -163,10 +163,10 @@ void main() {
       hr: 124,
     );
     expect(find.text('VS LAST'), findsOneWidget);
-    expect(find.text('+9 s'), findsOneWidget);
-    expect(find.text('vs best −30 s'), findsOneWidget);
-    final lead = tester.getTopLeft(find.text('+9 s'));
-    final other = tester.getTopLeft(find.text('vs best −30 s'));
+    expect(find.text('9 s AHEAD'), findsOneWidget);
+    expect(find.text('30 s behind best'), findsOneWidget);
+    final lead = tester.getTopLeft(find.text('9 s AHEAD'));
+    final other = tester.getTopLeft(find.text('30 s behind best'));
     expect(lead.dy, lessThan(other.dy));
     await golden(tester, 'trail_ghost_racing_last_z2_360x800');
   });
@@ -192,8 +192,8 @@ void main() {
       hr: 124,
       mapPage: true,
     );
-    expect(find.text('+12 s'), findsOneWidget);
-    expect(find.textContaining('vs last'), findsNothing);
+    expect(find.text('12 s AHEAD'), findsOneWidget);
+    expect(find.textContaining('behind last'), findsNothing);
     final ghost = tester.getTopLeft(find.byKey(const ValueKey('trail-ghost')));
     final row = tester.getTopLeft(find.byKey(const ValueKey('elevation-row')));
     expect(ghost.dy, lessThan(row.dy));
@@ -202,7 +202,7 @@ void main() {
 
   testWidgets('short phone 360 x 640 still fits the numbers', (tester) async {
     await openRun(tester, progress: trail(best: 12000), hr: 140, height: 640);
-    expect(find.text('+12 s'), findsOneWidget);
+    expect(find.text('12 s AHEAD'), findsOneWidget);
     expect(
       tester
           .widget<Text>(find.byKey(const ValueKey('trail-ghost-best')))

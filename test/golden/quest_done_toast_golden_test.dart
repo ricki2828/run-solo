@@ -9,6 +9,7 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/state/quests/quest_store.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/widgets/inrun_moment.dart';
 import 'package:run_solo/widgets/quest_done_toast.dart';
 
 import '../helpers.dart';
@@ -74,6 +75,13 @@ void main() {
     fake.questDoneId = quest.id;
     fake.advance(const Duration(seconds: 5));
     await pumpTimes(tester, 5);
+    // 24-Oct review #8: the km moment is still up, and the toast waits for
+    // it rather than sitting under its scrim.
+    expect(find.byKey(const ValueKey('inrun-moment-scrim')), findsOneWidget);
+    expect(find.byKey(const ValueKey('quest-done-toast')), findsNothing);
+    await tester.pump(InrunMomentOverlay.shownFor);
+    await pumpTimes(tester, 3);
+    expect(find.byKey(const ValueKey('inrun-moment-scrim')), findsNothing);
     expect(find.byKey(const ValueKey('quest-done-toast')), findsOneWidget);
     expect(find.text('QUEST DONE · SADDLE ×5'), findsOneWidget);
     expect(

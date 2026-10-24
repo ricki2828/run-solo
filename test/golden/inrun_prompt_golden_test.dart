@@ -60,6 +60,35 @@ void main() {
     await shot(tester, 'inrun_prompt_behind_360x800');
   });
 
+  // 24-Oct review #7: EASE OFF fits its button at 360 x 640, the hints are
+  // 14 sp or more, and the scrim is opaque.
+  testWidgets('prompt: falling behind on a short phone', (tester) async {
+    final fake = await openRun(tester);
+    await step(tester, fake, 900);
+    await open(
+      tester,
+      fake,
+      prompt(
+        kind: 'behindTarget',
+        text: '20 seconds behind the target. Push or ease off?',
+        options: const ['Push', 'Ease off'],
+      ),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final hint in tester.widgetList<Text>(
+      find.byKey(const ValueKey('inrun-prompt-hint')),
+    )) {
+      expect(hint.style!.fontSize, greaterThanOrEqualTo(14));
+    }
+    final scrim = tester.widget<ColoredBox>(
+      find.byKey(const ValueKey('inrun-prompt-scrim')),
+    );
+    expect(scrim.color.a, 1.0);
+    expect(tester.takeException(), isNull);
+    await shot(tester, 'inrun_prompt_behind_360x640', height: 640);
+  });
+
   testWidgets('prompt: between reps', (tester) async {
     final fake = await openRun(
       tester,
