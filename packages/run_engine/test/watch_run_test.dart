@@ -82,6 +82,23 @@ void main() {
       expect(RunFile.minReadSchema, 1);
     });
 
+    test('every frozen schema-7 file (the last phone writer) reads and rewrites as 7', () {
+      final files = Directory('${dir.path}/schema7')
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.json'))
+          .toList();
+      expect(files.length, greaterThanOrEqualTo(6));
+      for (final f in files) {
+        final run = RunFileCodec.decode(f.readAsStringSync());
+        expect(run.readSchema, 7, reason: f.path);
+        expect(run.watch, isNull, reason: f.path);
+        expect(run.writeSchema, 7, reason: f.path);
+        final j = jsonDecode(RunFileCodec.encode(run)) as Map<String, Object?>;
+        expect(j['schema'], 7, reason: f.path);
+      }
+    });
+
     test('a schema-6 frozen file still reads', () {
       final run = RunFileCodec.decode(
         File('${dir.path}/schema6/free_run_no_laps.json').readAsStringSync(),

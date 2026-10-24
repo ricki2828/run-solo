@@ -28,6 +28,12 @@ import app.runsolo.core.run.RunFile
  * newline unless it is part of the bytes. The CRC travels outside the body (the transport envelope or final
  * chunk header) as an unsigned 32-bit value, and the receiver passes the reassembled bytes untouched together
  * with that value to [WatchRunImporter.import]. Check value: CRC-32("123456789") = 0xCBF43926.
+ *
+ * **Distance contract.** The last lap's `d1` equals the final sample's `distM` within [END_DISTANCE_TOLERANCE_M], so
+ * the watch always sends a closing sample at stop. While `rateS` is 0 (no track) the watch sends a distance-only
+ * sample (`lat`/`lon` null) at every whole km of `units` it crosses, within [KM_SAMPLE_TOLERANCE_M] of the mark,
+ * and at every lap boundary; the phone derives km splits from those samples and the importer rejects a payload
+ * that lacks one. A thinned stretch (`rateS` > 0) is covered by the track itself.
  */
 data class WatchRunPayload(
     val runId: String,
@@ -52,6 +58,12 @@ data class WatchRunPayload(
         const val VERSION = 1
         const val MAX_BYTES = 2_000_000
         const val MAX_RATE_S = 3600
+
+        /** The last lap's end distance and the final sample's distance may differ by this much (both are the watch's). */
+        const val END_DISTANCE_TOLERANCE_M = 5.0
+
+        /** In a stretch with `rateS` 0 a sample must lie this close to every whole km (unit of `units`). */
+        const val KM_SAMPLE_TOLERANCE_M = 25.0
 
         /** CRC-32/ISO-HDLC of [bytes] as an unsigned 32-bit value (see the class comment for the contract). */
         fun crc32(bytes: ByteArray): Long {
@@ -142,11 +154,37 @@ data class WatchRunPayload(
                 rateChanges.add(at to rate.toInt())
             }
 
+            // The laps and the samples are both the watch's figures and must tell one story.
+            val lastLap = laps.lastOrNull()
+            val lastSample = samples.lastOrNull()
+            if (lastLap != null && lastSample != null && kotlin.math.abs(lastLap.d1 - lastSample.distM) > END_DISTANCE_TOLERANCE_M) {
+                throw Invalid("last lap ends at ${lastLap.d1} m but the final sample is at ${lastSample.distM} m")
+            }
+            // No-track stretches: a whole-km split cannot be read off a track that is not there, so the watch
+            // must send a distance-only sample at each whole km it crossed (the rest is interpolated otherwise).
+            val unitM = if (units == Units.mi) 1609.344 else 1000.0
+            val finalM = lastSample?.distM ?: 0.0
+            var km = 1
+            var idx = 0
+            while (km * unitM <= finalM) {
+                val target = km * unitM
+                while (idx < samples.size && samples[idx].distM < target) idx++
+                val after = samples[idx]
+                val before = samples.getOrNull(idx - 1)
+                val untracked = rateAt(rateChanges, after.t) == 0 || (before != null && rateAt(rateChanges, before.t) == 0)
+                if (untracked && samples.none { kotlin.math.abs(it.distM - target) <= KM_SAMPLE_TOLERANCE_M }) {
+                    throw Invalid("no distance sample within ${KM_SAMPLE_TOLERANCE_M.toInt()} m of whole km $km in a stretch with no track")
+                }
+                km++
+            }
+
             return WatchRunPayload(
                 runId, model, str(m, "appVersion"), start, end, str(m, "tz"), units,
                 laps, pauses, gaps, samples, rateChanges, coach(m["coach"]),
             )
         }
+
+        private fun rateAt(changes: List<Pair<Long, Int>>, t: Long): Int = changes.lastOrNull { it.first <= t }?.second ?: 0
 
         private fun coach(raw: Any?): RunFile.CoachLog? {
             if (raw == null) return null

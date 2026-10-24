@@ -42,7 +42,7 @@ import kotlin.math.pow
  * generator and the checked-in files drift, and CI compares the two copies. The top level is
  * schema 7 (`route`, the followed route; otherwise schema 6's), except the four `watch_run_*` fixtures, which go through
  * `WatchRunImporter` and are schema 8 (`watch`): only a watch run is written as 8. `contract/schema1/`,
- * `contract/schema2/`, `contract/schema3/`, `contract/schema4/`, `contract/schema5/` and `contract/schema6/` are frozen output of the older writers: never
+ * `contract/schema2/`, `contract/schema3/`, `contract/schema4/`, `contract/schema5/` and `contract/schema6/` and `contract/schema7/` (the last writer before the watch block; phone runs still write it) are frozen output of the older writers: never
  * regenerated, schema6 pins that files written before the followed route still read, schema5 pins that files written before the trail mode still read, schema4 pins that files written before elevation still read, schema3 before auto-pause, schema1/2 pin the v1 `free` → `laps` and the v2 `fourByFour` +
  * `preset` → `intervals` + norwegian-4x4 mappings on the Dart side.
  *
@@ -53,6 +53,7 @@ object ContractFixtures {
     const val SCHEMA1_DIR = "src/test/fixtures/contract/schema1"
     const val SCHEMA2_DIR = "src/test/fixtures/contract/schema2"
     const val SCHEMA6_DIR = "src/test/fixtures/contract/schema6"
+    const val SCHEMA7_DIR = "src/test/fixtures/contract/schema7"
     private const val T0 = 1_000_000L
     private const val W0 = 1_758_672_000_000L // 2025-09-24T00:00:00Z
     private const val LAT0 = -33.8688

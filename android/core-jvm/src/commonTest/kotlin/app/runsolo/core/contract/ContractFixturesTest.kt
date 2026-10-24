@@ -122,6 +122,19 @@ class ContractFixturesTest {
     }
 
     @Test
+    fun `schema-7 fixtures are frozen - schema 7 no watch key and byte-equal to what the writer still emits for a phone run`() {
+        val files = File(ContractFixtures.SCHEMA7_DIR).listFiles { f -> f.name.endsWith(".json") }!!
+        assertTrue(files.size >= 6)
+        for (f in files) {
+            val m = Json.parseObject(f.readText())
+            assertEquals(7L, m["schema"], f.name)
+            assertTrue(!m.containsKey("watch"), f.name)
+            // A phone-recorded run is still written as schema 7: the generator reproduces the frozen bytes.
+            assertEquals(f.readText(), ContractFixtures.all().getValue(f.nameWithoutExtension) + "\n", f.name)
+        }
+    }
+
+    @Test
     fun `schema-6 fixtures are frozen - schema 6 no route key`() {
         val files = File(ContractFixtures.SCHEMA6_DIR).listFiles { f -> f.name.endsWith(".json") }!!
         assertTrue(files.size >= 13)

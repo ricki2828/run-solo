@@ -174,6 +174,7 @@ class WatchRunImporterTest {
         val before = fs.snapshotPaths()
         val r = WatchRunImporter(fs).import(payload, crc)
         assertIs<WatchRunImporter.Result.Rejected>(r, why)
+        assertTrue(r.reason.isNotBlank(), "$why: the transport needs a reason to send back")
         assertFalse(r.ack, why)
         assertEquals(before, fs.snapshotPaths(), "$why: the file system is unchanged")
         assertTrue(fs.ops.none { it == "writeBytes" || it == "rename" }, why)
@@ -222,6 +223,33 @@ class WatchRunImporterTest {
         )
         assertRejected(mutated { it["coach"] = linkedMapOf("surprise" to 1) }, "unknown coach key")
         assertRejected(mutated { it["samples"] = listOf(listOf(0L, 1.0, null, null, null, null, 0, null)) }, "lat without lon")
+    }
+
+    @Test
+    fun `the last lap must end where the final sample does`() {
+        assertRejected(
+            mutated {
+                @Suppress("UNCHECKED_CAST")
+                val laps = (it["laps"] as List<Map<String, Any?>>).toMutableList()
+                laps[laps.lastIndex] = LinkedHashMap(laps.last()).also { l -> l["d1"] = (l["d1"] as Number).toDouble() + 50.0 }
+                it["laps"] = laps
+            },
+            "last lap 50 m past the final sample",
+        )
+    }
+
+    @Test
+    fun `with no track a distance sample is required at every whole km`() {
+        assertIs<WatchRunImporter.Result.Imported>(import(WatchPayloadFixtures.splitsOnly()))
+        val missing = WatchPayloadFixtures.splitsOnly().also {
+            @Suppress("UNCHECKED_CAST")
+            it["samples"] = (it["samples"] as List<List<Any?>>).filter { row -> row[0] != 667_000L } // the 2 km mark
+        }
+        val before = fs.snapshotPaths()
+        val r = import(missing, FakeFileSystem())
+        assertIs<WatchRunImporter.Result.Rejected>(r)
+        assertTrue("whole km 2" in r.reason, r.reason)
+        assertEquals(before, fs.snapshotPaths())
     }
 
     // ---- the watch is the source of truth ----

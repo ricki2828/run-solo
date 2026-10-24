@@ -118,14 +118,15 @@ object WatchPayloadFixtures {
         )
     }
 
-    /** No track at all: a sample at the start, at the split and at the close, laps and distance from the watch. */
+    /** No track at all, 20 min at 3 m/s: a distance-only sample at the start, every whole km and the close; laps are the km splits. */
     fun splitsOnly(): LinkedHashMap<String, Any?> {
-        val end = 600_000L
-        val split = 333_000L
+        val end = 1_200_000L
+        val kms = listOf(333_000L, 667_000L, 1_000_000L) // 999 m, 2001 m, 3000 m by the watch's clock
+        val bounds = listOf(0L) + kms + end
         return body(
             "gw-splitsonly", end,
-            laps = listOf(lap(0, 0, split, "auto"), lap(1, split, end, "manual")),
-            samples = listOf(distOnly(0, null), distOnly(split, 148), distOnly(end, 151)),
+            laps = bounds.zipWithNext().mapIndexed { i, (t0, t1) -> lap(i, t0, t1, if (t1 == end) "manual" else "auto") },
+            samples = bounds.mapIndexed { i, t -> distOnly(t, if (i == 0) null else 145 + i) },
             rateChanges = listOf(listOf(0L, 0L)),
         )
     }

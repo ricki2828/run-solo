@@ -34,7 +34,15 @@ class WatchRunImporter(private val fs: FileSystem) {
         /** A run file with this id already exists in `runs/` or `runs-archive/`; nothing was rewritten. */
         data class AlreadyHave(val runId: String) : Result() { override val ack get() = true }
 
-        /** The payload is invalid. Nothing was written. Never ACK; resending the same bytes cannot help. */
+        /**
+         * The payload is invalid (bad CRC, malformed, or failing a validation rule). Nothing was written. Never
+         * ACK; resending the same bytes cannot help, so the transport (G4) must answer the watch explicitly:
+         * `REJECTED(runId, reason)` instead of silence. On REJECTED the watch drops that payload from
+         * `Application.Storage` (the FIT is already in Garmin Connect), stops resending it, and shows
+         * "1 run could not sync". [reason] is a short human-readable string, safe to log and to show on the
+         * phone. The reply set is therefore: `ACK(runId)` for [Imported] and [AlreadyHave], `REJECTED(runId,
+         * reason)` for [Rejected], and no reply for [Failed] (the watch keeps the run and resends later).
+         */
         data class Rejected(val reason: String) : Result() { override val ack get() = false }
 
         /** A storage error (disk full, I/O). The run may be retried later. Never ACK. */
