@@ -59,7 +59,7 @@ class ContractFixturesTest {
     }
 
     @Test
-    fun `every current fixture is schema 7 (8 for a watch run) - intervals and cooper carry a session preset is gone`() {
+    fun `every current fixture is schema 7 or 8 for a watch run - intervals and cooper carry a session preset is gone`() {
         for ((name, json) in ContractFixtures.all()) {
             val m = Json.parseObject(json)
             assertEquals(if (name.startsWith("watch_run_")) 8L else 7L, m["schema"], name)

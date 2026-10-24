@@ -264,11 +264,11 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
       - uses: gradle/actions/setup-gradle@v4
-      - name: commonTest names must be Kotlin/Native-safe (no comma, dot, colon, semicolon, slash, brackets, angle brackets)
+      - name: commonTest names must be Kotlin/Native-safe (no comma, dot, colon, semicolon, slash, brackets, parentheses, angle brackets)
         run: |
           # Kotlin/Native rejects these in test function names. The macOS job only runs on tags, dispatch and
           # full-ci, so catch it here on every PR.
-          if grep -rnE 'fun `[^`]*[],.:;/\\[<>?*][^`]*`' android/core-jvm/src/commonTest; then
+          if grep -rnE 'fun `[^`]*[],.:;/\\[<>?*()][^`]*`' android/core-jvm/src/commonTest; then
             echo "::error::commonTest function name has a character Kotlin/Native rejects (lines above)"; exit 1
           fi
       - name: Test
