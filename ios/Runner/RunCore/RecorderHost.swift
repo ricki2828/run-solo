@@ -35,6 +35,11 @@ struct ReplayScript {
 /// The journal lives under `root/journals/<id>/` and run files under `root/runs/` (root =
 /// Application Support, the directory Dart's path_provider also returns).
 ///
+/// Cues (P4): every core `cue` event carries its `CueWords` line and a Free / Trail run adds `km`
+/// split lines; both go to [cues] (Android: `RecordingSession.publishCue` / `checkInTick` ->
+/// `CuePlayer`). "Paused", "Resumed" and "GPS weak" are said on live runs only, never in a
+/// replay, as on Android.
+///
 /// Kill handling (plan §2 "Kill handling"): the journal is appended and fsync'd by the core as
 /// on Android; after a kill the next app open lists it in `orphans()` and Dart's recover dialog
 /// finalises or discards it. There is no background relaunch.
@@ -55,15 +60,21 @@ final class RecorderHost {
   private var fixCount = 0
   private var fixWindowStart: Int64 = 0
   private var autoPaused = false
+  private let cues: CueOutput?
+  /// Started by [start] (not a replay): the spoken status lines are on.
+  private var live = false
+  private var gpsWeakStep: Int64?
 
   init(
     root: URL,
     clock: RecorderClock = .system,
+    cues: CueOutput? = nil,
     trace: @escaping (String) -> Void = { _ in },
     send: @escaping (RecorderEvent) -> Void = { _ in }
   ) {
     self.root = root
     self.clock = clock
+    self.cues = cues
     self.trace = trace
     self.send = send
     try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -83,6 +94,7 @@ final class RecorderHost {
         runId: runId, mode: Self.name(mode), specJson: try spec.map(Self.specJson), units: units == .mi ? "mi" : "km",
         device: Self.device, app: Self.appVersion, tz: tz, t: clock.monoMs(), w: clock.wallMs())
       begin(mode: mode, runId: runId)
+      live = true
     }
   }
 
@@ -100,6 +112,8 @@ final class RecorderHost {
     self.mode = mode
     laps = []
     autoPaused = false
+    live = false
+    gpsWeakStep = nil
     fixCount = 0
     fixWindowStart = 0
     trace("recorder start run=\(runId) mode=\(Self.name(mode))")
@@ -144,6 +158,9 @@ final class RecorderHost {
     }
   }
 
+  /// Settings > Voice > "Km splits": kept across runs (the core holds it).
+  func setKmSplits(_ enabled: Bool) { queue.sync { kotlin.kmSplits = enabled } }
+
   /// One 1 Hz step at [t] / [w]. Returns `autoStopped` (the session asked to end itself).
   @discardableResult
   func tick(t: Int64? = nil, w: Int64? = nil) -> Bool {
@@ -154,6 +171,7 @@ final class RecorderHost {
     let out = Self.object(kotlin.tick(t: t, w: w))
     let status = Self.object(kotlin.statusJson(t: t))
     for event in out["events"] as? [[String: Any]] ?? [] { dispatch(event, status: status) }
+    gpsWeak(status)
     sendTick(status)
     if fixWindowStart == 0 { fixWindowStart = t }
     if t - fixWindowStart >= 60_000 {
@@ -175,16 +193,35 @@ final class RecorderHost {
       laps.append(lap)
       send(LapEvent(index: lap.index, tMs: lap.tMs, activeMs: lap.activeMs, distanceM: lap.distanceM, source: source))
     case "cue":
-      if let kind = Self.cueKinds[event["kind"] as? String ?? ""] { send(CueEvent(kind: kind, value: event["value"] as? Double)) }
+      let name = event["kind"] as? String ?? ""
+      cues?.cue(kind: name, text: event["text"] as? String)
+      if let kind = Self.cueKinds[name] { send(CueEvent(kind: kind, value: event["value"] as? Double)) }
+    case "km":
+      if let text = event["text"] as? String { cues?.km(text) }
     case "phase":
       send(PhaseEvent(
         phase: Self.phases[event["phase"] as? String ?? ""] ?? .none, repIndex: Self.int(event["repIndex"]),
         phaseDurationMs: Self.int(event["phaseDurationMs"])))
-    case "autoPause": autoPaused = true; trace("auto-pause t=\(t)")
-    case "autoResume": autoPaused = false; trace("auto-resume t=\(t)")
+    case "autoPause":
+      autoPaused = true
+      trace("auto-pause t=\(t)")
+      if live { cues?.announce("Paused") }
+    case "autoResume":
+      autoPaused = false
+      trace("auto-resume t=\(t)")
+      if live { cues?.announce("Resumed") }
     case "autoStop": trace("auto-stop t=\(t)")
     default: break
     }
+  }
+
+  /// A distance rep does not end on its own without GPS (Android W3): said once per rep.
+  private func gpsWeak(_ s: [String: Any]) {
+    guard live, s["gpsOk"] as? Bool == false, s["stepRemainingM"] is Double,
+          let step = s["stepIndex"].flatMap({ $0 is NSNull ? nil : Self.int($0) }), gpsWeakStep != step else { return }
+    gpsWeakStep = step
+    trace("gps weak in step \(step)")
+    cues?.announce("GPS weak")
   }
 
   private func sendTick(_ s: [String: Any]) {
@@ -214,6 +251,12 @@ final class RecorderHost {
     guard kotlin.active else { return nil }
     let id = kotlin.runId
     let path = try kotlin.stop(t: t, w: w)
+    live = false
+    // The stop cue ("Run saved") comes out of the core's stop: said, not sent (as Android's stop()).
+    let stopped = (try? JSONSerialization.jsonObject(with: Data(kotlin.stopEventsJson.utf8))) as? [[String: Any]] ?? []
+    for event in stopped where event["type"] as? String == "cue" {
+      cues?.cue(kind: event["kind"] as? String ?? "", text: event["text"] as? String)
+    }
     trace("recorder stop run=\(id ?? "-") file=\(path ?? "none")")
     send(StateEvent(state: .idle, runId: id, phase: .none))
     return path.map { root.appendingPathComponent($0).path }
