@@ -126,6 +126,48 @@ void main() {
     expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
   });
 
+  testWidgets('companion coach sheet 360x640', (tester) async {
+    final plain = FakeCompanionHttp();
+    http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+        ? const CompanionReply(
+            200,
+            '{"profile":{"checkin_consent":2},"chat_name":"Ricki"}',
+          )
+        : plain.defaultReply(r);
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    expect(find.byKey(const ValueKey('companion-coach-offer')), findsOneWidget);
+    await check(tester, 'companion_coach_sheet_360x640');
+  });
+
+  testWidgets('companion coach sheet buttons 360x640', (tester) async {
+    final plain = FakeCompanionHttp();
+    http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+        ? const CompanionReply(
+            200,
+            '{"profile":{"checkin_consent":2},"chat_name":"Ricki"}',
+          )
+        : plain.defaultReply(r);
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -200));
+    await pumpTimes(tester, 4);
+    expect(find.byKey(const ValueKey('companion-coach-agree')), findsOneWidget);
+    await check(tester, 'companion_coach_sheet_buttons_360x640');
+  });
+
   testWidgets('companion memory sheet 360x640', (tester) async {
     await tester.runAsync(() => enrolNow(ctl));
     await pumpApp(

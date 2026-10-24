@@ -427,6 +427,7 @@ class CompanionClient {
     bool? healthNotes,
     bool? trainingSync,
     bool? coachMemory,
+    bool? coachChat,
   }) => http.send(
     CompanionRequest(
       method: 'PUT',
@@ -438,6 +439,7 @@ class CompanionClient {
           'health_notes': ?healthNotes,
           'training_sync': ?trainingSync,
           'coach_memory': ?coachMemory,
+          'coach_chat': ?coachChat,
         }),
       ),
     ),
@@ -1034,6 +1036,128 @@ class CompanionController extends ChangeNotifier {
       !_memoryDismissed &&
       (_serverConsent ?? 0) >= kCompanionCoachConsent;
 
+  /// The coach chat sheet is on offer: linked, on the check-ins copy, the server
+  /// holds this runner below the coach version (3), and they have not said "Not
+  /// now". It comes before the memory sheet, which needs the server at 3.
+  bool get coachOffered =>
+      enrolled &&
+      consentCurrent &&
+      !_coachDismissed &&
+      _serverConsent != null &&
+      _serverConsent! < kCompanionCoachConsent &&
+      _consent < kCompanionCoachConsent;
+
+  /// The runner agreed to the coach chat (here, or earlier by the operator).
+  bool get coachOn =>
+      enrolled &&
+      (_consent >= kCompanionCoachConsent ||
+          (_serverConsent ?? 0) >= kCompanionCoachConsent);
+
+  /// Said no to the coach chat (Not now, or turned off): can be offered again.
+  bool get coachDeclined =>
+      enrolled && consentCurrent && !coachOn && _coachDismissed;
+
+  bool _coachDismissed = false;
+  static const String coachDismissedName = 'companion_coach_not_now';
+
+  /// "Agree" on the coach sheet: version 3. Server first: the phone changes only
+  /// once the server took it (it records when). True when it did.
+  Future<bool> acceptCoach() async {
+    final t = await token();
+    if (t == null) return false;
+    try {
+      final r = await client.putConsent(t, kCompanionCoachConsent);
+      final j = r.ok ? r.json : null;
+      if (!r.ok || (j != null && j['status'] == 'ignored')) {
+        problem = 'Could not turn the coach on. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _consent = kCompanionCoachConsent;
+    _serverConsent = kCompanionCoachConsent;
+    _consentSent = _consent;
+    _coachDismissed = false;
+    try {
+      await store.write(consentName, '$_consent');
+      await store.delete(coachDismissedName);
+    } catch (e) {
+      companionLog('could not save the coach choice (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Settings: "Turn off coach chat". The server deletes the chats and any
+  /// memory and drops the runner to check-ins; the phone follows only once the
+  /// server said yes. True when it did.
+  Future<bool> turnOffCoach() async {
+    final t = await token();
+    if (t == null) return false;
+    try {
+      final r = await client.putConsent(
+        t,
+        kCompanionBaseConsent,
+        coachChat: false,
+      );
+      if (!r.ok) {
+        problem = 'Could not turn the coach off. Try again.';
+        notifyListeners();
+        return false;
+      }
+    } on CompanionNetworkError {
+      problem = 'No network. The coach is still on. Try again.';
+      notifyListeners();
+      return false;
+    }
+    problem = null;
+    _consent = kCompanionBaseConsent;
+    _serverConsent = kCompanionBaseConsent;
+    _consentSent = _consent;
+    _healthNotes = false;
+    _trainingSync = true;
+    _memoryDismissed = false;
+    _coachDismissed = true;
+    try {
+      await store.write(consentName, '$_consent');
+      await store.delete(healthNotesName);
+      await store.delete(trainingSyncName);
+      await store.delete(memoryDismissedName);
+      await store.write(coachDismissedName, '1');
+    } catch (e) {
+      companionLog('could not save the coach choice (${e.runtimeType})');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Settings: "Review" after Not now or Turn off shows the coach sheet again.
+  Future<void> reviewCoach() async {
+    _coachDismissed = false;
+    try {
+      await store.delete(coachDismissedName);
+    } catch (e) {
+      companionLog('could not save the coach choice (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
+  /// "Not now" on the coach sheet: nothing changes, nothing is sent.
+  Future<void> dismissCoach() async {
+    _coachDismissed = true;
+    try {
+      await store.write(coachDismissedName, '1');
+    } catch (e) {
+      companionLog('could not save the coach choice (${e.runtimeType})');
+    }
+    notifyListeners();
+  }
+
   /// What the server last said it holds (from `GET /v1/me`); null until read.
   /// The sheet is never offered to a runner the server holds below the coach
   /// version: agreeing would otherwise grant more than they agreed to.
@@ -1342,6 +1466,7 @@ class CompanionController extends ChangeNotifier {
         _healthNotes = await store.read(healthNotesName) == '1';
         _trainingSync = await store.read(trainingSyncName) != '1';
         _memoryDismissed = await store.read(memoryDismissedName) == '1';
+        _coachDismissed = await store.read(coachDismissedName) == '1';
         final cached = await store.read(nextName);
         if (cached != null && cached.isNotEmpty) {
           final j = jsonDecode(cached);
@@ -2031,6 +2156,7 @@ class CompanionController extends ChangeNotifier {
       await store.delete(healthNotesName);
       await store.delete(trainingSyncName);
       await store.delete(memoryDismissedName);
+      await store.delete(coachDismissedName);
       await store.delete(weatherName);
       await store.delete(weatherForgetName);
       await store.delete(placeNamesName);
@@ -2054,6 +2180,7 @@ class CompanionController extends ChangeNotifier {
     _healthNotes = false;
     _trainingSync = true;
     _memoryDismissed = false;
+    _coachDismissed = false;
     _serverConsent = null;
     _coachNext = null;
     problem = null;

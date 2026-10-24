@@ -97,6 +97,20 @@ const List<String> kCompanionWeatherSheet = [
       'as your phone can reach it. Backups keep data for up to 14 days.',
 ];
 
+/// The coach chat sheet (consent version 3). Same sentences as the privacy page,
+/// section 2b "Coach chat"; a server test checks they match. Title and body stay
+/// under 90 words. Plain words, no em dashes.
+const String kCompanionCoachTitle = 'Chat with the coach';
+
+const String kCompanionCoachBody =
+    'The coach can answer your questions about your training in Telegram. '
+    'To reply, the coach reads your run summaries and your check-in answers, '
+    'and what you type goes to an AI provider (OpenRouter and Anthropic, in '
+    'the US) with zero data retention. Your GPS tracks and heart rate '
+    'recordings stay on your phone. Chats are kept for 30 days. You can turn '
+    'the coach off any time in Settings, Companion, and that deletes your '
+    'chats.';
+
 /// The coach memory sheet (consent version 4). Title and body together stay
 /// under 90 words; a test counts them. Plain words, no em dashes.
 const String kCompanionMemoryTitle = 'Let the coach remember you';
@@ -558,6 +572,18 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
         ),
         ListenableBuilder(
           listenable: services.companion!,
+          builder: (context, _) => !services.companion!.coachOffered
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: Space.x16),
+                  child: CompanionCoachOffer(
+                    key: const ValueKey('companion-coach-offer'),
+                    controller: services.companion!,
+                  ),
+                ),
+        ),
+        ListenableBuilder(
+          listenable: services.companion!,
           builder: (context, _) => !services.companion!.memoryOffered
               ? const SizedBox.shrink()
               : Padding(
@@ -650,6 +676,11 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
             on: services.companion!.heartRateOn,
             onChanged: _busy ? null : _setHeartRate,
           ),
+        ),
+        ListenableBuilder(
+          listenable: services.companion!,
+          builder: (context, _) =>
+              CompanionCoachSettings(controller: services.companion!),
         ),
         ListenableBuilder(
           listenable: services.companion!,
@@ -788,6 +819,163 @@ class _SwitchRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// The coach chat sheet as a card: the words, Agree (filled) and Not now at
+/// equal size, and a link to the privacy page. Agree records version 3 on the
+/// server (with the time); Not now changes nothing.
+class CompanionCoachOffer extends StatefulWidget {
+  const CompanionCoachOffer({super.key, required this.controller});
+  final CompanionController controller;
+
+  @override
+  State<CompanionCoachOffer> createState() => _CompanionCoachOfferState();
+}
+
+class _CompanionCoachOfferState extends State<CompanionCoachOffer> {
+  bool _busy = false;
+
+  Future<void> _agree() async {
+    setState(() => _busy = true);
+    await widget.controller.acceptCoach();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final c = widget.controller;
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            kCompanionCoachTitle,
+            key: const ValueKey('companion-coach-title'),
+            style: RunSoloType.body17.copyWith(
+              color: t.inkPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Space.x8),
+          Text(
+            kCompanionCoachBody,
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x16),
+          Row(
+            children: [
+              Expanded(
+                child: _ChoiceButton(
+                  key: const ValueKey('companion-coach-agree'),
+                  label: 'Agree',
+                  primary: true,
+                  onTap: _busy ? null : _agree,
+                ),
+              ),
+              const SizedBox(width: Space.x12),
+              Expanded(
+                child: _ChoiceButton(
+                  key: const ValueKey('companion-coach-notnow'),
+                  label: 'Not now',
+                  onTap: _busy ? null : c.dismissCoach,
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('companion-coach-more'),
+              onPressed: () =>
+                  AppServices.of(context).transfer
+                      .openUrl(Uri.parse(kCompanionPrivacyUrl)),
+              child: const Text('More: where it is kept and who sees it'),
+            ),
+          ),
+          if (c.problem != null)
+            Text(
+              c.problem!,
+              key: const ValueKey('companion-coach-problem'),
+              style: RunSoloType.body15.copyWith(color: t.semDanger),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Settings > Companion > Coach chat: Turn off (the server deletes the chats and
+/// any memory), or Review after a no. Hidden until the runner is linked.
+class CompanionCoachSettings extends StatefulWidget {
+  const CompanionCoachSettings({super.key, required this.controller});
+  final CompanionController controller;
+
+  @override
+  State<CompanionCoachSettings> createState() => _CompanionCoachSettingsState();
+}
+
+class _CompanionCoachSettingsState extends State<CompanionCoachSettings> {
+  bool _busy = false;
+
+  CompanionController get c => widget.controller;
+
+  Future<void> _off() async {
+    setState(() => _busy = true);
+    await c.turnOffCoach();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    if (c.coachOn) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Heading('Coach chat'),
+          Text(
+            'On. Turning it off deletes your chats and any coach memory now. '
+            'Your run cards and check-ins carry on.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          _ChoiceButton(
+            key: const ValueKey('companion-coach-off'),
+            label: 'Turn off coach chat',
+            onTap: _busy ? null : _off,
+          ),
+          if (c.problem != null)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.x8),
+              child: Text(
+                c.problem!,
+                style: RunSoloType.body15.copyWith(color: t.semDanger),
+              ),
+            ),
+        ],
+      );
+    }
+    if (c.coachDeclined) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Heading('Coach chat'),
+          Text(
+            'Off. Run cards and check-ins carry on without it.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x8),
+          _ChoiceButton(
+            key: const ValueKey('companion-coach-review'),
+            label: 'Review',
+            onTap: c.reviewCoach,
+          ),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

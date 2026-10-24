@@ -742,4 +742,183 @@ void main() {
       );
     });
   });
+
+  group('coach chat sheet (consent v3)', () {
+    Map<String, Object?> lastConsent() =>
+        http.bodyOf(http.to('PUT', '/v1/me/consent').last);
+
+    void serverHolds(int? v) {
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
+          ? CompanionReply(
+              200,
+              v == null ? '{}' : '{"profile":{"checkin_consent":$v}}',
+            )
+          : plain.defaultReply(r);
+    }
+
+    Future<void> open(WidgetTester tester, {int? holds = 2}) async {
+      serverHolds(holds);
+      await tester.runAsync(() => enrolNow(ctl));
+      await pumpApp(
+        tester,
+        fakeServices(companion: ctl, transfer: transfer),
+        home: const CompanionScreen(),
+      );
+      await pumpTimes(tester, 6);
+    }
+
+    test('the sheet is at most 90 words, no em dashes, and says what the privacy page says', () {
+      final words = '$kCompanionCoachTitle $kCompanionCoachBody'
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty)
+          .length;
+      expect(words, lessThanOrEqualTo(90));
+      expect(kCompanionCoachBody, isNot(contains('\u2014')));
+      for (final must in [
+        'To reply, the coach reads your run summaries and your check-in answers, '
+            'and what you type goes to an AI provider (OpenRouter and Anthropic, in '
+            'the US) with zero data retention.',
+        'Your GPS tracks and heart rate recordings stay on your phone.',
+        'Chats are kept for 30 days.',
+        'You can turn the coach off any time in Settings, Companion, and that deletes your chats',
+      ]) {
+        expect(kCompanionCoachBody, contains(must));
+      }
+    });
+
+    testWidgets(
+      'a fresh runner at 2 is offered the coach sheet first, not the memory sheet',
+      (tester) async {
+        await open(tester);
+        expect(ctl.coachOffered, isTrue);
+        expect(ctl.coachOn, isFalse);
+        expect(
+          find.byKey(const ValueKey('companion-coach-offer')),
+          findsOneWidget,
+        );
+        expect(ctl.memoryOffered, isFalse);
+        expect(
+          find.byKey(const ValueKey('companion-memory-offer')),
+          findsNothing,
+        );
+        expect(lastConsent(), {'consent_version': kCompanionBaseConsent});
+      },
+    );
+
+    testWidgets('Agree sends version 3 only, then the memory sheet follows', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.tap(find.byKey(const ValueKey('companion-coach-agree')));
+      await pumpTimes(tester, 4);
+      expect(lastConsent(), {'consent_version': kCompanionCoachConsent});
+      expect(ctl.coachOn, isTrue);
+      expect(ctl.coachOffered, isFalse);
+      expect(secrets.values[CompanionController.consentName], '3');
+      expect(ctl.memoryOffered, isTrue);
+      expect(find.byKey(const ValueKey('companion-coach-offer')), findsNothing);
+    });
+
+    testWidgets('an ignored or failed Agree leaves the coach off', (
+      tester,
+    ) async {
+      await open(tester);
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'PUT' && r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(200, '{"status":"ignored"}')
+          : plain.defaultReply(r);
+      expect(await tester.runAsync(ctl.acceptCoach), isFalse);
+      expect(ctl.coachOn, isFalse);
+      http.handler = (r) => r.method == 'PUT' && r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : plain.defaultReply(r);
+      expect(await tester.runAsync(ctl.acceptCoach), isFalse);
+      expect(ctl.coachOn, isFalse);
+      expect(
+        secrets.values[CompanionController.consentName],
+        '$kCompanionBaseConsent',
+      );
+    });
+
+    testWidgets('Not now sends nothing and can be reviewed later', (
+      tester,
+    ) async {
+      await open(tester);
+      final before = http.to('PUT', '/v1/me/consent').length;
+      await tester.tap(find.byKey(const ValueKey('companion-coach-notnow')));
+      await pumpTimes(tester, 4);
+      expect(http.to('PUT', '/v1/me/consent').length, before);
+      expect(ctl.coachOffered, isFalse);
+      expect(ctl.coachDeclined, isTrue);
+      await scrollTo(
+        tester,
+        find.byKey(const ValueKey('companion-coach-review')),
+      );
+      await tester.tap(find.byKey(const ValueKey('companion-coach-review')));
+      await pumpTimes(tester, 4);
+      expect(ctl.coachOffered, isTrue);
+    });
+
+    testWidgets(
+      'Turn off coach chat sends coach_chat false and the phone follows the server',
+      (tester) async {
+        await open(tester);
+        await tester.runAsync(ctl.acceptCoach);
+        await tester.runAsync(ctl.acceptMemory);
+        expect(ctl.memoryOn, isTrue);
+        expect(await tester.runAsync(ctl.turnOffCoach), isTrue);
+        expect(lastConsent(), {
+          'consent_version': kCompanionBaseConsent,
+          'coach_chat': false,
+        });
+        expect(ctl.coachOn, isFalse);
+        expect(ctl.memoryOn, isFalse);
+        expect(ctl.coachDeclined, isTrue);
+        expect(
+          secrets.values[CompanionController.consentName],
+          '$kCompanionBaseConsent',
+        );
+      },
+    );
+
+    testWidgets('a failed turn off leaves the coach on and says so', (
+      tester,
+    ) async {
+      await open(tester);
+      await tester.runAsync(ctl.acceptCoach);
+      final plain = FakeCompanionHttp();
+      http.handler = (r) => r.method == 'PUT' && r.uri.path == '/v1/me/consent'
+          ? const CompanionReply(503)
+          : plain.defaultReply(r);
+      expect(await tester.runAsync(ctl.turnOffCoach), isFalse);
+      expect(ctl.coachOn, isTrue);
+      expect(ctl.problem, contains('Try again'));
+    });
+
+    testWidgets('the Settings button turns it off', (tester) async {
+      await open(tester, holds: 3);
+      expect(ctl.coachOn, isTrue);
+      await scrollTo(tester, find.byKey(const ValueKey('companion-coach-off')));
+      await tester.tap(find.byKey(const ValueKey('companion-coach-off')));
+      await pumpTimes(tester, 4);
+      expect(lastConsent(), {
+        'consent_version': kCompanionBaseConsent,
+        'coach_chat': false,
+      });
+      expect(ctl.coachOn, isFalse);
+    });
+
+    testWidgets(
+      'a runner the server already holds at 3 is not shown the coach sheet',
+      (tester) async {
+        await open(tester, holds: 3);
+        expect(ctl.coachOffered, isFalse);
+        expect(
+          find.byKey(const ValueKey('companion-coach-offer')),
+          findsNothing,
+        );
+      },
+    );
+  });
 }
