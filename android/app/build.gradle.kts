@@ -188,6 +188,10 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // JVM unit tests (StartGuard, and the real RecordingSession under Robolectric); CI runs :app:testDebugUnitTest.
+    // Phase 0 Garmin spike (garmin/, src/dogfood): Connect IQ Mobile SDK, dogfood flavour only so
+    // Play builds carry neither the library nor its exported binding service. Licence: Garmin
+    // Connect IQ SDK agreement (personal development use), see garmin/SIDELOAD.md.
+    "dogfoodImplementation"("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
 }

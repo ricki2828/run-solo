@@ -6,3 +6,9 @@
 # google_maps_flutter / play-services-maps ship consumer R8 rules (the map renderer itself
 # lives in Play services, no bundled .so); the release AAB build in CI exercises them and
 # the 16 KB gate covers anything they add. Nothing extra is needed here.
+
+# Garmin Connect IQ Mobile SDK (dogfood flavour only, Phase 0 spike): AIDL/Parcelable classes are
+# bound by name. No-op for play builds, which do not contain the library.
+-keep class com.garmin.android.connectiq.** { *; }
+-keep class com.garmin.monkeybrains.** { *; }
+-dontwarn com.garmin.**

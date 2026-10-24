@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!-- Run Supreme Garmin Phase 0 spike. The application id is the contract with GarminSpike.APP_ID
+     (android/app/src/dogfood). tools/build.sh checks the two match and generates build/manifest.xml
+     with the product list taken from products.txt, so the products below only matter for IDEs. -->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application entry="SpikeApp" id="41321ac77d204b33b9f974642f1c733e" launcherIcon="@Drawables.LauncherIcon" minSdkVersion="3.4.0" name="@Strings.AppName" type="watch-app">
+        <iq:products>
+            <iq:product id="fr265"/>
+            <iq:product id="fr965"/>
+            <iq:product id="fenix7"/>
+            <iq:product id="venu3"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+        </iq:permissions>
+        <iq:languages/>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

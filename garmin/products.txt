@@ -1,0 +1,38 @@
+# Connect IQ product ids to build (one per line). THE one place to edit the device list.
+# build.sh builds only ids that exist in the installed Devices bundle and warns about the rest,
+# so a wrong or new id here never breaks the build. After the tester's model is known (D1), trim
+# this to that model (plus a couple of spares) for faster CI.
+# Forerunner
+fr165
+fr165m
+fr255
+fr255m
+fr255s
+fr255sm
+fr265
+fr265s
+fr570
+fr955
+fr965
+fr970
+# Fenix / Epix
+fenix7
+fenix7s
+fenix7x
+fenix7pro
+fenix7spro
+fenix7xpro
+fenix843mm
+fenix847mm
+fenix851mm
+epix2
+epix2pro42mm
+epix2pro47mm
+epix2pro51mm
+# Venu / Vivoactive
+venu2
+venu2plus
+venu2s
+venu3
+venu3s
+vivoactive5
