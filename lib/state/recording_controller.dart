@@ -476,16 +476,24 @@ class RecordingController extends ChangeNotifier {
   final ValueNotifier<PromptEvent?> prompt = ValueNotifier(null);
   int? _promptDeadlineMs;
 
+  /// The highest prompt id this run that was answered, resolved or expired
+  /// here. A status snapshot built just before native resolved can land after
+  /// the answer (replies and events are not ordered): it must not bring that
+  /// prompt's buttons back. Ids only grow within a run.
+  int _promptClosedId = 0;
+
   /// The runner tapped option [index] of the open prompt: the buttons go at
   /// once, the recorder applies the choice.
   void answerPrompt(int index) {
     final p = prompt.value;
     if (p == null) return;
-    _clearPrompt();
+    _closePrompt(p.id);
     unawaited(_gateway.answerPrompt(p.id, index));
   }
 
   void _openPrompt(PromptEvent e) {
+    // Already answered or resolved here: a stale snapshot or a late event.
+    if (e.id <= _promptClosedId) return;
     moment.value = null; // never stacked on a moment
     prompt.value = e;
     // The window starts once the question is said (leadMs) and waits through a pause (_expirePrompt stretches
@@ -543,7 +551,14 @@ class RecordingController extends ChangeNotifier {
     // The window waits while the run is paused (a runner at the lights can still answer): so does this.
     final deadline = _snap.paused ? due + (at - last) : due;
     _promptDeadlineMs = deadline;
-    if (at > deadline) _clearPrompt();
+    if (at > deadline) _closePrompt(prompt.value?.id);
+  }
+
+  /// Prompt [id] is done here (answered, resolved or expired): its buttons go
+  /// and never come back for it.
+  void _closePrompt(int? id) {
+    if (id != null && id > _promptClosedId) _promptClosedId = id;
+    if (id == null || prompt.value?.id == id) _clearPrompt();
   }
 
   void _clearPrompt() {
@@ -805,6 +820,7 @@ class RecordingController extends ChangeNotifier {
     _clearPending();
     moment.value = null; // nor a moment
     _clearPrompt(); // nor a prompt
+    _promptClosedId = 0; // prompt ids start again at 1 each run
     _baseCoachTarget = null; // nor a moved target band
     _oneRepTarget = false;
     _oneRepSeenWork = false;
@@ -945,7 +961,7 @@ class RecordingController extends ChangeNotifier {
       case PromptEvent():
         _openPrompt(e);
       case PromptResolvedEvent():
-        if (prompt.value?.id == e.id) _clearPrompt();
+        _closePrompt(e.id);
         // A hold changes nothing; a push or ease off moves the band the voice now judges by.
         if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
       case GoalEvent():
