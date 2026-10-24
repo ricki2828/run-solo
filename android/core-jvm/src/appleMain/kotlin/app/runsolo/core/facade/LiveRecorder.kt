@@ -6,12 +6,14 @@ import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.JournalReplay
 import app.runsolo.core.journal.JournalWriter
 import app.runsolo.core.json.Json
+import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
+import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
 import app.runsolo.core.replay.ReplayScenarios
@@ -28,6 +30,10 @@ import app.runsolo.core.run.RunPaths
  * Per second the host calls [onHr] / [onFix] for what arrived, any presses, then [tick]. The
  * order matches the Driver, so a scenario fed through here journals the same lines and the
  * finalised run file equals the contract fixture (RunnerTests/RecorderHostTests).
+ *
+ * Voice (P4): each `cue` event carries `text`, the same `CueWords` line Android's
+ * `RecordingSession.cueText` speaks, and a whole km on a Free or Trail run adds a `km` event with
+ * the `LiveCoach` split line (no live context: no compare, nudge or chase, as on Android without one).
  */
 class LiveRecorder(rootDir: String) {
     private val fs = AppleFileSystem(rootDir)
@@ -39,6 +45,21 @@ class LiveRecorder(rootDir: String) {
     private var lastT = 0L
     private var autoStopped = false
     private var lastWriteError: String? = null
+    private var spec: SessionSpec? = null
+    private var coach: LiveCoach? = null
+    private var coachPrevT = 0L
+    private var coachPrevD = 0.0
+
+    /** Settings > Voice > "Km splits" (default on); kept across runs, applied to the live one. */
+    var kmSplits: Boolean = true
+        set(value) {
+            field = value
+            coach?.kmSplits = value
+        }
+
+    /** The events of the last [stop] (its `stop` cue), as the JSON list [tick] would carry. */
+    var stopEventsJson: String = "[]"
+        private set
 
     var runId: String? = null
         private set
@@ -72,6 +93,10 @@ class LiveRecorder(rootDir: String) {
         jw.open()
         jw.append(JournalLine.Header(t, w, id, device, app, tz, mode, spec, units))
         core = c
+        this.spec = spec
+        coach = LiveCoach(null, mode, spec).also { it.kmSplits = kmSplits }
+        coachPrevT = t
+        coachPrevD = 0.0
         writer = jw
         ticker = SampleTicker(wall = { wall })
         moving = MovingDetector.forAutoPause(mode)
@@ -140,6 +165,12 @@ class LiveRecorder(rootDir: String) {
         val samples = tk.tick(t)
         for (s in samples) writer?.append(s)
         emit(c.tick(t, tk.distanceM, !tk.gpsLost(t)), events)
+        // As RecordingSession.checkInTick: a whole km crossed in this tick says its split.
+        coach?.onTick(coachPrevT, coachPrevD, t, tk.distanceM) { c.status(it).activeMs }?.base?.let { text ->
+            events.add(mapOf("type" to "km", "t" to t, "text" to text))
+        }
+        coachPrevT = t
+        coachPrevD = tk.distanceM
         val last = samples.lastOrNull()
         val md = moving!!
         if (last != null && last.hasFix) {
@@ -162,7 +193,10 @@ class LiveRecorder(rootDir: String) {
             }
             is RecorderCore.Output.Cue -> {
                 writer?.append(JournalLine.Cue(o.t, wall, o.kind))
-                into.add(mapOf("type" to "cue", "t" to o.t, "kind" to o.kind.name, "value" to o.value, "index" to o.index))
+                // After the core applied the outputs, as Android: phase / rep / step say what comes next.
+                val c = core
+                val text = c?.let { CueWords.text(o.kind, o.value, spec, it.phase, it.repIndex, it.stepIndex, o.index) }
+                into.add(mapOf("type" to "cue", "t" to o.t, "kind" to o.kind.name, "value" to o.value, "index" to o.index, "text" to text))
             }
             is RecorderCore.Output.PhaseChanged ->
                 into.add(mapOf("type" to "phase", "t" to o.t, "phase" to o.phase.name, "repIndex" to o.repIndex, "phaseDurationMs" to o.phaseDurationMs))
@@ -195,7 +229,7 @@ class LiveRecorder(rootDir: String) {
         val c = core ?: return null
         val id = runId!!
         wall = w
-        emit(c.stop(t), ArrayList())
+        stopEventsJson = Json.write(emit(c.stop(t), ArrayList()))
         writer?.close()
         clear()
         return finalise(id, w, null)
@@ -212,6 +246,8 @@ class LiveRecorder(rootDir: String) {
         ticker = null
         writer = null
         moving = null
+        coach = null
+        spec = null
         runId = null
         pendingEvents.clear()
     }
