@@ -154,8 +154,9 @@ class Settings:
     # Who may use it: user ids (u_...), T-numbers (T3) or "telegram:<chat id>". Empty = nobody, even with the flag on.
     coach_allowlist: frozenset[str] = frozenset()
     # COMPANION_COACH_OPEN=1: any enrolled runner who agreed to the coach in the app (consent 3 or more) gets chat, with no
-    # allowlist entry. Off by default. It changes nothing else: proactive keeps its own allowlist, memory its consent-4 gate,
-    # and every cap below still applies.
+    # allowlist entry. It also opens the spoken session briefings (they ride on the chat gate). Off by default. Proactive keeps its
+    # own allowlist, memory its consent-4 gate, and every cap below still applies, briefings included. Operators
+    # (COMPANION_COACH_MEMORY_OVERRIDE) are exempt from the per-runner monthly cap and daily message limit, never from the shared ceiling.
     coach_open: bool = False
     coach_consent_required: int = 3
     # Coach memory (Phase 0): facts, chat notes and training numbers are read and written only for a runner whose consent is at

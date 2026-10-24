@@ -25,7 +25,7 @@ void main() {
         '/v1/me' => const CompanionReply(
           200,
           '{"profile":{"quiet_start_min":1260,"quiet_end_min":420,'
-          '"checkin_consent":3},'
+          '"checkin_consent":3,"coach_available":true},'
           '"runs_received":[{"feel":"easy"},{"feel":"right"},{"feel":"right"},'
           '{"feel":"hard"},{}],"messages_sent_30d":6,"chat_name":"Ricki",'
           '"memory":{"goal_type":"first_5k","race_month":"2026-11",'
@@ -131,7 +131,7 @@ void main() {
     http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
         ? const CompanionReply(
             200,
-            '{"profile":{"checkin_consent":2},"chat_name":"Ricki"}',
+            '{"profile":{"checkin_consent":2,"coach_available":true},"chat_name":"Ricki"}',
           )
         : plain.defaultReply(r);
     await tester.runAsync(() => enrolNow(ctl));
@@ -151,7 +151,7 @@ void main() {
     http.handler = (r) => r.method == 'GET' && r.uri.path == '/v1/me'
         ? const CompanionReply(
             200,
-            '{"profile":{"checkin_consent":2},"chat_name":"Ricki"}',
+            '{"profile":{"checkin_consent":2,"coach_available":true},"chat_name":"Ricki"}',
           )
         : plain.defaultReply(r);
     await tester.runAsync(() => enrolNow(ctl));

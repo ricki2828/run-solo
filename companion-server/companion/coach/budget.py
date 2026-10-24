@@ -87,7 +87,9 @@ def reserve(c, s: Settings, user_id: str, job_id: int, est: float, now: datetime
     runner's own month) or 'daily_usd'."""
     if est > chat_headroom(c, s, now):
         return None, "month_cap"
-    if s.user_monthly_cap_usd > 0 and user_month_spend(c, user_id, now) + est > s.user_monthly_cap_usd:
+    # Operators (COMPANION_COACH_MEMORY_OVERRIDE, Ricki) are exempt from the per-runner monthly cap; the shared ceiling still covers them.
+    if s.user_monthly_cap_usd > 0 and user_id not in s.coach_memory_override \
+            and user_month_spend(c, user_id, now) + est > s.user_monthly_cap_usd:
         return None, "user_month"
     if _ledger_sum(c, day_start(now, zone_id), user_id) + est > s.coach_daily_usd:
         return None, "daily_usd"

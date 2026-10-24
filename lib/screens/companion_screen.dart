@@ -103,13 +103,13 @@ const List<String> kCompanionWeatherSheet = [
 const String kCompanionCoachTitle = 'Chat with the coach';
 
 const String kCompanionCoachBody =
-    'The coach can answer your questions about your training in Telegram. '
-    'To reply, the coach reads your run summaries and your check-in answers, '
-    'and what you type goes to an AI provider (OpenRouter and Anthropic, in '
-    'the US) with zero data retention. Your GPS tracks and heart rate '
-    'recordings stay on your phone. Chats are kept for 30 days. You can turn '
-    'the coach off any time in Settings, Companion, and that deletes your '
-    'chats.';
+    'The coach can answer your questions about your training in Telegram, and '
+    'write short spoken briefings before your runs. To reply, your run '
+    'summaries, check-in answers and what you type go to an AI provider '
+    '(OpenRouter and Anthropic, in the US) with zero data retention. Your GPS '
+    'tracks and heart rate recordings stay on your phone. Chats are kept for '
+    '30 days. You can turn the coach off any time in Settings, Companion, and '
+    'that deletes your chats and any coach memory.';
 
 /// The coach memory sheet (consent version 4). Title and body together stay
 /// under 90 words; a test counts them. Plain words, no em dashes.
@@ -931,15 +931,34 @@ class _CompanionCoachSettingsState extends State<CompanionCoachSettings> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     if (c.coachOn) {
+      final open = c.coachAvailable;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _Heading('Coach chat'),
           Text(
-            'On. Turning it off deletes your chats and any coach memory now. '
-            'Your run cards and check-ins carry on.',
+            open
+                ? 'On. Open Telegram and message the coach to start. Turning '
+                      'it off deletes your chats and any coach memory now. '
+                      'Your run cards and check-ins carry on.'
+                : 'The coach is not open to you yet. Your choice is saved, '
+                      'and nothing is sent to it until it opens. Turning it '
+                      'off deletes your chats and any coach memory. Your run '
+                      'cards and check-ins carry on.',
+            key: const ValueKey('companion-coach-state'),
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           ),
+          if (open && c.coachLink != null) ...[
+            const SizedBox(height: Space.x8),
+            _ChoiceButton(
+              key: const ValueKey('companion-coach-open-telegram'),
+              label: 'Open the coach in Telegram',
+              primary: true,
+              onTap: () =>
+                  AppServices.of(context).transfer
+                      .openUrl(Uri.parse(c.coachLink!)),
+            ),
+          ],
           const SizedBox(height: Space.x8),
           _ChoiceButton(
             key: const ValueKey('companion-coach-off'),

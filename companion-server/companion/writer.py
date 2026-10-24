@@ -206,6 +206,13 @@ class Writer:
         with db.ro(self.s.db_path) as c:
             return c.execute("SELECT COALESCE(SUM(cost_usd),0) FROM llm_calls WHERE ts >= ?", (start,)).fetchone()[0]
 
+    def shared_spend(self) -> float:
+        """Everything the model cost this month, for everyone: cards, chat, proactive, briefings, research. The one ceiling
+        (COMPANION_COACH_MONTHLY_CAP_USD) is checked against this, so the card cap is a share inside it and never added to it."""
+        from .coach import budget
+        with db.ro(self.s.db_path) as c:
+            return budget.month_spend(c, now_utc())
+
     def user_month_spend(self, user_id: str) -> float:
         start = now_utc().strftime("%Y-%m-01T00:00:00Z")
         with db.ro(self.s.db_path) as c:
@@ -221,7 +228,10 @@ class Writer:
         if u and u["ops_paused"]:
             return "ops_paused"
         ceiling = self.s.user_monthly_cap_usd
-        if ceiling > 0 and self.user_month_spend(user_id) >= ceiling:
+        with db.ro(self.s.db_path) as c:   # the runner's cards AND chat, briefings and proactive: one ceiling
+            from .coach import budget
+            runner_spend = budget.user_month_spend(c, user_id, now_utc())
+        if ceiling > 0 and runner_spend >= ceiling and user_id not in self.s.coach_memory_override:   # operators: shared ceiling only
             now = now_utc()
             t = tag(u["tester_no"] if u else None)
             with db.tx(self.s.db_path) as c:
@@ -278,7 +288,7 @@ class Writer:
             return Written(fallback.headline, fallback.body, "template", why_not)
         if not self.s.openrouter_key:
             return Written(fallback.headline, fallback.body, "template", "no_key")
-        if self.month_spend() >= self.s.monthly_cap_usd:
+        if self.month_spend() >= self.s.monthly_cap_usd or self.shared_spend() >= self.s.coach_monthly_cap_usd:
             return Written(fallback.headline, fallback.body, "template", "spend_cap")
 
         payload = {"tone": result.tone, "facts": [f.text for f in facts], "memory": memory_digest}

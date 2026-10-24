@@ -425,6 +425,11 @@ class Service(CheckinMixin, MeasureMixin):
         self.coach = CoachChat(self)   # inert unless COMPANION_COACH_CHAT, an allowlist and a compiled skill
         self.purge_health_when_off()   # one-off clean-up of notes saved before the health tick existed (idempotent)
 
+    def coach_available_for(self, u: dict) -> bool:
+        """Can this runner have a coach at all? The coach is on, and open mode is on or the runner is on the chat allowlist. The
+        app offers the coach and memory sheets only when this is true, so nobody agrees to a service that is not there."""
+        return bool(self.coach.enabled and (self.s.coach_open or self.coach.allowlisted(u)))
+
     def purge_health_when_off(self) -> int:
         """Health notes (facts that mention injury, pain or illness, and the chat summary that may hold them) go for every runner whose
         "Keep health notes too" tick is off. Run at start-up: it removes what was saved before the tick existed (Ricki's PR4 rows),
@@ -1074,7 +1079,9 @@ class Service(CheckinMixin, MeasureMixin):
             "profile": {
                 "channel": u["channel"], "chat_name": u["chat_name"], "chat_ref_hint": "…" + ref[-3:], "created_at": u["created_at"],
                 "consent_version": u["consent_version"], "consent_at": u["consent_at"], "checkin_consent": u["checkin_consent"],
-                "coach_consent_at": u["coach_consent_at"], "memory_health_notes": bool(u["memory_health_optin"]), "memory_training_sync": bool(u["memory_sync_optin"]), "paused": bool(u["paused"]),
+                "coach_consent_at": u["coach_consent_at"], "coach_available": self.coach_available_for(dict(u)),
+                "coach_link": (f"https://t.me/{self.s.telegram_bot}" if self.s.telegram_bot and u["channel"] == "telegram" else None),
+                "memory_health_notes": bool(u["memory_health_optin"]), "memory_training_sync": bool(u["memory_sync_optin"]), "paused": bool(u["paused"]),
                 "zone_id": u["zone_id"], "tz_set_at": u["tz_set_at"], "weather_in_suggestions": optin, "route_shape_on_cards": bool(u["route_optin"]), "place_names_on_cards": bool(u["place_optin"]), "heart_rate_on_cards": bool(u["hr_optin"]), "quiet_start_min": u["quiet_start"], "quiet_end_min": u["quiet_end"],
             },
             "runs_received": runs, "run_shapes": shapes, "run_notes": run_notes, "feedback": feedback, "activity": activity, "survey_answers": survey, "memory": memory, "suggestion_outcomes": outcomes,

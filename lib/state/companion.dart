@@ -730,7 +730,17 @@ class CompanionMe {
     this.checkins = const [],
     this.quests,
     this.serverConsent,
+    this.coachAvailable,
+    this.coachLink,
   });
+
+  /// `profile.coach_available`: the server has a coach for this runner (the coach
+  /// is on and open to them). Null from an older server, which means "do not
+  /// offer": nobody should agree to a coach that may not be there.
+  final bool? coachAvailable;
+
+  /// `profile.coach_link`: the https link that opens the coach's Telegram chat.
+  final String? coachLink;
 
   /// The consent version the server holds for this runner (`profile.checkin_consent`),
   /// null from an older server. The memory sheet is offered only at 3 or above.
@@ -827,6 +837,10 @@ class CompanionMe {
       serverConsent: profile['checkin_consent'] is int
           ? profile['checkin_consent'] as int
           : null,
+      coachAvailable: profile['coach_available'] is bool
+          ? profile['coach_available'] as bool
+          : null,
+      coachLink: s(profile['coach_link']),
       checkins: checkins,
       chatName:
           s(j['chat_name']) ??
@@ -1032,9 +1046,18 @@ class CompanionController extends ChangeNotifier {
   bool get memoryOffered =>
       enrolled &&
       consentCurrent &&
+      coachAvailable &&
       !memoryOn &&
       !_memoryDismissed &&
       (_serverConsent ?? 0) >= kCompanionCoachConsent;
+
+  /// The server says it has a coach for this runner. False until it says so.
+  bool get coachAvailable => _coachAvailable == true;
+  bool? _coachAvailable;
+
+  /// The Telegram link that opens the coach, when the server gave one.
+  String? get coachLink => _coachLink;
+  String? _coachLink;
 
   /// The coach chat sheet is on offer: linked, on the check-ins copy, the server
   /// holds this runner below the coach version (3), and they have not said "Not
@@ -1042,6 +1065,7 @@ class CompanionController extends ChangeNotifier {
   bool get coachOffered =>
       enrolled &&
       consentCurrent &&
+      coachAvailable &&
       !_coachDismissed &&
       _serverConsent != null &&
       _serverConsent! < kCompanionCoachConsent &&
@@ -2113,8 +2137,12 @@ class CompanionController extends ChangeNotifier {
       if (r.me == null) {
         problem = 'The companion is busy. Try again.';
         notifyListeners();
-      } else if (r.me!.serverConsent != _serverConsent) {
+      } else if (r.me!.serverConsent != _serverConsent ||
+          r.me!.coachAvailable != _coachAvailable ||
+          r.me!.coachLink != _coachLink) {
         _serverConsent = r.me!.serverConsent;
+        _coachAvailable = r.me!.coachAvailable;
+        _coachLink = r.me!.coachLink;
         notifyListeners();
       }
       return r.me;
@@ -2182,6 +2210,8 @@ class CompanionController extends ChangeNotifier {
     _memoryDismissed = false;
     _coachDismissed = false;
     _serverConsent = null;
+    _coachAvailable = null;
+    _coachLink = null;
     _coachNext = null;
     problem = null;
     notifyListeners();

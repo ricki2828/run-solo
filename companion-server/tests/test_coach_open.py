@@ -281,16 +281,107 @@ def test_a_full_test_turns_a_stranger_away_with_a_friendly_reply_and_one_alert_a
 
 
 def test_the_privacy_page_says_what_the_coach_consent_sheet_says():
-    """The app's sheet (kCompanionCoachBody in lib/screens/companion_screen.dart) and the privacy page use the same sentences."""
+    """One source: the sheet's text is `kCompanionCoachBody` in the app. Every sentence of it must be on the privacy page."""
     import os
     import re
-    html = open(os.path.join(os.path.dirname(__file__), "..", "..", "docs", "privacy", "index.html")).read()
+    root = os.path.join(os.path.dirname(__file__), "..", "..")
+    dart = open(os.path.join(root, "lib", "screens", "companion_screen.dart")).read()
+    m = re.search(r"const String kCompanionCoachBody =((?:\s*'[^']*')+);", dart)
+    assert m, "kCompanionCoachBody not found"
+    body = "".join(re.findall(r"'([^']*)'", m.group(1)))
+    html = open(os.path.join(root, "docs", "privacy", "index.html")).read()
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
-    for sentence in (
-        "To reply, the coach reads your run summaries and your check-in answers, and what you type goes to an AI provider "
-        "(OpenRouter and Anthropic, in the US) with zero data retention.",
-        "Your GPS tracks and heart rate recordings stay on your phone.",
-        "Chats are kept for 30 days",
-        "You can turn the coach off any time in Settings, Companion, and that deletes your chats",
-    ):
+    sentences = [x.strip() + "." for x in body.split(". ") if x.strip()]
+    sentences = [x if x.endswith("..") is False else x[:-1] for x in sentences]
+    assert len(sentences) >= 5
+    for sentence in sentences:
         assert sentence in text, sentence
+
+
+# ------------------------------------------------------------------------------------------------- coach_available and the shared ceiling
+def test_me_says_the_coach_is_available_in_open_mode(tmp_path, fakes):
+    tc, app = client(tmp_path, fakes, telegram_bot="RSBot")
+    with tc as c:
+        start(c, app)
+        prof = c.get("/v1/me", headers=auth(c.token)).json()["profile"]
+        assert prof["coach_available"] is True and prof["coach_link"] == "https://t.me/RSBot"
+
+
+def test_me_says_not_available_when_closed_and_not_allowlisted_and_available_when_allowlisted(tmp_path, fakes):
+    tc, app = client(tmp_path, fakes, coach_open=False, coach_allowlist=frozenset({"T99"}))
+    with tc as c:
+        start(c, app)
+        assert c.get("/v1/me", headers=auth(c.token)).json()["profile"]["coach_available"] is False
+    tc2, app2 = client(tmp_path / "b", fakes, coach_open=False, coach_allowlist=frozenset({f"telegram:{OWNER}"}))
+    with tc2 as c:
+        start(c, app2)
+        assert c.get("/v1/me", headers=auth(c.token)).json()["profile"]["coach_available"] is True
+
+
+def test_me_says_not_available_when_the_coach_itself_is_off(tmp_path, fakes):
+    tc, app = client(tmp_path, fakes, coach_chat=False)
+    with tc as c:
+        start(c, app)
+        assert c.get("/v1/me", headers=auth(c.token)).json()["profile"]["coach_available"] is False
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_the_card_writer_stops_at_the_shared_ceiling_not_only_its_own_cap(tmp_path, fakes):
+    """Cards 4 + chat 27 = 31 >= 30: the cards stop even though the card writer's own cap (20) is far off."""
+    from companion.facts import FactsResult
+    tc, app = client(tmp_path, fakes, monthly_cap_usd=20.0, coach_monthly_cap_usd=30.0)
+    with tc as c:
+        start(c, app)
+        uid = uid_of(c)
+        with db.tx(c.svc.s.db_path) as con:
+            con.execute("INSERT INTO llm_calls (ts, model, provider, cost_usd, outcome, user_id) VALUES (?,?,?,?,?,?)",
+                        (_now_iso(), "m", "p", 4.0, "ok", uid))
+            con.execute("INSERT INTO cost_ledger (ts, user_id, model, purpose, state, cost_usd) VALUES (?,?,?,?,?,?)",
+                        (_now_iso(), "someone", "m", "chat", "settled", 27.0))
+        w = c.svc.writer
+        assert w.month_spend() < 20.0 and w.shared_spend() >= 30.0
+        out = w.write(FactsResult(facts=[], tone="steady", suggestion=None, session=None, say_nothing=False, reason=""), {}, user_id=None)
+        assert out.source == "template" and out.note == "spend_cap"
+
+
+def test_a_runners_briefing_spend_counts_towards_their_cap_for_cards_too(tmp_path, fakes):
+    from companion.coach import budget
+    tc, app = client(tmp_path, fakes)
+    with tc as c:
+        start(c, app)
+        uid = uid_of(c)
+        with db.tx(c.svc.s.db_path) as con:
+            con.execute("INSERT INTO cost_ledger (ts, user_id, model, purpose, state, cost_usd) VALUES (?,?,?,?,?,?)",
+                        (_now_iso(), uid, "m", "briefing", "settled", 3.0))
+        with db.ro(c.svc.s.db_path) as con:
+            assert budget.user_month_spend(con, uid, datetime.now(timezone.utc)) >= 3.0
+        assert c.svc.writer._blocked(uid) == "user_cap"
+
+
+def test_operators_are_exempt_from_the_per_runner_caps_but_not_the_shared_ceiling(tmp_path, fakes):
+    tc, app = client(tmp_path, fakes, coach_monthly_cap_usd=5.0, coach_card_reserve_usd=0.0, coach_daily_msgs=1)
+    with tc as c:
+        start(c, app)
+        consent(c, 3)
+        uid = uid_of(c)
+        s = dataclasses.replace(c.svc.s, coach_memory_override=frozenset({uid}))
+        c.svc.s = c.svc.coach.s = c.svc.writer.s = s
+        with db.tx(c.svc.s.db_path) as con:                              # over US$3 for the month
+            con.execute("INSERT INTO cost_ledger (ts, user_id, model, purpose, state, cost_usd) VALUES (?,?,?,?,?,?)",
+                        (datetime.now(timezone.utc).strftime("%Y-%m-01T00:00:00Z"), uid, "m", "chat", "settled", 3.5))
+        assert c.svc.writer._blocked(uid) is None
+        t = datetime.now(timezone.utc)
+        for i in range(2):                                               # and over the 1-message daily limit
+            fakes.coach_queue = [coach_text(f"ok {i}")]
+            say(c, f"hello {i}", now=t + timedelta(minutes=i))
+            run_worker(c, now=t + timedelta(minutes=i, seconds=10))
+        assert sent(fakes)[-1] == "ok 1"
+        with db.tx(c.svc.s.db_path) as con:                              # the shared ceiling still applies
+            con.execute("INSERT INTO cost_ledger (ts, user_id, model, purpose, state, cost_usd) VALUES (?,?,?,?,?,?)",
+                        (_now_iso(), "someone", "m", "chat", "settled", 5.0))
+        say(c, "again", now=t + timedelta(minutes=5))
+        run_worker(c, now=t + timedelta(minutes=5, seconds=10))
+        assert sent(fakes)[-1] == coach_chat.BUDGET
