@@ -37,6 +37,7 @@ Future<void> run(
   required RecordMode mode,
   RouteProgress? progress,
   bool route = true,
+  int seconds = 240,
 }) async {
   final fake = FakeRecorderGateway(now: now)..emitRoute = true;
   final services = fakeServices(
@@ -63,7 +64,9 @@ Future<void> run(
       ..elevLossM = 80
       ..gradePct = 3.2;
   }
-  for (var i = 0; i < 400; i++) {
+  // 240 s stays under 1 km, so no KM moment covers the screen (24-Oct
+  // review #2: all 11 goldens showed "KM 1" over the cue they test).
+  for (var i = 0; i < seconds; i++) {
     fake.advance(const Duration(seconds: 1));
     if (i % 20 == 0) await tester.pump();
   }
@@ -131,6 +134,7 @@ void main() {
       mode: RecordMode.free,
       progress: RouteProgress(toGoM: 1840, climbToGoM: 46, off: true),
     );
+    expect(find.text('OFF ROUTE'), findsOneWidget);
     await golden(tester, 'record_route_off_numbers_free_360x640');
   });
 
@@ -199,5 +203,52 @@ void main() {
       progress: RouteProgress(toGoM: 8, off: false, endCue: RouteEndCue.done),
     );
     await golden(tester, 'record_route_done_numbers_free_360x640');
+  });
+
+  // 24-Oct review #2: a route cue outranks the km moment.
+  for (final (name, progress) in [
+    (
+      'turn around',
+      RouteProgress(toGoM: 8, off: false, endCue: RouteEndCue.turnAround),
+    ),
+    ('off route', RouteProgress(toGoM: 1840, off: true)),
+  ]) {
+    testWidgets('record: $name across 1 km, no KM moment over it', (
+      tester,
+    ) async {
+      await run(
+        tester,
+        height: 640,
+        map: false,
+        mode: RecordMode.free,
+        progress: progress,
+        seconds: 400,
+      );
+      expect(find.byKey(const ValueKey('inrun-moment-scrim')), findsNothing);
+    });
+  }
+
+  testWidgets('record: crossing 1 km with no cue still shows the moment', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now)..emitRoute = true;
+    final services = fakeServices(
+      recorder: fake,
+      maps: const FakeMapSurfaceFactory(available: true),
+      settings: AppSettings(onboardingDone: true),
+    );
+    await services.recording.start(RecordMode.free, null, Units.km);
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    await pumpTimes(tester, 4);
+    var seen = false;
+    for (var i = 0; i < 400 && !seen; i++) {
+      fake.advance(const Duration(seconds: 1));
+      await tester.pump();
+      seen = find
+          .byKey(const ValueKey('inrun-moment-scrim'))
+          .evaluate()
+          .isNotEmpty;
+    }
+    expect(seen, isTrue);
   });
 }

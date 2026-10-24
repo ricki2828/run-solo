@@ -182,9 +182,10 @@ class RouteStrip extends StatelessWidget {
   );
 }
 
-/// The end of the followed route, big and loud: a solid ink block (inverse of
-/// the screen, so it reads on every zone colour and never borrows the cyan,
-/// mint or vermillion that already mean something) saying TURN AROUND, or
+/// The end of the followed route, big and loud: a near-black plate with an
+/// amber border and amber words (24-Oct review #2: the old Bone card read as
+/// pale grey), so it reads on every zone colour and never borrows the cyan,
+/// mint or vermillion that already mean something, saying TURN AROUND, or
 /// ROUTE DONE on a loop. Sits above both pages of the run screen. The voice
 /// and the buzz fire once, natively; this stays up until the runner heads back
 /// or about a minute passes (the recorder clears [RouteProgress.endCue]).
@@ -196,19 +197,33 @@ class RouteEndCard extends StatelessWidget {
     required this.ink,
     this.compact = false,
   });
-  final RouteEndCue cue;
+  final RouteEndCue? cue;
   final Color fill;
   final Color ink;
   final bool compact;
 
+  /// Off the followed route (no end cue): the same loud card, "OFF ROUTE"
+  /// (24-Oct review #2: page 1 said nothing when the runner left the route).
+  const RouteEndCard.off({
+    super.key,
+    required this.fill,
+    required this.ink,
+    this.compact = false,
+  }) : cue = null;
+
   bool get _turn => cue == RouteEndCue.turnAround;
+  bool get _off => cue == null;
 
   @override
   Widget build(BuildContext context) {
     final size = RunSoloType.runSize(compact ? 36 : 44);
     return Semantics(
       liveRegion: true,
-      label: _turn ? 'End of route. Turn around.' : 'End of route. Route done.',
+      label: _off
+          ? 'Off the route.'
+          : _turn
+          ? 'End of route. Turn around.'
+          : 'End of route. Route done.',
       child: Container(
         key: const ValueKey('route-end-card'),
         margin: const EdgeInsets.only(top: Space.x8),
@@ -219,11 +234,16 @@ class RouteEndCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(Radii.chip),
+          border: Border.all(color: ink, width: 3),
         ),
         child: Row(
           children: [
             Icon(
-              _turn ? Icons.u_turn_left_rounded : Icons.check_rounded,
+              _off
+                  ? Icons.wrong_location_rounded
+                  : _turn
+                  ? Icons.u_turn_left_rounded
+                  : Icons.check_rounded,
               size: size,
               color: ink,
             ),
@@ -233,7 +253,7 @@ class RouteEndCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!compact)
+                  if (!compact && !_off)
                     Text(
                       'END OF ROUTE',
                       style: RunSoloType.runCaption.copyWith(color: ink),
@@ -242,7 +262,11 @@ class RouteEndCard extends StatelessWidget {
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      _turn ? 'TURN AROUND' : 'ROUTE DONE',
+                      _off
+                          ? 'OFF ROUTE'
+                          : _turn
+                          ? 'TURN AROUND'
+                          : 'ROUTE DONE',
                       key: const ValueKey('route-end-text'),
                       softWrap: false,
                       style: RunSoloType.display44.copyWith(

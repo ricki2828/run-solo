@@ -12,7 +12,8 @@ import '../map/map_surface.dart' show usesTerrainMap;
 import '../map/retrace_tracker.dart' show RetraceInput;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
-import '../state/inrun_moments.dart' show InrunMoment, inLastStretch;
+import '../state/inrun_moments.dart'
+    show InrunMoment, InrunMomentKind, inLastStretch;
 import '../state/next_step.dart';
 import '../state/recording_controller.dart';
 import '../state/true_pace_smoother.dart';
@@ -93,6 +94,7 @@ class _RecordingScreenState extends State<RecordingScreen>
     _ctl!.repCompletePulse.addListener(_onRepComplete);
     _ctl!.repStartPulse.addListener(_onRepStart);
     _ctl!.addListener(_onSnapshot);
+    _ctl!.moment.addListener(_onMoment);
     _ctl!.attach();
     // A screen recreated mid-run (or opened on a run with a saved MAP
     // choice) fills the route from native once; events keep it current.
@@ -126,10 +128,35 @@ class _RecordingScreenState extends State<RecordingScreen>
     _questToastedId = id;
     final active = _services?.quests.state.active;
     final title = active != null && active.id == id ? active.title : null;
+    _questQueued = title == null ? 'QUEST DONE' : 'QUEST DONE · $title';
+    _showQueuedQuest();
+  }
+
+  /// A route cue outranks every moment but the goal's (24-Oct review #2): a
+  /// moment due (or still up) while one shows is dropped, never queued
+  /// behind a cue that can last a minute. The voice still says the km.
+  void _onMoment() {
+    final ctl = _ctl!;
+    final m = ctl.moment.value;
+    if (m != null &&
+        m.kind != InrunMomentKind.goalReached &&
+        routeCueShowing(ctl.snapshot)) {
+      ctl.moment.value = null;
+      return; // that set calls back here with null
+    }
+    if (m == null) _showQueuedQuest();
+  }
+
+  /// A quest done under an in-run moment waits for the moment to go, so its
+  /// toast is never hidden under the moment's scrim (24-Oct review #8).
+  String? _questQueued;
+
+  void _showQueuedQuest() {
+    final q = _questQueued;
+    if (q == null || !mounted || _ctl?.moment.value != null) return;
+    _questQueued = null;
     _questTimer?.cancel();
-    setState(
-      () => _questToast = title == null ? 'QUEST DONE' : 'QUEST DONE · $title',
-    );
+    setState(() => _questToast = q);
     _questTimer = Timer(QuestDoneToast.shownFor, () {
       if (mounted) setState(() => _questToast = null);
     });
@@ -261,6 +288,7 @@ class _RecordingScreenState extends State<RecordingScreen>
   void _onSnapshot() {
     final s = _ctl!.snapshot;
     _ctl!.momentUnits = _services!.settings.settings.units;
+    _onMoment();
     _questToastCheck(s);
     _sampleTruePace(s);
     if (s.active &&
@@ -429,6 +457,7 @@ class _RecordingScreenState extends State<RecordingScreen>
       _services?.permissions.setKeepScreenOn(false).catchError((_) {});
     }
     _ctl?.removeListener(_onSnapshot);
+    _ctl?.moment.removeListener(_onMoment);
     _clock?.cancel();
     _ctl?.repCompletePulse.removeListener(_onRepComplete);
     _ctl?.repStartPulse.removeListener(_onRepStart);
@@ -887,17 +916,28 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ink: t.bgBase,
                             compact: compact,
                           ),
+                        // Route cues are loud (24-Oct review #2): amber on
+                        // the near-black plate, the same on every flood.
                         if (s.trail?.turnCue == true && !pausedNow)
                           TrailTurnCard(
-                            fill: t.inkPrimary,
-                            ink: t.bgBase,
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
                             compact: compact,
                           ),
                         if (route?.endCue != null && !pausedNow)
                           RouteEndCard(
                             cue: route!.endCue!,
-                            fill: t.inkPrimary,
-                            ink: t.bgBase,
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
+                            compact: compact,
+                          ),
+                        if (route != null &&
+                            route.endCue == null &&
+                            route.off &&
+                            !pausedNow)
+                          RouteEndCard.off(
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
                             compact: compact,
                           ),
                         if (pausedNow) ...[
@@ -1067,10 +1107,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                 // The in-run moment (km / mile, rep done, halfway, last
                 // 400 m, goal reached): about 1.5 s, over the numbers, no
                 // taps. Not on the finish screen or while paused.
+                // A route cue (turn around, off route, route done) outranks
+                // every moment but the goal's: the moment is dropped, so a
+                // km mark never buries a turnaround (24-Oct review #2).
                 ValueListenableBuilder<InrunMoment?>(
                   valueListenable: ctl.moment,
                   builder: (context, m, _) =>
-                      m == null || pausedNow || _finishing
+                      m == null ||
+                          pausedNow ||
+                          _finishing ||
+                          (routeCueShowing(s) &&
+                              m.kind != InrunMomentKind.goalReached)
                       ? const SizedBox.shrink()
                       : InrunMomentOverlay(
                           key: ValueKey('inrun-moment-${m.serial}'),
@@ -1151,6 +1198,11 @@ String liveRunType(RecordingSnapshot s) {
   if (s.isCooper || s.bronco) return 'tests';
   return s.mode.name == 'cooper' ? 'tests' : s.mode.name;
 }
+
+/// A route cue is on the screen: TURN AROUND or ROUTE DONE at the end of a
+/// followed route, off the route, or a known trail's turnaround.
+bool routeCueShowing(RecordingSnapshot s) =>
+    s.route?.endCue != null || s.route?.off == true || s.trail?.turnCue == true;
 
 /// The run type's Aurora colour (the route on the map).
 Color liveRunTypeColor(String type) => switch (type) {

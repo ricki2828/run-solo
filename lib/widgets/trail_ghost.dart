@@ -208,7 +208,7 @@ class TrailGhostReadout extends StatelessWidget {
       : (ms > 0 ? NightSession.semImproving : NightSession.semSlower);
 }
 
-/// TURN AROUND, in the end-of-route card's style: a Bone card with ink text.
+/// TURN AROUND, in the end-of-route card's style: amber on near-black.
 class TrailTurnCard extends StatelessWidget {
   const TrailTurnCard({
     super.key,
@@ -236,6 +236,7 @@ class TrailTurnCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(Radii.chip),
+          border: Border.all(color: ink, width: 3),
         ),
         child: Row(
           children: [
