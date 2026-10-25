@@ -177,15 +177,26 @@ final class CuePlayerTests: XCTestCase {
   private final class FakeAudio: CueAudio {
     var onSpeechDone: ((Int) -> Void)?
     var spoken: [(text: String, id: Int)] = []
-    var activations = 0, deactivations = 0, stops = 0, vibrations = 0, configures = 0
+    var activations = 0, deactivations = 0, stops = 0, vibrations = 0, configures = 0, resets = 0
     var beeps: [Bool] = []
     var failActivate = false
+    /// The next N deactivations throw (`isBusy`).
+    var failDeactivations = 0
+    var deactivateAttempts = 0
     func configure() throws { configures += 1 }
     func activate() throws {
       if failActivate { throw NSError(domain: "AVAudioSession", code: 560_557_684) }
       activations += 1
     }
-    func deactivate() { deactivations += 1 }
+    func deactivate() throws {
+      deactivateAttempts += 1
+      if failDeactivations > 0 {
+        failDeactivations -= 1
+        throw NSError(domain: "AVAudioSession", code: 560_030_580) // isBusy
+      }
+      deactivations += 1
+    }
+    func reset() { resets += 1 }
     func speak(_ text: String, id: Int) { spoken.append((text, id)) }
     func stopSpeaking() { stops += 1 }
     func beep(high: Bool) { beeps.append(high) }
@@ -263,32 +274,68 @@ final class CuePlayerTests: XCTestCase {
     center.post(name: name, object: nil, userInfo: info)
   }
 
-  func testInterruptionDropsWhatIsQueuedAndSaysNothingUntilItEnds() {
+  /// A call: what is queued is dropped; while the call holds the audio the session refuses to
+  /// activate and cues are dropped (the buzz still comes); nothing waits for an `.ended`.
+  func testInterruptionDropsTheQueueAndDoesNotLatchWithoutAnEnd() {
     let audio = FakeAudio(), later = Later(), center = NotificationCenter()
     var logged: [String] = []
     let p = player(audio, center, later) { logged.append($0) }
     p.cue(kind: "halfway", text: "Halfway")
     p.cue(kind: "countdown", text: nil)
     post(center, AVAudioSession.interruptionNotification, [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
-    XCTAssertTrue(p.interrupted)
     XCTAssertEqual(audio.stops, 1)
     XCTAssertEqual(p.inFlight, 0)
+    XCTAssertEqual(audio.deactivateAttempts, 0) // the system already deactivated it
     later.fire()
     XCTAssertTrue(audio.beeps.isEmpty) // the countdown was dropped with the queue
     audio.finish(0) // the cancelled line's late callback
+    audio.failActivate = true // the call holds the audio
     p.cue(kind: "thirtySeconds", text: "Thirty seconds")
-    XCTAssertEqual(audio.texts, ["Halfway"]) // not said late, nor during the call
-    XCTAssertEqual(audio.vibrations, 3) // the buzz still comes
+    XCTAssertEqual(audio.texts, ["Halfway"])
+    XCTAssertEqual(audio.vibrations, 3)
+    XCTAssertTrue(logged.contains { $0.hasPrefix("cue dropped (no audio session): Thirty seconds") }, "\(logged)")
+    // The call ended but no `.ended` arrived (e.g. the app was suspended): the next cue speaks.
+    audio.failActivate = false
+    p.cue(kind: "tenSeconds", text: "Ten seconds")
+    XCTAssertEqual(audio.texts, ["Halfway", "Ten seconds"])
+    XCTAssertEqual(audio.activations, 2)
     post(center, AVAudioSession.interruptionNotification, [
       AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
       AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue,
     ])
-    XCTAssertFalse(p.interrupted)
-    p.cue(kind: "tenSeconds", text: "Ten seconds")
-    XCTAssertEqual(audio.texts, ["Halfway", "Ten seconds"])
-    XCTAssertEqual(audio.activations, 2) // the system had deactivated the session: activate again
     XCTAssertTrue(logged.contains("audio interruption began"))
     XCTAssertTrue(logged.contains("audio interruption ended shouldResume=true"))
+  }
+
+  /// `setActive(false)` refused (isBusy): logged and retried so other audio is not left ducked;
+  /// a retry is skipped when a new line has started meanwhile.
+  func testFailedDeactivateIsLoggedAndRetried() {
+    let audio = FakeAudio(), later = Later()
+    var logged: [String] = []
+    let p = player(audio, NotificationCenter(), later) { logged.append($0) }
+    audio.failDeactivations = 2
+    p.cue(kind: "stop", text: "Run saved")
+    audio.finish(0)
+    XCTAssertEqual(audio.deactivateAttempts, 1)
+    XCTAssertEqual(audio.deactivations, 0)
+    XCTAssertEqual(later.queue.first?.0, CuePlayer.deactivateRetryDelay)
+    later.fire()
+    XCTAssertEqual(audio.deactivateAttempts, 3)
+    XCTAssertEqual(audio.deactivations, 1)
+    XCTAssertEqual(p.deactivateFailures, 2)
+    XCTAssertEqual(logged.filter { $0.hasPrefix("audio deactivate failed") }.count, 2)
+
+    audio.failDeactivations = 5
+    p.cue(kind: "halfway", text: "Halfway")
+    audio.finish(1)
+    p.cue(kind: "halfway", text: "Halfway") // a new line before the retry: it holds the session
+    later.fire()
+    XCTAssertEqual(audio.deactivateAttempts, 4)
+    audio.failDeactivations = 1
+    audio.finish(2)
+    later.fire()
+    XCTAssertEqual(audio.deactivateAttempts, 6) // that release failed once, then its retry went through
+    XCTAssertEqual(audio.deactivations, 2)
   }
 
   func testHeadphonesUnpluggedStopTheLineBeingSaidAndLaterCuesStillSpeak() {
@@ -313,6 +360,7 @@ final class CuePlayerTests: XCTestCase {
     p.cue(kind: "halfway", text: "Halfway")
     post(center, AVAudioSession.mediaServicesWereResetNotification, [:])
     XCTAssertEqual(p.inFlight, 0)
+    XCTAssertEqual(audio.resets, 1) // synthesizer and players rebuilt
     p.cue(kind: "halfway", text: "Halfway")
     XCTAssertEqual(audio.configures, 2)
     XCTAssertEqual(audio.activations, 2)
@@ -332,8 +380,8 @@ final class CuePlayerTests: XCTestCase {
     XCTAssertEqual(audio.texts, ["Halfway"])
   }
 
-  /// The Ready countdown: each beat cuts off the last, and the cut line's late callback does not
-  /// release the session under the new one.
+  /// The Ready countdown: each beat cuts off the last without releasing the session between
+  /// beats (no music pumping), and the cut line's late callback does not release it under the new one.
   func testCountdownBeatCutsOffThePreviousBeat() {
     let audio = FakeAudio(), later = Later()
     let p = player(audio, NotificationCenter(), later)
@@ -341,15 +389,18 @@ final class CuePlayerTests: XCTestCase {
     p.speakNow("Two")
     XCTAssertEqual(audio.texts, ["Three", "Two"])
     XCTAssertEqual(audio.stops, 1)
+    XCTAssertEqual(audio.activations, 1)
+    XCTAssertEqual(audio.deactivateAttempts, 0)
     audio.finish(0) // "Three" reports cancelled after "Two" started
     XCTAssertEqual(p.inFlight, 1)
-    XCTAssertEqual(audio.deactivations, 1) // only the flush's
+    XCTAssertEqual(audio.deactivations, 0)
     audio.finish(1)
-    XCTAssertEqual(audio.deactivations, 2)
+    XCTAssertEqual(audio.deactivations, 1)
     p.speakNow("Go")
     p.stopSpeaking()
     XCTAssertEqual(audio.stops, 2)
     XCTAssertEqual(p.inFlight, 0)
+    XCTAssertEqual(audio.deactivations, 2)
   }
 
   func testBeepIsAValidPcmWav() {

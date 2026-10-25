@@ -145,6 +145,9 @@ jobs:
           # P3: the Swift recorder wiring reproduces every contract fixture and survives a kill.
           grep -qE "Test case 'RecorderHostTests\.testEveryReplayKindThroughTheSwiftWiringMatchesItsKotlinFixture\(\)' passed" build/ios-logs/4b-xctest.log
           grep -qE "Test case 'RecorderHostTests\.testKillMidRunThenRecoverOnNextOpen\(\)' passed" build/ios-logs/4b-xctest.log
+          # P4: the cue player's words match the voice-copy fixture and interruptions are handled.
+          grep -qE "Test case 'CuePlayerTests\.testCueWordsThroughTheSwiftBridgeMatchTheVoiceCopyFixture\(\)' passed" build/ios-logs/4b-xctest.log
+          grep -qE "Test case 'CuePlayerTests\.testInterruptionDropsTheQueueAndDoesNotLatchWithoutAnEnd\(\)' passed" build/ios-logs/4b-xctest.log
       - name: dSYMs
         # Debug builds keep DWARF in the object files; dsymutil links them while DerivedData
         # still exists. Release dSYMs come from the T4 archive.

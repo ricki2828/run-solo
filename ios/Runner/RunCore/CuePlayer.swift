@@ -19,7 +19,9 @@ protocol CueAudio: AnyObject {
   var onSpeechDone: ((Int) -> Void)? { get set }
   func configure() throws
   func activate() throws
-  func deactivate()
+  func deactivate() throws
+  /// Rebuilds the synthesizer and players after a media services reset.
+  func reset()
   func speak(_ text: String, id: Int)
   func stopSpeaking()
   /// One short beep (~200 ms); [high] for the last countdown beat.
@@ -37,9 +39,13 @@ protocol CueAudio: AnyObject {
 ///   ducking focus). The `audio` background mode is only exercised while a cue plays.
 /// - `AVSpeechSynthesizer` for speech, generated beeps for the countdown, and a vibration on every
 ///   cue so a pocketed phone still registers (also with cues off, as on Android).
-/// - An interruption (a call, Siri) drops what is queued and anything said until it ends: a cue is
-///   only worth saying on time. Headphones unplugged stop the line being said, so it does not
-///   carry on out of the speaker; later cues use the speaker.
+/// - An interruption (a call, Siri) drops what is queued: a cue is only worth saying on time.
+///   Nothing is latched on it (an `.ended` is not guaranteed): each later cue tries to activate
+///   the session, which the system refuses while the call holds the audio, and that cue is
+///   dropped and logged. Headphones unplugged stop the line being said, so it does not carry on
+///   out of the speaker; later cues use the speaker.
+/// - A failed deactivation (often `isBusy` right after speech stops) is logged and retried, so
+///   other apps' audio does not stay ducked.
 ///
 /// Called from the recorder queue; every state change runs on [run] (main by default).
 final class CuePlayer: CueOutput {
@@ -64,8 +70,12 @@ final class CuePlayer: CueOutput {
   /// Lines and beeps being played, by id: a late callback for one flushed earlier is ignored.
   private var pending = Set<Int>()
   private var nextId = 0
+  /// Tests only (read on [run]'s queue).
   var inFlight: Int { pending.count }
-  private(set) var interrupted = false
+  /// Deactivations the system refused this process lifetime (each one is retried). Tests and diagnostics.
+  private(set) var deactivateFailures = 0
+  static let deactivateRetries = 3
+  static let deactivateRetryDelay: TimeInterval = 0.3
 
   init(
     audio: CueAudio = SystemCueAudio(),
@@ -124,11 +134,15 @@ final class CuePlayer: CueOutput {
     run { self.say(text) }
   }
 
-  /// The Ready screen's countdown beat: cuts off the previous beat, never queues behind it.
+  /// The Ready screen's countdown beat: cuts off the previous beat, never queues behind it. The
+  /// session stays active between beats, so music is not unducked and re-ducked every second.
   func speakNow(_ text: String) {
     guard enabled else { return }
     run {
-      self.flush()
+      if !self.pending.isEmpty {
+        self.pending.removeAll()
+        self.audio.stopSpeaking()
+      }
       self.say(text)
     }
   }
@@ -139,15 +153,13 @@ final class CuePlayer: CueOutput {
   // MARK: Interruptions and routes
 
   /// A call or Siri took the audio (began), or gave it back (ended). The system already
-  /// deactivated the session; nothing missed is said late.
+  /// deactivated the session; nothing missed is said late, and nothing waits for the end.
   func interruption(began: Bool, shouldResume: Bool) {
     if began {
-      interrupted = true
       sessionActive = false
       flush()
       log("audio interruption began")
     } else {
-      interrupted = false
       log("audio interruption ended shouldResume=\(shouldResume)")
     }
   }
@@ -163,15 +175,12 @@ final class CuePlayer: CueOutput {
     configured = false
     sessionActive = false
     pending.removeAll()
+    audio.reset()
   }
 
   // MARK: Internals (on run)
 
   private func say(_ text: String) {
-    if interrupted {
-      log("cue dropped (interrupted): \(text)")
-      return
-    }
     guard begin() else {
       log("cue dropped (no audio session): \(text)")
       return
@@ -182,7 +191,7 @@ final class CuePlayer: CueOutput {
 
   /// Three beeps a second apart, the last one higher (Android: ToneGenerator PROP_BEEP / BEEP2).
   private func countdown() {
-    guard !interrupted, begin() else { return }
+    guard begin() else { return }
     for i in 0..<3 {
       let id = take()
       after(TimeInterval(i)) { [weak self] in
@@ -235,7 +244,24 @@ final class CuePlayer: CueOutput {
   private func end() {
     guard sessionActive else { return }
     sessionActive = false
-    audio.deactivate()
+    release(attempt: 0)
+  }
+
+  /// Deactivates with notifyOthers; a refusal is logged and retried while nothing new started.
+  private func release(attempt: Int) {
+    do {
+      try audio.deactivate()
+    } catch {
+      deactivateFailures += 1
+      log("audio deactivate failed (attempt \(attempt + 1), total \(deactivateFailures)): \(error)")
+      guard attempt + 1 < Self.deactivateRetries else { return }
+      after(Self.deactivateRetryDelay) { [weak self] in
+        self?.run {
+          guard let self, self.pending.isEmpty, !self.sessionActive else { return }
+          self.release(attempt: attempt + 1)
+        }
+      }
+    }
   }
 
   /// A double buzz for a phase start or end, one for anything else (Android's waveforms).
@@ -251,7 +277,7 @@ final class CuePlayer: CueOutput {
 /// `kSystemSoundID_Vibrate` (works in the background, unlike `UIImpactFeedbackGenerator`).
 final class SystemCueAudio: NSObject, CueAudio, AVSpeechSynthesizerDelegate {
   var onSpeechDone: ((Int) -> Void)?
-  private let synth = AVSpeechSynthesizer()
+  private var synth = AVSpeechSynthesizer()
   private var ids: [ObjectIdentifier: Int] = [:]
   private var players: [AVAudioPlayer] = []
   private static let low = SystemCueAudio.wav(hz: 880)
@@ -263,6 +289,22 @@ final class SystemCueAudio: NSObject, CueAudio, AVSpeechSynthesizerDelegate {
     synth.usesApplicationAudioSession = true
   }
 
+  /// After a media services reset Apple says to recreate audio objects. On main.
+  func reset() {
+    synth.delegate = nil
+    synth = AVSpeechSynthesizer()
+    synth.delegate = self
+    synth.usesApplicationAudioSession = true
+    ids.removeAll()
+    players.removeAll()
+  }
+
+  /// The core's lines are English: an English voice for the device's region, else en-US.
+  private static func voice() -> AVSpeechSynthesisVoice? {
+    let region = Locale.current.region?.identifier ?? "US"
+    return AVSpeechSynthesisVoice(language: "en-\(region)") ?? AVSpeechSynthesisVoice(language: "en-US")
+  }
+
   func configure() throws {
     try AVAudioSession.sharedInstance().setCategory(
       .playback, mode: .spokenAudio, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
@@ -270,11 +312,11 @@ final class SystemCueAudio: NSObject, CueAudio, AVSpeechSynthesizerDelegate {
 
   func activate() throws { try AVAudioSession.sharedInstance().setActive(true) }
 
-  func deactivate() { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+  func deactivate() throws { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
 
   func speak(_ text: String, id: Int) {
     let u = AVSpeechUtterance(string: text)
-    u.voice = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+    u.voice = Self.voice()
     ids[ObjectIdentifier(u)] = id
     synth.speak(u)
   }
@@ -298,9 +340,12 @@ final class SystemCueAudio: NSObject, CueAudio, AVSpeechSynthesizerDelegate {
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { finished(utterance) }
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { finished(utterance) }
 
+  /// `ids` is only touched on main; the delegate's thread is not documented.
   private func finished(_ u: AVSpeechUtterance) {
-    guard let id = ids.removeValue(forKey: ObjectIdentifier(u)) else { return }
-    onSpeechDone?(id)
+    DispatchQueue.main.async { // u is kept alive by the closure, so its identifier is not reused meanwhile
+      guard let id = self.ids.removeValue(forKey: ObjectIdentifier(u)) else { return }
+      self.onSpeechDone?(id)
+    }
   }
 
   /// A 200 ms sine beep as 16-bit mono PCM WAV, with 10 ms fades so it does not click.
