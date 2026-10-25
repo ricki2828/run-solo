@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
 
-/// The one filter control for History and Trends: outlined chips in a wrap,
-/// the selected one with a 2 px Bone border (brief §5). A wrap, not a sideways
+/// The one filter control for History and Trends: chips in a wrap. Selected
+/// = filled ink, the app's one selection grammar (the builder's segments, the
+/// run-type cards); unselected = hairline outline. A wrap, not a sideways
 /// scroll, so no chip is ever clipped at the edge.
 class ChoiceChips extends StatelessWidget {
   const ChoiceChips({
@@ -33,12 +34,11 @@ class ChoiceChips extends StatelessWidget {
               key: keys?[i],
               behavior: HitTestBehavior.opaque,
               onTap: () => onSelect(i),
-              child: AnimatedContainer(
-                duration: MotionDurations.quick,
+              child: Container(
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: Space.x16),
                 decoration: BoxDecoration(
-                  color: t.bgRaised,
+                  color: i == selected ? t.inkPrimary : t.bgRaised,
                   borderRadius: BorderRadius.circular(Radii.chip),
                   border: Border.all(
                     color: i == selected ? t.inkPrimary : t.lineHair,
@@ -50,7 +50,7 @@ class ChoiceChips extends StatelessWidget {
                   child: Text(
                     labels[i],
                     style: RunSoloType.label13.copyWith(
-                      color: i == selected ? t.inkPrimary : t.inkSecondary,
+                      color: i == selected ? t.bgRaised : t.inkSecondary,
                     ),
                   ),
                 ),

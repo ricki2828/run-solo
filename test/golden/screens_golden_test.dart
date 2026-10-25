@@ -1197,7 +1197,7 @@ void main() {
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
       await tester.tap(find.text('Free'));
-      await pumpTimes(tester, 4);
+      await tester.pumpAndSettle();
       await golden(tester, 'trend_free_360x$h');
     });
   }
@@ -1226,7 +1226,7 @@ void main() {
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
       await tester.tap(find.text('Laps'));
-      await pumpTimes(tester, 4);
+      await tester.pumpAndSettle();
       await golden(tester, 'trend_laps_360x$h');
     });
   }

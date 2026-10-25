@@ -585,3 +585,98 @@ class RunSheetHeader extends StatelessWidget {
     );
   }
 }
+
+/// The three button weights (review #20). One dialect: condensed display
+/// type, uppercase, [Radii.button] corners.
+/// - primary: the one action a screen exists for. Ink fill, 64 dp.
+/// - secondary: the other way on (DETAILS next to DONE, SAVE next to SAVE &
+///   READY UP). 2 dp ink outline, 64 dp.
+/// - tertiary: small in-row actions (a map region's DELETE). Hairline
+///   outline, 48 dp, sized to its label.
+enum RunButtonKind { primary, secondary, tertiary }
+
+class RunButton extends StatelessWidget {
+  const RunButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.kind = RunButtonKind.primary,
+  });
+
+  const RunButton.secondary({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  }) : kind = RunButtonKind.secondary;
+
+  const RunButton.tertiary({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  }) : kind = RunButtonKind.tertiary;
+
+  final String label;
+
+  /// null = disabled.
+  final VoidCallback? onPressed;
+  final RunButtonKind kind;
+
+  static const double height = 64;
+  static const double tertiaryHeight = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(Radii.button),
+    );
+    final text = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(label.toUpperCase(), maxLines: 1),
+    );
+    switch (kind) {
+      case RunButtonKind.primary:
+        return FilledButton(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(height),
+            shape: shape,
+            textStyle: RunSoloType.title28,
+          ),
+          child: text,
+        );
+      case RunButtonKind.secondary:
+        return OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(height),
+            shape: shape,
+            backgroundColor: t.bgRaised,
+            foregroundColor: t.inkPrimary,
+            disabledForegroundColor: t.inkMuted,
+            side: BorderSide(
+              color: onPressed == null ? t.lineHair : t.inkPrimary,
+              width: 2,
+            ),
+            textStyle: RunSoloType.title28,
+          ),
+          child: text,
+        );
+      case RunButtonKind.tertiary:
+        return OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, tertiaryHeight),
+            padding: const EdgeInsets.symmetric(horizontal: Space.x16),
+            shape: shape,
+            backgroundColor: t.bgRaised,
+            foregroundColor: t.inkPrimary,
+            disabledForegroundColor: t.inkMuted,
+            side: BorderSide(color: t.lineHair, width: 2),
+            textStyle: RunSoloType.heading19,
+          ),
+          child: text,
+        );
+    }
+  }
+}

@@ -285,25 +285,37 @@ class RecentBarsChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: Space.x8),
-        Text(
-          'Axis starts at ${tickFmt(scale.base)}$axisSuffix',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        // One short line, always with the axis note: the caption (ellipsized)
+        // then "axis from X"; plain "Axis starts at X" when there is no caption.
+        Builder(
+          builder: (_) {
+            final note = noise?.caption ?? caption;
+            final style = RunSoloType.micro11.copyWith(color: t.inkSecondary);
+            final axis = tickFmt(scale.base) + axisSuffix;
+            if (note == null) return Text('Axis starts at $axis', style: style);
+            return Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    note,
+                    key: noise == null
+                        ? const ValueKey('distance-trend-caption')
+                        : null,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style,
+                  ),
+                ),
+                Text(
+                  ' · axis from $axis',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: style,
+                ),
+              ],
+            );
+          },
         ),
-        if (caption != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            caption!,
-            key: const ValueKey('distance-trend-caption'),
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        ],
-        if (noise != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            noise!.caption,
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        ],
         if (showValues) ...[
           const SizedBox(height: Space.x16),
           for (var i = shown.length - 1; i >= 0; i--)
@@ -656,6 +668,7 @@ class _BarsPainter extends CustomPainter {
     }
 
     // Bars.
+    Rect? lastValueRect;
     for (var i = 0; i < n; i++) {
       final x = i * slot + (slot - barW) / 2;
       final vy = y(points[i].value);
@@ -722,14 +735,20 @@ class _BarsPainter extends CustomPainter {
           w: isPb ? FontWeight.w700 : FontWeight.w500,
           size: 12,
         );
-        vl.paint(
-          canvas,
-          Offset(
-            (x + barW / 2 - vl.width / 2).clamp(0.0, plotW - vl.width),
-            labelTop - vl.height - 3,
-          ),
-        );
-        labelTop -= vl.height + 3;
+        final vx = (x + barW / 2 - vl.width / 2).clamp(0.0, plotW - vl.width);
+        var vyTop = labelTop - vl.height - 3;
+        // Neighbouring bars of near-equal height would print their values on
+        // top of each other: lift this one clear of the last.
+        final prev = lastValueRect;
+        if (prev != null &&
+            vx < prev.right + 6 &&
+            vyTop < prev.bottom &&
+            vyTop + vl.height > prev.top) {
+          vyTop = prev.top - vl.height - 1;
+        }
+        vl.paint(canvas, Offset(vx, vyTop));
+        lastValueRect = Rect.fromLTWH(vx, vyTop, vl.width, vl.height);
+        labelTop = vyTop;
       }
       if (isPb && growT >= 1) {
         final pl = _tp('PB', tokens.accentArc, w: FontWeight.w800, size: 12);

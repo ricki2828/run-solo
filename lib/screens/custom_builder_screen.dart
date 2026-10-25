@@ -297,35 +297,27 @@ class _CustomBuilderScreenState extends State<CustomBuilderScreen> {
             children: [
               Expanded(
                 flex: 2,
-                child: OutlinedButton(
+                child: RunButton.secondary(
                   key: const ValueKey('builder-save'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(64),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(Radii.button),
-                    ),
-                    side: BorderSide(color: t.inkPrimary),
-                    foregroundColor: t.inkPrimary,
-                  ),
+                  label: 'SAVE',
                   onPressed: problems.isEmpty
                       ? () =>
                             Navigator.of(context)
                                 .pop<BuilderResult>((session: _s, start: false))
                       : null,
-                  child: const Text('SAVE'),
                 ),
               ),
               const SizedBox(width: Space.x12),
               Expanded(
                 flex: 4,
-                child: FilledButton(
+                child: RunButton(
                   key: const ValueKey('builder-save-start'),
+                  label: 'SAVE & READY UP',
                   onPressed: problems.isEmpty
                       ? () =>
                             Navigator.of(context)
                                 .pop<BuilderResult>((session: _s, start: true))
                       : null,
-                  child: const Text('SAVE & READY UP'),
                 ),
               ),
             ],

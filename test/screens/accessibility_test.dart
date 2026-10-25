@@ -127,7 +127,11 @@ void main() {
     handle = tester.ensureSemantics();
     await pumpApp(tester, services, home: const TrendScreen());
     await pumpTimes(tester, 6);
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
     await expectGuidelines(tester);
     handle.dispose();
 

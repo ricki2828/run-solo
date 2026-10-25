@@ -597,20 +597,20 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                 if (flagged && d.analysis.lapsInconsistent)
                   Padding(
                     padding: const EdgeInsets.only(bottom: Space.x12),
-                    child: FilledButton(
+                    child: RunButton(
                       key: const ValueKey('fix-laps'),
+                      label: 'FIX LAPS',
                       onPressed: () =>
                           Navigator.of(context)
                               .pushNamed(Routes.fixLaps, arguments: d.run.id),
-                      child: const Text('FIX LAPS'),
                     ),
                   ),
                 Row(
                   children: [
                     Expanded(
-                      child: VerdictSecondaryButton(
+                      child: RunButton.secondary(
                         label: 'DETAILS',
-                        onTap: () => Navigator.of(context).push(
+                        onPressed: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => RunDetailScreen(runId: d.run.id),
                           ),
@@ -620,9 +620,9 @@ class _FourByFourVerdictState extends State<_FourByFourVerdict>
                     if (widget.justFinished) ...[
                       const SizedBox(width: Space.x12),
                       Expanded(
-                        child: FilledButton(
+                        child: RunButton(
+                          label: 'DONE',
                           onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('DONE'),
                         ),
                       ),
                     ],
@@ -817,9 +817,9 @@ class _GoalResultScreen extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: VerdictSecondaryButton(
+                  child: RunButton.secondary(
                     label: 'DETAILS',
-                    onTap: () => Navigator.of(context).push(
+                    onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => RunDetailScreen(runId: d.run.id),
                       ),
@@ -829,9 +829,9 @@ class _GoalResultScreen extends StatelessWidget {
                 if (justFinished) ...[
                   const SizedBox(width: Space.x12),
                   Expanded(
-                    child: FilledButton(
+                    child: RunButton(
+                      label: 'DONE',
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('DONE'),
                     ),
                   ),
                 ],
@@ -956,42 +956,6 @@ class _Lines extends StatelessWidget {
   }
 }
 
-class VerdictSecondaryButton extends StatelessWidget {
-  const VerdictSecondaryButton({
-    super.key,
-    required this.label,
-    required this.onTap,
-  });
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.button),
-        child: Container(
-          height: 64,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: t.bgRaised,
-            borderRadius: BorderRadius.circular(Radii.button),
-            border: Border.all(color: t.lineHair),
-          ),
-          child: Text(
-            label,
-            style: RunSoloType.title28.copyWith(color: t.inkPrimary),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Static 2 % noise (design brief §2.2 texture): a deterministic dot field,
 /// no animation, no image asset.
 class VerdictGrain extends StatelessWidget {
@@ -1109,9 +1073,9 @@ class _SummaryScreen extends StatelessWidget {
                   Space.screenGutter,
                   Space.x24,
                 ),
-                child: FilledButton(
+                child: RunButton(
+                  label: 'DONE',
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('DONE'),
                 ),
               )
             else

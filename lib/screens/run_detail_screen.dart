@@ -9,6 +9,7 @@ import '../map/route_builder.dart';
 import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../state/history_store.dart';
+import '../state/max_hr.dart' show MaxHrSource;
 import '../state/send_runs.dart';
 import '../state/zone_histogram.dart';
 import '../theme/theme.dart';
@@ -157,6 +158,11 @@ class RunDetailBody extends StatelessWidget {
     // before the phone fused its barometer).
     final elev = engine.RunElevation.of(d.run);
     final breakdown = truePaceBreakdownOf(a, units);
+    // The default max HR is a link to Settings, not a caveat line (#16).
+    final defaultMaxHr =
+        services.settings.settings.hrZoneMethod ==
+            engine.HrZoneMethod.percentMax &&
+        services.maxHr.source == MaxHrSource.fallback;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: Space.screenGutter),
       children: [
@@ -220,9 +226,6 @@ class RunDetailBody extends StatelessWidget {
                     splitUnits: splitUnitsOf(d),
                     elevation: elev,
                     units: units,
-                    color: d.summary.spec?.isGoal == true || d.summary.isParkrun
-                        ? t.typeGoal
-                        : t.typeIntervals,
                   ),
                 ),
               ],
@@ -276,10 +279,15 @@ class RunDetailBody extends StatelessWidget {
         SectionCard(
           child: TimeInZone(
             seconds: zoneSecondsOf(d.run, services.hrZones),
-            maxHrLine: zonesSourceLine(
-              services.settings.settings.hrZoneMethod,
-              services.maxHr,
-            ),
+            maxHrLine: defaultMaxHr
+                ? 'Max HR ${services.maxHr.maxHr} is a default. Set yours'
+                : zonesSourceLine(
+                    services.settings.settings.hrZoneMethod,
+                    services.maxHr,
+                  ),
+            onMaxHrTap: defaultMaxHr
+                ? () => Navigator.of(context).pushNamed(Routes.settings)
+                : null,
             onPairStrap: HostCaps.strapPairing
                 ? () => Navigator.of(context).pushNamed(Routes.pairing)
                 : null,
@@ -1162,12 +1170,9 @@ class _LapsTable extends StatelessWidget {
                 value: '${view.avgHr!.round()} / ${view.maxHr}',
                 size: 28,
               ),
-            if (view.timeInBandSeconds != null)
-              StatTile(
-                label: 'in 4x4 band',
-                value: Fmt.clock((view.timeInBandSeconds! * 1000).round()),
-                size: 28,
-              ),
+            // No band tile: a laps session has no HR band, and the 4x4's
+            // 85-95 % band means nothing here (review #15). Fartlek shows
+            // its own HR 85-95% line.
           ],
         ),
         const SizedBox(height: Space.x8),
@@ -1316,20 +1321,20 @@ class _Splits extends StatelessWidget {
 
 /// Distance splits describe the recorded run even when INT finds no reps.
 /// The engine's FreeRunSummary uses sample-crossing times, not inferred reps;
-/// this card does not claim a clean 5K for a broken GPS stretch.
+/// this card does not claim a clean 5K for a broken GPS stretch. A table, not
+/// a second bar chart: the zone-coloured chart above is the one km chart
+/// (review #16), so this sits with the other tables under "All splits".
 class _DistanceSplits extends StatelessWidget {
   const _DistanceSplits({
     required this.free,
     required this.splitUnits,
     required this.units,
-    required this.color,
     this.elevation,
   });
   final engine.FreeRunSummary free;
   final Units splitUnits;
   final engine.RunElevation? elevation;
   final Units units;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -1342,88 +1347,39 @@ class _DistanceSplits extends StatelessWidget {
     final quickest = splits.isEmpty
         ? -1
         : splits.indexOf(splits.reduce((a, b) => a < b ? a : b));
-    return Container(
+    return Column(
       key: const ValueKey('run-distance-splits'),
-      decoration: BoxDecoration(
-        color: t.bgRaised,
-        border: Border.all(color: t.lineHair),
-        borderRadius: BorderRadius.circular(Radii.card),
-      ),
-      padding: const EdgeInsets.all(Space.x16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$unit SPLITS',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x4),
+        Text(
+          'Recorded time for each full $unit, including any pauses.',
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x8),
+        if (splits.isEmpty)
           Text(
-            '$unit SPLITS',
-            style: RunSoloType.heading19.copyWith(color: color),
-          ),
-          const SizedBox(height: Space.x4),
-          Text(
-            'Recorded time for each full $unit, including any pauses.',
-            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-          ),
-          const SizedBox(height: Space.x16),
-          if (splits.isEmpty)
-            Text(
-              'No full $unit recorded.',
-              style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-            )
-          else
-            for (var i = 0; i < splits.length; i++) ...[
-              Row(
-                children: [
-                  SizedBox(
-                    width: 40,
-                    child: Text(
-                      '${i + 1}',
-                      style: RunSoloType.heading26.copyWith(
-                        color: i == quickest ? t.semFaster : t.inkPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: Space.x8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(Radii.pill),
-                      child: LinearProgressIndicator(
-                        minHeight: 8,
-                        value: splits[i] <= 0
-                            ? 1.0
-                            : (splits[quickest] / splits[i]).clamp(0.1, 1.0),
-                        backgroundColor: t.bgBase,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          i == quickest ? t.semFaster : color,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: Space.x12),
-                  Text(
-                    Fmt.clock((splits[i] * 1000).round()),
-                    style: RunSoloType.heading19.copyWith(
-                      color: i == quickest ? t.semFaster : t.inkPrimary,
-                    ),
-                  ),
-                  if (climbs != null && i < climbs.length) ...[
-                    const SizedBox(width: Space.x12),
-                    SizedBox(
-                      width: 56,
-                      child: Text(
-                        _climbCell(climbs[i], units),
-                        key: ValueKey('split-climb-$i'),
-                        textAlign: TextAlign.right,
-                        style: RunSoloType.label13.copyWith(
-                          color: t.inkSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if (i + 1 < splits.length) const SizedBox(height: Space.x12),
-            ],
+            'No full $unit recorded.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          )
+        else ...[
+          _TableHeader(cells: [unit, 'Time', if (climbs != null) 'Climb']),
+          for (var i = 0; i < splits.length; i++)
+            _TableRow(
+              highlight: i == quickest,
+              cells: [
+                '${i + 1}',
+                Fmt.clock((splits[i] * 1000).round()),
+                if (climbs != null)
+                  i < climbs.length ? _climbCell(climbs[i], units) : '--',
+              ],
+            ),
         ],
-      ),
+      ],
     );
   }
 }

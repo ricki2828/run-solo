@@ -5,12 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/theme/theme.dart';
+import 'package:run_solo/widgets/chrome.dart';
 import 'package:run_solo/widgets/hr_zones_section.dart';
 
 import '../helpers.dart';
 
-/// Settings → Heart rate zones, one golden per method at 360 x 640. PNGs
-/// come from the CI goldens artifact like the others.
+/// Settings → Heart rate zones, one golden per method at 360 x 640, under
+/// the Settings app bar it sits below on the phone. PNGs come from the CI
+/// goldens artifact like the others.
 void main() {
   const base = AppSettings(typedMaxHr: 188, restingHr: 54);
   final cases = {
@@ -39,8 +41,10 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MaterialApp(
+          debugShowCheckedModeBanner: false,
           theme: runSoloTheme(),
           home: Scaffold(
+            appBar: const RunAppBar(title: 'Settings', showBack: true),
             body: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
                 horizontal: Space.screenGutter,

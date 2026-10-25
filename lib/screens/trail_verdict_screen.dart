@@ -309,9 +309,9 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                 Row(
                   children: [
                     Expanded(
-                      child: VerdictSecondaryButton(
+                      child: RunButton.secondary(
                         label: 'DETAILS',
-                        onTap: () => Navigator.of(context).push(
+                        onPressed: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => RunDetailScreen(runId: d.run.id),
                           ),
@@ -321,9 +321,9 @@ class _TrailVerdictScreenState extends State<TrailVerdictScreen>
                     if (widget.justFinished) ...[
                       const SizedBox(width: Space.x12),
                       Expanded(
-                        child: FilledButton(
+                        child: RunButton(
+                          label: 'DONE',
                           onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('DONE'),
                         ),
                       ),
                     ],

@@ -9,9 +9,10 @@ import 'package:run_solo/widgets/time_in_zone.dart';
 import '../helpers.dart';
 import '../run_fixtures.dart';
 
-/// "Time in zone, in colour" on run detail, dark (the real screen) and light
-/// (the widget on the light theme; the app itself is dark only). PNGs come
-/// from the CI goldens artifact like the others (see screens_golden_test.dart).
+/// "Time in zone, in colour": on the real run detail screen (`detail`, the
+/// app's light theme) and the bare widget on the light theme. The detail
+/// goldens were named "dark" from when the app was dark only. PNGs come from
+/// the CI goldens artifact like the others (see screens_golden_test.dart).
 Future<void> golden(WidgetTester tester, String name) async {
   final file = File('test/golden/goldens/$name.png');
   expect(
@@ -27,7 +28,7 @@ Future<void> golden(WidgetTester tester, String name) async {
 
 void main() {
   for (final h in [800, 640]) {
-    testWidgets('run detail: time in zone, dark, 360 x $h', (tester) async {
+    testWidgets('run detail: time in zone, 360 x $h', (tester) async {
       tester.view.physicalSize = Size(360 * 3, h * 3.0);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.resetPhysicalSize);
@@ -60,7 +61,7 @@ void main() {
       await pumpTimes(tester, 6);
       await scrollTo(tester, find.text('TIME IN ZONE'));
       await settleAnimations(tester);
-      await golden(tester, 'time_in_zone_dark_360x$h');
+      await golden(tester, 'time_in_zone_detail_360x$h');
     });
 
     testWidgets('run detail: time in zone, no heart rate, 360 x $h', (
