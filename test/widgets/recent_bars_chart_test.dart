@@ -138,9 +138,7 @@ void main() {
     expect(find.text('PB'), findsNothing);
   });
 
-  testWidgets('a noise band keeps the axis note on the same line', (
-    tester,
-  ) async {
+  testWidgets('a noise band keeps the axis note', (tester) async {
     final pts = [
       BarPoint(date: d0, value: 2520),
       BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
