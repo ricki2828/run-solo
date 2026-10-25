@@ -271,10 +271,12 @@ jobs:
   testflight-gate:
     # T4 skeleton (docs/RELEASE.md). UNTESTED: no Apple Developer account exists yet, so this has
     # never signed or uploaded anything. Runs on v* tags and on dispatch with `testflight` ticked.
-    # A cheap Linux check first, so missing secrets never start a macOS runner.
+    # A cheap Linux check first, so missing secrets never start a macOS runner. The ASC secrets live
+    # in the `release` Environment (main + v* tags only); other refs are refused by the `if:`.
     name: TestFlight secrets check
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.testflight) }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/main') }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    environment: release
     timeout-minutes: 5
     permissions: {}
     outputs:
@@ -292,7 +294,7 @@ jobs:
             [ -n "${!n}" ] || missing="$missing $n"
           done
           if [ -n "$missing" ]; then
-            echo "::notice title=TestFlight skipped::secrets not set:$missing (docs/RELEASE.md)"
+            echo "::notice title=TestFlight skipped::secrets not set in the release Environment:$missing (docs/RELEASE.md)"
             echo "### TestFlight skipped: secrets not set:$missing" >> "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -309,6 +311,7 @@ jobs:
     needs: [testflight-gate]
     if: ${{ needs.testflight-gate.outputs.ready == 'true' }}
     runs-on: macos-15
+    environment: release
     timeout-minutes: 60
     permissions:
       contents: write
@@ -388,20 +391,17 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          set -o pipefail
-          mkdir -p build/ios-logs
           xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
             -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic 2>&1 | tee build/ios-logs/archive.log
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic
       - name: xcodebuild -exportArchive (destination upload = TestFlight)
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          set -o pipefail
           plist="$RUNNER_TEMP/ExportOptions.plist"
           /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" \
             -c "Add :destination string upload" -c "Add :signingStyle string automatic" \
@@ -410,18 +410,19 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
             -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee build/ios-logs/export.log
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           echo "### TestFlight: uploaded $IOS_VERSION ($IOS_BUILD); App Store Connect processing takes 10-30 min" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove the API key
         if: always()
         run: rm -rf "$RUNNER_TEMP/private_keys"
-      - name: Publish dSYMs and logs to a release
+      # dSYMs only: build logs stay in the (masked) Actions log and are never published, because the
+      # ci-ios release is public and file contents are not masked.
+      - name: Publish dSYMs to a release
         if: ${{ always() && vars.USE_ARTIFACTS != '1' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          [ -d "$RUNNER_TEMP/Runner.xcarchive/dSYMs" ] || { echo "no archive dSYMs to publish"; exit 0; }
           mkdir -p ci-out
-          [ -d "$RUNNER_TEMP/Runner.xcarchive/dSYMs" ] && (cd "$RUNNER_TEMP/Runner.xcarchive" && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-release-dsyms.zip" dSYMs)
-          [ -d build/ios-logs ] && (cd build && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-release-logs.zip" ios-logs)
-          ls ci-out/*.zip > /dev/null 2>&1 || exit 0
-          tools/ci_release.sh put "ci-ios-${{ github.run_id }}" "ios ${{ github.run_id }}" "iOS release build, run ${{ github.run_id }}, sha ${{ github.sha }}." ci-out/*.zip
+          (cd "$RUNNER_TEMP/Runner.xcarchive" && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-release-dsyms.zip" dSYMs)
+          tools/ci_release.sh put "ci-ios-${{ github.run_id }}" "ios ${{ github.run_id }}" "iOS release dSYMs, run ${{ github.run_id }}, sha ${{ github.sha }}." ci-out/ios-release-dsyms.zip

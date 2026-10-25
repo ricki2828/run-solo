@@ -4,8 +4,8 @@ One path per target. Nothing here is hand-bumped and nothing uploads from a lapt
 
 | Target | Trigger | Workflow / job | Status |
 |---|---|---|---|
-| Android (Play) | push tag `vX.Y.Z`, or Actions > ci > Run workflow with **play_upload** ticked | `ci.yml` `release-aab` then `play-upload` | build tested; upload untested until the secret exists |
-| iOS (TestFlight) | push tag `vX.Y.Z`, or Actions > ios > Run workflow with **testflight** ticked | `ios.yml` `testflight-gate` then `testflight` | **UNTESTED** (no Apple account yet) |
+| Android (Play) | push tag `vX.Y.Z`, or Actions > ci > Run workflow **on main** with **play_upload** ticked | `ci.yml` `release-aab` then `play-upload` | build tested; upload untested until the secret exists |
+| iOS (TestFlight) | push tag `vX.Y.Z`, or Actions > ios > Run workflow **on main** with **testflight** ticked | `ios.yml` `testflight-gate` then `testflight` | **UNTESTED** (no Apple account yet) |
 | Companion server | merge to main, then deploy on the host | `companion-server.yml` (CI) + `~/services/deploy-companion-logged.sh` | live |
 
 ## Release checklist
@@ -19,7 +19,7 @@ One path per target. Nothing here is hand-bumped and nothing uploads from a lapt
 7. Play Console: the build appears on the chosen track. For `internal` it is available to testers at once; for `alpha` (closed testing) or `production`, Play review applies.
 8. TestFlight: build shows after 10-30 min of processing. Internal testers with automatic distribution get it.
 
-A manual `ci` dispatch without **play_upload** ticked still builds the signed AAB (on the `ci-aab-<run id>` prerelease, 14 days) and uploads nothing.
+Uploads only ever run from main or a `v*` tag: a dispatch from any other branch skips them (workflow `if:`), and the `release` Environment refuses other refs as a second lock. A manual `ci` dispatch without **play_upload** ticked still builds the signed AAB (on the `ci-aab-<run id>` prerelease, 14 days) and uploads nothing.
 
 ## Version numbers
 
@@ -30,28 +30,38 @@ A manual `ci` dispatch without **play_upload** ticked still builds the signed AA
 
 ## Secrets and variables Ricki must add
 
-GitHub > ricki2828/run-solo > Settings > Secrets and variables > Actions. Or from a terminal, one at a time, pasting the value when asked (never into a chat): `gh secret set NAME -R ricki2828/run-solo`.
+### 1. Create the `release` Environment (once, before adding any upload secret)
 
-### Secrets
+The upload secrets are **Environment secrets**, not repo secrets, so a job on a feature branch (this repo has many agent branches) can never read them.
+
+1. GitHub > ricki2828/run-solo > Settings > Environments > **New environment** > name `release` > Configure.
+2. Deployment branches and tags > **Selected branches and tags** > Add rule: branch `main`; Add rule: tag `v*`.
+3. Optional: Required reviewers > yourself, if every upload should wait for a click.
+4. Save. (If a workflow ran first, GitHub auto-created `release` with no rules: open it and add them.)
+
+### 2. Environment secrets (in `release`)
+
+Settings > Environments > release > Environment secrets > Add. Or from a terminal (never paste into a chat): `gh secret set NAME -R ricki2828/run-solo --env release`.
 
 | Name | Used by | What it is | Where to get it |
 |---|---|---|---|
-| `PLAY_SERVICE_ACCOUNT_JSON` | `ci.yml` play-upload | The full JSON key file of a Google Cloud service account, pasted as is | Google Cloud Console > IAM & Admin > Service Accounts > Create (e.g. `play-ci`) > Keys > Add key > JSON. Then Play Console > Users and permissions > Invite new users > the service account's email > App permissions: Run Supreme > **Release apps to testing tracks** (and **Release to production** only if `production` will be used) > Invite. Set it with `gh secret set PLAY_SERVICE_ACCOUNT_JSON -R ricki2828/run-solo < key.json`, then delete the local file. |
+| `PLAY_SERVICE_ACCOUNT_JSON` | `ci.yml` play-upload | The full JSON key file of a Google Cloud service account, pasted as is | Google Cloud Console > IAM & Admin > Service Accounts > Create (e.g. `play-ci`) > Keys > Add key > JSON. Then Play Console > Users and permissions > Invite new users > the service account's email > App permissions: Run Supreme > **Release apps to testing tracks** (and **Release to production** only if `production` will be used) > Invite. Set it with `gh secret set PLAY_SERVICE_ACCOUNT_JSON -R ricki2828/run-solo --env release < key.json`, then delete the local file. |
 | `ASC_KEY_ID` | `ios.yml` testflight | App Store Connect API key id (10 characters) | App Store Connect > Users and Access > Integrations > App Store Connect API > Team Keys > + > name `github-ci`, Access **Admin** (cloud-managed signing needs Admin) |
 | `ASC_ISSUER_ID` | `ios.yml` testflight | Issuer id (UUID), shown above the key list | same page |
-| `ASC_KEY_P8` | `ios.yml` testflight | Contents of `AuthKey_<id>.p8` (download once only). Plain PEM text or base64 of the file both work | `gh secret set ASC_KEY_P8 -R ricki2828/run-solo < AuthKey_XXXX.p8` |
+| `ASC_KEY_P8` | `ios.yml` testflight | Contents of `AuthKey_<id>.p8` (download once only). Plain PEM text or base64 of the file both work | `gh secret set ASC_KEY_P8 -R ricki2828/run-solo --env release < AuthKey_XXXX.p8` |
 | `APPLE_TEAM_ID` | `ios.yml` testflight | 10-character Team ID | developer.apple.com/account > Membership details |
 
-Already set and unchanged: `RUN_SOLO_UPLOAD_KEYSTORE_BASE64`, `RUN_SOLO_UPLOAD_STORE_PASSWORD`, `RUN_SOLO_UPLOAD_KEY_PASSWORD` (Play upload key), `RUN_SOLO_DOGFOOD_*` (dogfood key), `RUN_SOLO_MAPS_API_KEY`.
+Already set as repo secrets and unchanged: `RUN_SOLO_UPLOAD_KEYSTORE_BASE64`, `RUN_SOLO_UPLOAD_STORE_PASSWORD`, `RUN_SOLO_UPLOAD_KEY_PASSWORD` (Play upload key), `RUN_SOLO_DOGFOOD_*` (dogfood key), `RUN_SOLO_MAPS_API_KEY`.
 
 Note: `~/ai/plans/run-supreme-ios-plan.md` §6.3 names the iOS secrets `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID`, `APPSTORE_KEY_P8_BASE64`. The workflow uses the `ASC_*` names above; use these.
 
-### Variables (all optional)
+### 3. Repo variables (all optional; Settings > Secrets and variables > Actions > Variables)
 
 | Name | Default | Meaning |
 |---|---|---|
 | `PLAY_TRACK` | `internal` | Track for tag uploads (`internal`, `alpha` = closed testing, `beta`, `production`). A dispatch's own track choice wins. |
-| `PLAY_RELEASE_STATUS` | `completed` | `draft` while the app has never been published on any track (Play rejects `completed` then); `inProgress` for a staged rollout. |
+| `PLAY_RELEASE_STATUS` | `completed` | `draft` while the app has never been published on any track (Play rejects `completed` then); `inProgress` for a staged rollout (needs `PLAY_USER_FRACTION`). |
+| `PLAY_USER_FRACTION` | none | Share of users for `inProgress`, between 0 and 1 (e.g. `0.1`). The job fails if `inProgress` is set without it. |
 | `ANDROID_VERSION_CODE_OFFSET` | `0` | See Version numbers. |
 | `IOS_BUILD_NUMBER_OFFSET` | `0` | See Version numbers. |
 
@@ -59,6 +69,7 @@ Note: `~/ai/plans/run-supreme-ios-plan.md` §6.3 names the iOS secrets `APPSTORE
 
 - `release-aab` (unchanged except the versionCode): play flavour, R8, obfuscated, upload-key signed, native symbols split out, 16 KB check, manifest + SHA256SUMS, published to prerelease `ci-aab-<run id>`.
 - `play-upload` downloads that AAB, `mapping.txt` and `native-debug-symbols.zip` and sends all three with `r0adkll/upload-google-play` (pinned by commit SHA, v1.1.5). Play App Signing re-signs with the app-signing key.
+- The action writes the service account key to the workspace; a final `always()` step deletes it.
 - No secret: the job prints a notice, stays green, and the AAB is still on the prerelease for a manual Console upload.
 - Untested: the upload step itself (no service account yet); whether `en-US` is a listing language (if Play rejects the notes, rename the file to the default listing language, e.g. `whatsnew-en-AU`).
 
@@ -67,7 +78,7 @@ Note: `~/ai/plans/run-supreme-ios-plan.md` §6.3 names the iOS secrets `APPSTORE
 Never run: no Apple Developer account, App Store Connect record or API key exists yet. Expect the first runs to need fixes. Prerequisites are steps R1-R5 and R8 in `~/ai/plans/run-supreme-ios-plan.md` §6.4.
 
 - `testflight-gate` (Linux, seconds) checks the four secrets and skips everything else if any is missing, so a missing secret never starts a macOS runner.
-- `testflight` (macos-15): RunCore XCFramework, `add_targets.rb`, `pod install`, `flutter build ios --release --config-only`, `xcodebuild archive` with `-allowProvisioningUpdates` and the API key (automatic signing, cloud-managed Apple Distribution cert), then `-exportArchive` with `ExportOptions` `method=app-store-connect`, `destination=upload`. dSYMs and logs go to prerelease `ci-ios-<run id>`. The .p8 is deleted at the end.
+- `testflight` (macos-15): RunCore XCFramework, `add_targets.rb`, `pod install`, `flutter build ios --release --config-only`, `xcodebuild archive` with `-allowProvisioningUpdates` and the API key (automatic signing, cloud-managed Apple Distribution cert), then `-exportArchive` with `ExportOptions` `method=app-store-connect`, `destination=upload`. Only the dSYMs go to prerelease `ci-ios-<run id>` (public): xcodebuild logs stay in the masked Actions log and are never published. The .p8 is deleted in an `always()` step.
 - Known gaps: no Maps iOS key (`RUN_SOLO_MAPS_API_KEY_IOS`, Phase 2) and no `COMPANION=1` define yet; the map shows its failed state. If Xcode refuses cloud signing with the key, fall back to plan task T4b (fastlane match).
 
 ## Companion server
