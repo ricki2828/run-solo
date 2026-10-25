@@ -1,17 +1,20 @@
 import Foundation
 
-/// Pigeon `RecorderApi` on iOS (P3): the recorder calls go to `RecorderHost`; the coaching,
-/// voice and Phase 2 settings stay safe no-ops (cues are P4, live coach P11, strap P5).
+/// Pigeon `RecorderApi` on iOS (P3): the recorder calls go to `RecorderHost`, the cue settings and
+/// the Ready countdown voice to `CuePlayer` (P4); the coaching and Phase 2 settings stay safe
+/// no-ops (spoken summaries and live coach P11, strap P5).
 final class RecorderApiHost: RecorderApi {
   let host: RecorderHost
   let source: LocationSource
   /// Pre-start GPS readiness (P2), sharing `source` with the recorder.
   var probe: GpsProbe?
   private let log: DiagnosticsLog
+  private let cues: CuePlayer?
 
-  init(host: RecorderHost, source: LocationSource, log: DiagnosticsLog = .shared) {
+  init(host: RecorderHost, source: LocationSource, cues: CuePlayer? = nil, log: DiagnosticsLog = .shared) {
     self.host = host
     self.source = source
+    self.cues = cues
     self.log = log
   }
 
@@ -67,18 +70,21 @@ final class RecorderApiHost: RecorderApi {
     return true
   }
 
-  func setCues(enabled: Bool) throws {}
+  func setCues(enabled: Bool) throws { cues?.enabled = enabled }
   func startGpsProbe() throws { DispatchQueue.main.async { self.probe?.start() } }
   func stopGpsProbe() throws { DispatchQueue.main.async { self.probe?.stop() } }
-  func setKmSplits(enabled: Bool) throws {}
+  func setKmSplits(enabled: Bool) throws { host.setKmSplits(enabled) }
   func setSpokenSummary(enabled: Bool) throws {}
   func setVoiceCoach(config: VoiceCoachConfig) throws {}
   func setCheckIn(metrics: [String], zoneBottomsBpm: [Double]?) throws {}
   func setCoachSlowdown(slowdown: Double?) throws {}
   func speakRunSummary(distanceM: Double, timeMs: Int64, climbM: Double?, verdict: String?, units: Units, includePace: Bool) throws {}
+  /// The synthesizer is created with the player: nothing to warm up.
   func prepareCountdownVoice() throws {}
-  func speakCountdownBeat(beat: Int64) throws {}
-  func stopCountdownVoice() throws {}
+  func speakCountdownBeat(beat: Int64) throws {
+    if let text = VoiceWords.countdownBeat(Int(beat)) { cues?.speakNow(text) }
+  }
+  func stopCountdownVoice() throws { cues?.stopSpeaking() }
   func setAutoPause(enabled: Bool) throws {}
   func muteTips() throws {}
   func setVolumeKeyLaps(enabled: Bool) throws {}
