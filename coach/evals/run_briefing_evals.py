@@ -11,8 +11,11 @@ temperature, usage included. The reply is the TEMPLATE; it is checked by the ser
   - no medical advice, no talk of a niggle
   - an active injury / urgent / wellbeing flag means no briefing at all (offline check of the server's blocking set)
 
-NOT run by CI and not run by the agent that wrote it: it needs the OpenRouter key. Ricki runs it:
+NOT run by CI. Two engines:
     OPENROUTER_API_KEY=... python3 coach/evals/run_briefing_evals.py [--runs 3] [--only id,id] [--out results.json]
+    python3 coach/evals/run_briefing_evals.py --engine claude [--model sonnet] [--runs 3]   (paid login via `claude -p`,
+        no key; the run_evals.py caveat applies: the host CLAUDE.md leaks in, so treat it as a close proxy, not production)
+Both mirror production's one retry: a template the validator refuses goes back once with the reason (briefing.MAX_ATTEMPTS).
 The key is read from the environment only; it is never printed or written. Exit 0 only if every scenario passes every run.
 Run it before widening the allowlist or after any change to the skill, the briefing instruction or the validator.
 """
@@ -78,9 +81,23 @@ def generate(sc: dict, system: list[dict], tools: list[dict], model: str, spend,
     return bf.tidy(content)
 
 
+def generate_claude(sc: dict, system: str, model: str) -> tuple[str, int]:
+    """The same instruction through `claude -p` (paid login), with production's retry. -> (template, attempts)."""
+    from run_evals import claude   # lazy: run_evals imports pyyaml
+    note = None
+    text = ""
+    for attempt in range(bf.MAX_ATTEMPTS):
+        text = bf.tidy(claude(bf.instruction(sc["kind"], bool(sc["named"]), sc["slots"], sc["facts"], note), model, system))
+        note = bf.check_template(text, set(sc["slots"]))
+        if note is None:
+            return text, attempt + 1
+    return text, bf.MAX_ATTEMPTS
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="anthropic/claude-sonnet-5.5")
+    ap.add_argument("--engine", choices=("openrouter", "claude"), default="openrouter")
+    ap.add_argument("--model", default="", help="default anthropic/claude-sonnet-5.5 (openrouter) or sonnet (claude)")
     ap.add_argument("--only", default="")
     ap.add_argument("--runs", type=int, default=2, help="generations per scenario; every one must pass")
     ap.add_argument("--max-spend", type=float, default=1.5)
@@ -96,7 +113,25 @@ def main() -> int:
         results.append({"id": sc["id"], "pass": ok, "misses": [] if ok else [f"{sc['flag']} is not in the server's blocking flags"],
                         "replies": []})
     live = [s for s in scenarios if s.get("expect") != "none"]
-    if live:
+    a.model = a.model or ("sonnet" if a.engine == "claude" else "anthropic/claude-sonnet-5.5")
+    if live and a.engine == "claude":
+        from run_evals import GUARD
+        prompt = coach_prompt.load(str(ROOT / "coach"))
+        system = prompt.text + GUARD
+        for sc in live:
+            row = {"id": sc["id"], "pass": True, "misses": [], "replies": []}
+            try:
+                for _ in range(a.runs):
+                    text, tries = generate_claude(sc, system, a.model)
+                    row["replies"].append(text if tries == 1 else f"(retry) {text}")
+                    miss = check(sc, text)
+                    row["misses"] += miss
+                    row["pass"] = row["pass"] and not miss
+            except Exception as e:   # a broken call is a fail, never a skip
+                row |= {"pass": False, "misses": row["misses"] + [f"call failed: {e}"]}
+            results.append(row)
+        total = f"engine=claude -p prompt_hash={prompt.prompt_hash}"
+    elif live:
         from run_evals_openrouter import Spend, SpendCap, api_key, chat   # lazy: it needs pyyaml; the offline checks do not
         api_key()   # fail fast
         prompt = coach_prompt.load(str(ROOT / "coach"))

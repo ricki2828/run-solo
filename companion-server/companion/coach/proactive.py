@@ -39,7 +39,7 @@ import contextlib
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from .. import db, heat
@@ -93,6 +93,18 @@ def note(text: str) -> str:
     return f"<host_note>{text}</host_note>"
 
 
+KIND_WORDS = {"easy": "easy run", "long": "long run", "tempo": "tempo", "quality": "quality session", "interval": "intervals",
+              "race": "race", "recovery": "recovery run", "free": "free run"}
+
+
+def _day_words(day: str) -> str:
+    """An ISO plan date as the model should say it ("Friday 23 Oct"): models get weekdays wrong from bare ISO dates."""
+    try:
+        return date.fromisoformat(day).strftime("%A %d %b")
+    except (TypeError, ValueError):
+        return str(day)
+
+
 def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     """The run debrief's host note, from the run row and up to 3 earlier rows (newest first). Pure: the eval harness builds
     the same note from scenario rows (coach/evals)."""
@@ -100,9 +112,11 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
         return None if not v else f"{int(v // 60)}:{int(v % 60):02d}/km"
 
     facts = [f"{round(r['distance_m'] / 1000, 2):g} km in {_hm(r['duration_s'])}"]
+    if r.get("type"):
+        facts.append(f"kind of run: {KIND_WORDS.get(r['type'], r['type'])}")
     if r["session_name"]:
-        facts.append(f"session: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
-                                                       " (goal not reached)" if r["goal_reached"] == 0 else ""))
+        facts.append(f"the app's session label: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
+                                                                       " (goal not reached)" if r["goal_reached"] == 0 else ""))
     if r["pace_s_per_km"] and not amber:
         facts.append(f"pace {pace(r['pace_s_per_km'])}")
     if r["true_pace_s_per_km"] and not amber:
@@ -119,8 +133,10 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     for x in prior:
         d = to_local(parse_iso(x["start_utc"]), zone).strftime("%a %d %b")
         bits = [f"{round(x['distance_m'] / 1000, 1):g} km", _hm(x["duration_s"])]
+        if x.get("type"):
+            bits.append(KIND_WORDS.get(x["type"], x["type"]))
         if x["session_name"]:
-            bits.append(x["session_name"])
+            bits.append(f"label {x['session_name']}")
         if x["pace_s_per_km"] and not amber:
             bits.append(pace(x["pace_s_per_km"]))
         if x["feel"]:
@@ -129,14 +145,17 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     nxt = ""
     if not amber and r["plan_next_day"]:
         nm = r["plan_next_session_name"] or r["plan_next_type"] or "session"
-        nxt = f" The app's next planned session: {nm} on {r['plan_next_day']}."
+        nxt = f" The app's next planned session: {nm} on {_day_words(r['plan_next_day'])}."
     day = to_local(parse_iso(r["start_utc"]), zone).strftime("%A")
     return (f"PROACTIVE, started by the server: the runner finished a run on {day}. Facts from the app: " + "; ".join(facts) + ". "
             + ("Their previous runs, newest first: " + " | ".join(lines) + ". " if lines else "This is their first run on record. ")
             + nxt
-            + " Write a short debrief in your own words: ONE specific observation about this run (use get_run and "
-            "get_recent_runs for detail, and only figures a tool or these facts give; compare with the earlier runs when it "
-            "says something). "
+            + " Write a short debrief in your own words (the skill's proactive reference): name the run by its kind, not the "
+            "app's label, and judge it against what was planned for that day on its own terms. ONE specific observation about "
+            "this run (use get_run and get_recent_runs for detail, and only figures a tool or these facts give; compare with "
+            "the earlier runs when it says something). If the distance or pace look wrong while the heart rate zones and the "
+            "feel look normal, it is a GPS glitch: say so in a few words, count the session by its time, never call it slow. "
+            "If it was not the session planned for that day, make one clear call about the missed one; never cram it in. "
             + ("Do not give paces, a plan or push-on advice: the runner is in a care window, so keep it to the observation and "
                "a gentle check-in. " if amber else
                "Then ONE concrete line about the next session, from the plan the tools return (get_plan), never invented. ")
@@ -151,16 +170,20 @@ def heat_note(name: str, weekday: str, td: tuple, f: float | None) -> str:
     facts = (f"{weekday} at {HEAT_HOUR:02d}:00 the forecast is {td[0]} C with a dew point of {td[1]} C"
              + (", too hot to compare paces" if f is None else f", about {round(f * 100, 1):g}% slower than in the cool"))
     return (f"PROACTIVE, started by the server: tomorrow's session is {name}. The forecast: {facts}. Give a short heads-up the "
-            "evening before: run it by effort, not pace, or move it to a cooler hour. Use only these figures. One to three "
-            f"lines, no medical talk. Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
+            "evening before, in your own words (the skill's proactive reference): name the session, the one figure that matters, "
+            "and the call: run it by effort, not pace, or move it to a cooler hour if what you remember about their schedule "
+            "allows. Use only these figures. One to three lines, not a weather report, no medical talk. Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
 
 
 def day_note(today_line: str, week: str, amber: bool) -> str:
     """The morning message's host note: what today is (`today_line`) and how the week is tracking (`week`)."""
     return (f"PROACTIVE, started by the server: it is the runner's morning and you have not written today. Facts from the plan "
             f"and the app: {today_line}. How the week is tracking: {week}. "
-            "Write a short good-morning in your own words: what today is, in one line (use get_plan for the detail, and only "
-            "figures a tool or these facts give), then one line on how the week is going. "
+            "Write a short good-morning in your own words (the skill's proactive reference). If the earlier conversation says "
+            "anything about today (another sport, travel, work, a niggle, a change), start from that. Then what today is, in one "
+            "line (use get_plan for the detail, and only figures a tool or these facts give): a session day gets the session by "
+            "name, its shape and how to run it; a rest day gets what it is for, never 'nothing to do', and the next session by "
+            "name and day. Then one line on how the week is going, only if it says something. "
             + ("Do not mention today's session, paces or push-on advice: the runner is in a care window, so say good morning "
                "and ask how they are feeling, gently. " if amber else "")
             + "If coach_memory in your turn holds something relevant, use it and say where it came from in plain words, once; "

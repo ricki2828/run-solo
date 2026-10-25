@@ -71,3 +71,28 @@ def test_an_unlisted_tool_is_reported(monkeypatch):
 def test_injury_triage_is_in_the_production_prompt():
     from companion.coach import prompt
     assert 'reference name="injury-triage"' in prompt.load(str(EVALS.parent)).text
+
+
+def test_a_proactive_scenario_sends_the_servers_own_note_and_its_rubric(monkeypatch):
+    seen = stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "Easy 35 done, all zone 2. Tempo Thursday."}),
+                              json.dumps({"pass": True, "score": 9, "criteria": {"voice": True}, "misses": []})])
+    r = ev.run_one(SC["proactive_run_gps_dropout"], "SYS", FIXTURE, "m", "j")
+    assert r["pass"] and r["group"] == "debrief" and r["criteria"] == {"voice": True}
+    assert "<turn>\n<host_note>PROACTIVE" in seen[0][0] and "GPS glitch" in seen[0][0]   # the note proactive.py builds
+    assert "names_session" in seen[1][0]                                              # the proactive judge, not the chat one
+
+
+def test_a_proactive_scenario_carries_the_earlier_chat_and_never_hits_the_template(monkeypatch):
+    seen = stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "Morning. How's the calf today?"}), JUDGE_OK])
+    r = ev.run_one(SC["proactive_day_care_window"], "SYS", FIXTURE, "m", "j")
+    assert r["source"] == "model" and r["pass"]
+    assert "<earlier_conversation>" in seen[0][0] and "calf is tight" in seen[0][0]
+    assert "<host_note>The runner describes pain" in seen[0][0]   # amber mode, as proactive.py sets it
+
+
+def test_every_proactive_scenario_builds_its_note():
+    pro = [s for s in SC.values() if "proactive" in s]
+    assert len(pro) >= 9
+    for s in pro:
+        note, _mode = ev.proactive_turn(s)
+        assert note.startswith("<host_note>PROACTIVE") and "<chips>" in note

@@ -69,7 +69,8 @@ PROACTIVE_ASK = """<tools>
 (The read tools above have already been called for you.)
 {history}
 The runner has not written. The server starts this conversation with this turn:
-<turn>{message}</turn>
+<turn>{note}
+{message}</turn>
 {transcript}
 Answer with JSON only, no prose around it:
 {{"tool_calls": [{{"name": "<tool from the list>", "input": {{...}}}}], "reply": "<the message you send the runner>"}}
@@ -308,10 +309,11 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
                     tool_sources.append(json.dumps(res))
                     transcript += f"\nYou called: {json.dumps(new)}\nThe server returned: {json.dumps(res)}\n"
                     continue
-                body, _chips = validator.split_chips(validator.tidy(str(coach.get("reply") or "")))
+                body, chips = validator.split_chips(validator.tidy(str(coach.get("reply") or "")))
                 bad = validator.check(body, sources, tool_sources, mode=mode, wrote=wrote)
                 if bad is None:
                     reply, rejected = body, None
+                    out["chips"] = chips   # production sends these as buttons under the reply
                     break
                 rejected = bad
                 if repairs >= 1:   # production: a second miss is the fallback template
@@ -335,7 +337,9 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
             misses.append(f"triage_check came back {lv[-1]}, scenario expects {exp}")
     if pro:
         judge_prompt = PROACTIVE_JUDGE_ASK.format(fixture=fixture, history=json.dumps(sc.get("history") or []),
-                                                  message=sc["message"], reply=out["reply"], must=sc.get("must", []),
+                                                  message=sc["message"], must=sc.get("must", []),
+                                                  reply=out["reply"] + (f"\n[quick-reply buttons: {' | '.join(out['chips'])}]"
+                                                                        if out.get("chips") else "\n[no quick-reply buttons]"),
                                                   must_not=sc.get("must_not", []))
     try:
         j = parse_json(claude(judge_prompt, judge)) if pro else parse_json(claude(JUDGE_ASK.format(fixture=fixture, message=sc["message"], tools=json.dumps(calls),
