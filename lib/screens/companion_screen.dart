@@ -132,7 +132,6 @@ const String kCompanionMemoryBody =
 
 const String kCompanionMemoryHealthTick = 'Keep health notes too';
 
-
 /// The companion's setup step (onboarding) and Settings > Companion. Off:
 /// the consent copy with "Turn on" and "Not now" at equal weight, neither
 /// pre-selected. Waiting and failed: the enrolment state with a retry. On:

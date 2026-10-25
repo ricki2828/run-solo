@@ -566,32 +566,33 @@ void main() {
       expect(secrets.values[CompanionController.consentName], '4');
     });
 
-    testWidgets('ticking health notes is sent and training sync stays at its default', (
-      tester,
-    ) async {
-      await open(tester);
-      await tester.tap(
-        find.byKey(const ValueKey('companion-memory-health-box')),
-      );
-      await pumpTimes(tester, 2);
-      await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
-      await pumpTimes(tester, 4);
-      expect(lastConsent(), {
-        'consent_version': 4,
-        'health_notes': true,
-        'training_sync': true,
-      });
-      // They survive an app restart.
-      final again = CompanionController(
-        store: secrets,
-        transfer: transfer,
-        client: CompanionClient(baseUrl: 'https://c.test', http: http),
-      );
-      await tester.runAsync(again.load);
-      expect(again.memoryOn, isTrue);
-      expect(again.healthNotesOn, isTrue);
-      expect(again.trainingSyncOn, isTrue);
-    });
+    testWidgets(
+      'ticking health notes is sent and training sync stays at its default',
+      (tester) async {
+        await open(tester);
+        await tester.tap(
+          find.byKey(const ValueKey('companion-memory-health-box')),
+        );
+        await pumpTimes(tester, 2);
+        await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
+        await pumpTimes(tester, 4);
+        expect(lastConsent(), {
+          'consent_version': 4,
+          'health_notes': true,
+          'training_sync': true,
+        });
+        // They survive an app restart.
+        final again = CompanionController(
+          store: secrets,
+          transfer: transfer,
+          client: CompanionClient(baseUrl: 'https://c.test', http: http),
+        );
+        await tester.runAsync(again.load);
+        expect(again.memoryOn, isTrue);
+        expect(again.healthNotesOn, isTrue);
+        expect(again.trainingSyncOn, isTrue);
+      },
+    );
 
     testWidgets('Not now sends nothing and keeps the rest working', (
       tester,
