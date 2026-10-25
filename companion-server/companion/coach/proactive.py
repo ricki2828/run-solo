@@ -93,6 +93,81 @@ def note(text: str) -> str:
     return f"<host_note>{text}</host_note>"
 
 
+def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
+    """The run debrief's host note, from the run row and up to 3 earlier rows (newest first). Pure: the eval harness builds
+    the same note from scenario rows (coach/evals)."""
+    def pace(v):
+        return None if not v else f"{int(v // 60)}:{int(v % 60):02d}/km"
+
+    facts = [f"{round(r['distance_m'] / 1000, 2):g} km in {_hm(r['duration_s'])}"]
+    if r["session_name"]:
+        facts.append(f"session: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
+                                                       " (goal not reached)" if r["goal_reached"] == 0 else ""))
+    if r["pace_s_per_km"] and not amber:
+        facts.append(f"pace {pace(r['pace_s_per_km'])}")
+    if r["true_pace_s_per_km"] and not amber:
+        facts.append(f"true pace {pace(r['true_pace_s_per_km'])}")
+    if r["zone_min"]:
+        facts.append(f"minutes in each heart rate zone (z1 easiest, z5 hardest): {r['zone_min']}")
+    if r["feel"]:
+        facts.append(f"how it felt, as the runner tapped it: {r['feel']}")
+    if r["pb"]:
+        facts.append(f"personal best flag: {r['pb']}")
+    if r["verdict"]:
+        facts.append(f"the app's verdict: {r['verdict']}")
+    lines = []
+    for x in prior:
+        d = to_local(parse_iso(x["start_utc"]), zone).strftime("%a %d %b")
+        bits = [f"{round(x['distance_m'] / 1000, 1):g} km", _hm(x["duration_s"])]
+        if x["session_name"]:
+            bits.append(x["session_name"])
+        if x["pace_s_per_km"] and not amber:
+            bits.append(pace(x["pace_s_per_km"]))
+        if x["feel"]:
+            bits.append(f"felt {x['feel']}")
+        lines.append(f"{d}: " + ", ".join(bits))
+    nxt = ""
+    if not amber and r["plan_next_day"]:
+        nm = r["plan_next_session_name"] or r["plan_next_type"] or "session"
+        nxt = f" The app's next planned session: {nm} on {r['plan_next_day']}."
+    day = to_local(parse_iso(r["start_utc"]), zone).strftime("%A")
+    return (f"PROACTIVE, started by the server: the runner finished a run on {day}. Facts from the app: " + "; ".join(facts) + ". "
+            + ("Their previous runs, newest first: " + " | ".join(lines) + ". " if lines else "This is their first run on record. ")
+            + nxt
+            + " Write a short debrief in your own words: ONE specific observation about this run (use get_run and "
+            "get_recent_runs for detail, and only figures a tool or these facts give; compare with the earlier runs when it "
+            "says something). "
+            + ("Do not give paces, a plan or push-on advice: the runner is in a care window, so keep it to the observation and "
+               "a gentle check-in. " if amber else
+               "Then ONE concrete line about the next session, from the plan the tools return (get_plan), never invented. ")
+            + "If coach_memory in your turn holds something relevant (a goal, a schedule limit), use it and say where it came "
+            "from in plain words, once; never recite it. Two to four lines in all, no medical talk. "
+            f"Finish with the quick replies <chips>{RUN_CHIPS}</chips>.")
+
+
+def heat_note(name: str, weekday: str, td: tuple, f: float | None) -> str:
+    """The heat heads-up's host note: tomorrow's session name, its weekday, the forecast (temp C, dew point C) and the
+    slowdown fraction (None = too hot to compare)."""
+    facts = (f"{weekday} at {HEAT_HOUR:02d}:00 the forecast is {td[0]} C with a dew point of {td[1]} C"
+             + (", too hot to compare paces" if f is None else f", about {round(f * 100, 1):g}% slower than in the cool"))
+    return (f"PROACTIVE, started by the server: tomorrow's session is {name}. The forecast: {facts}. Give a short heads-up the "
+            "evening before: run it by effort, not pace, or move it to a cooler hour. Use only these figures. One to three "
+            f"lines, no medical talk. Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
+
+
+def day_note(today_line: str, week: str, amber: bool) -> str:
+    """The morning message's host note: what today is (`today_line`) and how the week is tracking (`week`)."""
+    return (f"PROACTIVE, started by the server: it is the runner's morning and you have not written today. Facts from the plan "
+            f"and the app: {today_line}. How the week is tracking: {week}. "
+            "Write a short good-morning in your own words: what today is, in one line (use get_plan for the detail, and only "
+            "figures a tool or these facts give), then one line on how the week is going. "
+            + ("Do not mention today's session, paces or push-on advice: the runner is in a care window, so say good morning "
+               "and ask how they are feeling, gently. " if amber else "")
+            + "If coach_memory in your turn holds something relevant, use it and say where it came from in plain words, once; "
+            "never recite it. Two to four lines, no medical talk. "
+            f"Finish with the quick replies <chips>{DAY_CHIPS}</chips>.")
+
+
 class Proactive:
     def __init__(self, coach: Any):
         self.coach = coach
@@ -353,55 +428,7 @@ class Proactive:
         prior = [dict(x) for x in c.execute(
             "SELECT start_utc, type, session_name, distance_m, duration_s, pace_s_per_km, feel FROM runs WHERE user_id=? "
             "AND COALESCE(real_upload,1)=1 AND start_utc < ? ORDER BY start_utc DESC LIMIT 3", (user["id"], r["start_utc"]))]
-
-        def pace(v):
-            return None if not v else f"{int(v // 60)}:{int(v % 60):02d}/km"
-
-        facts = [f"{round(r['distance_m'] / 1000, 2):g} km in {_hm(r['duration_s'])}"]
-        if r["session_name"]:
-            facts.append(f"session: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
-                                                           " (goal not reached)" if r["goal_reached"] == 0 else ""))
-        if r["pace_s_per_km"] and not amber:
-            facts.append(f"pace {pace(r['pace_s_per_km'])}")
-        if r["true_pace_s_per_km"] and not amber:
-            facts.append(f"true pace {pace(r['true_pace_s_per_km'])}")
-        if r["zone_min"]:
-            facts.append(f"minutes in each heart rate zone (z1 easiest, z5 hardest): {r['zone_min']}")
-        if r["feel"]:
-            facts.append(f"how it felt, as the runner tapped it: {r['feel']}")
-        if r["pb"]:
-            facts.append(f"personal best flag: {r['pb']}")
-        if r["verdict"]:
-            facts.append(f"the app's verdict: {r['verdict']}")
-        lines = []
-        for x in prior:
-            d = to_local(parse_iso(x["start_utc"]), zone).strftime("%a %d %b")
-            bits = [f"{round(x['distance_m'] / 1000, 1):g} km", _hm(x["duration_s"])]
-            if x["session_name"]:
-                bits.append(x["session_name"])
-            if x["pace_s_per_km"] and not amber:
-                bits.append(pace(x["pace_s_per_km"]))
-            if x["feel"]:
-                bits.append(f"felt {x['feel']}")
-            lines.append(f"{d}: " + ", ".join(bits))
-        nxt = ""
-        if not amber and r["plan_next_day"]:
-            nm = r["plan_next_session_name"] or r["plan_next_type"] or "session"
-            nxt = f" The app's next planned session: {nm} on {r['plan_next_day']}."
-        day = to_local(parse_iso(r["start_utc"]), zone).strftime("%A")
-        text = (f"PROACTIVE, started by the server: the runner finished a run on {day}. Facts from the app: " + "; ".join(facts) + ". "
-                + ("Their previous runs, newest first: " + " | ".join(lines) + ". " if lines else "This is their first run on record. ")
-                + nxt
-                + " Write a short debrief in your own words: ONE specific observation about this run (use get_run and "
-                "get_recent_runs for detail, and only figures a tool or these facts give; compare with the earlier runs when it "
-                "says something). "
-                + ("Do not give paces, a plan or push-on advice: the runner is in a care window, so keep it to the observation and "
-                   "a gentle check-in. " if amber else
-                   "Then ONE concrete line about the next session, from the plan the tools return (get_plan), never invented. ")
-                + "If coach_memory in your turn holds something relevant (a goal, a schedule limit), use it and say where it came "
-                "from in plain words, once; never recite it. Two to four lines in all, no medical talk. "
-                f"Finish with the quick replies <chips>{RUN_CHIPS}</chips>.")
-        return f"proactive:run:{r['run_id']}", note(text), "amber" if amber else None
+        return f"proactive:run:{r['run_id']}", note(run_note(r, prior, zone, amber)), "amber" if amber else None
 
     def _race(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):
         r = c.execute("SELECT run_id, start_utc, end_utc, distance_m, duration_s FROM runs WHERE user_id=? AND type='race' "
@@ -445,11 +472,7 @@ class Proactive:
         if f is not None and f < heat.LINE_MIN_FRACTION:
             return None
         name = (planned.session_name if planned is not None and planned.session_name else "quality session")
-        facts = (f"{tomorrow.strftime('%A')} at {HEAT_HOUR:02d}:00 the forecast is {td[0]} C with a dew point of {td[1]} C"
-                 + (", too hot to compare paces" if f is None else f", about {round(f * 100, 1):g}% slower than in the cool"))
-        text = (f"PROACTIVE, started by the server: tomorrow's session is {name}. The forecast: {facts}. Give a short heads-up the "
-                "evening before: run it by effort, not pace, or move it to a cooler hour. Use only these figures. One to three "
-                f"lines, no medical talk. Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
+        text = heat_note(name, tomorrow.strftime('%A'), td, f)
         return f"proactive:heat:{tomorrow.isoformat()}", note(text), None
 
     def _day(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):
@@ -518,13 +541,5 @@ class Proactive:
                     bits.append(f"target pace {int(pl.pace_lo_s // 60)}:{int(pl.pace_lo_s % 60):02d} to "
                                 f"{int(pl.pace_hi_s // 60)}:{int(pl.pace_hi_s % 60):02d} per km")
             today_line = "today's session is " + ", ".join(bits) + ("; it was moved to today" if res.moved else "")
-        text = (f"PROACTIVE, started by the server: it is the runner's morning and you have not written today. Facts from the plan "
-                f"and the app: {today_line}. How the week is tracking: {week}. "
-                "Write a short good-morning in your own words: what today is, in one line (use get_plan for the detail, and only "
-                "figures a tool or these facts give), then one line on how the week is going. "
-                + ("Do not mention today's session, paces or push-on advice: the runner is in a care window, so say good morning "
-                   "and ask how they are feeling, gently. " if amber else "")
-                + "If coach_memory in your turn holds something relevant, use it and say where it came from in plain words, once; "
-                "never recite it. Two to four lines, no medical talk. "
-                f"Finish with the quick replies <chips>{DAY_CHIPS}</chips>.")
+        text = day_note(today_line, week, amber)
         return key, note(text), "amber" if amber else None

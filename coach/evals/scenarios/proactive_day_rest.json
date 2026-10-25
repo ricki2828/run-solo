@@ -1,0 +1,18 @@
+{
+ "id": "proactive_day_rest",
+ "group": "day",
+ "message": "(proactive morning)",
+ "proactive": {
+  "trigger": "day",
+  "today_line": "today is a rest day in the plan; the next session is on Tuesday 20 Oct and its details are in get_plan",
+  "week": "runs done since Monday: 0; the runner's planned runs a week: 4; last run Sunday 18 Oct: 14.2 km in 1:25:12, Long run"
+ },
+ "must": [
+  "says today is a rest day, with a reason that fits (after yesterday's 14.2 km long run)",
+  "names tomorrow's easy run with its 35 minutes"
+ ],
+ "must_not": [
+  "a flat 'nothing to do' with no coaching value",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

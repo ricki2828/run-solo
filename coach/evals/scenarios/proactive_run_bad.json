@@ -1,0 +1,193 @@
+{
+ "id": "proactive_run_bad",
+ "group": "debrief",
+ "message": "(proactive run debrief)",
+ "fixture_patch": {
+  "today": "2026-10-22 (Thursday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r11",
+    "date": "2026-10-22",
+    "type": "quality",
+    "session_name": "Tempo",
+    "distance_m": 5100,
+    "duration_s": 1900,
+    "pace_s_per_km": 373,
+    "zone_min": {
+     "z2": 6,
+     "z3": 10,
+     "z4": 9,
+     "z5": 6
+    },
+    "feel": "hard",
+    "weekday": "Thu"
+   },
+   {
+    "run_id": "r10",
+    "date": "2026-10-20",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6100,
+    "duration_s": 2120,
+    "pace_s_per_km": 348,
+    "zone_min": {
+     "z2": 31,
+     "z3": 4
+    },
+    "feel": "right",
+    "weekday": "Tue"
+   },
+   {
+    "run_id": "r9",
+    "date": "2026-10-18",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "zone_min": {
+     "z1": 22,
+     "z2": 58,
+     "z3": 5
+    },
+    "climb_m": 85,
+    "feel": "right",
+    "weekday": "Sun"
+   },
+   {
+    "run_id": "r8",
+    "date": "2026-10-16",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "work_pace_s_per_km": 268,
+    "reps_done": 4,
+    "rep_spread_s": 5,
+    "zone_min": {
+     "z2": 18,
+     "z4": 12,
+     "z5": 4
+    },
+    "feel": "hard",
+    "weekday": "Fri"
+   },
+   {
+    "run_id": "r7",
+    "date": "2026-10-14",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2070,
+    "pace_s_per_km": 345,
+    "zone_min": {
+     "z2": 20,
+     "z3": 12,
+     "z4": 2
+    },
+    "feel": "right",
+    "weekday": "Wed"
+   }
+  ],
+  "get_checkins": [
+   {
+    "date": "2026-10-22",
+    "readiness": "low",
+    "sleep": "short",
+    "weekday": "Thu"
+   },
+   {
+    "date": "2026-10-17",
+    "readiness": "ok",
+    "sleep": "short",
+    "weekday": "Sat"
+   }
+  ]
+ },
+ "proactive": {
+  "trigger": "run",
+  "run": {
+   "start_utc": "2026-10-21T18:00:00Z",
+   "type": "quality",
+   "session_name": "Tempo",
+   "distance_m": 5100,
+   "duration_s": 1900,
+   "pace_s_per_km": 373,
+   "true_pace_s_per_km": null,
+   "zone_min": "{\"z2\": 6, \"z3\": 10, \"z4\": 9, \"z5\": 6}",
+   "feel": "hard",
+   "pb": null,
+   "verdict": null,
+   "goal_reached": 0,
+   "plan_next_day": "2026-10-23",
+   "plan_next_session_name": "Easy run + strides",
+   "plan_next_type": "easy"
+  },
+  "prior": [
+   {
+    "start_utc": "2026-10-19T18:00:00Z",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6100,
+    "duration_s": 2120,
+    "pace_s_per_km": 348,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-17T18:00:00Z",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-15T18:00:00Z",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "hard",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   }
+  ]
+ },
+ "must": [
+  "names the session as the tempo",
+  "says honestly it did not go to plan (cut short / goal not reached) without shaming",
+  "links it to something in the data, hedged (this morning's low readiness and short sleep)",
+  "next: Friday's easy run, kept genuinely easy; no making up the missed tempo"
+ ],
+ "must_not": [
+  "praise for hitting the session",
+  "a reason not supported by the data",
+  "telling them to redo or add the tempo this week",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}
