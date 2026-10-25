@@ -326,16 +326,9 @@ class ProgressHeadline {
       title: '$lane DOWN ${-topChange}',
       line:
           'Since $since. Your earlier best has rolled off. '
-          '${_bringsBack(top.lane)} brings it back.',
+          'Faster recent runs raise it.',
     );
   }
-
-  static String _bringsBack(engine.IdentityLane lane) => switch (lane) {
-    engine.IdentityLane.aerobic => 'A hard 5K',
-    engine.IdentityLane.speed => 'A clean interval session',
-    engine.IdentityLane.mid => 'A 5K or 10K run',
-    engine.IdentityLane.long => 'A 15K+ run',
-  };
 
   static String _sourceName(String source) => switch (source) {
     'Cooper test' => '12-minute test',

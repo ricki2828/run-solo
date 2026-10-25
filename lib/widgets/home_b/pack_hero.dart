@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:run_engine/run_engine.dart' as engine;
+
 import '../../state/progress_snapshot.dart';
+import '../../theme/lanes.dart';
 import '../../theme/pack_look.dart';
 import '../../theme/theme.dart';
 import 'block_chip.dart';
@@ -77,6 +80,7 @@ class PackHero extends StatelessWidget {
     this.onAddProfile,
     this.slowerLabel = 'Slower',
     this.fasterLabel = 'Faster',
+    this.compact = false,
   });
 
   final CalibratedLevel level;
@@ -99,6 +103,11 @@ class PackHero extends StatelessWidget {
   /// translated build can swap them.
   final String slowerLabel;
   final String fasterLabel;
+
+  /// Short phones: smaller statement, no sub line once there is a pack, and
+  /// a 56 dp strip, so the next session shows in the first screen (UI
+  /// review 24-Oct #5). The full hero stays on taller screens.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -149,9 +158,10 @@ class PackHero extends StatelessWidget {
       if (level.level > 0) 'LEVEL ${level.level}',
       if (level.ageGradePct != null) 'AGE GRADE ${level.ageGradePct!.round()}%',
     ];
-    final moved = level.levelMonthAgo == null
+    final moved = level.levelMonthAgo == null || runCount == 0
         ? null
         : level.level - level.levelMonthAgo!;
+    final showSub = !compact || p == null;
     return Semantics(
       container: true,
       label: '$eyebrow. ${big.replaceAll('\n', ' ')}. $sub',
@@ -191,13 +201,20 @@ class PackHero extends StatelessWidget {
             Text(
               big,
               key: const ValueKey('pack-hero-big'),
-              style: RunSoloType.display64.copyWith(color: PackLook.onViolet),
+              style: (compact ? RunSoloType.statement56 : RunSoloType.display64)
+                  .copyWith(color: PackLook.onViolet),
             ),
-            const SizedBox(height: Space.x8),
-            Text(
-              sub,
-              style: RunSoloType.body15.copyWith(color: PackLook.onViolet),
-            ),
+            if (showSub) ...[
+              const SizedBox(height: Space.x8),
+              Text(
+                sub,
+                style: RunSoloType.body15.copyWith(color: PackLook.onViolet),
+              ),
+            ],
+            if (moved != null) ...[
+              const SizedBox(height: Space.x12),
+              _Delta(moved: moved),
+            ],
             if (showAdd) ...[
               const SizedBox(height: Space.x12),
               Align(
@@ -225,9 +242,9 @@ class PackHero extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: Space.x16),
+            SizedBox(height: compact ? Space.x12 : Space.x16),
             Container(
-              padding: const EdgeInsets.all(Space.x12),
+              padding: EdgeInsets.all(compact ? Space.x8 : Space.x12),
               decoration: BoxDecoration(
                 color: PackLook.violetPanel,
                 borderRadius: BorderRadius.circular(Radii.card),
@@ -238,8 +255,9 @@ class PackHero extends StatelessWidget {
                   PackHistogram(
                     bins: p?.histogram ?? PackHistogram.placeholder,
                     youBin: p?.youBin,
+                    height: compact ? 56 : 64,
                   ),
-                  const SizedBox(height: Space.x8),
+                  SizedBox(height: compact ? Space.x4 : Space.x8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -268,18 +286,9 @@ class PackHero extends StatelessWidget {
                       fill: PackLook.onViolet,
                       ink: PackLook.violet,
                     ),
-                  if (moved != null && moved != 0)
-                    Text(
-                      moved > 0
-                          ? 'Up $moved on last month'
-                          : 'Down ${-moved} on last month',
-                      style: RunSoloType.label13.copyWith(
-                        color: PackLook.onViolet,
-                      ),
-                    ),
                 ],
               ),
-              if (level.calibrating && runCount > 0) ...[
+              if (level.calibrating && runCount > 0 && !compact) ...[
                 const SizedBox(height: Space.x8),
                 Text(
                   level.runsToSettle > 0
@@ -296,6 +305,80 @@ class PackHero extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The month's move, above the pack: up is loud in the AEROBIC lane colour
+/// (the pack's lane), holding is a quiet outline, down is calm and never
+/// red, with the way back in the same line.
+class _Delta extends StatelessWidget {
+  const _Delta({required this.moved});
+
+  final int moved;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final up = moved > 0;
+    final fill = up
+        ? t.laneFill(engine.IdentityLane.aerobic)
+        : moved == 0
+        ? Colors.transparent
+        : PackLook.violetPanel;
+    final ink = up ? readableOn(fill) : PackLook.onViolet;
+    final String label;
+    if (up) {
+      label = 'UP $moved ${moved == 1 ? 'LEVEL' : 'LEVELS'} IN 4 WEEKS';
+    } else if (moved == 0) {
+      label = 'HOLDING STEADY OVER 4 WEEKS';
+    } else {
+      label = 'DOWN ${-moved} ${moved == -1 ? 'LEVEL' : 'LEVELS'} IN 4 WEEKS';
+    }
+    final pill = Container(
+      key: const ValueKey('pack-hero-delta'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.x12,
+        vertical: Space.x8,
+      ),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(Radii.pill),
+        border: moved == 0
+            ? Border.all(color: PackLook.onVioletSoft, width: 2)
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (up) ...[
+            Icon(Icons.arrow_upward_rounded, size: 16, color: ink),
+            const SizedBox(width: Space.x4),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              style: RunSoloType.label13.copyWith(
+                color: ink,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (moved >= 0) return pill;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        pill,
+        const SizedBox(height: Space.x4),
+        Text(
+          'Faster recent runs raise it.',
+          style: RunSoloType.label13.copyWith(color: PackLook.onVioletSoft),
+        ),
+      ],
     );
   }
 }

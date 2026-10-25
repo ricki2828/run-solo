@@ -241,6 +241,27 @@ void main() {
     expect(added, 1);
   });
 
+  testWidgets('PackHero: compact day 1 keeps explanation and privacy line', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: _scaffold(
+        PackHero(
+          level: ProgressSnapshot.empty.level,
+          runCount: 0,
+          compact: true,
+        ),
+      ),
+    );
+    expect(find.textContaining('One run puts you in the pack'), findsOneWidget);
+    expect(find.textContaining('Nothing leaves your phone'), findsOneWidget);
+  });
+
   testWidgets('PackHero: profile set but no pack yet says almost there', (
     tester,
   ) async {

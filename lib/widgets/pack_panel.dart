@@ -7,7 +7,6 @@ import '../state/pack_norms.dart';
 import '../state/progress_snapshot.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
-import 'choice_chips.dart';
 
 /// "Your pack" (direction B): the runner's age band drawn from published
 /// norms. Filter chips pick the lane of evidence; the pace chip carries the
@@ -40,7 +39,8 @@ class PackPanel extends StatefulWidget {
 class _PackPanelState extends State<PackPanel> {
   int _chip = 0;
 
-  static const _labels = ['5K PACE', 'CONSISTENCY', 'DISTANCE'];
+  /// Short enough for one row of three at 360 (UI review 24-Oct #17).
+  static const _labels = ['5K PACE', 'STREAK', 'DISTANCE'];
 
   @override
   Widget build(BuildContext context) {
@@ -57,11 +57,8 @@ class _PackPanelState extends State<PackPanel> {
           style: RunSoloType.title28.copyWith(color: t.inkPrimary),
         ),
         const SizedBox(height: Space.x12),
-        ChoiceChips(
+        _Segments(
           labels: _labels,
-          keys: [
-            for (var i = 0; i < _labels.length; i++) ValueKey('pack-chip-$i'),
-          ],
           selected: _chip,
           onSelect: (i) => setState(() => _chip = i),
         ),
@@ -672,6 +669,64 @@ class _NoPack extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkPrimary),
         ),
       ],
+    );
+  }
+}
+
+/// One row of equal segments, 48 dp tall; the selected one is filled ink.
+class _Segments extends StatelessWidget {
+  const _Segments({
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: t.bgRaised,
+        borderRadius: BorderRadius.circular(Radii.chip),
+        border: Border.all(color: t.inkPrimary, width: 2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: i == selected,
+                child: GestureDetector(
+                  key: ValueKey('pack-chip-$i'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onSelect(i),
+                  child: AnimatedContainer(
+                    duration: MotionDurations.quick,
+                    alignment: Alignment.center,
+                    color: i == selected ? t.inkPrimary : Colors.transparent,
+                    child: Text(
+                      labels[i],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: RunSoloType.label13.copyWith(
+                        color: i == selected ? t.bgBase : t.inkPrimary,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
