@@ -27,9 +27,10 @@ const String kCompanionCheckins =
     'and ill are health information; the companion uses them only to go '
     'lighter. Without the coach chat they never leave our server. If you '
     'turn on the coach chat, the coach reads your check-in answers and run '
-    'notes from the last 14 days to reply, so they go to an AI provider '
-    '(OpenRouter and Anthropic, in the US) with zero data retention. No '
-    'weather service ever sees them. Answers are kept 14 days, then '
+    'notes from the last 14 days to reply, so they go to Claude models '
+    'through OpenRouter (hosted by Google Cloud or Amazon Web Services) with '
+    'zero data retention. No weather '
+    'service ever sees them. Answers are kept 14 days, then '
     'deleted, and they are left out of backups. They show below under '
     'Check-ins, and Delete everything removes them at once. Home asks our '
     'server for your next session and the coach\'s latest note; the reply '
@@ -108,13 +109,14 @@ const List<String> kCompanionWeatherSheet = [
 const String kCompanionCoachTitle = 'Chat with the coach';
 
 const String kCompanionCoachBody =
-    'The coach can answer your questions about your training in Telegram, and '
-    'write short spoken briefings before your runs. To reply, your run '
-    'summaries, check-in answers and what you type go to an AI provider '
-    '(OpenRouter and Anthropic, in the US) with zero data retention. Your GPS '
-    'tracks and heart rate recordings stay on your phone. Chats are kept for '
-    '30 days. You can turn the coach off any time in Settings, Companion, and '
-    'that deletes your chats and any coach memory.';
+    'The coach answers your training questions in Telegram and writes short '
+    'spoken briefings before your runs. To reply, your run summaries, '
+    'check-in answers, run notes, first name and what you type go to Claude '
+    'models, via OpenRouter, with zero data retention. It can search the web, '
+    'with no personal details. Your GPS tracks and heart rate recordings '
+    'stay on your phone. Chats are kept for 30 days. '
+    'Turn the coach off any time in Settings, Companion, and your chats and '
+    'coach memory are deleted.';
 
 /// The coach memory sheet (consent version 4). Title and body together stay
 /// under 90 words; a test counts them. Plain words, no em dashes.

@@ -121,6 +121,8 @@ void main() {
     await pumpTimes(tester, 8);
     expect(find.byKey(const ValueKey('companion-reconsent')), findsOneWidget);
     await check(tester, 'companion_reconsent_360x640');
+    await tester.ensureVisible(find.byKey(const ValueKey('companion-agree')));
+    await pumpTimes(tester, 2);
     await tester.tap(find.byKey(const ValueKey('companion-agree')));
     await pumpTimes(tester, 4);
     expect(find.byKey(const ValueKey('companion-reconsent')), findsNothing);
