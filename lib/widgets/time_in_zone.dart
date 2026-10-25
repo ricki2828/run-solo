@@ -15,9 +15,14 @@ class TimeInZone extends StatelessWidget {
     required this.seconds,
     required this.maxHrLine,
     this.onPairStrap,
+    this.onMaxHrTap,
   });
   final List<double> seconds;
   final String maxHrLine;
+
+  /// Set when the max HR is the default: [maxHrLine] becomes a link row to
+  /// where the runner sets their own, rather than a note on every run.
+  final VoidCallback? onMaxHrTap;
 
   /// Tap on the empty state (a run with no heart rate): the strap setting.
   final VoidCallback? onPairStrap;
@@ -75,11 +80,34 @@ class TimeInZone extends StatelessWidget {
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x4),
-        Text(
-          maxHrLine,
-          key: const ValueKey('time-in-zone-max-hr'),
-          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
-        ),
+        if (onMaxHrTap == null)
+          Text(
+            maxHrLine,
+            key: const ValueKey('time-in-zone-max-hr'),
+            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          )
+        else
+          InkWell(
+            key: const ValueKey('time-in-zone-max-hr'),
+            onTap: onMaxHrTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      maxHrLine,
+                      style: RunSoloType.label13.copyWith(
+                        color: t.inkPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: t.inkSecondary),
+                ],
+              ),
+            ),
+          ),
         if (note != null) ...[
           const SizedBox(height: Space.x4),
           Text(

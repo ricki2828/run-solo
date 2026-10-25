@@ -219,10 +219,10 @@ class _OfflineMapsScreenState extends State<OfflineMapsScreen> {
                             ],
                           ),
                         ),
-                      _OutlineAction(
+                      RunButton.secondary(
                         key: const ValueKey('refresh-list'),
                         label: m.refreshing ? 'CHECKING' : 'CHECK FOR NEW MAPS',
-                        onTap: m.refreshing ? null : () => _refresh(m),
+                        onPressed: m.refreshing ? null : () => _refresh(m),
                       ),
                     ],
                     const SizedBox(height: Space.x24),
@@ -354,12 +354,12 @@ class _EmptyList extends StatelessWidget {
             style: RunSoloType.label13.copyWith(color: t.inkSecondary),
           ),
         const SizedBox(height: Space.x16),
-        _OutlineAction(
+        RunButton(
           key: const ValueKey('get-list'),
           label: busy
               ? 'GETTING THE LIST'
               : (error == null ? 'GET THE MAP LIST' : 'TRY AGAIN'),
-          onTap: busy ? null : onGet,
+          onPressed: busy ? null : onGet,
         ),
       ],
     );
@@ -485,58 +485,34 @@ class _RegionRow extends StatelessWidget {
             runSpacing: Space.x8,
             children: [
               if (actionLabel != null)
-                _OutlineAction(
+                RunButton.tertiary(
                   key: ValueKey('get-${region.id}'),
                   label: actionLabel,
-                  onTap: blocked ? null : onDownload,
+                  onPressed: blocked ? null : onDownload,
                 ),
               if (kind == PackStatusKind.downloading)
-                _OutlineAction(
+                RunButton.tertiary(
                   key: ValueKey('cancel-${region.id}'),
                   label: 'STOP',
-                  onTap: () => manager.cancel(region.id),
+                  onPressed: () => manager.cancel(region.id),
                 ),
               if (kind == PackStatusKind.installed ||
                   kind == PackStatusKind.updateAvailable)
-                _OutlineAction(
+                RunButton.tertiary(
                   key: ValueKey('delete-${region.id}'),
                   label: 'DELETE',
-                  onTap: onDelete,
+                  onPressed: onDelete,
                 ),
               if (region.credits.isNotEmpty)
-                _OutlineAction(
+                RunButton.tertiary(
                   key: ValueKey('credits-${region.id}'),
                   label: 'MAP DATA',
-                  onTap: onCredits,
+                  onPressed: onCredits,
                 ),
             ],
           ),
         ],
       ),
-    );
-  }
-}
-
-class _OutlineAction extends StatelessWidget {
-  const _OutlineAction({super.key, required this.label, required this.onTap});
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        foregroundColor: t.inkPrimary,
-        disabledForegroundColor: t.inkMuted,
-        side: BorderSide(color: t.lineHair),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Radii.button),
-        ),
-      ),
-      child: Text(label, style: RunSoloType.body15),
     );
   }
 }

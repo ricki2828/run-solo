@@ -65,7 +65,7 @@ void main() {
         ),
         ['FASTER THAN 6 IN 10', 'men 40-49, from published norms.'],
       ),
-      (const ScoresCardData(lanes: lanes), ['MY FOUR SCORES']),
+      (const ScoresCardData(lanes: lanes), ['MY SCORE']),
     ]) {
       await pumpApp(
         tester,
@@ -85,6 +85,22 @@ void main() {
         data.pack == null ? findsNothing : findsOneWidget,
       );
     }
+  });
+
+  test('scores headline counts the lanes on the card', () {
+    ScoreLaneData lane(String l) =>
+        ScoreLaneData(label: l, value: '50', unit: 'th percentile');
+    expect(
+      ScoresCardData(lanes: [lane('AEROBIC'), lane('MID'), lane('LONG')])
+          .headline,
+      'MY THREE SCORES',
+    );
+    expect(
+      ScoresCardData(
+        lanes: [lane('AEROBIC'), lane('SPEED'), lane('MID'), lane('LONG')],
+      ).headline,
+      'MY FOUR SCORES',
+    );
   });
 
   group('pack share', () {

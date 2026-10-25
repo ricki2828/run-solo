@@ -7,6 +7,7 @@ import '../app/format.dart';
 import '../platform/gateway.dart';
 import '../theme/theme.dart';
 import '../theme/zones.dart';
+import 'chrome.dart' show RunSheetHeader;
 
 /// One bar on [SplitsBars]: the label under it and its pace (s/km). A null
 /// pace (a lap with no distance) leaves the slot empty. [readout] is the line
@@ -39,8 +40,8 @@ class SplitBar {
 /// get none); the one unique fastest split is cyan, outlined and bold. Every bar carries its pace
 /// above it (every second bar once they get too tight for it). Tap or drag
 /// across the bars to pick one: it is outlined and its readout shows above
-/// the chart. The axis note says which way is better and where the baseline
-/// starts.
+/// the chart. One legend line says which way is better; the info button
+/// opens the full key (caps, outline, where the axis starts).
 ///
 /// [truePace] only changes the wording: the caller passes True Pace values
 /// when the run has them, and the chart says so.
@@ -174,12 +175,32 @@ class _SplitsBarsState extends State<SplitsBars> {
             ),
           ),
         ),
-        const SizedBox(height: Space.x8),
-        Text(
-          'Faster is taller. Green cap faster, red cap slower than your '
-          'median. Fastest ${Fmt.pace(fastest, units)}/$unit. '
-          'Axis starts at ${Fmt.pace(base, units)}/$unit.',
-          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        // One short legend line; the full key is behind the info button
+        // (review #16), not a 3-line block under every chart.
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Taller = faster',
+                key: const ValueKey('splits-legend'),
+                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('splits-legend-info'),
+              tooltip: 'How to read this chart',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(Icons.info_outline, color: t.inkSecondary, size: 20),
+              onPressed: () => _showKey(
+                context,
+                'Taller is faster. Bars take the colour of the heart rate '
+                'zone you ran in. A green cap is faster and a red cap slower '
+                'than your median; the fastest is outlined. Fastest '
+                '${Fmt.pace(fastest, units)}/$unit. The axis starts at '
+                '${Fmt.pace(base, units)}/$unit.',
+              ),
+            ),
+          ],
         ),
         if (widget.truePace) ...[
           const SizedBox(height: Space.x4),
@@ -191,6 +212,36 @@ class _SplitsBarsState extends State<SplitsBars> {
       ],
     );
   }
+}
+
+void _showKey(BuildContext context, String text) {
+  final t = Theme.of(context).extension<RunSoloTokens>()!;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Space.screenGutter,
+          Space.x16,
+          Space.screenGutter,
+          Space.x24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const RunSheetHeader(title: 'Reading the chart'),
+            const SizedBox(height: Space.x8),
+            Text(
+              text,
+              key: const ValueKey('splits-legend-full'),
+              style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _SplitsPainter extends CustomPainter {

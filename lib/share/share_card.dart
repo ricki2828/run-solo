@@ -149,6 +149,17 @@ class ScoresCardData extends ShareCardData {
 
   static const String _title = 'MY SCORES';
   String get title => _title;
+
+  /// Counts only the lanes on the card: "MY FOUR SCORES" once all four are
+  /// earned, "MY THREE SCORES" before SPEED is (review #18), never a title
+  /// that promises a row the card does not have.
+  String get headline => switch (lanes.length) {
+    1 => 'MY SCORE',
+    2 => 'MY TWO SCORES',
+    3 => 'MY THREE SCORES',
+    4 => 'MY FOUR SCORES',
+    _ => 'MY SCORES',
+  };
 }
 
 /// A moment (first, PB, level up, weekly story) as a card: the big figure
@@ -726,7 +737,7 @@ class _ScoresBody extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   pack == null
-                      ? 'MY FOUR SCORES'
+                      ? data.headline
                       : 'FASTER THAN ${pack.fasterThanInTen} IN 10',
                   maxLines: 1,
                   style: RunSoloType.display44.copyWith(

@@ -366,20 +366,11 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(64),
-                          side: BorderSide(color: t.lineHair),
-                        ),
+                      child: RunButton.secondary(
+                        label: 'DETAILS',
                         onPressed: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => RunDetailScreen(runId: d.run.id),
-                          ),
-                        ),
-                        child: Text(
-                          'DETAILS',
-                          style: RunSoloType.title28.copyWith(
-                            color: t.inkPrimary,
                           ),
                         ),
                       ),
@@ -387,9 +378,9 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                     if (widget.justFinished) ...[
                       const SizedBox(width: Space.x12),
                       Expanded(
-                        child: FilledButton(
+                        child: RunButton(
+                          label: 'DONE',
                           onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('DONE'),
                         ),
                       ),
                     ],
