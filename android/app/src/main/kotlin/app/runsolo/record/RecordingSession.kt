@@ -227,10 +227,8 @@ class RecordingSession(
     /** Live "you vs you" (LV1); rebuilt from the journal's `cf` lines on resume. */
     private var coach = LiveCoach(liveContext, mode, spec)
 
-    /** Mid-run two-button prompts: the rules and the clock ([CoachPrompter]), one decided and waiting to open, and the effect still to hand to the voice coach. */
+    /** Mid-run two-button prompts: the rules, the clock and the one waiting to open ([CoachPrompter]), and the effect still to hand to the voice coach. */
     private var prompter = CoachPrompter(distanceGate = mode != RunMode.intervals)
-    private var pendingPrompt: Prompt? = null
-    private var pendingOpenAt = 0L
     private var promptEffectDirty = false
 
     /** Whether the open question has been said, and when its window must start at the latest. */
@@ -1264,12 +1262,11 @@ class RecordingSession(
         if (replay != null || !cues.enabled) return false
         val st = core.status(t)
         if (st.state != RecorderState.recording || core.autoPaused) return false
-        if (pendingPrompt != null || prompter.open != null) return false
+        if (prompter.pending != null || prompter.open != null) return false
         val p = facts?.let { prompter.atKm(it, st.elapsedMs, ticker.distanceM) }
             ?: rep?.let { (r, n) -> prompter.atRepEnd(r, n, st.elapsedMs, ticker.distanceM) }
             ?: return false
-        pendingPrompt = p
-        pendingOpenAt = st.elapsedMs + PROMPT_DELAY_MS
+        prompter.decided(p, st.elapsedMs)
         lapInput.holdForPrompt(true)
         return true
     }
@@ -1292,12 +1289,19 @@ class RecordingSession(
             prompter.startWindow(now)
         }
         prompter.tick(now)?.let { resolvePrompt(it, t) }
-        val p = pendingPrompt ?: return
-        if (now < pendingOpenAt || prompter.open != null) return
-        if (cues.speechBusyUntil > t && now < pendingOpenAt + PROMPT_MAX_WAIT_MS) return // the km cue is still being said
-        pendingPrompt = null
-        // Paused by hand since it was decided: never asked (it would keep the headset armed through the stop).
-        if (finished || manual) {
+        if (prompter.pending == null) return
+        // Paused by hand since it was decided: never asked (it would keep the headset armed through the stop). A route
+        // cue on screen or about to be said holds it: the question never covers OFF ROUTE or TURN AROUND.
+        val step = prompter.openTick(now, speechBusy = cues.speechBusyUntil > t, routeBusy = routeBusy(), manualPause = manual)
+        val p = when (step) {
+            CoachPrompter.PendingStep.Wait -> return
+            CoachPrompter.PendingStep.Drop -> {
+                lapInput.holdForPrompt(false)
+                return
+            }
+            is CoachPrompter.PendingStep.Open -> step.prompt
+        }
+        if (finished) {
             lapInput.holdForPrompt(false)
             return
         }
@@ -1629,8 +1633,18 @@ class RecordingSession(
         )
     }
 
+    /** A followed route's cue is on screen or about to be said: a prompt waits for it ([CoachPrompter.openTick]). */
+    private fun routeBusy(): Boolean {
+        val f = follower ?: return false
+        return CoachPrompter.routeBusy(f.off, f.endCue != null, f.nextTurnInM)
+    }
+
     /** Off route, back on route and the turn cues: a buzz and a line through the cue player (its settings apply to the voice). */
     private fun routeEvent(e: RouteFollower.Event) {
+        // OFF ROUTE and the route's end take the screen: an open prompt gives way, quietly.
+        if (e is RouteFollower.Event.OffRoute || e is RouteFollower.Event.RouteEnd) {
+            prompter.giveWay(core.status(e.t).elapsedMs)?.let { resolvePrompt(it, e.t) }
+        }
         when (e) {
             is RouteFollower.Event.OffRoute -> {
                 cues.alert(RouteWords.OFF_ROUTE, longArrayOf(0, 400, 150, 400, 150, 400), CueSlot.offRoute)
@@ -1691,10 +1705,6 @@ class RecordingSession(
         /** The strip shows the next turn from this far out. */
         private const val TURN_STRIP_M = 300.0
         private const val GHOST_MAX_STEP_MS = 5_000L
-
-        /** A decided prompt waits this long so the km cue and any moment overlay are gone first, and no longer than [PROMPT_MAX_WAIT_MS] for speech to finish. */
-        private const val PROMPT_DELAY_MS = 2_000L
-        private const val PROMPT_MAX_WAIT_MS = 6_000L
 
         /** The answer window starts at the latest this long after the question's estimated end, if no TTS done ever comes. */
         private const val PROMPT_SLACK_MS = 2_000L
