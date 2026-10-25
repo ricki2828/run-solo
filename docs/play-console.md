@@ -1,258 +1,294 @@
-# Play Console: App content and listing answers (week 4)
+# Play Console: paste-ready answers
 
-Draft answers for every Play Console form Run Supreme must submit before the first closed-track
-release. Source of truth for the claims: plan §10, §11, §18.3, §18.6 (v5.4) and the design brief
-§6 + addendum A7. Where two documents disagree the difference is flagged for the founder.
+Section by section, in Play Console order. Each section says **where** in the Console, then **what to paste or tick**.
+Text in `>` quotes is pasted as is. Code citations (`file:line`) sit in HTML comments, so they show in the source and not on the rendered page. Checked against main on 25-Oct-2026 (after #387 and #390).
 
-Founder approves the wording (plan §18.9 item 8) before anything is typed into the Console.
+The closed-test AAB includes the optional Run coach (`--dart-define=COMPANION=1`, `.github/workflows/ci.yml` release-aab). Every answer below assumes that build. It is off in the app until the runner turns it on and accepts the consent sheet.
 
-## 0. Prerequisites
+## 0. Before you start
 
 | Item | Value | Status |
 |---|---|---|
 | Package name | `app.runsupreme` (Play build only; `.debug` and `.dogfood` never go to Play) | fixed |
-| Privacy policy URL | `https://runsupreme.taiaroa.xyz/privacy/` (Vercel project `run-supreme-site`, copy at `~/sites/run-supreme`; repo is private so Pages is not used) | done 7-Oct |
-| Play App Signing | Enrol at first upload; Google holds the app-signing key, we upload with `CN=Run Solo upload` | first AAB upload |
+| Privacy policy URL | `https://runsupreme.taiaroa.xyz/privacy/` | live; redeploy after this PR (section 2) |
+| Account deletion URL | `https://runsupreme.taiaroa.xyz/delete/` | live; redeploy after this PR |
+| Contact email | `privacy@taiaroa.xyz` | **Ricki: confirm the mailbox receives mail** |
+| Play App Signing | Enrol at first upload; we upload with `CN=Run Solo upload` | first AAB upload |
 | Upload key SHA-1 | `6D:E0:ED:82:5F:B7:80:73:3A:C5:EC:9D:37:5F:8F:63:1F:6E:D0:57` | for the Maps key restriction |
-| Trademark | "Supreme" is a well-known registered streetwear mark (Supreme / VF Corp). "Run Supreme" for a running app is a different class, but the founder should run the trademark search (plan Phase 0) again for the new name before the listing goes live, and avoid Supreme's red-box logo styling anywhere | founder: open |
-| Domain | `runsupreme.taiaroa.xyz` chosen 7-Oct; the privacy URL on the Play forms must not change afterwards | decided |
-| Contact email in the listing | `privacy@taiaroa.xyz` (chosen by Ricki 11-Oct) is used on the privacy and delete pages | founder: confirm the mailbox receives mail |
+| Trademark | "Supreme" is a registered streetwear mark (Supreme / VF Corp). Different class, but re-run the trademark search for "Run Supreme" before the listing goes live; never use the red-box style | Ricki: open |
+| Uploads | `docs/RELEASE.md` (tag `vX.Y.Z` or a dispatch from main) | pipeline merged #390 |
 
-## 1. Store listing
+The `docs/` site is not deployed by CI. After merging, copy `docs/privacy/` and `docs/delete/` to the site (`~/sites/run-supreme`, Vercel project `run-supreme-site`) and check both URLs return the new text before entering anything below.
 
-- **App name (30 chars)**: `Run Supreme: 4x4 Interval Run` (29). Founder approved 3-Oct-2026. (The ampersand version is 32 chars, over the limit.)
-- **Short description (80)**: `Run scores, honest verdicts and trail runs. See what is improving. Free.` (72)
-- **Tagline** (feature graphic, first screenshot): Track progress. Get better. Approved 3-Oct-2026; the old "You against your last run" line is retired.
-- **Long description** (source: `store/play/listing.md`):
+## 1. Main store listing
 
-> Run Supreme shows you how your running is going, whatever mix of runs you do.
->
-> Run Supreme is where you get better at your runs. It tells you honestly how you are progressing and what to run next, free, on your phone. There is no account to create.
->
-> Your Home screen opens with where you stand, in plain words, against research-based norms for your age and sex. Under that are four scores: AEROBIC, SPEED, MID and LONG, each in its own colour. Each is a percentile estimate from your own runs. You see what moved, and over what period. Then comes one suggested session and why it would help, with Start already set to it. Tap Change to pick something else.
->
-> 4-week plan
-> Build a 4-week plan around your scores. If a week is well above your usual load, Run Supreme says so and suggests an easy run instead. A missed session is not added on top of next week.
->
-> Intervals and 4x4
-> Pick a session, warm up as long as you like, then the app runs every rep and recovery with voice and vibration cues. Your phone can stay in your pocket. When you stop you get a plain verdict: faster, holding or slower, with the rep paces and fade that decided it. Differences inside GPS noise are called no real change.
->
-> A run screen built for running
-> The number that matters is the biggest one on screen, and it changes with the phase: rep pace in a rep, time to go in a recovery. The screen takes the colour of your heart rate zone, with a zone ladder down the edge, and shows your target band in a rep. Switch to a live map if you want one, then switch back.
->
-> Voice coaching
-> Turn on voice coaching and your phone tells you the next step, whether you are on pace, and when your heart rate drifts out of the zone. Pick Minimal or Full detail, or keep just the cues. Speech uses your phone's own text-to-speech.
->
-> Heart rate zones
-> Pair a Bluetooth heart rate strap. Set your zones as a share of max heart rate, with heart rate reserve, or enter your own ranges. Run charts, splits and time in zone use the same colours, so you can see where the effort went.
->
-> Trail runs
-> Trail runs get their own verdicts. Run the same trail again and you are compared with your last run on that trail, not with a flat road. Elevation comes from your phone's barometer where it has one. Grade-adjusted pace is an estimate of your flat-ground equivalent.
->
-> Offline Topo maps
-> Download a region in Settings and use the Topo map on Free and Trail runs with no signal. Map data is from OpenStreetMap contributors, Protomaps and Mapterhorn.
->
-> Follow a route
-> Load a route and follow it, with turn alerts and an off-route warning if you drift.
->
-> Also
-> - Auto-pause at traffic lights and gates
-> - Estimated race times from your recent runs
-> - Your bests and recent attempts on a chart, like for like
-> - Send a workout or route to your watch as a FIT or GPX file
-> - Send any run to Health Connect, Intervals.icu, or as a TCX or GPX file (works with Strava)
->
-> Private by default
-> No feed. No ads. Your runs, routes and heart rate stay on your phone unless you choose to send them. The optional Run coach is off until you turn it on. If you do, a short summary of each run (no GPS points, and no heart rate trace unless you turn on Heart rate on cards) and, unless you switch it off, an outline of the route with the first and last stretch cut off goes to our server in Germany, and the coach writes to you in Telegram. The coach is answered by an AI provider (OpenRouter and Anthropic, in the US, with zero data retention): it receives what you type to the coach, your run summaries and check-in answers, and it writes short spoken briefings for your next run. If you agree to memory, the coach also keeps short notes about you; you can see them by sending /memory in Telegram. You can delete all of it in the app or at runsupreme.taiaroa.xyz/delete. Map tiles for the standard map come from Google, which sees the map area you view and your IP address. An offline map download tells our map host which region you picked and your IP address. Weather comes from Open-Meteo using your location rounded to about 10 km. Your phone's own geocoder names a run's start point and may use Google Play services.
->
-> Run Supreme is a training tool, not medical advice. Scores and estimates are guides based on research, not measurements of your health.
+**Grow > Store presence > Main store listing.**
 
+- **App name**: `Run Supreme: 4x4 Interval Run` (29 of 30). Approved 3-Oct-2026. "Run Supreme: 4x4 & Interval Runs" is 32, over the limit.
+- **Short description**: `Run scores, honest verdicts and trail runs. See what is improving. Free.` (72 of 80)
+- **Full description**: paste the "Full description" block of `store/play/listing.md` (updated by #387 for the coach). It names the coach, OpenRouter and the Claude hosts (Google Cloud, Amazon Web Services), memory, `/memory`, and the delete link.
+- **App icon**: `store/play/icon-512.png`.
+- **Feature graphic**: `store/play/feature-graphic-1024x500.png` (tagline "Track progress. Get better.").
+- **Phone screenshots**: `store/play/screens/01..08` (1080x1920; Play wants each side 320-3840 px and long side at most 2x short, so 1080x2400 is rejected).
+  - **TODO (do last, not in this PR):** regenerate the screenshots with `store/play/build_screens.py` after the open UI PRs merge. The current set is from 7-Oct and predates many UI changes. Check no frame says "Nothing uploaded".
 - **Category**: Health & Fitness. **Tags**: Running, Fitness tracker, Interval training.
-- **Countries**: English-speaking non-EU per plan §10: AU, NZ, US, CA, GB, SG, ZA. (IE is EU, so not in the list.)
-- **Graphics**: icon `store/play/icon-512.png` (Lap Line R), feature graphic `store/play/feature-graphic-1024x500.png` (light look, Lap Line R, built by `store/play/build_screens.py`; the wordmark version is `feature-graphic-wordmark-1024x500.png` from `assets/brand/build_brand.py`); 8 screenshots 1080x1920 in `store/play/screens/` (refreshed 7-Oct-2026 for the light look: Home, run screen with zone ladder, verdict, 4-week plan, zone-coloured charts, offline maps, Start, History; also `build_screens.py`; Play wants each side 320-3840 px and the long side at most twice the short one, so 1080x2400 would be rejected). The fake-map shots were dropped; a real device capture of the Topo map or live map would make a stronger shot 6 (optional). No Hyrox marks or keywords anywhere.
-- **Contact details**: email above; website `https://runsupreme.taiaroa.xyz`.
+- **Contact details**: email `privacy@taiaroa.xyz`; website `https://runsupreme.taiaroa.xyz`.
+- **Countries** (Test and release > Production/track > Countries): AU, NZ, US, CA, GB, SG, ZA (English-speaking, non-EU).
+- No Hyrox marks or keywords anywhere.
 
 ## 2. Privacy policy
 
-URL: `https://runsupreme.taiaroa.xyz/privacy/`. Also linked in-app from Settings, About. Content = `docs/privacy/index.html`.
+**Policy > App content > Privacy policy.** Paste:
+
+> https://runsupreme.taiaroa.xyz/privacy/
+
+Source: `docs/privacy/index.html`. In-app: Settings, About; and Health Connect's permission screen opens the same URL.
+<!-- android/app/src/main/kotlin/app/runsolo/PrivacyPolicyActivity.kt:23 PRIVACY_URL -->
 
 ## 3. App access
 
-"All functionality is available without special access." No login, no restricted areas. (Replay mode exists only in debug/dogfood builds, never in the Play package.)
+**Policy > App content > App access.**
+
+Pick **"All or some functionality in my app is restricted"**. The core app needs no login, but the optional Run coach needs the reviewer's own Telegram account and, during the closed test, an invitation. Add one instruction set:
+
+- **Name**: `Run coach (optional)`
+- **Username / Password**: leave empty (there is no account in the app).
+- **Any other information required to access your app**, paste:
+
+> Run Supreme works fully without an account or sign-in: recording, verdicts, plans, maps, history and exports need no access. The Run coach is optional and off by default. It is not needed to review any other part of the app.
+>
+> To see the coach screens: Settings, Companion. The consent screen explains what is sent, with "Turn on" and "Not now" at equal weight. Turn on opens Telegram; tapping Start there sends a 6-digit code, which is typed back into the app. The coach then writes in that Telegram chat. During the closed test the coach is open to invited testers only, so an uninvited Telegram account gets the reply "Run Supreme's companion isn't open yet." The app keeps working normally after that reply.
+>
+> Deleting coach data: Settings, Companion, Delete everything; or send DELETE in the Telegram chat; or https://runsupreme.taiaroa.xyz/delete/.
+
+<!-- enrolment refused unless open_enrolment or allowlisted: companion-server/companion/service.py:541; reply text service.py:72 NOT_OPEN;
+     open_enrolment default off: companion-server/companion/config.py:82; 6-digit code prompt lib/screens/companion_screen.dart:330;
+     Turn on / Not now equal weight: lib/screens/companion_screen.dart:136,214 -->
+
+**Ricki decides (default: as above).** If Play's review asks to see the coach working, either (a) set `COMPANION_OPEN_ENROLMENT=1` on the server for the review window (also opens enrolment to anyone who finds the bot, up to `max_users`), or (b) ask the reviewer for their Telegram id and add `telegram:<id>` to the enrol allowlist. Coach chat itself needs `COMPANION_COACH_OPEN=1` or an allowlist entry, plus the in-app consent (`config.py:156`). As checked on 25-Oct, the live server has `COMPANION_COACH_CHAT=1` and neither open flag.
 
 ## 4. Ads
 
-"No, my app does not contain ads." (No ad SDKs; the transitive dependency audit in plan §10/§18.6 lists only `google_maps_flutter` and `http` as INTERNET users.)
+**App content > Ads.** Tick **"No, my app does not contain ads."** No ad SDKs.
 
 ## 5. Content rating (IARC questionnaire)
 
-- Category: **Utility, Productivity, Communication, or Other** (a fitness tracker with no user-generated content).
-- Violence / sexuality / language / controlled substances / gambling: **No** to all.
-- User interaction: **No** (no chat, no sharing between users inside the app; export goes through the Android share sheet).
-- Shares location with other users: **No**.
-- Purchases digital goods: **No** (v1 is free; the paywall stub is inert).
-- Personal information shared: **No**.
-- Expected outcome: Everyone / PEGI 3.
+**Policy > App content > Content rating > Start new questionnaire.** Email: `privacy@taiaroa.xyz`.
+
+Redone 25-Oct for the coach. The coach is an AI that answers free text in Telegram, and Ricki (the operator) can message testers there. The app itself has no in-app chat and no user-to-user features. Answer conservatively:
+
+| Question | Answer | Why |
+|---|---|---|
+| Category | **Utility, Productivity, Communication or Other** | A fitness tracker. Not a game, not social. |
+| Violence, fear, sexuality, nudity, language, crude humour, controlled substances, gambling | **No** to all | The app shows none of it. The coach's model is instructed to stay on training; its output is not pre-moderated, so see the AI row. |
+| Does the app allow users to interact or exchange content? | **Yes** | Over-declared: the coach chat takes free text and replies with generated text, and the operator can write to testers. All of it happens in Telegram, not inside the app, and runners never see each other's content. Adds the "Users Interact" notice; it does not raise the age rating. |
+| Does the app share the user's current location with other users? | **No** | Nothing is shown to other users. |
+| Does the app allow purchase of digital goods? | **No** | Free; no billing library. |
+| Is it a web browser or search engine? | **No** | |
+| If asked about generative AI or AI chat features | **Yes**, the optional coach answers questions with AI-generated text | Unverified whether the current IARC form asks this; answer Yes if it does. |
+| News, gambling, social casino | **No** | |
+
+Expected result: Everyone / PEGI 3 with a "Users Interact" notice. If the result is higher, record the descriptors here.
 
 ## 6. Target audience and content
 
-- Target age group: **18 and over** only (untick 13-15 and 16-17). Rationale: an intense-interval training tool; picking adults keeps the app out of the Families policy and the "designed for teens" questions.
-- "Could your app unintentionally appeal to children?": **No** (no cartoon characters, no child-oriented themes).
-- Store presence: not in "Designed for Families".
+**App content > Target audience and content.**
+
+- Target age: **18 and over** only (untick 13-15 and 16-17). Intense interval training; keeps the app out of the Families policy.
+- "Could your app unintentionally appeal to children?": **No**.
+- Not in "Designed for Families".
 
 ## 7. Data safety
 
-Plan §18.6 (v5.4). Over-declare rather than under-declare. Answer the overview questions first:
+**Policy > App content > Data safety.** One answer per Play data type, covering every source: the base app (Google Maps SDK, Open-Meteo, the on-device geocoder) and the optional Run coach (our server in Germany, OpenRouter, and Claude models hosted by Google Cloud (Vertex) or Amazon Web Services (Bedrock), as AI processors; a web search service, Telegram as delivery).
 
-| Overview question | Answer |
+### 7.1 Overview page
+
+| Question | Answer |
 |---|---|
 | Does your app collect or share any of the required user data types? | **Yes** |
-| Is all of the user data collected by your app encrypted in transit? | **Yes** (Maps SDK and Open-Meteo use HTTPS) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: "Delete all" in Settings, Data removes everything on the device; nothing is held off-device by us. Pick "Yes, deletion is via the app" and link the privacy page. What Google's Maps SDK collected is Google's to delete (Google account controls), and the privacy page says so. |
-| Have you reviewed the Google Play Families policy? | Not applicable (18+ only) |
-| Is your app's data handling independently validated against a security standard (MASA)? | **No** |
+| Is all of the user data collected by your app encrypted in transit? | **Yes** (Maps SDK, Open-Meteo, our server, OpenRouter, Telegram are all HTTPS) |
+| Do you provide a way for users to request that their data is deleted? | **Yes**. Deletion URL: `https://runsupreme.taiaroa.xyz/delete/` |
+| Families policy | Not applicable (18+) |
+| Independent security review (MASA) | **No** |
 
-Data types. "Collected" in Play's sense includes what the Maps SDK sends to Google from inside the app. Purposes: **App functionality** everywhere; **Analytics** added to Device or other IDs because Google states the SDK identifier measures daily active SDK users. Nothing is "shared" (transferred to a third party) in Play's definition: Google and Open-Meteo act as service providers for the app's own functionality. Nothing is optional except weather (the user can turn it off), and the Maps data is only sent when the user opens a run's detail, Home shows recent runs (map images for recent runs load from Google and are kept on the phone), or the user selects MAP on the record screen during a run (NUMBERS is the default; no map loads while it shows or the screen is off).
+What deletion covers: the coach's server data, by Settings, Companion, Delete everything; by sending DELETE in Telegram; or by email from the delete page. All three erase every row for the runner at once. Runs on the phone: in History, press and hold a run, then Delete (one run at a time), or uninstall / clear the app's storage. There is no "Delete all" button for on-phone runs. What the Maps SDK sent is Google's, under the runner's Google account controls.
+<!-- DELETE keyword: companion-server/companion/service.py:660 -> db.hard_delete_user db.py:707 (every user table, one transaction);
+     in-app: lib/screens/companion_screen.dart:494 ctl.deleteEverything (DELETE /v1/me); per-run delete: lib/screens/history_screen.dart:204,308 (long press);
+     no "Delete all" / "Export all" string anywhere in lib/ (grep 25-Oct) -->
 
-| Category | Data type | Collected? | Shared? | Ephemeral? | Required or optional | Purposes | Why (for the founder) |
-|---|---|---|---|---|---|---|---|
-| Location | **Precise location** | Yes | No | No (Google retains map camera/interaction events "to improve Google services") | Required (the post-run map has no toggle; the live MAP view is the user's choice, off by default) | App functionality, **Analytics** | Live MAP view (2-Oct) follows the runner at zoom 17, so while it is selected the camera area is the runner's current position (still well under Play's ~3 km² threshold); the app never sends its own location to Google. Post-run map fits the camera to the route at zoom 15/16 and the full-screen map is panned/zoomed; the camera events Google receives describe an area smaller than Play's ~3 km² "approximate" threshold (R1) |
-| Location | **Approximate location** | Yes | No | No | Required for the map's IP-derived part; the Open-Meteo part is optional (weather toggle) | App functionality, **Analytics** | Maps SDK derives it from the IP and Google says IP + request metadata are used "to understand SDK usage"; Open-Meteo gets the run location rounded to ~10 km |
-| Location | **Precise location** (place name lookup) | Covered by the Precise location row above | No | Yes (nothing is retained by us) | Required for the place name; failure just leaves no name | App functionality | A run's start point is turned into a place name by Android's on-device `Geocoder` (`getFromLocation`). Run Supreme sends nothing itself; the system geocoder may use Google Play services, a service provider acting for the app's own function, so it is declared as collected, not shared. No new Data safety category beyond Precise location is added. |
-| Device or other IDs | **Device or other IDs** | Yes | No | No | Required (part of the Maps SDK whenever a map loads) | App functionality, **Analytics** | Maps SDK identifier used by Google to measure daily active SDK users |
-| App activity | **App interactions** | Yes | No | No | Required | App functionality, **Analytics** | Google lists "map interaction events (panning, zooming)" as its own collected item; Play's matching type is App interactions. Plan §18.6 did not cover this category; declared to over- rather than under-declare |
-| App info and performance | **Crash logs** | Yes | No | No | Required | App functionality | Maps SDK crash reporting (Google's disclosure) |
-| App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality, **Analytics** | Maps SDK request metadata / performance data, used by Google "to understand SDK usage" |
-| Health and fitness | Health info / Fitness info | **Base release: No.** Companion release: Yes, see section 13. The text below describes the base release. | No | | | | Heart rate, pace, route files stay on the device; we never transmit them. **User-initiated sharing:** the runner can tap Send on a run to hand a TCX or GPX file to an app they pick in the Android share sheet (or to Strava's website by hand). Nothing leaves the phone unless they do that, so this is not declared as data we collect or share (check the wording against Play's Data safety guidance on user-initiated transfers before each submit). **Health Connect (write only, runner-enabled):** if the runner switches it on or taps Send to Health Connect, the run goes into the on-device Health Connect store, which is Android's own store on the same phone, not a transfer to us or a third-party server. Run Supreme reads nothing from it. Declare nothing as collected or shared for it; the Health apps declaration (section 9) covers it. **Send to watch (4 Oct):** from a session or a route the runner can tap Send to watch. A workout (.fit) or a GPX course (the whole route, not trimmed) goes to the Android share sheet and an app the runner picks; nothing leaves the phone otherwise. If the runner has connected Intervals.icu, they can also tap Add for today or tomorrow, which sends a planned workout to their Intervals.icu calendar: the session name, its steps (lengths, heart rate or pace ranges, repeats), the chosen date and an id so a second send replaces the first. No run, route or heart rate history is in it. Same user-initiated, opt-in basis as below; Intervals.icu then passes it to the watch brand the runner linked there. **Intervals.icu (shipped 2 Oct, off by default):** data is shared with Intervals.icu only when the runner connects their own account (API key + athlete id) and then sends a run (button) or switches automatic sending on. What goes: the run's TCX (route minus first/last 200 m, laps, heart rate), the run title and the run id. The key sits in Keystore-backed secure storage, is excluded from Auto Backup, is never logged and is deleted on Disconnect. This is a user-initiated, opt-in transfer to a service the user chose; decide with the founder whether to declare Health and fitness / Location as **shared, optional, user-initiated** before submit (Play's wording on user-initiated transfers is unverified here). Auto Backup is a system feature under the user's Google account and Play's guidance excludes it. |
-| Personal info | any | **Base release: No.** Companion release: see section 13 | | | | | No account, no name, no email in the base release. The optional Run companion adds rows, listed in section 13. |
-| Financial info | any | No | | | | | |
-| Messages / Photos / Audio / Files / Calendar / Contacts / Web browsing / Search history | any | No | | | | | TTS cues are generated on-device; nothing recorded |
-| Files and docs | **Files and docs** | **No** | No | | | | **Follow a route (3 Oct):** the runner may pick one GPX/TCX file with the system file picker (Storage Access Framework, no storage permission). It is read on the phone and only a simplified copy of the route (points, optional elevation) is kept in the app's own `files/state/routes.json`, which Auto Backup includes like the rest of `state/`. Nothing is uploaded; the "Off route" alert and turn hints are computed on the phone and spoken by on-device TTS. No new Data safety declaration. The terrain map is the same Maps SDK, so the Location rows above already cover it. |
-| Offline maps (Topo) | **No new data type** | **No** | No | | | | **Offline maps (4 Oct):** a map pack download sends only the region id (in the URL path, e.g. `milos`) and the IP address to our own R2 hosting, only when the user taps Download or Refresh in Settings, Offline maps. No account, device ID, location, run or route is sent, and drawing the Topo map is entirely on-device from the downloaded file (no network, no Google SDK, so a Free/Trail run on Topo sends nothing to Google). The hosting can see downloaded regions by IP, which is standard server-log data and not tied to anything else; declare nothing new, but if Play's review asks, answer: region id + IP, user-initiated, not linked to the user. The Maps SDK rows above still apply to every run that uses the Google map (other run types, no covering pack, or the user picks Google). Attribution (OSM, Protomaps, Mapterhorn, Copernicus DEM) is shown on the map and in Settings, About; the privacy page has section 2a. **Review before Play submission.** |
+### 7.2 Data types to tick
 
-Offline maps (4-Oct): the user taps Download in Settings and the app fetches map files from our Cloudflare R2 bucket. The request carries the region picked and the IP address, plus a User-Agent naming the app and version. No new Play data type: the IP address is already covered by the approximate location row, and nothing is added to Device IDs or App activity. Re-check against the live form when Topo tiles land.
+Shared column: Play does not count a service provider processing for us as "sharing". The rule here (set by #387, kept): anything that reaches the AI provider (OpenRouter and the Google Cloud or Amazon hosts behind it) is ticked **Shared** to over-declare; Google (Maps SDK), Open-Meteo, OpenStreetMap and Telegram are service providers and are **not** shared. Ricki can untick Shared if he reads Play's service-provider exemption as covering zero-retention AI processing; either answer is defensible, ticking is the safe one.
 
-Since 4-Oct (checked 7-Oct-2026 against `AndroidManifest.xml` and the merged PRs): **no new permission** (the manifest is unchanged) and **no new data flow**.
-- **Voice coaching** (#204) speaks through Android's on-device `TextToSpeech`, as the existing cues do; nothing is recorded, no `RECORD_AUDIO`, no new category.
-- **Heart rate zones** (#193: % of max, reserve, custom) are local settings only. The strap's resting-HR readiness line (#189) is computed on the phone.
-- **4-week plan, load guard, zone ladder, zone-coloured charts, splits labels, race times**: all computed on the phone from local runs.
-- **Offline Topo maps** (#178, #181): already covered by the 4-Oct row above; `maplibre_gl` draws from the downloaded file with no Google SDK. The new `crypto` dependency only checks a pack's sha256.
-- Fonts (Saira, Schibsted Grotesk) are bundled; nothing is fetched.
-Re-check before each submit if the manifest or `pubspec.yaml` dependencies change.
+For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 
-Notes the founder should confirm against the live form (plan §18.6 leaves these to him):
+| Category | Type | Collected | Shared | Processed ephemerally? | Required or optional | Purposes |
+|---|---|---|---|---|---|---|
+| Location | **Approximate location** | Yes | **Yes** | No | Required | App functionality, Analytics |
+| Location | **Precise location** | Yes | No | No | Required | App functionality, Analytics |
+| Personal info | **Name** | Yes | **Yes** | No | Optional | App functionality |
+| Personal info | **User IDs** | Yes | No | No | Optional | App functionality, Analytics |
+| Personal info | Phone number | **No** while WhatsApp is off | | | | |
+| Health and fitness | **Health info** | Yes | **Yes** | No | Optional | App functionality |
+| Health and fitness | **Fitness info** | Yes | **Yes** | No | Optional | App functionality, Analytics |
+| Messages | **Other in-app messages** | Yes | **Yes** | No | Optional | App functionality |
+| App activity | **App interactions** | Yes | No | No | Required | App functionality, Analytics |
+| App activity | **Other user-generated content** | Yes | **Yes** | No | Optional | App functionality, Analytics |
+| App info and performance | **Crash logs** | Yes | No | No | Required | App functionality |
+| App info and performance | **Diagnostics** | Yes | No | No | Required | App functionality, Analytics |
+| Device or other IDs | **Device or other IDs** | Yes | No | No | Required | App functionality, Analytics |
+| Financial info, Photos and videos, Audio, Files and docs, Calendar, Contacts, Web browsing, Search history, Emails, SMS | | **No** | | | | |
 
-1. Open-Meteo is declared as **collected** (the app itself sends the rounded coordinate to a service provider), not as **shared**.
-2. The waitlist link opens a browser page; the browser form, not the app, collects the email. If Play's reviewer asks, the privacy page and the in-app copy already say so.
-3. Whether a later Data safety change restarts the 14-day closed-test clock is unverified; the reason to declare everything in week 4, before the code that uses it all lands, is to never find out.
+"Required" on a mixed row is because of its base-app part (the Maps SDK loads with any map, including Home's recent runs); the coach parts are optional. Play takes the strictest answer per type.
 
-## 8. Foreground service permissions (FGS declaration)
+### 7.3 What each ticked type covers (for Ricki, and for review questions)
 
-Play Console → App content → **Foreground service permissions**. Declare the type **`location`** only. Copy:
+**Approximate location**
+- Maps SDK: Google derives it from the IP when a map loads; used "to understand SDK usage" (Analytics).
+- Open-Meteo (weather for each run, Settings, Recording): the run location rounded to about 10 km.
+- Coach (only if turned on): the area name where a run started, never the street; the time zone; with "Weather in suggestions" on, the start rounded to 0.1 degree (about 11 km) on the phone, latest one, 30 days; with "Show route shape on cards" (default on), an outline of the route with a random 150-300 m cut off each end, no coordinates, 30 days; with "Show trail names on cards" (default off), the trail's name, taken from the street or place it starts in.
+- Coach care finder: if the runner asks for a physio or GP, the place they type, or the coarse start of their last run, goes to OpenStreetMap (Nominatim, Overpass): the typed place goes to Nominatim verbatim, and only the geocoded point is rounded to about 1 km (places.py:193-200); nothing is stored.
+- Shared: Yes because, with coach chat on, the coach is given the runner's time zone (and can look up weather for a 0.1 degree area or a typed place name, which goes to Open-Meteo, not the AI provider).
+<!-- time zone to the model: companion-server/companion/coach/tools.py:192; weather cell only: coach/ext/weather.py:4-5;
+     locality: lib/state/companion.dart:2430 ('locality', "never the street"); area 0.1 deg: companion.dart:2439-2442;
+     trail name: lib/state/trail_facts.dart:116 + blurb lib/screens/companion_screen.dart:67; route outline trim:
+     packages/run_engine/lib/src/engine/companion_shape.dart:388; care finder: companion-server/companion/coach/ext/places.py:1-8 -->
 
-> **Which foreground service type(s) does your app use?** Location.
+**Precise location**
+- Maps SDK: camera and interaction events of the map area viewed (zoom 15-17, smaller than Play's ~3 km² line), retained by Google.
+- On-device geocoder: names a run's start; may use Google Play services.
+- Coach care finder: if the runner taps Share location in Telegram, the point is used once, rounded to 0.01 degree (about 1 km) before any search, and never written down. Tick "processed ephemerally" is **not** possible on this row because the Maps part is retained, so the row stays "No".
+- The app never sends its own GPS points to us or to Google.
+<!-- Telegram location parse: companion-server/companion/channels.py:624-630; never persisted: coach/ext/places.py:4-6 -->
+
+**Name, User IDs** (coach only)
+- The Telegram chat id, the Telegram display name, and a tester number (T-number) used for pseudonymous counts.
+- Name is Shared: with coach chat on, the coach is given the first word of the Telegram display name, to greet the runner. The chat id and T-number never reach the AI provider.
+<!-- chat_name stored at confirm: companion-server/companion/service.py:520; first name to the model: coach/tools.py:178,192 -->
+
+**Health info** (coach only)
+- The niggle answer (none, calf, knee, hip, foot, other), expires after 8 weeks.
+- Check-in answers (the evening "Sore somewhere" and the skip prompt's "Sore" and "Ill", checkin_copy.py:55,101): kept 14 days, not in backups.
+- Health flags from the safety check (a kind and times, no text).
+- With coach memory on and "Keep health notes too" ticked (off by default): niggles, injuries and illness the runner told the coach. Turning the tick off deletes them and the chat summary at once.
+- Heart rate on cards (off by default): up to 64 bpm values and zones for a trail run with a strap, 30 days.
+- Shared: Yes. With coach chat on (consent v3), the coach is given the active health flags and reads the last 14 days of check-in answers and run notes to reply, so they reach the AI provider. Health notes kept by memory are read by the coach too.
+<!-- niggle TTL: companion-server/companion/facts.py:591; check-ins private tables: backup.py:28; health_flags no text: db.py:357-366;
+     health notes opt-in: coach/ext/memory.py:68-96, service.py:1165-1170; coach reads check-ins + notes: coach/tools.py:288-296; health_flags to the model: coach/tools.py:192 -->
+
+**Fitness info** (coach only)
+- Per-run summary: type, start time and time zone, duration, distance, pace, True Pace, verdict, minutes per heart rate zone, climb, the Easy/Right/Hard tap, pace per km with its zone, rep times, an interval session's name (a custom session goes as a short code), plan facts (session type, plan week and length, next session).
+- Coach memory (consent v4, "Share training numbers" on by default): estimated race times, best efforts, weekly load and plan. The switch is stored today; the app does not send a training-numbers payload yet (no such field in the run upload). Declared now so the form does not change mid-test.
+- Purposes include Analytics: pseudonymous per-tester counts (runs per week) to judge the coach and its cost. No advertising.
+- Shared: Yes, the run facts go to the AI provider to write cards, chat replies and spoken briefings.
+<!-- payload: lib/state/companion.dart:2416-2450; consent copy: lib/screens/companion_screen.dart:33-46, 118-131;
+     training_sync stored only: companion-server/companion/service.py:1227 (no reader) -->
+
+**Other in-app messages** (coach chat, consent v3)
+- What the runner types to the coach in Telegram, and the coach's replies. Kept 30 days, then deleted; not in the nightly backup. Sent to OpenRouter, which routes to a Claude host it chooses (Google Cloud Vertex for chat, proactive and screen calls and Amazon Bedrock for the card writer in the live ledgers; no `only`/`order` is pinned), with zero data retention and data collection denied. Regions unconfirmed. The coach's `web_search` tool (companion/coach/ext/research.py:189-197) also sends a generic, PII-filtered query through OpenRouter's web plugin with the same `zdr` flag; no research call is in the live ledger yet, so whether a ZDR search provider exists is unconfirmed (research.py:251 logs a 404 in that case).
+- Turning the coach off in the app deletes the chats and any coach memory at once.
+<!-- 30-day purge: companion-server/companion/service.py:2563; not in backup: db.py:323-325 comment; ZDR provider block:
+     coach/chat.py:774, coach/screen.py:39; model anthropic/claude-sonnet-5.5: config.py:168; consent sheet:
+     lib/screens/companion_screen.dart:105-112 -->
+
+**Other user-generated content**
+- Run notes typed after "Add a note" (up to 500 characters, one per run), kept with the run. With coach chat on they are read by the coach (so they reach the AI provider); without it they are only quoted back in the weekly recap.
+- Coach memory (consent v4): up to 20 facts of up to 160 characters, and one chat summary of up to 700 characters. Kept until the runner deletes them (`/memory` in Telegram, Turn off memory, or Delete everything; `lib/screens/companion_screen.dart:1180`). In the encrypted nightly backup, which ages out in 14 days.
+- Feedback ("Tell Ricki" or `/feedback`): up to 1000 characters, 30 days, read by the operator only, not in backups.
+- Analytics: counted per tester (a kind and a time, never content).
+<!-- memory caps: companion-server/companion/coach/ext/memory.py:36-38; coach_memory table + backup note: db.py:379-393;
+     backup retention 14 days: backup.py:24 -->
+
+**App interactions**
+- Maps SDK: map interaction events (pan, zoom), Google's own collected item.
+- Coach: feel taps, button answers, suggestion taken or skipped, survey answers (fixed options); an activity log of kind and time only, 120 days, not in backups.
+<!-- inbound_events 120 days: companion-server/companion/measure.py:21 -->
+
+**Crash logs, Diagnostics, Device or other IDs**: Maps SDK (crash reporting, request metadata, the SDK identifier Google uses to count daily active SDK users). Device or other IDs also covers the companion connection token, an app-instance ID (privacy page, section 2b).
+
+### 7.4 Not declared, and why
+
+- **Health Connect** (write only, runner-enabled): writes to Android's on-device store; nothing reaches us. Covered by section 9.
+- **Send / share a run** (TCX, GPX, FIT): user-initiated through the Android share sheet to an app the runner picks.
+- **Intervals.icu** (off by default, runner connects their own account): user-initiated transfer to a service the runner chose. Ricki: decide whether to also tick Fitness info and Location as shared for it; Play's wording on user-initiated transfers is unverified here.
+- **Follow a route** (GPX/TCX picked with the system file picker): read on the phone, nothing uploaded.
+- **Offline maps**: a download sends the region id and the IP to our own hosting only when the runner taps Download; covered by Approximate location.
+- **Voice cues**: on-device text-to-speech; no microphone.
+- **Phone number**: only if WhatsApp is switched on; WhatsApp is off for the closed test. Tick it in the release that turns WhatsApp on.
+
+### 7.5 Corrections found while checking (25-Oct)
+
+- Earlier drafts said check-in answers and run notes are "never sent to OpenRouter or the model provider". True for a runner without coach chat; **false for a runner with coach chat on**: the coach's `get_checkins` tool reads 14 days of answers and notes (`coach/tools.py:288-296`). The coach consent sheet already says check-in answers go to the AI provider, but the in-app check-ins paragraph (`lib/screens/companion_screen.dart:19-32`, "they never leave our server, so no writing service ... ever sees them") contradicts it. That app copy is fixed in #398; the privacy page now scopes the "never sent" lines to runners without the coach chat. The coach also receives first name (tools.py:177-192), splits, reps and trail (tools.py:219-233).
+- The privacy page named a Settings, Data, "Delete all" and "Export all" that do not exist in the app. Fixed in this PR (section 6 of the policy).
+
+## 8. Foreground service permissions
+
+**Policy > App content > Foreground service permissions.** Type: **Location** only.
+
+> **Describe the user-facing feature:** Run Supreme records GPS pace and route during a running workout that the user starts by pressing Start. A persistent notification with LAP and Stop actions is shown for the whole run. The service starts only from the visible app in response to that tap, keeps recording while the screen is off or the user is in another app (music, for example), and stops when the user presses Stop in the app or the notification. There is no background location outside a run the user started, and recording never restarts on its own after the user stops it.
 >
-> **Describe the user-facing feature that uses the foreground service:** Run Supreme records GPS pace and route during a running workout that the user starts by pressing Start. A persistent notification with LAP and Stop actions is shown for the whole run. The service starts only from the visible app in response to that tap, keeps recording while the screen is off or the user is in another app (music, for example), and stops when the user presses Stop in the app or the notification. There is no background location outside a run the user started, and recording never restarts on its own after the user stops it.
->
-> **Why can this task not be completed without a foreground service?** Interval pace needs a continuous GPS sample stream for 30–60 minutes while the screen is off and the phone is in a pocket or armband; without a foreground service the process is suspended and pace and lap times are lost.
->
-> **Demo video URL:** (unlisted YouTube link recorded per `docs/fgs-demo-video.md`; the 30-second phone version is at the top of that file. An emulator recording was judged unsuitable: it would show a debug package and replay mode, which the reviewer must not see).
+> **Why a foreground service:** Interval pace needs a continuous GPS sample stream for 30 to 60 minutes while the screen is off and the phone is in a pocket or armband; without a foreground service the process is suspended and pace and lap times are lost.
 
-Also true of the app and worth having ready if asked: `FOREGROUND_SERVICE_LOCATION` is declared in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe while a run is live, and no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (the setup checklist deep-links to the battery-optimisation settings page instead).
+**Demo video URL**: the unlisted YouTube link recorded per `docs/fgs-demo-video.md` (phone recording, never the emulator: it would show the debug package and replay mode).
 
-## 9. Government apps / Financial features / Health apps declarations
+If asked: `FOREGROUND_SERVICE_LOCATION` in the manifest, the service is `START_NOT_STICKY`, `stopWithTask=false` only so the notification survives a task swipe during a live run, and no `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
 
-- Government app: **No**.
-- Financial features: **None**.
-- Health apps declaration (mandatory for every app now): app **does** have health features → **Activity and fitness tracking** (running workouts, heart rate from a paired strap). Not a medical device, no clinical or diagnostic claims, health data stays on the device unless the runner chooses to send it.
-  - **Health Connect (Send runs, write only)**: answer that the app uses Health Connect. Data types and the justification to enter per type (Play asks for one each; all four are write only, and the app reads no Health Connect data):
-    - Exercise (`WRITE_EXERCISE`): "Run Supreme saves each finished run as a running exercise session, with its laps and pauses, so the runner's run appears in their health apps."
-    - Exercise route (`WRITE_EXERCISE_ROUTE`): "Saves the GPS route of the run (without the first and last 200 m) on the session so the runner can see the run's map in their health apps. Optional: runs are saved without it if the runner declines."
-    - Heart rate (`WRITE_HEART_RATE`): "Saves the heart-rate readings from the runner's own chest strap during the run on the session."
-    - Distance (`WRITE_DISTANCE`): "Saves the distance covered in the run on the session."
-  - Off by default; switched on by the runner in Settings, Send runs to, or per run with Send. A privacy-policy screen is wired for Health Connect's permission page (`PrivacyPolicyActivity`, alias `ViewPermissionUsageActivity`; opens https://runsolo.app/privacy/). The policy page names the four permissions (section 4).
-  - Before the Play submit: the Health Connect permissions form in Play Console must be completed for the new permissions, or the upload is blocked. Founder to confirm on submit.
+## 9. Health apps and Health Connect
 
-## 10. News app / COVID / other
+**Policy > App content > Health apps.**
 
-All **No**.
+- Health features: **Yes**, **Activity and fitness tracking**. Paste in the description box:
 
-## 11. Testing track order (plan §11)
+> Run Supreme records running workouts with GPS pace and, from a paired Bluetooth chest strap, heart rate. It is a training tool, not a medical device, and makes no clinical or diagnostic claims. Health and fitness data stays on the phone unless the runner chooses to send it: as a file through the share sheet, to Health Connect, to Intervals.icu, or, with the optional Run coach turned on, as run summaries to our server in Germany (and to an AI provider to write coaching replies). The coach is off until the runner turns it on and accepts a consent screen.
 
-1. Internal testing: founder + a couple of devices from week 3 (Play-signed builds replace sideloaded Play-flavour release builds; dogfood `.dogfood` package stays).
-2. Closed testing (Alpha): create the track, add the tester email list (≥ 15 recruited, ≥ 12 must stay opted in 14 continuous days, Google checks usage), submit for review with all the forms above done. See `docs/closed-test-testers.md`.
-3. Production access questionnaire after the 14 days (week 7), then staged rollout 20% → 100%.
+**Policy > App content > Health Connect permissions** (must be completed before an AAB with these permissions can roll out). The app requests exactly four, all write only, and reads nothing:
+<!-- android/app/src/main/AndroidManifest.xml:29-32 -->
 
-## 12. Founder checklist for the Maps key (plan §18.9)
+| Permission | Paste as the justification |
+|---|---|
+| Exercise (`WRITE_EXERCISE`) | Run Supreme saves each finished run as a running exercise session, with its laps and pauses, so the run appears in the runner's health apps. |
+| Exercise route (`WRITE_EXERCISE_ROUTE`) | Saves the GPS route of the run on the session, without the first and last 200 m, so the runner can see the run's map in their health apps. Optional: the run is saved without the route if the runner declines this permission. |
+| Heart rate (`WRITE_HEART_RATE`) | Saves the heart-rate readings from the runner's own chest strap during the run on the session. |
+| Distance (`WRITE_DISTANCE`) | Saves the distance covered in the run on the session. |
 
-1. Google Cloud project → enable **Maps SDK for Android** → billing account attached → budget alert at US$1 → per-day quota cap on the key (W9).
-2. Create the API key. Application restriction: **Android apps**, entries for each package + SHA-1:
-   - `app.runsupreme` + upload key SHA-1 above
-   - `app.runsupreme` + **Play app-signing certificate SHA-1** (Play Console → Test and release → Setup → App signing, available after the first upload) — without this the Play build shows "Map failed to load"
-   - `app.runsolo.dogfood` + dogfood key SHA-1 (`tools/print_cert_sha1.sh ~/.secrets/run-solo/<dogfood>.jks dogfood`)
-   - `app.runsupreme.debug` + your local `~/.android/debug.keystore` SHA-1 (CI's debug APK uses a per-runner debug key, so the emulator smoke never shows a map; that is expected)
-   API restriction: **Maps SDK for Android** only.
-3. Add it as repo secret `RUN_SOLO_MAPS_API_KEY` (`gh secret set RUN_SOLO_MAPS_API_KEY -R ricki2828/run-solo`). Builds pass without it; with it, `build-apk` stops warning.
-4. Locally: `runsolo.mapsApiKey=...` in `android/local.properties` (gitignored) for `flutter run`.
+<!-- session + laps + pauses: android/app/src/main/kotlin/app/runsolo/platform/HealthRecords.kt:58-110; route only when granted:
+     HealthRecords.kt:79, HealthApiImpl.kt:106-115 (WRITTEN_WITHOUT_ROUTE); 200 m trim: lib/state/health_workout.dart:36-38 -->
 
-## 13. Play submission: companion release
+Also enter, if asked:
+- **How users turn it on**: off by default. Settings, Send runs to, Health Connect; or Send on a single run.
+- **Privacy policy for Health Connect**: the permission rationale screen opens `https://runsupreme.taiaroa.xyz/privacy/` (section 4 of the policy names the four permissions). <!-- PrivacyPolicyActivity.kt:23; alias ViewPermissionUsageActivity, android/app/src/main/AndroidManifest.xml:85 -->
 
-Applies to the first release where the Run companion can be switched on by anyone other than the founder. Plan: `~/ai/plans/run-supreme-companion.md` (B2). Do not ship it until every item below is done in the same release: the Data safety rows, the web deletion link, the store copy and the privacy page. Facts below were checked against `companion-server/companion/{db,service,writer,backup}.py` and `lib/state/companion.dart` on 10-Oct-2026.
+## 10. Other declarations
 
-### 13.1 Data safety: companion rows
+**Policy > App content.** Government app: **No**. Financial features: **None**. News app: **No**. COVID-19 contact tracing or status: **No**. Data deletion is in section 7.1.
 
-Overview answers that change: "Is all user data encrypted in transit?" stays **Yes** (companion API, Telegram and Meta are HTTPS). "Do you provide a way to request deletion?" stays **Yes**, now with two paths: in the app (Settings, Companion, Delete everything) and the web link below. Enter the deletion URL as `https://runsupreme.taiaroa.xyz/delete/`. Play requires a link that works without the app, and `docs/delete/index.html` is that page.
+## 11. Testing track order
 
-Every row below: **Collected: Yes. Optional: yes** (off unless the user turns it on; "Not now" is equal weight). **Purpose: App functionality** only, except Fitness info (runs), App interactions (taps) and Other user-generated content (notes), which are also **Analytics**: the server counts them per tester under a T-number, pseudonymous and never by name, to judge the coach, work out week-4 retention and per-tester AI cost (no advertising). **Encrypted in transit: Yes.** **Deletable: Yes** (in-app, DELETE keyword in the chat, web link). **Ephemeral: No.**
+1. **Internal testing**: Ricki and a couple of devices; Play-signed builds via `docs/RELEASE.md`.
+2. **Closed testing (Alpha)**: tester list (at least 15 recruited, at least 12 opted in for 14 continuous days), submitted for review with every section above done. See `docs/closed-test-testers.md`.
+3. **Production access** questionnaire after the 14 days, then a staged rollout.
 
-| Category | Data type | What the companion holds | Shared? |
-|---|---|---|---|
-| Health and fitness | **Fitness info** | Per-run summary: type, start time, duration, distance, pace, True Pace, verdict, zone minutes, climb, and the Easy/Right/Hard tap. Pace for each km with its heart rate zone, and the time and zone of each rep in a structured session. Unless the user turns off "Show route shape on cards" (on by default): an outline of the run's route, at most 120 points as whole numbers on a 0..255 grid, with a random 150 to 300 m cut off each end, normalised on the phone (moved to the corner, scaled, turned; no latitude, longitude or compass direction). Never GPS points. The heart rate trace goes only if the user turns on "Heart rate on cards" (off by default): at most 64 whole-number bpm values and their zones for a trail run recorded with a strap, kept 30 days. **Plan-aware coaching (11-Oct):** when the runner follows the app's 4-week plan, also the planned session type (easy, long or quality), plan week and plan length, the plan's target distance if it has one, and the next planned session (type, planned date, week, minutes or distance if planned). The plan already sits on the phone; no typed text, session names, reasons or race date are sent (the app has no race date). No new Data safety category: it is Fitness info, already declared on this row. | No (see notes 1 and 6) |
-| Location | **Approximate location** | The run's locality (suburb name, never the street), plus the time zone. Only if the user turns on "Weather in suggestions" (separate switch, off by default): the run's start area rounded on the phone to 0.1 degree (about 11 km), latest one only, kept 30 days after its run and deleted on switch-off. The server passes that area and the time zone to Open-Meteo (a service provider, same basis as note 1) to fetch the forecast. Also the run's route outline (a random 150 to 300 m cut off each end, whole numbers in a unit box, no coordinates; see note 6) while the "Show route shape on cards" switch is on, kept 30 days after its run. | No (see notes 1 and 6) |
-| Personal info | **Phone number** | Only when WhatsApp is switched on: the user's WhatsApp number, which WhatsApp supplies when they message first. Not typed into the app. | No (Meta delivers the user's own chat) |
-| App activity | **Other user-generated content** | Notes the runner chooses to type into the chat after tapping "Add a note" (up to 500 characters each, one per run). Kept with the run and deleted with it. Used only to quote back in the weekly recap and to soften suggestions after words like sore or tired. | No (see note 5) **Feedback (Tell Ricki / /feedback):** the next message after tapping Tell Ricki or sending /feedback, up to 1000 characters, kept 30 days, read by the operator only, never sent to OpenRouter or any model, left out of backups, deleted with the user. Not counted, only stored. |
-| App activity | **App interactions** | Feel taps, button answers (goal, race month, usual days, niggle area), and whether a suggestion was taken or skipped. Purpose: **App functionality, Analytics**: the server counts cards sent and buttons tapped per tester per week (T-number, no names or text); runs and notes are counted too, see the Fitness info and notes rows. **Activity log (`inbound_events`):** each tap, note, feedback message, command (STOP, RESUME, /feedback), other message and Mini App open is stored as a kind and a time only (no content), for runners on consent v2, kept 120 days, deleted with the runner, left out of backups. **Survey answers:** the day-after-recap "did last week get you right" (Spot on, Mostly, Not really) and the one-off "how would you feel if the coach went away" (Very, Somewhat, Not disappointed, I've stopped using it) are fixed options, kept until the test ends, never sent to a model. **Opt-out counts:** a week and a number for DELETE and for STOP, no id. Same purposes. | No |
-| Messages | **Other in-app messages** | Coach chat (optional, off until the runner agrees in the app, Settings, Companion): what the runner types to the coach in Telegram, and the coach's replies. Kept 30 days, then deleted; not in backups. Sent to OpenRouter and the model provider (Anthropic, US) under a zero-data-retention setting to write the reply, with the run facts the coach reads (distance, time, pace, zone minutes, plan). Purpose: App functionality. | **Yes**: processors OpenRouter and the model provider (see note 7). Declared as shared to be safe. |
-| App activity | **Other user-generated content** (coach memory) | Only after the runner also agrees to memory (consent v4): up to 20 short facts the coach was told to keep, and one short summary of earlier chats. Kept until the runner deletes them (app, /memory in Telegram, or Delete everything); in the nightly backup, which ages out in 14 days. Summaries are written by the same processors. Purpose: App functionality. | **Yes** (processors, note 7) |
-| Health and fitness | **Health info** (coach health notes) | Niggles, injuries or illness the runner told the coach, kept only if they tick "Keep health notes too" (off by default). Turning it off deletes them at once. Purpose: App functionality. | **Yes** (processors, note 7) |
+Whether a Data safety change mid-test restarts the 14-day clock is unverified; enter section 7 in full before the first closed release so it never has to change.
 
-Rows the founder did not list, added to over-declare (confirm on the live form):
-- **Personal info, User IDs** and **Name**: the Telegram chat id and chat name the server stores for a Telegram user (the dogfood channel). Optional, App functionality.
-- **Health and fitness, Health info**: the niggle answer (none, calf, knee, hip, foot, other). It expires after 8 weeks. Optional, App functionality. This row also covers typed notes, which can mention injury or illness and soften suggestions.
-  **Check-ins (coach v2, S1):** the same row covers the one-tap check-in answers: how the body feels the evening before (Fresh, Normal, Flat, Sore somewhere, Not tomorrow), whether the planned run was skipped and why (Busy, Tired, Sore, Travelling, Feeling ill), what was behind a slow easy run (Short sleep, Stressed, Heat, Nothing) and runs wanted next week (3, 4, 5, Away). Sore and ill are Health info. Optional, App functionality only, **kept 14 days then deleted**, deleted with Delete everything, left out of the nightly backup, **never sent to OpenRouter, the model provider, Open-Meteo or the card renderer** (every line that uses an answer is a fixed template, asserted by a test). They travel through Telegram (delivery processor, as in note 5). Declare them as collected, optional, not shared. The privacy page (2b, Check-ins) is published and the site redeployed before the server collects (`COMPANION_CHECKINS=1`).
+## 12. Maps API key (Google Cloud)
 
-Notes:
-1. Shared with a processor, not "shared" in Play's sense, same basis as Open-Meteo above: OpenRouter and the model provider receive the run facts as sentences, which for a runner with a plan include the plan week ("week 3 of 4 of the plan") and, in the evening suggestion, the next planned session's type and size (for example "long run 14 km") and the answers as fixed options, never the phone number, chat id or any note the runner typed, with `data_collection: deny` and zero-retention routing. Founder to confirm on the live form that service-provider processing is not declared as sharing.
-2. The base-release rows (Maps SDK) are unchanged.
-3. Retention to state if Play asks: run summaries and answers until deleted or six months without a run (check-in answers: 14 days, and not in backups); the weather area 30 days after its run or until switched off; message log 30 days; backups 14 days (encrypted); Meta keeps WhatsApp messages up to 30 days.
-7. Coach chat and memory (consent v3 and v4, in the app): the text goes to OpenRouter and the model provider with zero data retention and no training on it; storage is our server in Germany. Turning the coach off in the app deletes chats and memory at once. Declare Messages and the memory and health rows as collected and shared with these processors, optional, App functionality.
-4. The app's Health Connect and user-initiated Send rows are unchanged.
-5. Notes travel through Telegram (a delivery processor, same basis as note 1): the runner types them into their own chat, and the recap quotes one back in that chat. They are never sent to OpenRouter, the model provider, Open-Meteo or the card renderer.
-6. The route outline is declared under Fitness info AND added to the Approximate location row (no extra label cost). The phone first clips a hidden per-install privacy zone (a circle of 250 to 400 m radius, kept only on the phone, never sent) from each end, then cuts a random 150 to 300 m more, thins it, and turns it into whole numbers in a unit box before it is sent, with no coordinates and no compass direction. It is NOT claimed that it cannot be placed: together with the suburb and the distance, a distinctive outline could be matched to streets, which is why it is disclosed as approximate location. Optional (separate switch, default on in the app), App functionality only, deletable (the switch deletes just the outlines; Delete everything deletes all), deleted by the server 30 days after its run. Never sent to OpenRouter, the model provider or Open-Meteo, only to the card renderer.
-   **Settled 24-Oct (was: before anyone else is enrolled, default it OFF or bump the consent):** the switch stays default ON. The consent sheet every runner agrees to before turning the companion on already says it in plain words ("an outline of your route with the first and last stretch cut off ... a distinctive route could still be recognised"), the consent version has since gone to 4, the listing, the website and the Data safety rows above now name the outline, and the switch is in Settings, Companion, Show route shape on cards (off deletes the outlines at once). The per-km heart rate zones stay in the Health info disclosure.
+1. Enable **Maps SDK for Android**, attach billing, budget alert at US$1, per-day quota cap.
+2. Key restriction **Android apps**, one entry per package + SHA-1:
+   - `app.runsupreme` + upload key SHA-1 (section 0)
+   - `app.runsupreme` + **Play app-signing SHA-1** (Test and release > Setup > App signing, after the first upload). Without it the Play build shows "Map failed to load".
+   - the dogfood package + dogfood key SHA-1 (`tools/print_cert_sha1.sh ~/.secrets/run-solo/<dogfood>.jks dogfood`)
+   - `app.runsupreme.debug` + your local debug keystore SHA-1
+   API restriction: Maps SDK for Android only.
+3. Repo secret `RUN_SOLO_MAPS_API_KEY` (already set).
 
-### 13.2 Store copy that must change (APPLIED in `store/play/listing.md` and `docs/index.html` on 24-Oct; paste into Console)
+## 13. Submission checklist
 
-The closed-test AAB includes the coach (`--dart-define=COMPANION=1` on the `release-aab` job, versionCode 4). It is off in the app until the runner turns it on and accepts the consent, so the copy below applies from the first closed release.
-
-The base copy says "No account. Nothing uploaded." and "Your routes, times and heart rate stay on your phone unless you choose to send them." That stays true for the base app but is no longer true once the companion exists. Change before the release, in the listing and in `docs/closed-test-testers.md`.
-
-- **Short description (72)**, replacing the one in section 1:
-  `Run scores, honest verdicts and trail runs. See what is improving. Free.`
-  (drops "No account". The app has no account to create, but the companion links to a chat, so the claim reads as too strong.)
-- **Long description, first paragraph**, replacing "with no account and nothing uploaded":
-  > Run Supreme is where you get better at your runs. It tells you honestly how you are progressing and what to run next, free, on your phone. There is no account to create.
-- **Long description, "Private by default" paragraph**, replacing the first sentence:
-  > No feed. No ads. Your routes, times and heart rate stay on your phone unless you choose to send them. The optional Run companion is off until you turn it on. If you do, a short summary of each run (no GPS points, and no heart rate trace unless you turn on Heart rate on cards; the route goes only as an outline, which you can switch off) goes to our server and the notes reach you in Telegram. You can delete it all in the app or from the web at runsupreme.taiaroa.xyz/delete.
-- **Closed-test message** in `docs/closed-test-testers.md`: replace "No account, no ads, your runs stay on your phone." with "No account to create, no ads. Your runs stay on your phone unless you turn on the optional Run companion."
-- **Screenshots and graphic**: re-check any frame that says "Nothing uploaded".
-- **Health apps declaration (section 9)**: add that health data leaves the device only if the runner turns on the companion or sends a file, and then goes to our server in Germany.
-
-### 13.3 Submission checklist
-
-1. Privacy page section 2b and `/delete/` are live at runsupreme.taiaroa.xyz. Deletion email address on `/delete/` is privacy@taiaroa.xyz.
-2. Data safety form updated per 13.1, and the deletion URL entered.
-3. Store copy per 13.2 pasted into the listing.
-4. The server enrol allowlist and the dogfood compile flag are off only when the above are done (plan B2).
-5. WhatsApp stays off until Meta business verification, the approved templates and the written AI-policy check exist (`~/Files/RunSupreme/whatsapp/PROMPTS.md`). The first release can ship Telegram only; the phone number row is then not collected, and the form can omit it until WhatsApp ships. Data safety changes later need the form updated before the release that uses them.
-6. CI ignores `docs/**`, so none of the above is checked by a pipeline. Check by hand.
+1. This PR merged; `docs/privacy/` and `docs/delete/` redeployed; both URLs show the 25-Oct text.
+2. `privacy@taiaroa.xyz` receives mail (send a test).
+3. App copy fix for check-ins (section 7.5) merged and in the AAB being submitted.
+4. Sections 2-10 entered in the Console.
+5. Screenshots regenerated (section 1 TODO) and uploaded.
+6. AAB uploaded per `docs/RELEASE.md`; Health Connect permissions form done before rollout.
+7. WhatsApp stays off until Meta business verification, approved templates and the AI-policy check exist. When it ships, tick Phone number (section 7.2) in the same release.
+8. CI ignores `docs/**`; none of this is checked by a pipeline.
