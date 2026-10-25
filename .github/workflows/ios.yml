@@ -17,6 +17,11 @@ name: ios
 
 on:
   workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'Also archive, sign and upload to TestFlight (UNTESTED; docs/RELEASE.md)'
+        type: boolean
+        default: false
   push:
     tags: ['v*']
     branches: [main]
@@ -262,3 +267,162 @@ jobs:
             (cd build/ios/iphonesimulator && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-simulator-app.zip" Runner.app)
           fi
           tools/ci_release.sh put "ci-ios-${{ github.run_id }}" "ios ${{ github.run_id }}" "iOS simulator build evidence, run ${{ github.run_id }}, sha ${{ github.sha }}. Deleted after 3 days." ci-out/*.zip
+
+  testflight-gate:
+    # T4 skeleton (docs/RELEASE.md). UNTESTED: no Apple Developer account exists yet, so this has
+    # never signed or uploaded anything. Runs on v* tags and on dispatch with `testflight` ticked.
+    # A cheap Linux check first, so missing secrets never start a macOS runner. The ASC secrets live
+    # in the `release` Environment (main + v* tags only); other refs are refused by the `if:`.
+    name: TestFlight secrets check
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/main') }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    environment: release
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      - id: gate
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for n in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            [ -n "${!n}" ] || missing="$missing $n"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice title=TestFlight skipped::secrets not set in the release Environment:$missing (docs/RELEASE.md)"
+            echo "### TestFlight skipped: secrets not set:$missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  testflight:
+    # Release path decided in I0 (header above): config-only Flutter build, xcodebuild archive,
+    # then -exportArchive with destination=upload. Automatic signing: the App Store Connect API key
+    # (Admin role) lets Xcode create the cloud-managed distribution certificate and profiles.
+    # Build number = this workflow's run_number + repo variable IOS_BUILD_NUMBER_OFFSET (default 0);
+    # version = pubspec versionName (a v* tag must match it).
+    name: TestFlight upload (UNTESTED)
+    needs: [testflight-gate]
+    if: ${{ needs.testflight-gate.outputs.ready == 'true' }}
+    runs-on: macos-15
+    environment: release
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+      - name: Kotlin/Native toolchain cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-kotlin-2.4.0 # bump with Kotlin in core-jvm/build.gradle.kts
+      - name: Version and build number
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          BUILD_OFFSET: ${{ vars.IOS_BUILD_NUMBER_OFFSET || '0' }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, re
+          from pathlib import Path
+          m = re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+[0-9]+\s*$', Path('pubspec.yaml').read_text(), re.MULTILINE)
+          if not m:
+              raise SystemExit('pubspec.yaml needs version: MAJOR.MINOR.PATCH+build')
+          version = m.group(1)
+          ref = os.environ['GITHUB_REF']
+          if ref.startswith('refs/tags/') and ref != f'refs/tags/v{version}':
+              raise SystemExit(f'{ref} does not match pubspec version v{version}')
+          build = int(os.environ['RUN_NUMBER']) + int(os.environ['BUILD_OFFSET'])
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'IOS_VERSION={version}\nIOS_BUILD={build}\n')
+          print(f'iOS {version} ({build}); ref {ref}')
+          PYCODE
+      - run: flutter pub get
+      - name: Shared core XCFramework
+        working-directory: android/core-jvm
+        run: |
+          ./gradlew assembleRunCoreReleaseXCFramework --no-daemon
+          rm -rf ../../ios/RunCore && mkdir -p ../../ios/RunCore
+          cp -R build/XCFrameworks/release/RunCore.xcframework ../../ios/RunCore/
+      - name: Xcode project targets and pods
+        run: |
+          ruby -e "require 'xcodeproj'" 2>/dev/null || gem install xcodeproj --user-install
+          ruby ios/tools/add_targets.rb
+          (cd ios && pod install --repo-update)
+      - name: App Store Connect API key to a temp file
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p "$(dirname "$key")"
+          # Accept the .p8 as pasted PEM text or as base64 of the file.
+          if printf '%s' "$ASC_KEY_P8" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$ASC_KEY_P8" > "$key"
+          else
+            printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key"
+          fi
+          grep -q 'BEGIN PRIVATE KEY' "$key" || { echo "::error::ASC_KEY_P8 is not a .p8 private key"; exit 1; }
+          chmod 600 "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+      - name: flutter build ios --config-only (release)
+        run: flutter build ios --release --config-only --build-name="$IOS_VERSION" --build-number="$IOS_BUILD"
+      - name: xcodebuild archive (automatic signing via the API key)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic
+      - name: xcodebuild -exportArchive (destination upload = TestFlight)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          plist="$RUNNER_TEMP/ExportOptions.plist"
+          /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" \
+            -c "Add :destination string upload" -c "Add :signingStyle string automatic" \
+            -c "Add :teamID string $APPLE_TEAM_ID" -c "Add :uploadSymbols bool true" \
+            -c "Add :manageAppVersionAndBuildNumber bool false" "$plist" > /dev/null
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "### TestFlight: uploaded $IOS_VERSION ($IOS_BUILD); App Store Connect processing takes 10-30 min" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/private_keys"
+      # dSYMs only: build logs stay in the (masked) Actions log and are never published, because the
+      # ci-ios release is public and file contents are not masked.
+      - name: Publish dSYMs to a release
+        if: ${{ always() && vars.USE_ARTIFACTS != '1' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -d "$RUNNER_TEMP/Runner.xcarchive/dSYMs" ] || { echo "no archive dSYMs to publish"; exit 0; }
+          mkdir -p ci-out
+          (cd "$RUNNER_TEMP/Runner.xcarchive" && zip -qr "$GITHUB_WORKSPACE/ci-out/ios-release-dsyms.zip" dSYMs)
+          tools/ci_release.sh put "ci-ios-${{ github.run_id }}" "ios ${{ github.run_id }}" "iOS release dSYMs, run ${{ github.run_id }}, sha ${{ github.sha }}." ci-out/ios-release-dsyms.zip
