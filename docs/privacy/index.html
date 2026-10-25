@@ -334,6 +334,7 @@
   Turn the coach off in Settings, Companion, and your chats and coach memory are deleted.
   It happens at once. We record when you agreed. The providers are asked not to keep or train on what they receive.
   The coach gives running guidance, not medical advice. If you tell it about chest pain, fainting or a serious injury it stops giving training advice and tells you to get help.</p>
+  <p><strong>Places.</strong> If you ask the coach for a physio or doctor (find_care), the place you type goes, as you typed it, to OpenStreetMap's Nominatim search to find its position, and OpenStreetMap's Overpass service then searches around that position rounded to about 1 km. With no place typed, the coarse start of your last run is used, if you turned on "Weather in suggestions". If you ask for the weather somewhere (get_weather), the place you type goes to Open-Meteo to find it, and only a 0.1 degree area (about 11 km) is used for the forecast. These requests carry no name or account, and our server does not store the place. OpenStreetMap and Open-Meteo see our server's IP address, not yours.</p>
 
   <h3>Coach memory</h3>
   <p>The coach can remember you between chats, but only after you agree to it in the app (the companion agreement, version 4). The one
@@ -346,8 +347,7 @@
   (niggles, injuries and illness) are separate: the coach keeps them only if you tick "Keep health notes too", which starts unticked. With it
   unticked the coach will not save anything about injury, pain or illness, and it leaves them out of the chat summary. Your GPS tracks and
   heart rate recordings are not part of coach memory and stay on your phone.</p>
-  <p>The notes are stored on our server in Germany. To write the summary, the notes and your recent messages go to OpenRouter and the model
-  provider (outside the EU, in the US), under a zero-data-retention setting: the provider may not keep or train on them. Nothing in your
+  <p>The notes are stored on our server in Germany. The notes and the chat summary go to the model with every coach reply, as context, and your recent messages go with them when the summary is rewritten. They go to Claude models via OpenRouter, hosted by Google Cloud or Amazon Web Services (we have not confirmed the regions), under a zero-data-retention setting: the providers are asked not to keep or train on them. Nothing in your
   notes is written to our server logs. You can see every note by sending /memory in Telegram, and delete any of them. Notes are kept until you delete them or delete your data; they are not purged at 30 days like chat messages. The live
   database is not yet encrypted at rest; backups are encrypted.</p>
   <p><strong>Deleting it.</strong> Delete everything (in the app), DELETE (in the chat) or the web delete page removes all coach memory
@@ -382,7 +382,8 @@
     it also holds one rounded area, from your latest run that had one.</li>
     <li><strong>Open-Meteo</strong>, a weather service, only if you turn on "Weather in suggestions". Our server sends it that
     rounded area (about 11 km) and your time zone, to ask for the forecast there. No name, account or device ID goes with it.
-    Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
+    Open-Meteo sees our server's IP address, not yours. If you ask the coach for the weather somewhere, the place you type also goes to Open-Meteo, as in "Coach chat". See section 3 for the weather request the app itself makes.</li>
+    <li><strong>OpenStreetMap</strong> (Nominatim and Overpass), only if you ask the coach for a physio or doctor. It receives the place you typed, and a point rounded to about 1 km, as in "Coach chat".</li>
     <li><strong>OpenRouter</strong>, and the AI hosts it routes to (Google Cloud and Amazon Web Services serving Claude models), which write the words of each note and, if you turn on the coach chat, power it. For the notes, they receive only
     the facts of the run as short sentences (for a trail run, whether the companion read it as easy, tempo or long from its distance, time and heart rate zones; and, when it compares two runs, your True Pace for both), and your answers to the background questions as fixed options. For the notes, they never receive your check-in answers,
     phone number, Telegram chat, name, any note you type, or the route outline, per-kilometre paces or rep times, which are
