@@ -141,21 +141,18 @@ void main() {
   testWidgets('a noise band keeps the axis note on the same line', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      hostWith(
-        [
-          BarPoint(date: d0, value: 2520),
-          BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
-        ],
-        noise: const NoiseBand(
-          center: 2460,
-          half: 30,
-          label: 'Noise',
-          detail: '+/- 30 s',
-          caption: 'Shaded = GPS noise around your previous median',
-        ),
-      ),
+    final pts = [
+      BarPoint(date: d0, value: 2520),
+      BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
+    ];
+    const band = NoiseBand(
+      center: 2460,
+      half: 30,
+      label: 'Noise',
+      detail: '+/- 30 s',
+      caption: 'Shaded = GPS noise around your previous median',
     );
+    await tester.pumpWidget(hostWith(pts, noise: band));
     expect(find.textContaining('axis from'), findsOneWidget);
     expect(
       find.text('Shaded = GPS noise around your previous median'),
