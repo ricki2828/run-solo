@@ -668,6 +668,7 @@ class _BarsPainter extends CustomPainter {
     }
 
     // Bars.
+    Rect? lastValueRect;
     for (var i = 0; i < n; i++) {
       final x = i * slot + (slot - barW) / 2;
       final vy = y(points[i].value);
@@ -734,14 +735,20 @@ class _BarsPainter extends CustomPainter {
           w: isPb ? FontWeight.w700 : FontWeight.w500,
           size: 12,
         );
-        vl.paint(
-          canvas,
-          Offset(
-            (x + barW / 2 - vl.width / 2).clamp(0.0, plotW - vl.width),
-            labelTop - vl.height - 3,
-          ),
-        );
-        labelTop -= vl.height + 3;
+        final vx = (x + barW / 2 - vl.width / 2).clamp(0.0, plotW - vl.width);
+        var vyTop = labelTop - vl.height - 3;
+        // Neighbouring bars of near-equal height would print their values on
+        // top of each other: lift this one clear of the last.
+        final prev = lastValueRect;
+        if (prev != null &&
+            vx < prev.right + 2 &&
+            vyTop < prev.bottom &&
+            vyTop + vl.height > prev.top) {
+          vyTop = prev.top - vl.height - 1;
+        }
+        vl.paint(canvas, Offset(vx, vyTop));
+        lastValueRect = Rect.fromLTWH(vx, vyTop, vl.width, vl.height);
+        labelTop = vyTop;
       }
       if (isPb && growT >= 1) {
         final pl = _tp('PB', tokens.accentArc, w: FontWeight.w800, size: 12);
