@@ -1205,7 +1205,7 @@ class CompanionController extends ChangeNotifier {
   /// phone and sent with the version.
   Future<void> acceptMemory({
     bool healthNotes = false,
-    bool trainingSync = true,
+    bool trainingSync = false,
   }) async {
     final before = (_consent, _healthNotes, _trainingSync, _memoryDismissed);
     _consentIgnored = false;

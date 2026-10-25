@@ -205,6 +205,10 @@ void main() {
       expect(kCompanionSent, isNot(contains('—')));
       expect(kCompanionCheckins, isNot(contains('—')));
       expect(kCompanionCheckins, contains('14 days'));
+      // With coach chat on the coach reads the answers (coach/tools.py get_checkins): the copy must say so.
+      expect(kCompanionCheckins, contains('coach chat'));
+      expect(kCompanionCheckins, contains('zero data retention'));
+      expect(kCompanionCheckins, isNot(contains('no writing service')));
     });
   });
 
@@ -508,8 +512,6 @@ void main() {
         kCompanionMemoryTitle,
         kCompanionMemoryBody,
         kCompanionMemoryHealthTick,
-        kCompanionMemorySyncTitle,
-        kCompanionMemorySyncBlurb,
       ]) {
         expect(s, isNot(contains('\u2014')));
       }
@@ -533,14 +535,12 @@ void main() {
               .value,
           isFalse,
         );
+        // The training-numbers switch is hidden: nothing on the server reads it.
         expect(
-          tester
-              .widget<Switch>(
-                find.byKey(const ValueKey('companion-memory-sync-switch')),
-              )
-              .value,
-          isTrue,
+          find.byKey(const ValueKey('companion-memory-sync-switch')),
+          findsNothing,
         );
+        expect(find.text('Share training numbers'), findsNothing);
         // Only the version-2 report has gone out so far.
         expect(lastConsent(), {'consent_version': kCompanionBaseConsent});
       },
@@ -553,12 +553,12 @@ void main() {
       expect(lastConsent(), {
         'consent_version': kCompanionConsentVersion,
         'health_notes': false,
-        'training_sync': true,
+        'training_sync': false,
       });
       expect(kCompanionConsentVersion, 4);
       expect(ctl.memoryOn, isTrue);
       expect(ctl.healthNotesOn, isFalse);
-      expect(ctl.trainingSyncOn, isTrue);
+      expect(ctl.trainingSyncOn, isFalse);
       expect(
         find.byKey(const ValueKey('companion-memory-offer')),
         findsNothing,
@@ -566,35 +566,33 @@ void main() {
       expect(secrets.values[CompanionController.consentName], '4');
     });
 
-    testWidgets('ticking health notes and switching sync off are sent', (
-      tester,
-    ) async {
-      await open(tester);
-      await tester.tap(
-        find.byKey(const ValueKey('companion-memory-health-box')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('companion-memory-sync-switch')),
-      );
-      await pumpTimes(tester, 2);
-      await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
-      await pumpTimes(tester, 4);
-      expect(lastConsent(), {
-        'consent_version': 4,
-        'health_notes': true,
-        'training_sync': false,
-      });
-      // They survive an app restart.
-      final again = CompanionController(
-        store: secrets,
-        transfer: transfer,
-        client: CompanionClient(baseUrl: 'https://c.test', http: http),
-      );
-      await tester.runAsync(again.load);
-      expect(again.memoryOn, isTrue);
-      expect(again.healthNotesOn, isTrue);
-      expect(again.trainingSyncOn, isFalse);
-    });
+    testWidgets(
+      'ticking health notes is sent and training sync is sent as false',
+      (tester) async {
+        await open(tester);
+        await tester.tap(
+          find.byKey(const ValueKey('companion-memory-health-box')),
+        );
+        await pumpTimes(tester, 2);
+        await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
+        await pumpTimes(tester, 4);
+        expect(lastConsent(), {
+          'consent_version': 4,
+          'health_notes': true,
+          'training_sync': false,
+        });
+        // They survive an app restart.
+        final again = CompanionController(
+          store: secrets,
+          transfer: transfer,
+          client: CompanionClient(baseUrl: 'https://c.test', http: http),
+        );
+        await tester.runAsync(again.load);
+        expect(again.memoryOn, isTrue);
+        expect(again.healthNotesOn, isTrue);
+        expect(again.trainingSyncOn, isFalse);
+      },
+    );
 
     testWidgets('Not now sends nothing and keeps the rest working', (
       tester,
@@ -630,7 +628,7 @@ void main() {
         expect(lastConsent(), {
           'consent_version': 4,
           'health_notes': true,
-          'training_sync': true,
+          'training_sync': false,
         });
         await scrollTo(
           tester,

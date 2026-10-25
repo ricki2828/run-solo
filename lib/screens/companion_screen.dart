@@ -16,6 +16,8 @@ const String kCompanionIntro =
     'WhatsApp is coming later.';
 
 /// The check-ins disclosure. Same words as privacy section 2b, "Check-ins".
+/// With coach chat on, the coach's get_checkins tool reads 14 days of answers
+/// and run notes (companion-server/companion/coach/tools.py, get_checkins).
 const String kCompanionCheckins =
     'The companion can check in with buttons and nothing typed: how your '
     'body feels the evening before a planned session, going or skipping on '
@@ -23,8 +25,12 @@ const String kCompanionCheckins =
     'came out slower and harder than usual, and on Sunday how many runs you '
     'want next week. If you skip, the session moves to a later day. Sore '
     'and ill are health information; the companion uses them only to go '
-    'lighter, and they never leave our server, so no writing service or '
-    'weather service ever sees them. Answers are kept 14 days, then '
+    'lighter. Without the coach chat they never leave our server. If you '
+    'turn on the coach chat, the coach reads your check-in answers and run '
+    'notes from the last 14 days to reply, so they go to Claude models '
+    'through OpenRouter (hosted by Google Cloud or Amazon Web Services) with '
+    'zero data retention. No weather '
+    'service ever sees them. Answers are kept 14 days, then '
     'deleted, and they are left out of backups. They show below under '
     'Check-ins, and Delete everything removes them at once. Home asks our '
     'server for your next session and the coach\'s latest note; the reply '
@@ -103,13 +109,14 @@ const List<String> kCompanionWeatherSheet = [
 const String kCompanionCoachTitle = 'Chat with the coach';
 
 const String kCompanionCoachBody =
-    'The coach can answer your questions about your training in Telegram, and '
-    'write short spoken briefings before your runs. To reply, your run '
-    'summaries, check-in answers and what you type go to an AI provider '
-    '(OpenRouter and Anthropic, in the US) with zero data retention. Your GPS '
-    'tracks and heart rate recordings stay on your phone. Chats are kept for '
-    '30 days. You can turn the coach off any time in Settings, Companion, and '
-    'that deletes your chats and any coach memory.';
+    'The coach answers your training questions in Telegram and writes '
+    'briefings before your runs. To reply, your run summaries, check-in and '
+    'background answers, run notes, health flags, first name and what you '
+    'type go to Claude models, via OpenRouter, with zero data retention. It can search the web, '
+    'with no personal details. Your GPS tracks and heart rate recordings '
+    'stay on your phone. Chats are kept for 30 days. '
+    'Turn the coach off in Settings, Companion, and your chats and '
+    'coach memory are deleted.';
 
 /// The coach memory sheet (consent version 4). Title and body together stay
 /// under 90 words; a test counts them. Plain words, no em dashes.
@@ -118,19 +125,12 @@ const String kCompanionMemoryTitle = 'Let the coach remember you';
 const String kCompanionMemoryBody =
     'The coach can keep notes about your goals, your schedule, what you like, '
     'key runs, and a short summary of your chats, so it does not start from '
-    'zero each time. It keeps your training numbers too: estimated race '
-    'times, best efforts, weekly load and your plan. Your GPS tracks and '
+    'zero each time. Your GPS tracks and '
     'heart rate recordings stay on your phone. You can see and delete every '
     'note by sending /\u2060memory in Telegram. Health notes (niggles and '
     'injuries) are separate: tick below to let the coach keep them.';
 
 const String kCompanionMemoryHealthTick = 'Keep health notes too';
-
-const String kCompanionMemorySyncTitle = 'Share training numbers';
-
-const String kCompanionMemorySyncBlurb =
-    'Estimated times, best efforts, weekly load and your plan. On unless you '
-    'switch it off.';
 
 /// The companion's setup step (onboarding) and Settings > Companion. Off:
 /// the consent copy with "Turn on" and "Not now" at equal weight, neither
@@ -1011,7 +1011,9 @@ class CompanionMemoryOffer extends StatefulWidget {
 
 class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
   bool _health = false;
-  bool _sync = true;
+  // The training-numbers switch is hidden and nothing on the server reads it, so
+  // Agree must not record a yes the runner never saw. The pref and field stay.
+  final bool _sync = false;
   bool _busy = false;
 
   Future<void> _agree() async {
@@ -1067,13 +1069,6 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
                 ],
               ),
             ),
-          ),
-          _SwitchRow(
-            title: kCompanionMemorySyncTitle,
-            blurb: kCompanionMemorySyncBlurb,
-            switchKey: const ValueKey('companion-memory-sync-switch'),
-            on: _sync,
-            onChanged: _busy ? null : (v) => setState(() => _sync = v),
           ),
           const SizedBox(height: Space.x16),
           Row(
@@ -1157,20 +1152,6 @@ class _CompanionMemorySettingsState extends State<CompanionMemorySettings> {
                     () => c.setMemoryChoices(
                       healthNotes: v,
                       trainingSync: c.trainingSyncOn,
-                    ),
-                  ),
-          ),
-          _SwitchRow(
-            title: kCompanionMemorySyncTitle,
-            blurb: kCompanionMemorySyncBlurb,
-            switchKey: const ValueKey('companion-memory-sync-setting'),
-            on: c.trainingSyncOn,
-            onChanged: _busy
-                ? null
-                : (v) => _run(
-                    () => c.setMemoryChoices(
-                      healthNotes: c.healthNotesOn,
-                      trainingSync: v,
                     ),
                   ),
           ),
