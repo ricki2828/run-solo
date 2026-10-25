@@ -484,7 +484,26 @@ class CoachSession {
     this.originalDate,
     this.label,
     this.name,
+    this.sessionId,
+    this.derived = false,
+    this.sessionRef,
+    this.fingerprint,
+    this.reps,
   });
+
+  /// The server's slug for it (`norwegian_4x4`, `tempo`, or the type).
+  final String? sessionId;
+
+  /// True for the coach's own default week (the runner has no plan in the app).
+  final bool derived;
+
+  /// What the coach's start briefing for this session is keyed on (`GET /v1/me/briefing`): Start matches a cached
+  /// briefing to today's coach-week session with these, from memory. Null from an older server.
+  final String? sessionRef;
+  final String? fingerprint;
+
+  /// `{reps}` for a quality session the server knows the rep count of.
+  final int? reps;
 
   /// The session's own name (Tempo, Norwegian 4x4...) when the server sends
   /// one as `name` or `session_name`. Absent today: the type is all it knows.
@@ -534,6 +553,7 @@ class CoachSession {
     final dist = j['distance_m'];
     final label = j['label'];
     final nm = j['name'] ?? j['session_name'];
+    final sid = j['session_id'], ref = j['session_ref'], fp = j['fingerprint'];
     int? whole(Object? v) => v is int && v > 0 ? v : null;
     return CoachSession(
       date: date,
@@ -546,6 +566,11 @@ class CoachSession {
       originalDate: _day(j['original_date']),
       label: label is String && label.isNotEmpty ? label : null,
       name: nm is String && nm.trim().isNotEmpty ? nm.trim() : null,
+      sessionId: sid is String && sid.isNotEmpty ? sid : null,
+      derived: j['derived'] == true,
+      sessionRef: ref is String && ref.isNotEmpty ? ref : null,
+      fingerprint: fp is String && fp.isNotEmpty ? fp : null,
+      reps: whole(j['reps']),
     );
   }
 }
@@ -2160,6 +2185,19 @@ class CompanionController extends ChangeNotifier {
         )
       : BriefingChoice.none;
 
+  /// Today's session from the coach's own default week (the runner has no plan
+  /// in the app), when the server sent the keys its briefing is stored under.
+  /// Null for any other day, an app plan session (Start matches those through
+  /// the plan itself) or an older server. Memory only, like [briefingChoice].
+  CoachSession? get coachDayToday {
+    final s = coachNext?.session;
+    if (s == null || !s.derived) return null;
+    if (s.sessionRef == null || s.fingerprint == null) return null;
+    final now = _now();
+    final today = DateTime(now.year, now.month, now.day);
+    return s.date == today ? s : null;
+  }
+
   /// Fetches the coach's start briefing (`GET /v1/me/briefing`) and updates
   /// the cache. Quiet like [refreshNext]: never sets [problem]. Only on Home
   /// load and after a run upload ([force] skips the one-a-minute limit), never
@@ -2463,6 +2501,17 @@ Map<String, Object?> companionPaceFacts(
 }
 
 final RegExp _sessionRef = RegExp(r'^[a-z0-9_]{1,16}$');
+
+/// A session id as the server slugs it (`norwegian-4x4` -> `norwegian_4x4`), to match a coach-week quality day's
+/// `session_id` against the built-in session picked at Start. Null in, null out.
+String? coachSlug(String? id) {
+  if (id == null) return null;
+  final s = id
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  return s.isEmpty ? null : s;
+}
 
 /// The plan session's opaque ref, sent as `plan_next.session_ref` and compared
 /// at Start against the ref of a cached coach briefing (C2b A3). It is the

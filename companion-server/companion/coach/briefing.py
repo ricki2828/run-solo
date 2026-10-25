@@ -301,6 +301,7 @@ class Briefings:
     def __init__(self, coach: Any):
         self.coach = coach
         self.svc, self.s = coach.svc, coach.s
+        self._swept_at: datetime | None = None
 
     # -------------------------------------------------------------------------------------- safety + session
     def gate(self, c, uid: str) -> str | None:
@@ -435,6 +436,41 @@ class Briefings:
             return False
         self.coach.wake.set()
         return True
+
+    # -------------------------------------------------------------------------------------- sweep (no upload needed)
+    def sweep(self, now: datetime) -> int:
+        """Every `coach_briefing_sweep_s`: `enqueue` for each runner who could have a briefing, so one exists before they
+        run even when nothing was uploaded or answered since the session became the next one (a coach-week day, the
+        morning after a rest day). `enqueue` does every gate and coalesces on the facts, so an unchanged session queues
+        nothing and the daily cap still bounds the model calls. Never raises. -> jobs queued."""
+        if not self.s.coach_briefing:
+            return 0
+        if self._swept_at is not None and (now - self._swept_at).total_seconds() < self.s.coach_briefing_sweep_s:
+            return 0
+        self._swept_at = now
+        try:
+            with db.ro(self.s.db_path) as c:
+                uids = [r["id"] for r in c.execute(
+                    "SELECT id FROM users WHERE checkin_consent >= ? AND paused=0 AND COALESCE(ops_paused,0)=0 ORDER BY id",
+                    (self.s.coach_consent_required,))]
+        except Exception as e:
+            log.error("coach briefing sweep failed: %s", type(e).__name__)
+            return 0
+        return sum(1 for uid in uids if self.enqueue(uid, now))
+
+    # -------------------------------------------------------------------------------------- the app's match keys
+    def match_keys(self, c, user: dict, now: datetime) -> dict | None:
+        """What `GET /v1/me/next-session` adds to its session so Start can match a cached briefing to it with no network:
+        the `session_ref` and `fingerprint` the briefing is stored under, and `reps` for the `{reps}` slot. None when there is
+        no session to brief. Read-only; never raises."""
+        try:
+            spec = self.spec_for(c, user, now)
+        except Exception as e:
+            log.error("coach briefing keys failed: %s", type(e).__name__)
+            return None
+        if spec is None:
+            return None
+        return {"session_ref": spec.ref, "fingerprint": spec_fingerprint(spec), "reps": spec.reps}
 
     # -------------------------------------------------------------------------------------- worker
     def recover(self, now: datetime) -> int:

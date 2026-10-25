@@ -455,4 +455,185 @@ void main() {
       );
     });
   });
+
+  group('a coach-week day (no plan in the app)', () {
+    late FakeCompanionHttp http;
+    late CompanionController ctl;
+    var clock = t0;
+    const dayRef = 'cw20261020e';
+    const dayFp = 'a1b2c3d4e5f60718';
+    const dayTpl = 'Easy run today, {distance}. Keep it chatty.';
+
+    Map<String, Object?> session({
+      String date = '2026-10-20',
+      bool derived = true,
+      String type = 'easy',
+      bool keys = true,
+      String? sessionId,
+      String? name,
+      int? reps,
+    }) => {
+      'date': date,
+      'type': type,
+      'kind': type,
+      'name': ?name,
+      'session_id': sessionId ?? type,
+      'distance_m': 6000,
+      'minutes': null,
+      'moved': false,
+      'derived': ?(derived ? true : null),
+      if (keys) 'session_ref': dayRef,
+      if (keys) 'fingerprint': dayFp,
+      'reps': ?reps,
+    };
+
+    void serve(Map<String, Object?>? next, {String? briefRef}) {
+      http.handler = (r) => switch (r.uri.path) {
+        '/v1/me/next-session' => CompanionReply(
+          200,
+          jsonEncode({'v': 1, 'next_session': next}),
+        ),
+        '/v1/me/briefing' => CompanionReply(
+          200,
+          jsonEncode({
+            'session_ref': briefRef ?? dayRef,
+            'fingerprint': dayFp,
+            'template': dayTpl,
+            'generated_at': clock.toUtc().toIso8601String(),
+            'prompt_hash': 'abc',
+          }),
+        ),
+        _ => http.defaultReply(r),
+      };
+    }
+
+    setUp(() async {
+      clock = t0;
+      http = FakeCompanionHttp();
+      ctl = CompanionController(
+        store: MemorySecretStore(),
+        transfer: FakeTransferGateway(),
+        client: CompanionClient(baseUrl: 'https://c.test', http: http),
+        pollEvery: Duration.zero,
+        now: () => clock,
+      );
+      await enrolNow(ctl);
+    });
+
+    Future<void> load() async {
+      await ctl.refreshNext();
+      await ctl.refreshBriefing(force: true);
+    }
+
+    test('next-session match keys are read', () {
+      final s = CoachSession.fromJson(
+        session(type: 'quality', sessionId: 'norwegian_4x4', reps: 4),
+      )!;
+      expect(s.derived, isTrue);
+      expect(s.sessionRef, dayRef);
+      expect(s.fingerprint, dayFp);
+      expect(s.sessionId, 'norwegian_4x4');
+      expect(s.reps, 4);
+      final old = CoachSession.fromJson(session(keys: false, derived: false))!;
+      expect(old.sessionRef, isNull);
+      expect(old.derived, isFalse);
+    });
+
+    test('today\'s coach-week session matches the cached briefing', () async {
+      serve(session());
+      await load();
+      final day = ctl.coachDayToday!;
+      final c = ctl.briefingChoice(
+        sessionRef: day.sessionRef,
+        fingerprint: day.fingerprint,
+      );
+      expect(c.template, dayTpl);
+    });
+
+    test('another day, an app plan session or an older server: none', () async {
+      serve(session(date: '2026-10-21'));
+      await load();
+      expect(ctl.coachDayToday, isNull);
+      clock = clock.add(const Duration(minutes: 2));
+      serve(session(derived: false));
+      await load();
+      expect(ctl.coachDayToday, isNull, reason: 'the plan path matches those');
+      clock = clock.add(const Duration(minutes: 2));
+      serve(session(keys: false));
+      await load();
+      expect(ctl.coachDayToday, isNull);
+    });
+
+    test('a briefing for another session is not used', () async {
+      serve(session(), briefRef: 'cw20261019e');
+      await load();
+      final day = ctl.coachDayToday!;
+      expect(
+        ctl
+            .briefingChoice(
+              sessionRef: day.sessionRef,
+              fingerprint: day.fingerprint,
+            )
+            .template,
+        isNull,
+      );
+    });
+
+    test('coachSlug matches the server\'s session id', () {
+      expect(coachSlug(engine.SessionSpec.norwegian4x4Id), 'norwegian_4x4');
+      expect(coachSlug('tempo'), 'tempo');
+      expect(coachSlug(null), isNull);
+      expect(coachSlug('--'), isNull);
+    });
+
+    group('VoiceCoachPlan', () {
+      final zones = engine.HrZones.percentMax(190);
+      const day = CoachDayBriefing(distanceM: 6000);
+
+      VoiceCoachConfig build({
+        String? template = dayTpl,
+        bool suppress = false,
+        engine.BlockSession? planned,
+        AppSettings settings = const AppSettings(),
+      }) => VoiceCoachPlan.build(
+        settings: settings,
+        zones: zones,
+        planned: planned,
+        briefingTemplate: template,
+        suppressBriefing: suppress,
+        coachDay: day,
+      );
+
+      test('a Free run on the day carries the coach template and its slots, '
+          'with no app fallback', () {
+        final c = build();
+        expect(c.briefingTemplate, dayTpl);
+        expect(c.briefingFallback, isNull);
+        expect(c.plannedDistanceM, 6000);
+        expect(c.plannedKind, isNull, reason: 'no planned-time cues');
+        expect(c.targetPaceSecPerKm, isNull);
+      });
+
+      test('no template, suppress, Minimal or voice off: nothing', () {
+        for (final c in [
+          build(template: null),
+          build(suppress: true),
+          build(
+            settings: const AppSettings(coachingDetail: CoachingDetail.minimal),
+          ),
+          build(settings: const AppSettings(voiceCoaching: false)),
+        ]) {
+          expect(c.briefingTemplate, isNull);
+          expect(c.plannedDistanceM, isNull);
+        }
+      });
+
+      test('a plan session today wins: its own slots, not the day\'s', () {
+        final c = build(planned: _session, template: _tpl);
+        expect(c.briefingTemplate, _tpl);
+        expect(c.briefingFallback, isNotNull);
+        expect(c.plannedDistanceM, isNull);
+      });
+    });
+  });
 }

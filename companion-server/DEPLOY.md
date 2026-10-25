@@ -293,7 +293,9 @@ allowlist never bypasses consent).
 - Session briefing (C2b): `GET /v1/me/briefing`, a slot template written by the same model through the same request helper (the chat's tool list with `tool_choice: none`, so it shares the chat's cached prefix; at most
   one retry, both calls in the ledger). Off unless `COMPANION_COACH_BRIEFING=1`, and it needs the chat gates as well. Briefing spend is NOT separate: it counts against the
   same `COMPANION_COACH_DAILY_USD` per runner and the same `COMPANION_COACH_MONTHLY_CAP_USD` as chat (ledger `purpose='briefing'`). With the gates open, a safety block makes `GET /v1/me/briefing` answer `200 {"status":"suppress"}` (no reason, no flag kind) so the app drops its own offline briefing too; a closed gate stays `204`. No briefing while an urgent, wellbeing, injury or illness flag is active, a check-in says ill or sore, or the safety classifier saw an injury in the last 7 days. `COMPANION_COACH_BRIEFING_DAILY`
-  (8 model calls per runner per day). Rows live in `coach_briefings` (30 days, deleted on consent withdrawal and with the runner, not in backups). The briefing
+  (8 model calls per runner per day). Besides an upload or a check-in answer, the coach worker sweeps every consented runner every
+  `COMPANION_COACH_BRIEFING_SWEEP_S` (900 s) and queues a briefing when the next session's facts changed, so a coach-week day has one
+  before the run with nothing uploaded since. Rows live in `coach_briefings` (30 days, deleted on consent withdrawal and with the runner, not in backups). The briefing
   evals are `coach/evals/run_briefing_evals.py` (needs `OPENROUTER_API_KEY`): run them before widening the allowlist or changing the skill or the briefing instruction.
 - Red flags, two layers. (1) Regex, hard tier (unambiguous: chest pain, collapsed, suicide, overdose): the fixed reply at
   once, in the webhook, before any cap or model; also on the merged turn, notes, Tell Ricki feedback and a paused runner's

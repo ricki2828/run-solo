@@ -186,6 +186,7 @@ class Settings:
     coach_briefing: bool = False      # COMPANION_COACH_BRIEFING: the briefing kill switch, off by default; needs the chat gates too
     coach_briefing_daily: int = 8     # briefing model calls per runner per local day (a retry counts)
     coach_briefing_ttl_h: float = 36.0   # a stored briefing is served for this long after it was generated
+    coach_briefing_sweep_s: float = 900.0   # every runner's next session is checked this often, so a briefing exists before the run
     coach_repair_turns: int = 1    # extra model turns after a validator miss, with the reason, before the template
     coach_show_cost: frozenset[str] = frozenset()   # runners (same forms as the allowlist) who see a cost/latency footer on replies
     coach_proactive: bool = False     # COMPANION_COACH_PROACTIVE: the proactive coach (niggle check-back, heat heads-up, race debrief), off by default; needs the chat gates too
@@ -275,6 +276,7 @@ class Settings:
             coach_proactive=_flag(e.get("COMPANION_COACH_PROACTIVE")),
             coach_proactive_allowlist=_csv(e.get("COMPANION_COACH_PROACTIVE_ALLOWLIST")),
             coach_briefing_daily=_posint(e.get("COMPANION_COACH_BRIEFING_DAILY"), 8),
+            coach_briefing_sweep_s=_posfloat(e.get("COMPANION_COACH_BRIEFING_SWEEP_S"), 900.0),
             coach_max_tokens=_posint(e.get("COMPANION_COACH_MAX_TOKENS"), 2000),
             coach_screen_model=(e.get("COMPANION_COACH_SCREEN_MODEL") or "anthropic/claude-haiku-5.5").strip(),
             coach_max_tool_turns=min(_posint(e.get("COMPANION_COACH_MAX_TOOL_TURNS"), 6), 6),

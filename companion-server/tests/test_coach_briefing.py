@@ -427,6 +427,77 @@ def test_the_coach_week_is_the_source_when_the_app_sent_no_plan(cc, fakes):
     assert len(b) == 1 and b[0]["session_ref"].startswith("cw2026")
 
 
+def coach_week(c):
+    """A runner with no app plan: enough plain runs for a default coach week, and nothing queued or stored from them."""
+    for i in range(6):
+        upload(c, f"h{i}", plan=None, now=T0 - timedelta(days=12 - 2 * i), type="easy")
+    with db.tx(c.svc.s.db_path) as con:
+        con.execute("DELETE FROM coach_jobs WHERE kind='briefing'")
+        con.execute("DELETE FROM coach_briefings")
+
+
+EASY = "Easy run today. Keep it relaxed and chatty, and finish feeling like you could go again."
+
+
+def test_the_sweep_makes_a_briefing_with_no_upload_or_checkin(cc, fakes):
+    coach_week(cc)
+    fakes.coach_queue = [coach_text(EASY)]
+    assert cc.svc.coach.briefing.sweep(T0) == 1
+    assert cc.svc.coach.briefing.sweep(T0 + timedelta(minutes=5)) == 0, "not again before coach_briefing_sweep_s"
+    cc.svc.coach.drain(T0 + timedelta(seconds=10))
+    b = rows(cc, "SELECT session_ref FROM coach_briefings")
+    assert len(b) == 1 and b[0]["session_ref"].startswith("cw2026")
+    # Later sweeps find the same facts: coalesced, no second model call.
+    assert cc.svc.coach.briefing.sweep(T0 + timedelta(minutes=16)) == 0
+    assert len(fakes.coach_calls) == 1
+
+
+def test_the_worker_step_runs_the_sweep(cc, fakes):
+    coach_week(cc)
+    fakes.coach_queue = [coach_text(EASY)]
+    cc.svc.coach.drain(T0 + timedelta(seconds=10))
+    assert len(rows(cc, "SELECT * FROM coach_briefings")) == 1
+
+
+def test_the_sweep_respects_the_flag_and_the_gates(cc, fakes):
+    coach_week(cc)
+    cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.coach.briefing.s, coach_briefing=False)
+    assert cc.svc.coach.briefing.sweep(T0) == 0
+    cc.svc.coach.briefing.s = dataclasses.replace(cc.svc.coach.briefing.s, coach_briefing=True)
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("UPDATE users SET paused=1")
+    assert cc.svc.coach.briefing.sweep(T0) == 0
+    with db.tx(cc.svc.s.db_path) as con:
+        con.execute("UPDATE users SET paused=0")
+    flag(cc, "injury")
+    assert cc.svc.coach.briefing.sweep(T0 + timedelta(minutes=20)) == 0
+    assert jobs(cc) == [] and fakes.coach_calls == []
+
+
+def test_next_session_carries_the_keys_the_stored_briefing_is_under_coach_week(cc, fakes):
+    coach_week(cc)
+    fakes.coach_queue = [coach_text(EASY)]
+    cc.svc.coach.briefing.sweep(T0)
+    cc.svc.coach.drain(T0 + timedelta(seconds=10))
+    s = cc.svc.next_session(cc.uid, now=T0)["next_session"]
+    b = rows(cc, "SELECT session_ref, fingerprint FROM coach_briefings")[0]
+    assert s["derived"] is True
+    assert (s["session_ref"], s["fingerprint"]) == (b["session_ref"], b["fingerprint"])
+    assert "reps" not in s
+
+
+def test_next_session_carries_the_keys_for_an_app_plan_session_with_reps(cc, fakes):
+    ready(cc, fakes)
+    s = cc.svc.next_session(cc.uid, now=T0)["next_session"]
+    assert s["session_ref"] == "w3s2"
+    assert s["fingerprint"] == bf.fingerprint("quality", 30, None, 4, 288.0, 292.0)
+    assert s["reps"] == 4
+
+
+def test_next_session_has_no_keys_when_there_is_no_session(cc, fakes):
+    assert cc.svc.next_session(cc.uid, now=T0)["next_session"] is None
+
+
 def test_a_rejected_template_gets_one_retry_and_both_calls_are_in_the_ledger(cc, fakes):
     fakes.coach_queue = [coach_text("Hold 4:48 on the reps."), coach_text(GOOD)]
     upload(cc)
