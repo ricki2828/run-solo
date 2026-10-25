@@ -291,9 +291,10 @@ class _BirthYearStepState extends State<_BirthYearStep> {
             maxLength: 4,
             style: RunSoloType.display44.copyWith(color: t.inkPrimary),
             decoration: InputDecoration(
-              hintText: '1985',
-              hintStyle: RunSoloType.display44.copyWith(
+              hintText: 'e.g. 1985',
+              hintStyle: RunSoloType.body17.copyWith(
                 color: t.inkSecondary.withValues(alpha: 0.6),
+                fontStyle: FontStyle.italic,
               ),
               counterText: '',
               errorText: _error,
@@ -344,6 +345,7 @@ class _BirthYearStepState extends State<_BirthYearStep> {
           const SizedBox(height: Space.x12),
           Center(
             child: TextButton(
+              style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
                 'Skip',
