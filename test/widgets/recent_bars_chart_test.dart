@@ -95,27 +95,24 @@ void main() {
     });
   });
 
-  Widget hostWith(
-    List<BarPoint> pts, {
-    double minSpan = 0,
-    NoiseBand? noise,
-  }) => MaterialApp(
-    theme: ThemeData(extensions: const [RunSoloTokens.dark]),
-    home: Scaffold(
-      body: SingleChildScrollView(
-        child: RecentBarsChart(
-          points: pts,
-          lowerIsBetter: true,
-          format: (v) => '${v.round()} s',
-          direction: 'Faster is taller',
-          emptyTitle: 'Two runs draw the first chart.',
-          roundTo: 10,
-          minSpan: minSpan,
-          noise: noise,
+  Widget hostWith(List<BarPoint> pts, {double minSpan = 0, NoiseBand? noise}) =>
+      MaterialApp(
+        theme: ThemeData(extensions: const [RunSoloTokens.dark]),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: RecentBarsChart(
+              points: pts,
+              lowerIsBetter: true,
+              format: (v) => '${v.round()} s',
+              direction: 'Faster is taller',
+              emptyTitle: 'Two runs draw the first chart.',
+              roundTo: 10,
+              minSpan: minSpan,
+              noise: noise,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   testWidgets('a unique best is the PB', (tester) async {
     await tester.pumpWidget(
