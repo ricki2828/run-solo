@@ -78,10 +78,13 @@ data class PromptAnswer(
     val atMs: Long,
     /** Run time the answer window started (the question had been said); [Prompt.openedAtMs] when it never started. */
     val windowStartMs: Long = prompt.openedAtMs,
+    /** Closed without a word: the runner stopped the run (a long manual pause), so "No answer. Holding." would be noise. */
+    val quiet: Boolean = false,
 ) {
-    /** The spoken acknowledgement. */
-    val spoken: String
+    /** The spoken acknowledgement; null for a [quiet] close. */
+    val spoken: String?
         get() = when {
+            quiet -> null
             source == PromptSource.timeout -> "No answer. Holding."
             choice == PromptChoice.push -> "Pushing."
             choice == PromptChoice.ease -> "Easing off."
@@ -221,6 +224,15 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     private var windowStartMs: Long? = null
     private var windowShiftMs = 0L
     private val presses = HeadsetPresses()
+    private var lastPauseTickMs: Long? = null
+    private var manualSinceMs: Long? = null
+    private var openAtMs = 0L
+    private var dropAtMs = 0L
+    private var routeHeld = false
+
+    /** A prompt decided at a km or a rep end and not yet asked ([decided], [openTick]); null when none waits. */
+    var pending: Prompt? = null
+        private set
 
     /** The prompt on screen, or null. */
     var open: Prompt? = null
@@ -297,6 +309,54 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     private fun make(kind: PromptKind, km: Int, options: List<PromptChoice>, text: String, nowMs: Long) =
         Prompt(nextId, kind, km, options, text, nowMs)
 
+    /** [p] was decided at run time [nowMs]: it waits [OPEN_DELAY_MS] so the km cue and any moment overlay go first. */
+    fun decided(p: Prompt, nowMs: Long) {
+        pending = p
+        openAtMs = nowMs + OPEN_DELAY_MS
+        dropAtMs = openAtMs + ROUTE_MAX_WAIT_MS
+        routeHeld = false
+    }
+
+    /** What a waiting prompt does this tick ([openTick]). */
+    sealed interface PendingStep {
+        data object Wait : PendingStep
+        data class Open(val prompt: Prompt) : PendingStep
+        /** Never asked and never counted: the caller disarms the headset. */
+        data object Drop : PendingStep
+    }
+
+    /**
+     * Once a tick at run time [nowMs], for the [pending] prompt: [speechBusy] = a line is still being said, [routeBusy] =
+     * a route cue is on screen or about to be said (off route, turn around, a turn just ahead), [manualPause] = paused by
+     * hand. The question never covers a route cue: it waits while one is up, then lets the route's own line be said
+     * ([OPEN_DELAY_MS] again), and is dropped if the route keeps it waiting past [ROUTE_MAX_WAIT_MS]. A prompt still
+     * waiting when the runner has paused by hand is dropped. Speech is waited out for at most [SPEECH_MAX_WAIT_MS].
+     */
+    fun openTick(nowMs: Long, speechBusy: Boolean, routeBusy: Boolean, manualPause: Boolean): PendingStep {
+        val p = pending ?: return PendingStep.Wait
+        if (nowMs < openAtMs || open != null) return PendingStep.Wait
+        if (manualPause) return drop()
+        if (routeBusy) {
+            if (nowMs >= dropAtMs) return drop()
+            routeHeld = true
+            return PendingStep.Wait
+        }
+        if (routeHeld) {
+            routeHeld = false
+            openAtMs = nowMs + OPEN_DELAY_MS
+            return PendingStep.Wait
+        }
+        if (speechBusy && nowMs < openAtMs + SPEECH_MAX_WAIT_MS) return PendingStep.Wait
+        pending = null
+        return PendingStep.Open(p)
+    }
+
+    private fun drop(): PendingStep {
+        pending = null
+        routeHeld = false
+        return PendingStep.Drop
+    }
+
     /**
      * The caller opened [p] (spoke it, sent it to the screen) at [distanceM]: it counts. Its answer window has NOT
      * started: that waits for the question to be said ([startWindow]).
@@ -326,6 +386,39 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     /** The run was paused for [deltaMs]: the window waits (a runner standing at the lights can still answer). */
     fun hold(deltaMs: Long) {
         if (open != null && windowStartMs != null && deltaMs > 0) windowShiftMs += deltaMs
+    }
+
+    /**
+     * Once a tick at run time [nowMs]: a pause ([paused], auto or by hand) freezes the open window for the time since the
+     * last tick ([hold]); an unbroken pause by hand ([manual]) past [MANUAL_PAUSE_CLOSE_MS] closes the open prompt as a
+     * quiet hold ([manualPause]), returned for the caller to journal. Auto-pause (the lights) never closes it.
+     */
+    fun pauseTick(nowMs: Long, paused: Boolean, manual: Boolean): PromptAnswer? {
+        val last = lastPauseTickMs ?: nowMs
+        lastPauseTickMs = nowMs
+        if (paused) hold(nowMs - last)
+        val since = if (manual) manualSinceMs ?: nowMs else null
+        manualSinceMs = since
+        return since?.let { manualPause(nowMs - it, nowMs) }
+    }
+
+    /**
+     * The runner has paused the run by hand for [pausedMs] so far (one unbroken pause) at [nowMs]. Past
+     * [MANUAL_PAUSE_CLOSE_MS] the open prompt closes as a quiet hold: a water or cafe stop is not the time to answer,
+     * and the headset buttons go back to the music app. A shorter stop (the lights) only freezes the window ([hold]).
+     */
+    fun manualPause(pausedMs: Long, nowMs: Long): PromptAnswer? {
+        if (pausedMs < MANUAL_PAUSE_CLOSE_MS) return null
+        return giveWay(nowMs)
+    }
+
+    /**
+     * Something the runner must see or hear now took the screen (off route, the route's end): the open prompt closes as a
+     * quiet hold, journaled as a timeout, with nothing said over the route's own line. Null when none is open.
+     */
+    fun giveWay(nowMs: Long): PromptAnswer? {
+        val p = open ?: return null
+        return resolve(p, PromptChoice.hold, PromptSource.timeout, nowMs).copy(quiet = true)
     }
 
     /** Ms left in the open prompt's window at [nowMs] (the whole window before it starts); null when none is open. */
@@ -415,6 +508,28 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
         /** Never in the first km: nothing before 1.5 km, so the km 1 mark itself (about 1 000 m) is inside it. */
         const val FIRST_KM_M = 1_500.0
+
+        /** A decided prompt waits this long so the km cue and any moment overlay are gone first ([openTick])... */
+        const val OPEN_DELAY_MS = 2_000L
+
+        /** ...and no longer than this past it for speech to finish. */
+        const val SPEECH_MAX_WAIT_MS = 6_000L
+
+        /** A route cue holds it at most this long; then it is dropped (a minute later the moment has passed). */
+        const val ROUTE_MAX_WAIT_MS = 60_000L
+
+        /** A turn this close ahead is about to be said (the route's own turn cue is at 50 m): no question over it. */
+        const val ROUTE_TURN_CLEAR_M = 100.0
+
+        /**
+         * A route cue the runner needs now or within seconds: off route, the end cue up, a turn [ROUTE_TURN_CLEAR_M] ahead,
+         * or the trail ghost's TURN AROUND card ([trailTurnCue]).
+         */
+        fun routeBusy(off: Boolean, endCueUp: Boolean, turnInM: Double?, trailTurnCue: Boolean = false): Boolean =
+            off || endCueUp || trailTurnCue || (turnInM != null && turnInM <= ROUTE_TURN_CLEAR_M)
+
+        /** A manual pause this long with a prompt open closes it as a quiet hold ([manualPause]). */
+        const val MANUAL_PAUSE_CLOSE_MS = 30_000L
 
         /** At least this much run time between two prompts. */
         const val MIN_GAP_MS = 240_000L

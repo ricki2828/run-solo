@@ -333,6 +333,49 @@ void main() {
       expect(fake.promptAnswers, [(9, 0)]);
     });
 
+    testWidgets('a stale snapshot after a tap never brings the buttons back', (
+      tester,
+    ) async {
+      final (fake, ctl) = await startRun(tester);
+      await open(tester, fake, prompt(id: 3));
+      // Native has not resolved yet: its snapshot still carries the prompt.
+      fake.openPrompt = prompt(id: 3);
+      await tester.tap(button(0));
+      await tester.pump();
+      expect(ctl.prompt.value, isNull);
+      await ctl.refreshStatus();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(ctl.prompt.value, isNull);
+      expect(button(0), findsNothing);
+      expect(fake.promptAnswers, [(3, 0)]);
+    });
+
+    testWidgets('a snapshot landing after the resolved event stays closed, '
+        'and the next prompt still opens', (tester) async {
+      final (fake, ctl) = await startRun(tester);
+      await open(tester, fake, prompt(id: 6));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 6,
+          choice: 'hold',
+          source: 'timeout',
+          paceFactor: 1.0,
+          oneRep: false,
+        ),
+      );
+      await tester.pump();
+      expect(ctl.prompt.value, isNull);
+      fake.openPrompt = prompt(id: 6);
+      await ctl.refreshStatus();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(ctl.prompt.value, isNull);
+      fake.openPrompt = prompt(id: 7);
+      await ctl.refreshStatus();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(ctl.prompt.value?.id, 7);
+      expect(button(0), findsOneWidget);
+    });
+
     testWidgets('the buttons stay up while the run is paused', (tester) async {
       final (fake, ctl) = await startRun(tester);
       await open(tester, fake, prompt(id: 4));

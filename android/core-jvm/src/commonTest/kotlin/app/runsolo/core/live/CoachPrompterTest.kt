@@ -309,6 +309,159 @@ class CoachPrompterTest {
     }
 
     @Test
+    fun `a long manual pause closes the open prompt as a quiet hold and a short one only waits`() {
+        val p = CoachPrompter()
+        val q = open(p, at = 900_000)
+        assertNull(p.manualPause(29_999, q.openedAtMs + 29_999), "the lights: still open")
+        assertNotNull(p.open)
+        val a = assertNotNull(p.manualPause(CoachPrompter.MANUAL_PAUSE_CLOSE_MS, q.openedAtMs + 30_000))
+        assertEquals(PromptChoice.hold, a.choice)
+        assertEquals(PromptSource.timeout, a.source)
+        assertTrue(a.quiet)
+        assertNull(a.spoken, "nothing said to a runner who stopped")
+        assertNull(p.open, "the headset is free again")
+        assertEquals(PromptEffect.NONE, p.effect)
+        assertNull(p.manualPause(60_000, q.openedAtMs + 60_000), "closed once")
+        assertNull(p.tick(q.openedAtMs + 60_000))
+        assertEquals(1, p.prompts, "it still counts toward the cap")
+        // The journal line is an ordinary timeout hold.
+        assertEquals("timeout", CoachPrompter.line(a, 0, 0).source)
+    }
+
+    @Test
+    fun `a manual pause before the question is said closes it too - nothing open is nothing`() {
+        assertNull(CoachPrompter().manualPause(120_000, 900_000))
+        val r = CoachPrompter()
+        val a = assertNotNull(r.atKm(facts(3, goal = 5_000.0), 900_000, 3_002.0))
+        r.opened(a, 3_002.0)
+        assertFalse(r.windowStarted)
+        assertTrue(assertNotNull(r.manualPause(30_000, 930_000)).quiet)
+    }
+
+    @Test
+    fun `once a tick - auto-pause only waits and an unbroken manual pause of 30 s closes the prompt quietly`() {
+        val p = CoachPrompter()
+        val q = open(p, at = 900_000)
+        var t = q.openedAtMs
+        fun tick(paused: Boolean, manual: Boolean = paused, s: Int = 1): PromptAnswer? {
+            var out: PromptAnswer? = null
+            repeat(s) {
+                t += 1_000
+                out = p.pauseTick(t, paused, manual) ?: p.tick(t)
+                if (out != null) return out
+            }
+            return out
+        }
+        assertNull(p.pauseTick(t, paused = false, manual = false))
+        assertNull(tick(paused = true, manual = false, s = 60), "a minute at the lights (auto-pause): open and frozen")
+        assertEquals(CoachPrompter.TIMEOUT_MS, p.remainingMs(t))
+        assertNull(tick(paused = true, s = 20), "a 20 s stop by hand")
+        assertNull(tick(paused = false, s = 2), "running again: 2 s of window used")
+        assertNull(tick(paused = true, s = 30), "a second stop is counted from its own start: 29 s so far")
+        val a = assertNotNull(tick(paused = true))
+        assertTrue(a.quiet)
+        assertEquals(PromptSource.timeout, a.source)
+        assertNull(p.open)
+        assertNull(tick(paused = true, s = 40), "nothing open: nothing more")
+    }
+
+    // ---- opening a decided prompt (route cues, speech, manual pause) ----
+
+    private fun decide(p: CoachPrompter, at: Long = 900_000): Prompt {
+        val q = assertNotNull(p.atKm(facts(3, goal = 5_000.0), at, 3_002.0))
+        p.decided(q, at)
+        return q
+    }
+
+    private fun steps(p: CoachPrompter, from: Long, to: Long, route: (Long) -> Boolean = { false }, speech: (Long) -> Boolean = { false }): Pair<Long, CoachPrompter.PendingStep>? {
+        var t = from
+        while (t <= to) {
+            val s = p.openTick(t, speechBusy = speech(t), routeBusy = route(t), manualPause = false)
+            if (s != CoachPrompter.PendingStep.Wait) return t to s
+            t += 1_000
+        }
+        return null
+    }
+
+    @Test
+    fun `a decided prompt opens after the delay once speech is done`() {
+        val p = CoachPrompter()
+        val q = decide(p)
+        assertEquals(CoachPrompter.PendingStep.Wait, p.openTick(901_000, speechBusy = false, routeBusy = false, manualPause = false))
+        val (t, s) = assertNotNull(steps(p, 902_000, 920_000, speech = { it < 905_000 }))
+        assertEquals(905_000L, t)
+        assertEquals(CoachPrompter.PendingStep.Open(q), s)
+        assertNull(p.pending)
+        // Speech that never ends is waited out for at most 6 s past the delay.
+        val r = CoachPrompter()
+        decide(r)
+        assertEquals(908_000L, assertNotNull(steps(r, 902_000, 920_000, speech = { true })).first)
+    }
+
+    @Test
+    fun `a route cue holds the question and the route line goes first`() {
+        val p = CoachPrompter()
+        val q = decide(p)
+        // OFF ROUTE from 901 s to 930 s: nothing opens over it, then 2 s more for "Back on route".
+        val (t, s) = assertNotNull(steps(p, 902_000, 990_000, route = { it < 930_000 }))
+        assertEquals(932_000L, t)
+        assertEquals(CoachPrompter.PendingStep.Open(q), s)
+    }
+
+    @Test
+    fun `a route cue that lasts past a minute drops the prompt uncounted`() {
+        val p = CoachPrompter()
+        decide(p)
+        val (t, s) = assertNotNull(steps(p, 902_000, 1_000_000, route = { true }))
+        assertEquals(CoachPrompter.PendingStep.Drop, s)
+        assertEquals(962_000L, t)
+        assertNull(p.pending)
+        assertEquals(0, p.prompts, "never asked, never counted")
+    }
+
+    @Test
+    fun `a manual pause at open time drops it`() {
+        val p = CoachPrompter()
+        decide(p)
+        assertEquals(CoachPrompter.PendingStep.Drop, p.openTick(902_000, speechBusy = false, routeBusy = false, manualPause = true))
+        assertNull(p.pending)
+    }
+
+    @Test
+    fun `route busy is off route or the end cue or a turn within 100 m`() {
+        assertTrue(CoachPrompter.routeBusy(off = true, endCueUp = false, turnInM = null))
+        assertTrue(CoachPrompter.routeBusy(off = false, endCueUp = true, turnInM = null))
+        assertTrue(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = 100.0))
+        assertFalse(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = 101.0))
+        assertFalse(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null))
+        assertTrue(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null, trailTurnCue = true))
+    }
+
+    @Test
+    fun `a trail turn-around card holds the question and it opens once the card clears`() {
+        val p = CoachPrompter()
+        val q = decide(p)
+        val busy = { t: Long -> CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null, trailTurnCue = t < 930_000) }
+        val (t, s) = assertNotNull(steps(p, 902_000, 990_000, route = busy))
+        assertEquals(932_000L, t)
+        assertEquals(CoachPrompter.PendingStep.Open(q), s)
+    }
+
+    @Test
+    fun `an open prompt gives way to off route quietly and nothing open is nothing`() {
+        val p = CoachPrompter()
+        assertNull(p.giveWay(900_000))
+        val q = open(p, at = 900_000)
+        val a = assertNotNull(p.giveWay(q.openedAtMs + 3_000))
+        assertTrue(a.quiet)
+        assertNull(a.spoken)
+        assertEquals(PromptChoice.hold, a.choice)
+        assertEquals(PromptSource.timeout, a.source)
+        assertNull(p.open)
+        assertEquals(1, p.prompts)
+    }
+
+    @Test
     fun `an input just before the timeout beats it - a waiting single press is an answer not a hold`() {
         val p = CoachPrompter()
         val q = open(p)
