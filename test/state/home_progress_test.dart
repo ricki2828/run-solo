@@ -311,7 +311,7 @@ void main() {
       expect(h.kind, ProgressKind.down);
       expect(h.title, startsWith('SPEED DOWN '));
       expect(h.line, contains('Your earlier best has rolled off.'));
-      expect(h.line, contains('A clean interval session brings it back.'));
+      expect(h.line, contains('Faster recent runs raise it.'));
       expect(h.line, isNot(contains('!')));
     });
   });

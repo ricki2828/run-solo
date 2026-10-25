@@ -375,7 +375,7 @@ class _Delta extends StatelessWidget {
         pill,
         const SizedBox(height: Space.x4),
         Text(
-          'Keep running and it comes back.',
+          'Faster recent runs raise it.',
           style: RunSoloType.label13.copyWith(color: PackLook.onVioletSoft),
         ),
       ],
