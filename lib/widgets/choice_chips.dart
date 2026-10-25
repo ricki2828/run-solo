@@ -36,6 +36,7 @@ class ChoiceChips extends StatelessWidget {
               onTap: () => onSelect(i),
               child: AnimatedContainer(
                 duration: MotionDurations.quick,
+                curve: Curves.linear,
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: Space.x16),
                 decoration: BoxDecoration(
@@ -48,11 +49,13 @@ class ChoiceChips extends StatelessWidget {
                 ),
                 child: Center(
                   widthFactor: 1,
-                  child: Text(
-                    labels[i],
+                  child: AnimatedDefaultTextStyle(
+                    duration: MotionDurations.quick,
+                    curve: Curves.linear,
                     style: RunSoloType.label13.copyWith(
                       color: i == selected ? t.bgRaised : t.inkSecondary,
                     ),
+                    child: Text(labels[i]),
                   ),
                 ),
               ),

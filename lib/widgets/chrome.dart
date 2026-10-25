@@ -630,7 +630,10 @@ class RunButton extends StatelessWidget {
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(Radii.button),
     );
-    final text = Text(label.toUpperCase(), maxLines: 1);
+    final text = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(label.toUpperCase(), maxLines: 1),
+    );
     switch (kind) {
       case RunButtonKind.primary:
         return FilledButton(

@@ -285,25 +285,15 @@ class RecentBarsChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: Space.x8),
+        // One short line: the GPS-noise note when the band is drawn, else the
+        // caption, else where the axis starts.
         Text(
-          'Axis starts at ${tickFmt(scale.base)}$axisSuffix',
+          noise?.caption ?? caption ?? 'Axis starts at ${tickFmt(scale.base)}$axisSuffix',
+          key: noise == null && caption != null
+              ? const ValueKey('distance-trend-caption')
+              : null,
           style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
         ),
-        if (caption != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            caption!,
-            key: const ValueKey('distance-trend-caption'),
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        ],
-        if (noise != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            noise!.caption,
-            style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
-          ),
-        ],
         if (showValues) ...[
           const SizedBox(height: Space.x16),
           for (var i = shown.length - 1; i >= 0; i--)
