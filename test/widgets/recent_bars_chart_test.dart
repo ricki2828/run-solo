@@ -95,7 +95,11 @@ void main() {
     });
   });
 
-  Widget hostWith(List<BarPoint> pts, {double minSpan = 0}) => MaterialApp(
+  Widget hostWith(
+    List<BarPoint> pts, {
+    double minSpan = 0,
+    NoiseBand? noise,
+  }) => MaterialApp(
     theme: ThemeData(extensions: const [RunSoloTokens.dark]),
     home: Scaffold(
       body: SingleChildScrollView(
@@ -107,6 +111,7 @@ void main() {
           emptyTitle: 'Two runs draw the first chart.',
           roundTo: 10,
           minSpan: minSpan,
+          noise: noise,
         ),
       ),
     ),
@@ -131,6 +136,32 @@ void main() {
       ]),
     );
     expect(find.text('PB'), findsNothing);
+  });
+
+  testWidgets('a noise band keeps the axis note on the same line', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      hostWith(
+        [
+          BarPoint(date: d0, value: 2520),
+          BarPoint(date: d0.add(const Duration(days: 1)), value: 2400),
+        ],
+        noise: const NoiseBand(
+          center: 2460,
+          half: 30,
+          label: 'Noise',
+          detail: '+/- 30 s',
+          caption: 'Shaded = GPS noise around your previous median',
+        ),
+      ),
+    );
+    expect(find.textContaining('axis from'), findsOneWidget);
+    expect(
+      find.text('Shaded = GPS noise around your previous median'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Axis starts at'), findsNothing);
   });
 
   testWidgets('a minimum span keeps a small gap from reading as big', (

@@ -37,6 +37,17 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.byType(FittedBox), findsWidgets);
+    // Each scaled label stays inside its button.
+    for (final b in find.byType(ButtonStyleButton).evaluate()) {
+      final box = tester.getRect(find.byWidget(b.widget));
+      final text = tester.getRect(
+        find.descendant(
+          of: find.byWidget(b.widget),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(text.left, greaterThanOrEqualTo(box.left));
+      expect(text.right, lessThanOrEqualTo(box.right));
+    }
   });
 }

@@ -108,8 +108,8 @@ class _SplitsBarsState extends State<SplitsBars> {
     final span = math.max(slowest - fastest, SplitsBars.minSpanSec);
     final base = fastest + span * 1.15;
     final top = fastest - span * 0.06;
-    // Cyan means "best", so it needs a standout: the fastest split alone or
-    // tied: a tie is not a standout, so it gets no cyan.
+    // Cyan means "best", so only a unique fastest split gets it; any tie
+    // (or all level) gets none.
     final best = <int>{
       for (var i = 0; i < bars.length; i++)
         if (bars[i].paceSecPerKm != null &&
