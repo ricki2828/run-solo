@@ -96,8 +96,8 @@ void main() {
         ], now: now);
         // Real runs behind the scores, so Recent activity is realistic. Six
         // 5Ks 6-8 weeks ago at the old pace set last month's level; three
-        // runs this fortnight at the new pace set today's. Nine runs locks
-        // the level, so the hero's month line is the thing that differs.
+        // runs this fortnight at the new pace set today's. Five or more runs
+        // (or one hard effort) locks the level, so the month line differs.
         final runs = [
           RunSummary(
             id: 'now',

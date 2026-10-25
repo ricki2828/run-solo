@@ -28,7 +28,7 @@ class HomeLaneBlocks extends StatelessWidget {
 
   static const _setBy = {
     engine.IdentityLane.aerobic: '12 min test',
-    engine.IdentityLane.speed: '8 x 400',
+    engine.IdentityLane.speed: '8\u00A0x\u00A0400',
     engine.IdentityLane.mid: '5K or 10K',
     engine.IdentityLane.long: '15K+',
   };

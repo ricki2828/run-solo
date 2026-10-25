@@ -161,7 +161,7 @@ class PackHero extends StatelessWidget {
     final moved = level.levelMonthAgo == null || runCount == 0
         ? null
         : level.level - level.levelMonthAgo!;
-    final showSub = !compact || p == null && (showAdd || noNorms);
+    final showSub = !compact || p == null;
     return Semantics(
       container: true,
       label: '$eyebrow. ${big.replaceAll('\n', ' ')}. $sub',
@@ -333,7 +333,7 @@ class _Delta extends StatelessWidget {
     } else if (moved == 0) {
       label = 'HOLDING STEADY OVER 4 WEEKS';
     } else {
-      label = 'DOWN ${-moved} IN 4 WEEKS';
+      label = 'DOWN ${-moved} ${moved == -1 ? 'LEVEL' : 'LEVELS'} IN 4 WEEKS';
     }
     final pill = Container(
       key: const ValueKey('pack-hero-delta'),
@@ -375,7 +375,7 @@ class _Delta extends StatelessWidget {
         pill,
         const SizedBox(height: Space.x4),
         Text(
-          'One good run brings it back.',
+          'Keep running and it comes back.',
           style: RunSoloType.label13.copyWith(color: PackLook.onVioletSoft),
         ),
       ],
