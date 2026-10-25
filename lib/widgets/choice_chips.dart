@@ -34,9 +34,7 @@ class ChoiceChips extends StatelessWidget {
               key: keys?[i],
               behavior: HitTestBehavior.opaque,
               onTap: () => onSelect(i),
-              child: AnimatedContainer(
-                duration: MotionDurations.quick,
-                curve: Curves.linear,
+              child: Container(
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: Space.x16),
                 decoration: BoxDecoration(
@@ -49,13 +47,11 @@ class ChoiceChips extends StatelessWidget {
                 ),
                 child: Center(
                   widthFactor: 1,
-                  child: AnimatedDefaultTextStyle(
-                    duration: MotionDurations.quick,
-                    curve: Curves.linear,
+                  child: Text(
+                    labels[i],
                     style: RunSoloType.label13.copyWith(
                       color: i == selected ? t.bgRaised : t.inkSecondary,
                     ),
-                    child: Text(labels[i]),
                   ),
                 ),
               ),
