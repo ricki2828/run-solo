@@ -209,6 +209,10 @@ final class CuePlayerTests: XCTestCase {
   private final class Later {
     var queue: [(TimeInterval, () -> Void)] = []
     func schedule(_ delay: TimeInterval, _ f: @escaping () -> Void) { queue.append((delay, f)) }
+    func fireNext() {
+      queue.sort { $0.0 < $1.0 }
+      queue.removeFirst().1()
+    }
     func fire() {
       while !queue.isEmpty {
         queue.sort { $0.0 < $1.0 }
@@ -233,6 +237,8 @@ final class CuePlayerTests: XCTestCase {
     audio.finish(0)
     XCTAssertEqual(audio.deactivations, 0) // the km line is still being said
     audio.finish(1)
+    XCTAssertEqual(audio.deactivations, 0) // held briefly in case another line follows
+    later.fire()
     XCTAssertEqual(audio.deactivations, 1) // other audio comes back up
     audio.finish(1)
     XCTAssertEqual(audio.deactivations, 1) // a duplicate callback changes nothing
@@ -316,6 +322,7 @@ final class CuePlayerTests: XCTestCase {
     audio.failDeactivations = 2
     p.cue(kind: "stop", text: "Run saved")
     audio.finish(0)
+    later.fireNext() // the delayed release
     XCTAssertEqual(audio.deactivateAttempts, 1)
     XCTAssertEqual(audio.deactivations, 0)
     XCTAssertEqual(later.queue.first?.0, CuePlayer.deactivateRetryDelay)
@@ -328,6 +335,8 @@ final class CuePlayerTests: XCTestCase {
     audio.failDeactivations = 5
     p.cue(kind: "halfway", text: "Halfway")
     audio.finish(1)
+    later.fireNext() // release fails, retry queued
+    XCTAssertEqual(audio.deactivateAttempts, 4)
     p.cue(kind: "halfway", text: "Halfway") // a new line before the retry: it holds the session
     later.fire()
     XCTAssertEqual(audio.deactivateAttempts, 4)
@@ -395,12 +404,31 @@ final class CuePlayerTests: XCTestCase {
     XCTAssertEqual(p.inFlight, 1)
     XCTAssertEqual(audio.deactivations, 0)
     audio.finish(1)
+    later.fire()
     XCTAssertEqual(audio.deactivations, 1)
     p.speakNow("Go")
     p.stopSpeaking()
     XCTAssertEqual(audio.stops, 2)
     XCTAssertEqual(p.inFlight, 0)
     XCTAssertEqual(audio.deactivations, 2)
+  }
+
+  /// A beat ends, the next starts 0.6 s later (inside the release delay): the session is never deactivated.
+  func testSessionIsHeldBetweenCountdownBeatsAndAloneCueReleasesAfterTheDelay() {
+    let audio = FakeAudio(), later = Later()
+    let p = player(audio, NotificationCenter(), later)
+    p.speakNow("Three")
+    audio.finish(0)
+    XCTAssertEqual(later.queue.map { $0.0 }, [CuePlayer.releaseDelay])
+    let release = later.queue.removeFirst().1 // the timer fires only after the next beat started
+    p.speakNow("Two")
+    release()
+    XCTAssertEqual(audio.deactivateAttempts, 0)
+    XCTAssertEqual(audio.activations, 1)
+    audio.finish(1)
+    later.fire()
+    XCTAssertEqual(audio.deactivations, 1) // a lone cue does release after the delay
+    XCTAssertEqual(audio.activations, 1)
   }
 
   func testBeepIsAValidPcmWav() {

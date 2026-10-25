@@ -76,6 +76,11 @@ final class CuePlayer: CueOutput {
   private(set) var deactivateFailures = 0
   static let deactivateRetries = 3
   static let deactivateRetryDelay: TimeInterval = 0.3
+  /// After the last line ends the session is held this long, so one-second countdown beats (each
+  /// about 0.4 s) don't unduck and re-duck music between them. A flush releases at once.
+  static let releaseDelay: TimeInterval = 1.2
+  /// Bumped by anything that starts or ends a session, cancelling a scheduled release.
+  private var releaseToken = 0
 
   init(
     audio: CueAudio = SystemCueAudio(),
@@ -207,6 +212,7 @@ final class CuePlayer: CueOutput {
 
   /// Configures and activates the session if needed; false when the system refused it.
   private func begin() -> Bool {
+    releaseToken += 1 // a cue is starting: cancel a scheduled release
     do {
       if !configured {
         try audio.configure()
@@ -231,7 +237,18 @@ final class CuePlayer: CueOutput {
 
   private func done(_ id: Int) {
     guard pending.remove(id) != nil else { return }
-    if pending.isEmpty { end() }
+    if pending.isEmpty { scheduleRelease() }
+  }
+
+  private func scheduleRelease() {
+    releaseToken += 1
+    let token = releaseToken
+    after(Self.releaseDelay) { [weak self] in
+      self?.run {
+        guard let self, token == self.releaseToken, self.pending.isEmpty else { return }
+        self.end()
+      }
+    }
   }
 
   private func flush() {
@@ -242,6 +259,7 @@ final class CuePlayer: CueOutput {
   }
 
   private func end() {
+    releaseToken += 1
     guard sessionActive else { return }
     sessionActive = false
     release(attempt: 0)
