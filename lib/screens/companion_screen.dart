@@ -16,6 +16,8 @@ const String kCompanionIntro =
     'WhatsApp is coming later.';
 
 /// The check-ins disclosure. Same words as privacy section 2b, "Check-ins".
+/// With coach chat on, the coach's get_checkins tool reads 14 days of answers
+/// and run notes (companion-server/companion/coach/tools.py, get_checkins).
 const String kCompanionCheckins =
     'The companion can check in with buttons and nothing typed: how your '
     'body feels the evening before a planned session, going or skipping on '
@@ -23,7 +25,10 @@ const String kCompanionCheckins =
     'came out slower and harder than usual, and on Sunday how many runs you '
     'want next week. If you skip, the session moves to a later day. Sore '
     'and ill are health information; the companion uses them only to go '
-    'lighter, and they never leave our server, so no writing service or '
+    'lighter. Without the coach chat they never leave our server. If you '
+    'turn on the coach chat, the coach reads your check-in answers and run '
+    'notes from the last 14 days to reply, so they go to an AI provider '
+    '(OpenRouter and Anthropic, in the US) with zero data retention. No '
     'weather service ever sees them. Answers are kept 14 days, then '
     'deleted, and they are left out of backups. They show below under '
     'Check-ins, and Delete everything removes them at once. Home asks our '

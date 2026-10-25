@@ -806,6 +806,8 @@ def test_the_privacy_page_says_what_check_ins_keep_and_for_how_long():
     for needle in ("check-in", "14 days", "sore", "ill", "never sent to openrouter"):
         assert needle in low, needle
     assert "at most one a week, and only inside a run note" not in low
+    # the coach chat reads check-in answers and run notes (coach/tools.py get_checkins): the page must say they reach the model then
+    assert "if you turn on the coach chat, the coach reads your check-in answers and run notes" in low
     assert "which version of the agreement you accepted" in low and "no check-in until that number" in low
 
 

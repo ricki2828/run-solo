@@ -205,6 +205,10 @@ void main() {
       expect(kCompanionSent, isNot(contains('—')));
       expect(kCompanionCheckins, isNot(contains('—')));
       expect(kCompanionCheckins, contains('14 days'));
+      // With coach chat on the coach reads the answers (coach/tools.py get_checkins): the copy must say so.
+      expect(kCompanionCheckins, contains('coach chat'));
+      expect(kCompanionCheckins, contains('zero data retention'));
+      expect(kCompanionCheckins, isNot(contains('no writing service')));
     });
   });
 

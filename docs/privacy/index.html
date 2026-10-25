@@ -283,9 +283,11 @@
   <p>The answers are fixed choices, not text you type. Soreness and illness are health information. The companion uses them
   for one thing, to go lighter: for 3 days after a skip for tiredness or soreness, and for a week if you say you are ill (Busy and Weather only move the session). When you say sore or ill it also
   tells you to get it looked at or to see a doctor if it hangs around. It gives no medical advice and makes no diagnosis.</p>
-  <p>These answers stay on our server and in your chat. They are <strong>never sent to OpenRouter</strong> or the model provider,
+  <p>These answers stay on our server and in your chat. For the companion's notes they are <strong>never sent to OpenRouter</strong> or the model provider,
   to Open-Meteo or to the card renderer: every line that uses one is a fixed template filled in on our server, and a run note
-  can carry one such line after the writing service has finished. The picture of a moved session shows only that it moved and to
+  can carry one such line after the writing service has finished. If you turn on the coach chat, the coach reads your
+  check-in answers and run notes from the last 14 days to reply, so they go to an AI provider (OpenRouter and Anthropic, in the US)
+  with zero data retention, as in "Coach chat" below. The picture of a moved session shows only that it moved and to
   which day, never why. A pinned card for the week shows your planned and finished distances per day. <strong>We keep each answer for 14 days and then delete it.</strong>
   They are left out of the nightly backup, so a backup never holds them. They are in the data the server returns about you, and the
   app lists them under What the companion knows. Delete everything removes them at once.</p>
