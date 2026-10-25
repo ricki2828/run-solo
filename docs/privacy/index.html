@@ -299,11 +299,11 @@
   is the current one, so if you have not agreed to the latest version, or the app has not said so, you get no check-ins; run cards and
   your other companion messages carry on as before. The number is deleted with everything else when you delete your data.</p>
   <p><strong>Notes you add.</strong> On Telegram, each run note in your chat has an Add a note button. Tap it and the next message you
-  type (up to 500 characters, within 10 minutes) is saved as a note on that run. This is the only typed text the
+  type (up to 500 characters, within 10 minutes) is saved as a note on that run. Without the coach chat, this is the only typed text the
   companion keeps. It is used in two plain ways only: the Sunday recap may quote your note back to you, and a few words
-  (niggle, sore, injury, tired, sick) make the next suggestions gentler for a week. A note is never sent to OpenRouter
-  or any AI provider, and never leaves our server except in your own chat. Anything else you type to the companion, except feedback you send with Tell Ricki (below), gets a
-  fixed reply and is not kept.</p>
+  (niggle, sore, injury, tired, sick) make the next suggestions gentler for a week. Without the coach chat a note is never sent to OpenRouter
+  or any AI provider, and never leaves our server except in your own chat. With the coach chat on, the coach reads your notes (see "Coach chat" below). Without the coach chat, anything else you type to the companion, except feedback you send with Tell Ricki (below), gets a
+  fixed reply and is not kept. With it on, what you type to the coach and its replies are kept for 30 days.</p>
   <p><strong>Tell Ricki.</strong> Tap Tell Ricki on the Sunday card, or send /feedback, and the next message you type
   (up to 1000 characters, within 30 minutes) is saved as feedback. Ricki reads it. It is never sent to OpenRouter or any AI
   provider, and the reply is a fixed line. We keep it for 30 days and then delete it, it is left out of the nightly backup, and
@@ -383,10 +383,10 @@
     <li><strong>Open-Meteo</strong>, a weather service, only if you turn on "Weather in suggestions". Our server sends it that
     rounded area (about 11 km) and your time zone, to ask for the forecast there. No name, account or device ID goes with it.
     Open-Meteo sees our server's IP address, not yours. See section 3 for the weather request the app itself makes.</li>
-    <li><strong>OpenRouter</strong>, and the AI provider it routes to, which write the words of each note. They receive only
-    the facts of the run as short sentences (for a trail run, whether the companion read it as easy, tempo or long from its distance, time and heart rate zones; and, when it compares two runs, your True Pace for both), and your answers to the background questions as fixed options. They never receive your check-in answers,
+    <li><strong>OpenRouter</strong>, and the AI hosts it routes to (Google Cloud and Amazon Web Services serving Claude models), which write the words of each note and, if you turn on the coach chat, power it. For the notes, they receive only
+    the facts of the run as short sentences (for a trail run, whether the companion read it as easy, tempo or long from its distance, time and heart rate zones; and, when it compares two runs, your True Pace for both), and your answers to the background questions as fixed options. For the notes, they never receive your check-in answers,
     phone number, Telegram chat, name, any note you type, or the route outline, per-kilometre paces or rep times, which are
-    used only to draw the picture. We ask for providers that do not keep or train on what they receive
+    used only to draw the picture. The coach chat is different: it does receive these (see "Coach chat"). We ask for providers that do not keep or train on what they receive
     (zero retention), and the request is refused if none is available. If the writing service fails, the note is written from a
     template on our server instead.</li>
     <li><strong>Telegram</strong>, which delivers the notes and sees them like any message in a chat. Telegram's own privacy
@@ -394,7 +394,7 @@
     <li><strong>Meta (WhatsApp)</strong>, only once WhatsApp is switched on and you choose it. Meta delivers the messages and
     keeps WhatsApp messages for up to 30 days. Meta's own privacy policy applies to the chat.</li>
   </ul>
-  <p>We do not sell this data, use it for advertising, or share it with anyone else.</p>
+  <p>We do not sell this data or use it for advertising. We share it only with the processors listed here, to run the companion for you.</p>
 
   <h3>How long we keep it</h3>
   <ul>
@@ -515,9 +515,8 @@
   <ul>
     <li>No accounts, sign-in or profiles. The optional Run companion identifies you only by your Telegram chat (or, later, your WhatsApp number).</li>
     <li>No advertising, no ad SDKs.</li>
-    <li>No analytics or tracking of our own. The only analytics-type signal is the Maps SDK identifier
-    described in section 2, which belongs to Google's SDK, not to us.</li>
-    <li>We do not sell or share your data. Unless you turn on the Run companion, our servers hold none of it. If you do, sections 2b and 2c say what we hold and for how long.</li>
+    <li>No third-party analytics or tracking SDKs. Apart from the Maps SDK identifier described in section 2 (Google's, not ours), the only analytics is the companion server's own pseudonymous per-tester counts of taps and activity, kept for 120 days (section 2b, "Counting taps and activity").</li>
+    <li>We do not sell your data, and we share it only with the processors named in sections 2b and 2c. Unless you turn on the Run companion, our servers hold none of it. If you do, sections 2b and 2c say what we hold and for how long.</li>
     <li>Run Supreme is not directed at children and has no features aimed at them.</li>
   </ul>
 

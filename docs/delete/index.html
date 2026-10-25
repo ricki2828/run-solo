@@ -66,7 +66,8 @@
     <li>Encrypted nightly backups are deleted after 14 days, so it is gone from them within 14 days.</li>
     <li>Meta may keep WhatsApp delivery records for up to 30 days. Telegram keeps the chat under its own policy.</li>
     <li>Notes already in your chat stay there until you delete the chat yourself.</li>
-    <li>The AI provider (OpenRouter and Anthropic) runs with zero data retention, so it holds nothing to delete.</li>
+    <li>Coach chat requests go through OpenRouter to Claude models hosted by Google Cloud or Amazon Web Services, and we ask each for zero data retention, so we expect them to hold nothing to delete. The coach's web searches, if any, go to a search provider the same way. We cannot delete anything at those providers ourselves.</li>
+    <li>Our server's per-tester activity counts (kept 120 days) and your coach chats (kept 30 days) are deleted at once with the rest.</li>
   </ul>
   <p>If you never turned the companion on, we hold nothing about you. Your runs stay on your phone.</p>
 

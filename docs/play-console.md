@@ -26,7 +26,7 @@ The `docs/` site is not deployed by CI. After merging, copy `docs/privacy/` and 
 
 - **App name**: `Run Supreme: 4x4 Interval Run` (29 of 30). Approved 3-Oct-2026. "Run Supreme: 4x4 & Interval Runs" is 32, over the limit.
 - **Short description**: `Run scores, honest verdicts and trail runs. See what is improving. Free.` (72 of 80)
-- **Full description**: paste the "Full description" block of `store/play/listing.md` (updated by #387 for the coach). It names the coach, OpenRouter and Anthropic, memory, `/memory`, and the delete link.
+- **Full description**: paste the "Full description" block of `store/play/listing.md` (updated by #387 for the coach). It names the coach, OpenRouter and the Claude hosts (Google Cloud, Amazon Web Services), memory, `/memory`, and the delete link.
 - **App icon**: `store/play/icon-512.png`.
 - **Feature graphic**: `store/play/feature-graphic-1024x500.png` (tagline "Track progress. Get better.").
 - **Phone screenshots**: `store/play/screens/01..08` (1080x1920; Play wants each side 320-3840 px and long side at most 2x short, so 1080x2400 is rejected).
@@ -100,7 +100,7 @@ Expected result: Everyone / PEGI 3 with a "Users Interact" notice. If the result
 
 ## 7. Data safety
 
-**Policy > App content > Data safety.** One answer per Play data type, covering every source: the base app (Google Maps SDK, Open-Meteo, the on-device geocoder) and the optional Run coach (our server in Germany, OpenRouter and Anthropic as AI processors, Telegram as delivery).
+**Policy > App content > Data safety.** One answer per Play data type, covering every source: the base app (Google Maps SDK, Open-Meteo, the on-device geocoder) and the optional Run coach (our server in Germany, OpenRouter, and Claude models hosted by Google Cloud (Vertex) or Amazon Web Services (Bedrock), as AI processors; a web search service, Telegram as delivery).
 
 ### 7.1 Overview page
 
@@ -119,7 +119,7 @@ What deletion covers: the coach's server data, by Settings, Companion, Delete ev
 
 ### 7.2 Data types to tick
 
-Shared column: Play does not count a service provider processing for us as "sharing". The rule here (set by #387, kept): anything that reaches the AI provider (OpenRouter, Anthropic) is ticked **Shared** to over-declare; Google (Maps SDK), Open-Meteo, OpenStreetMap and Telegram are service providers and are **not** shared. Ricki can untick Shared if he reads Play's service-provider exemption as covering zero-retention AI processing; either answer is defensible, ticking is the safe one.
+Shared column: Play does not count a service provider processing for us as "sharing". The rule here (set by #387, kept): anything that reaches the AI provider (OpenRouter and the Google Cloud or Amazon hosts behind it) is ticked **Shared** to over-declare; Google (Maps SDK), Open-Meteo, OpenStreetMap and Telegram are service providers and are **not** shared. Ricki can untick Shared if he reads Play's service-provider exemption as covering zero-retention AI processing; either answer is defensible, ticking is the safe one.
 
 For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 
@@ -186,7 +186,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
      training_sync stored only: companion-server/companion/service.py:1227 (no reader) -->
 
 **Other in-app messages** (coach chat, consent v3)
-- What the runner types to the coach in Telegram, and the coach's replies. Kept 30 days, then deleted; not in the nightly backup. Sent to OpenRouter, which routes to Anthropic in the US, with zero data retention and data collection denied.
+- What the runner types to the coach in Telegram, and the coach's replies. Kept 30 days, then deleted; not in the nightly backup. Sent to OpenRouter, which routes to a Claude host it chooses (Google Cloud Vertex for chat, proactive and screen calls and Amazon Bedrock for the card writer in the live ledgers; no `only`/`order` is pinned), with zero data retention and data collection denied. Regions unconfirmed. The coach's `web_search` tool (companion/coach/ext/research.py:189-197) also sends a generic, PII-filtered query through OpenRouter's web plugin with the same `zdr` flag; no research call is in the live ledger yet, so whether a ZDR search provider exists is unconfirmed (research.py:251 logs a 404 in that case).
 - Turning the coach off in the app deletes the chats and any coach memory at once.
 <!-- 30-day purge: companion-server/companion/service.py:2563; not in backup: db.py:323-325 comment; ZDR provider block:
      coach/chat.py:774, coach/screen.py:39; model anthropic/claude-sonnet-5.5: config.py:168; consent sheet:
@@ -219,7 +219,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 
 ### 7.5 Corrections found while checking (25-Oct)
 
-- Earlier drafts said check-in answers and run notes are "never sent to OpenRouter or the model provider". True for a runner without coach chat; **false for a runner with coach chat on**: the coach's `get_checkins` tool reads 14 days of answers and notes (`coach/tools.py:288-296`). The coach consent sheet already says check-in answers go to the AI provider, but the in-app check-ins paragraph (`lib/screens/companion_screen.dart:19-32`, "they never leave our server, so no writing service ... ever sees them") contradicts it. That app copy needs a fix in a lib/ PR before the closed release.
+- Earlier drafts said check-in answers and run notes are "never sent to OpenRouter or the model provider". True for a runner without coach chat; **false for a runner with coach chat on**: the coach's `get_checkins` tool reads 14 days of answers and notes (`coach/tools.py:288-296`). The coach consent sheet already says check-in answers go to the AI provider, but the in-app check-ins paragraph (`lib/screens/companion_screen.dart:19-32`, "they never leave our server, so no writing service ... ever sees them") contradicts it. That app copy is fixed in #398; the privacy page now scopes the "never sent" lines to runners without the coach chat. The coach also receives first name (tools.py:177-192), splits, reps and trail (tools.py:219-233).
 - The privacy page named a Settings, Data, "Delete all" and "Export all" that do not exist in the app. Fixed in this PR (section 6 of the policy).
 
 ## 8. Foreground service permissions
