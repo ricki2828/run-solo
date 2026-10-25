@@ -132,11 +132,6 @@ const String kCompanionMemoryBody =
 
 const String kCompanionMemoryHealthTick = 'Keep health notes too';
 
-const String kCompanionMemorySyncTitle = 'Share training numbers';
-
-const String kCompanionMemorySyncBlurb =
-    'Estimated times, best efforts, weekly load and your plan. On unless you '
-    'switch it off.';
 
 /// The companion's setup step (onboarding) and Settings > Companion. Off:
 /// the consent copy with "Turn on" and "Not now" at equal weight, neither
@@ -1017,7 +1012,8 @@ class CompanionMemoryOffer extends StatefulWidget {
 
 class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
   bool _health = false;
-  bool _sync = true;
+  // The training-numbers switch is hidden: nothing on the server reads it yet. The stored pref and the protocol field stay.
+  final bool _sync = true;
   bool _busy = false;
 
   Future<void> _agree() async {
@@ -1073,13 +1069,6 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
                 ],
               ),
             ),
-          ),
-          _SwitchRow(
-            title: kCompanionMemorySyncTitle,
-            blurb: kCompanionMemorySyncBlurb,
-            switchKey: const ValueKey('companion-memory-sync-switch'),
-            on: _sync,
-            onChanged: _busy ? null : (v) => setState(() => _sync = v),
           ),
           const SizedBox(height: Space.x16),
           Row(
@@ -1163,20 +1152,6 @@ class _CompanionMemorySettingsState extends State<CompanionMemorySettings> {
                     () => c.setMemoryChoices(
                       healthNotes: v,
                       trainingSync: c.trainingSyncOn,
-                    ),
-                  ),
-          ),
-          _SwitchRow(
-            title: kCompanionMemorySyncTitle,
-            blurb: kCompanionMemorySyncBlurb,
-            switchKey: const ValueKey('companion-memory-sync-setting'),
-            on: c.trainingSyncOn,
-            onChanged: _busy
-                ? null
-                : (v) => _run(
-                    () => c.setMemoryChoices(
-                      healthNotes: c.healthNotesOn,
-                      trainingSync: v,
                     ),
                   ),
           ),

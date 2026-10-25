@@ -512,8 +512,6 @@ void main() {
         kCompanionMemoryTitle,
         kCompanionMemoryBody,
         kCompanionMemoryHealthTick,
-        kCompanionMemorySyncTitle,
-        kCompanionMemorySyncBlurb,
       ]) {
         expect(s, isNot(contains('\u2014')));
       }
@@ -537,14 +535,12 @@ void main() {
               .value,
           isFalse,
         );
+        // The training-numbers switch is hidden: nothing on the server reads it.
         expect(
-          tester
-              .widget<Switch>(
-                find.byKey(const ValueKey('companion-memory-sync-switch')),
-              )
-              .value,
-          isTrue,
+          find.byKey(const ValueKey('companion-memory-sync-switch')),
+          findsNothing,
         );
+        expect(find.text('Share training numbers'), findsNothing);
         // Only the version-2 report has gone out so far.
         expect(lastConsent(), {'consent_version': kCompanionBaseConsent});
       },
@@ -570,15 +566,12 @@ void main() {
       expect(secrets.values[CompanionController.consentName], '4');
     });
 
-    testWidgets('ticking health notes and switching sync off are sent', (
+    testWidgets('ticking health notes is sent and training sync stays at its default', (
       tester,
     ) async {
       await open(tester);
       await tester.tap(
         find.byKey(const ValueKey('companion-memory-health-box')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('companion-memory-sync-switch')),
       );
       await pumpTimes(tester, 2);
       await tester.tap(find.byKey(const ValueKey('companion-memory-agree')));
@@ -586,7 +579,7 @@ void main() {
       expect(lastConsent(), {
         'consent_version': 4,
         'health_notes': true,
-        'training_sync': false,
+        'training_sync': true,
       });
       // They survive an app restart.
       final again = CompanionController(
@@ -597,7 +590,7 @@ void main() {
       await tester.runAsync(again.load);
       expect(again.memoryOn, isTrue);
       expect(again.healthNotesOn, isTrue);
-      expect(again.trainingSyncOn, isFalse);
+      expect(again.trainingSyncOn, isTrue);
     });
 
     testWidgets('Not now sends nothing and keeps the rest working', (
