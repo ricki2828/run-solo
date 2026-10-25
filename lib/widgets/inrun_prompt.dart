@@ -42,6 +42,9 @@ class InrunPromptOverlay extends StatefulWidget {
   /// The button labels' size (sp).
   static const double buttonSize = 56;
 
+  /// The headset hint under each answer (sp): readable mid-stride.
+  static const double hintSize = 16;
+
   /// The smallest height of a button (dp): the lower half of a short phone.
   static const double buttonMinHeight = 160;
 
@@ -98,11 +101,13 @@ class _InrunPromptOverlayState extends State<InrunPromptOverlay>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Everything under the prompt recedes and takes no taps.
+          // Everything under the prompt is covered and takes no taps: an
+          // opaque scrim, so no run number shows through the question
+          // (24-Oct review #7).
           AbsorbPointer(
             child: ColoredBox(
               key: const ValueKey('inrun-prompt-scrim'),
-              color: deep.withValues(alpha: 0.97),
+              color: deep,
             ),
           ),
           Padding(
@@ -242,10 +247,12 @@ class _PromptButton extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 16 dp each side: a long label (EASE OFF) scales down
+                // rather than touch the button's edge.
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Space.x8),
+                    padding: const EdgeInsets.symmetric(horizontal: Space.x16),
                     child: Text(
                       label.toUpperCase(),
                       softWrap: false,
@@ -263,7 +270,9 @@ class _PromptButton extends StatelessWidget {
                 const SizedBox(height: Space.x4),
                 Text(
                   hint,
+                  key: const ValueKey('inrun-prompt-hint'),
                   style: RunSoloType.label13.copyWith(
+                    fontSize: InrunPromptOverlay.hintSize,
                     color: ink.withValues(alpha: 0.8),
                   ),
                 ),

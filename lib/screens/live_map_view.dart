@@ -102,6 +102,31 @@ class EqualFigures extends StatelessWidget {
     return fit.clamp(floor, cap).floorToDouble();
   }
 
+  /// The height these figures need at their own size in a column [width]
+  /// wide (never scaled down): two rows of a label over a value, or three
+  /// when [stacked], with the text scale applied.
+  double heightFor(BuildContext context, double width) {
+    final scaler = MediaQuery.textScalerOf(context);
+    double h(TextStyle style) {
+      final p = TextPainter(
+        text: TextSpan(text: '0', style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      return p.height;
+    }
+
+    final value = h(
+      RunSoloType.display44.copyWith(
+        fontSize: sizeFor(width, cap, stacked: stacked),
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    final label = h(RunLabelScope.style(context, labelColor));
+    final rows = stacked ? 3 : 2;
+    return rows * (label + value) + (rows - 1) * rowGap;
+  }
+
   Widget _one(BuildContext context, int i, TextStyle style) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
@@ -205,7 +230,11 @@ class LiveMapView extends StatefulWidget {
 
   /// The run numbers (distance, time, pace) above the map, big. They take the
   /// room the map does not: the map is capped at [mapFraction] of the height.
-  final Widget? numbers;
+  /// They are never shrunk under their own size (the 36 sp floor): when the
+  /// route readouts leave too little room they are left off, since page 1
+  /// has them, and the map takes the room (24-Oct review #9). Once left off
+  /// they stay off for the run, so they never flicker with the readouts.
+  final EqualFigures? numbers;
 
   /// No map at all, the numbers take the room. Decided by the caller from
   /// screen height and run type (stable for the run), never from live layout,
@@ -239,6 +268,13 @@ class LiveMapView extends StatefulWidget {
 
 class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
   bool _foreground = true;
+
+  /// The run numbers were left off for want of room. One way for the life of
+  /// the page: readouts come and go mid-run (a turn line, VS START, the
+  /// ghost), and the numbers must not pop in and out with them, nor the map
+  /// jump between 40 % and full height (review of #393, P2-1). At most one
+  /// change per run, at the first squeeze.
+  bool _numbersDropped = false;
 
   @override
   void initState() {
@@ -313,26 +349,36 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
         else
           Expanded(
             child: LayoutBuilder(
-              builder: (context, c) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(width: c.maxWidth, child: numbers),
-                      ),
+              builder: (context, c) {
+                final mapH = c.maxHeight * LiveMapView.mapFraction;
+                final room = c.maxHeight - mapH - Space.x8;
+                if (!_numbersDropped &&
+                    numbers.heightFor(context, c.maxWidth) > room) {
+                  _numbersDropped = true;
+                }
+                final fits = !_numbersDropped;
+                // Same three children either way, so the map's platform
+                // view is kept, not rebuilt, when a readout comes or goes.
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: fits ? room : 0,
+                      child: fits
+                          ? Align(
+                              alignment: Alignment.centerLeft,
+                              child: numbers,
+                            )
+                          : null,
                     ),
-                  ),
-                  const SizedBox(height: Space.x8),
-                  SizedBox(
-                    height: c.maxHeight * LiveMapView.mapFraction,
-                    child: _mapBox(context),
-                  ),
-                ],
-              ),
+                    SizedBox(height: fits ? Space.x8 : 0),
+                    SizedBox(
+                      height: fits ? mapH : c.maxHeight,
+                      child: _mapBox(context),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
       ],

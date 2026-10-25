@@ -12,7 +12,8 @@ import '../map/map_surface.dart' show usesTerrainMap;
 import '../map/retrace_tracker.dart' show RetraceInput;
 import '../platform/gateway.dart';
 import '../state/history_store.dart' show runModeOf;
-import '../state/inrun_moments.dart' show InrunMoment, inLastStretch;
+import '../state/inrun_moments.dart'
+    show InrunMoment, InrunMomentKind, inLastStretch;
 import '../state/next_step.dart';
 import '../state/recording_controller.dart';
 import '../state/true_pace_smoother.dart';
@@ -93,6 +94,7 @@ class _RecordingScreenState extends State<RecordingScreen>
     _ctl!.repCompletePulse.addListener(_onRepComplete);
     _ctl!.repStartPulse.addListener(_onRepStart);
     _ctl!.addListener(_onSnapshot);
+    _ctl!.moment.addListener(_onMoment);
     _ctl!.attach();
     // A screen recreated mid-run (or opened on a run with a saved MAP
     // choice) fills the route from native once; events keep it current.
@@ -126,10 +128,35 @@ class _RecordingScreenState extends State<RecordingScreen>
     _questToastedId = id;
     final active = _services?.quests.state.active;
     final title = active != null && active.id == id ? active.title : null;
+    _questQueued = title == null ? 'QUEST DONE' : 'QUEST DONE · $title';
+    _showQueuedQuest();
+  }
+
+  /// A route cue outranks every moment but the goal's (24-Oct review #2): a
+  /// moment due (or still up) while one shows is dropped, never queued
+  /// behind a cue that can last a minute. The voice still says the km.
+  void _onMoment() {
+    final ctl = _ctl!;
+    final m = ctl.moment.value;
+    if (m != null &&
+        m.kind != InrunMomentKind.goalReached &&
+        routeCueShowing(ctl.snapshot)) {
+      ctl.moment.value = null;
+      return; // that set calls back here with null
+    }
+    if (m == null) _showQueuedQuest();
+  }
+
+  /// A quest done under an in-run moment waits for the moment to go, so its
+  /// toast is never hidden under the moment's scrim (24-Oct review #8).
+  String? _questQueued;
+
+  void _showQueuedQuest() {
+    final q = _questQueued;
+    if (q == null || !mounted || _ctl?.moment.value != null) return;
+    _questQueued = null;
     _questTimer?.cancel();
-    setState(
-      () => _questToast = title == null ? 'QUEST DONE' : 'QUEST DONE · $title',
-    );
+    setState(() => _questToast = q);
     _questTimer = Timer(QuestDoneToast.shownFor, () {
       if (mounted) setState(() => _questToast = null);
     });
@@ -261,6 +288,7 @@ class _RecordingScreenState extends State<RecordingScreen>
   void _onSnapshot() {
     final s = _ctl!.snapshot;
     _ctl!.momentUnits = _services!.settings.settings.units;
+    _onMoment();
     _questToastCheck(s);
     _sampleTruePace(s);
     if (s.active &&
@@ -429,6 +457,7 @@ class _RecordingScreenState extends State<RecordingScreen>
       _services?.permissions.setKeepScreenOn(false).catchError((_) {});
     }
     _ctl?.removeListener(_onSnapshot);
+    _ctl?.moment.removeListener(_onMoment);
     _clock?.cancel();
     _ctl?.repCompletePulse.removeListener(_onRepComplete);
     _ctl?.repStartPulse.removeListener(_onRepStart);
@@ -887,17 +916,30 @@ class _RecordingScreenState extends State<RecordingScreen>
                             ink: t.bgBase,
                             compact: compact,
                           ),
+                        // Route cues are loud (24-Oct review #2): amber on
+                        // the near-black plate, the same on every flood.
                         if (s.trail?.turnCue == true && !pausedNow)
                           TrailTurnCard(
-                            fill: t.inkPrimary,
-                            ink: t.bgBase,
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
                             compact: compact,
                           ),
                         if (route?.endCue != null && !pausedNow)
                           RouteEndCard(
                             cue: route!.endCue!,
-                            fill: t.inkPrimary,
-                            ink: t.bgBase,
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
+                            compact: compact,
+                          ),
+                        // The map page says OFF ROUTE in its to-go row.
+                        if (route != null &&
+                            route.endCue == null &&
+                            route.off &&
+                            !(hasPage2 && _page == 1) &&
+                            !pausedNow)
+                          RouteEndCard.off(
+                            fill: NightSession.bgBase,
+                            ink: NightSession.semWarn,
                             compact: compact,
                           ),
                         if (pausedNow) ...[
@@ -1067,10 +1109,17 @@ class _RecordingScreenState extends State<RecordingScreen>
                 // The in-run moment (km / mile, rep done, halfway, last
                 // 400 m, goal reached): about 1.5 s, over the numbers, no
                 // taps. Not on the finish screen or while paused.
+                // A route cue (turn around, off route, route done) outranks
+                // every moment but the goal's: the moment is dropped, so a
+                // km mark never buries a turnaround (24-Oct review #2).
                 ValueListenableBuilder<InrunMoment?>(
                   valueListenable: ctl.moment,
                   builder: (context, m, _) =>
-                      m == null || pausedNow || _finishing
+                      m == null ||
+                          pausedNow ||
+                          _finishing ||
+                          (routeCueShowing(s) &&
+                              m.kind != InrunMomentKind.goalReached)
                       ? const SizedBox.shrink()
                       : InrunMomentOverlay(
                           key: ValueKey('inrun-moment-${m.serial}'),
@@ -1151,6 +1200,11 @@ String liveRunType(RecordingSnapshot s) {
   if (s.isCooper || s.bronco) return 'tests';
   return s.mode.name == 'cooper' ? 'tests' : s.mode.name;
 }
+
+/// A route cue is on the screen: TURN AROUND or ROUTE DONE at the end of a
+/// followed route, off the route, or a known trail's turnaround.
+bool routeCueShowing(RecordingSnapshot s) =>
+    s.route?.endCue != null || s.route?.off == true || s.trail?.turnCue == true;
 
 /// The run type's Aurora colour (the route on the map).
 Color liveRunTypeColor(String type) => switch (type) {
@@ -1773,8 +1827,15 @@ class _Vitals extends StatelessWidget {
         s.hr != null;
     final hr = repMax ? s.stepMaxHr : s.hr;
     final pct = hr == null || maxHr <= 0 ? null : (hr * 100 / maxHr).round();
-    Widget cell(String title, Widget value, {IconData? icon}) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    Widget cell(
+      String title,
+      Widget value, {
+      IconData? icon,
+      bool end = false,
+    }) => Column(
+      crossAxisAlignment: end
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
@@ -1784,7 +1845,13 @@ class _Vitals extends StatelessWidget {
               Icon(icon, size: 12, color: t.hrZone),
               const SizedBox(width: Space.x4),
             ],
-            Text(title, style: label),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(title, softWrap: false, style: label),
+              ),
+            ),
           ],
         ),
         value,
@@ -1830,13 +1897,20 @@ class _Vitals extends StatelessWidget {
                       ),
                     ],
                   ),
+                  // One line, scaled down rather than run into TOTAL
+                  // (24-Oct review #10, font scale 1.3).
                   if (s.zone > 0 && s.hr != null)
                     ExcludeSemantics(
-                      child: Text(
-                        HrZones.label(s.zone, paired: true),
-                        key: const ValueKey('vitals-zone'),
-                        style: label.copyWith(
-                          color: HrZones.labelOn(s.zone, secondary),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          HrZones.label(s.zone, paired: true),
+                          key: const ValueKey('vitals-zone'),
+                          softWrap: false,
+                          style: label.copyWith(
+                            color: HrZones.labelOn(s.zone, secondary),
+                          ),
                         ),
                       ),
                     ),
@@ -1846,6 +1920,8 @@ class _Vitals extends StatelessWidget {
             ),
           ),
         ),
+      // TOTAL sits flush right beside a heart rate, so the zone label under
+      // the bpm has the gap between them (24-Oct review #10).
       if (showTotal)
         Expanded(
           child: cell(
@@ -1856,6 +1932,7 @@ class _Vitals extends StatelessWidget {
               softWrap: false,
               style: number,
             ),
+            end: s.hrPaired,
           ),
         ),
     ];
@@ -1990,11 +2067,9 @@ class _FreeRunBlock extends StatelessWidget {
   /// Short screen (< 720 dp): each number one step down.
   final bool compact;
 
-  /// The current pace is the second-largest number on the screen (21-Oct UI
-  /// review): 56 px numerals or more in every plan. Average pace is demoted
-  /// to the small [AuxFigure] size.
-  static double _dialPaceSize(double size) =>
-      RunSoloType.runSize((size * 0.8).clamp(36.0, 72.0));
+  /// The dial's current pace at the trio's size (24-Oct review #1): the
+  /// dial, not a size step, is what sets it apart.
+  static double _dialPaceSize(double size) => size;
 
   static double _textH(TextStyle style) {
     final p = TextPainter(
@@ -2004,15 +2079,13 @@ class _FreeRunBlock extends StatelessWidget {
     return p.height;
   }
 
-  /// The RUN trio's height at [size]: stacked is three full rows, otherwise
-  /// distance, then time and pace side by side.
-  static double _trioH(double size, {required bool stacked}) {
-    final label = _textH(RunSoloType.runLabel);
-    final row = label + _textH(RunSoloType.display44.copyWith(fontSize: size));
-    // Stacked: distance and time big, the average pace a small third row;
-    // otherwise time and average pace share the second row.
-    final aux = stacked ? label + _textH(AuxFigure.style) : 0.0;
-    return 2 * row + aux + (stacked ? 2 : 1) * Space.x4;
+  /// The RUN trio's height at [size]: distance, then time and average pace
+  /// side by side, all at [size].
+  static double _trioH(double size) {
+    final row =
+        _textH(RunSoloType.runLabel) +
+        _textH(RunSoloType.display44.copyWith(fontSize: size));
+    return 2 * row + Space.x4;
   }
 
   @override
@@ -2048,23 +2121,13 @@ class _FreeRunBlock extends StatelessWidget {
                 RunSoloType.runSize(compact ? 76 : 96),
                 half,
                 big: true,
-                stacked: true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 72 : 88),
-                half,
-                stacked: true,
-              ),
-              _FreePlan(
-                RunSoloType.runSize(compact ? 64 : 80),
-                112,
-                stacked: true,
               ),
               _FreePlan(
                 RunSoloType.runSize(compact ? 60 : 72),
                 half,
                 big: true,
               ),
+              _FreePlan(RunSoloType.runSize(compact ? 60 : 72), half),
               _FreePlan(RunSoloType.runSize(compact ? 56 : 64), half),
               _FreePlan(RunSoloType.runSize(compact ? 52 : 56), 112),
               _FreePlan(RunSoloType.runSize(44), 112),
@@ -2085,11 +2148,7 @@ class _FreeRunBlock extends StatelessWidget {
               }
             }
             final plan = fit ?? plans.last;
-            final size = EqualFigures.sizeFor(
-              width,
-              plan.trioCap,
-              stacked: plan.stacked,
-            );
+            final size = EqualFigures.sizeFor(width, plan.trioCap);
             final dial = plan.big
                 ? Center(
                     child: SizedBox(
@@ -2125,7 +2184,6 @@ class _FreeRunBlock extends StatelessWidget {
                   ValueKey('run-average'),
                 ],
                 size: size,
-                stacked: plan.stacked,
                 labelColor: secondary,
                 valueColor: t.inkPrimary,
                 odometer: kOdometerDistance
@@ -2201,7 +2259,7 @@ class _FreeRunBlock extends StatelessWidget {
   }
 
   double _planH(_FreePlan p, double width, double minGap) {
-    final size = EqualFigures.sizeFor(width, p.trioCap, stacked: p.stacked);
+    final size = EqualFigures.sizeFor(width, p.trioCap);
     final label = _textH(RunSoloType.runLabel);
     final double pace;
     if (p.big) {
@@ -2220,26 +2278,19 @@ class _FreeRunBlock extends StatelessWidget {
     final ghost = trail == null
         ? 0.0
         : TrailGhostReadout.heightFor(trail!, size);
-    return ghost + _trioH(size, stacked: p.stacked) + minGap + pace;
+    return ghost + _trioH(size) + minGap + pace;
   }
 }
 
-class _FreeBlockSizes {
-  /// Time sits below the dial's pace (0.8 of [size], capped at 72): distance
-  /// first, the current pace second.
-  static double time(double size) => (size * 0.8).clamp(36.0, 72.0) * 0.92;
-}
-
-/// Free / Trail numbers: distance big, time a step down and equal, the run's average
-/// pace demoted to the small [AuxFigure] size so the current-pace dial under
-/// them is the second-largest read (21-Oct UI review, finding 3). [figures]
-/// is distance, time, average pace; [size] the shared big size.
+/// Free / Trail numbers (founder 3-Oct, restored 24-Oct UI review #1):
+/// distance, time and average pace at ONE size, distance first on its own
+/// row, time and average pace side by side under it. [figures] is distance,
+/// time, average pace; [size] the shared size.
 class _FreeFigures extends StatelessWidget {
   const _FreeFigures({
     required this.figures,
     required this.valueKeys,
     required this.size,
-    required this.stacked,
     required this.labelColor,
     required this.valueColor,
     this.odometer,
@@ -2247,21 +2298,18 @@ class _FreeFigures extends StatelessWidget {
   final List<LiveFigure> figures;
   final List<Key> valueKeys;
   final double size;
-  final bool stacked;
   final Color labelColor;
   final Color valueColor;
   final Widget Function(TextStyle style)? odometer;
 
   @override
   Widget build(BuildContext context) {
-    final big = RunSoloType.display44.copyWith(
+    final style = RunSoloType.display44.copyWith(
       fontSize: size,
       fontWeight: FontWeight.w700,
       color: valueColor,
     );
-    final mid = big.copyWith(fontSize: _FreeBlockSizes.time(size));
-    final small = AuxFigure.style.copyWith(color: valueColor);
-    Widget one(int i, TextStyle style) => Column(
+    Widget one(int i) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2283,41 +2331,28 @@ class _FreeFigures extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        one(0, big),
+        one(0),
         const SizedBox(height: Space.x4),
-        if (stacked) ...[
-          one(1, mid),
-          const SizedBox(height: Space.x4),
-          one(2, small),
-        ] else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(child: one(1, mid)),
-              const SizedBox(width: Space.x16),
-              Expanded(child: one(2, small)),
-            ],
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: one(1)),
+            const SizedBox(width: Space.x16),
+            Expanded(child: one(2)),
+          ],
+        ),
       ],
     );
   }
 }
 
 class _FreePlan {
-  const _FreePlan(
-    this.trioCap,
-    this.dialWidth, {
-    this.big = false,
-    this.stacked = false,
-  });
+  const _FreePlan(this.trioCap, this.dialWidth, {this.big = false});
   final double trioCap;
   final double dialWidth;
 
   /// The stacked speedo (arc, then the pace under it) when there is room.
   final bool big;
-
-  /// Distance, time and pace each on a full-width row.
-  final bool stacked;
 }
 
 /// The two run pages: 1 the numbers, 2 the map and route readouts.
@@ -2595,6 +2630,13 @@ class _SegmentPace extends StatelessWidget {
   /// label, keeping their space.
   final bool hideAverage;
 
+  static double _lineHeight(BuildContext context, TextStyle style) =>
+      (TextPainter(
+        text: TextSpan(text: '0', style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout()).height;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
@@ -2608,6 +2650,22 @@ class _SegmentPace extends StatelessWidget {
       Phase.recovery => 'RECOVERY AVERAGE',
       _ => 'SEGMENT AVERAGE',
     };
+    // No average yet (the first seconds of a rep, or no fix): never a bare
+    // "--", which at this size reads as two broken bars (24-Oct review #11).
+    // A muted word says why; the dial already has the current pace.
+    final settling = segmentAvg == null;
+    final avgText = !settling
+        ? Fmt.pace(segmentAvg, units)
+        : (s.gpsLost || s.showEndRep ? 'NO GPS' : 'SETTLING');
+    final unit = units == Units.mi ? 'mi' : 'km';
+    final caption = settling ? title : '$title /$unit';
+    final paceStyle =
+        primaryStyle(compact, secondary: s.phase == Phase.recovery).copyWith(
+          color: s.phase == Phase.recovery || settling
+              ? secondary
+              : t.inkPrimary,
+          fontWeight: FontWeight.w700,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -2621,29 +2679,44 @@ class _SegmentPace extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  Fmt.pace(segmentAvg, units),
-                  key: const ValueKey('segment-avg'),
-                  softWrap: false,
-                  // The biggest number in a rep; second to the countdown in a
-                  // recovery. The FittedBox only shrinks it for a wide value.
-                  style:
-                      primaryStyle(
-                        compact,
-                        secondary: s.phase == Phase.recovery,
-                      ).copyWith(
-                        color: s.phase == Phase.recovery
-                            ? secondary
-                            : t.inkPrimary,
-                        fontWeight: FontWeight.w700,
+              if (settling)
+                // The word is a status, not a number: 56 sp, in the pace's
+                // own height so nothing moves when the average arrives.
+                SizedBox(
+                  height: _lineHeight(context, paceStyle),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        avgText,
+                        key: const ValueKey('segment-avg'),
+                        softWrap: false,
+                        style: paceStyle.copyWith(
+                          fontSize: RunSoloType.runSize(56),
+                        ),
                       ),
+                    ),
+                  ),
+                )
+              else
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    avgText,
+                    key: const ValueKey('segment-avg'),
+                    softWrap: false,
+                    // The biggest number in a rep; second to the countdown in
+                    // a recovery. The FittedBox only shrinks it for a wide
+                    // value.
+                    style: paceStyle,
+                  ),
                 ),
-              ),
               Text(
-                '$title /${units == Units.mi ? 'mi' : 'km'}',
+                caption,
+                key: const ValueKey('segment-avg-caption'),
                 style: RunSoloType.runCaption.copyWith(color: secondary),
               ),
             ],

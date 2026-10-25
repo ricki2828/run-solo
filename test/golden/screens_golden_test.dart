@@ -1535,6 +1535,7 @@ void main() {
         fake.gpsLost = true;
         await stepSeconds(tester, fake, 12);
         await settleAnimations(tester);
+        expect(find.text('NO GPS'), findsOneWidget);
         await golden(tester, 'record_end_rep_360x$h');
       },
     );
@@ -1555,6 +1556,11 @@ void main() {
       await pumpTimes(tester, 5);
       await stepSeconds(tester, fake, 3);
       await settleAnimations(tester);
+      // 24-Oct review #11: no bare "--" before the average settles.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('segment-avg'))).data,
+        isNot('--'),
+      );
       await golden(tester, 'record_short_rep_start_360x$h');
       await stepSeconds(tester, fake, 15);
       await settleAnimations(tester);

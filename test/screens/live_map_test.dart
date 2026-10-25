@@ -5,10 +5,12 @@ import 'package:run_solo/app/services.dart';
 import 'package:run_solo/map/map_surface.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/screens/live_map_view.dart';
 import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/state/live_route.dart';
 import 'package:run_solo/map/route_builder.dart';
 import 'package:run_solo/state/settings.dart';
+import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/widgets/compare_card.dart';
 import 'package:run_solo/widgets/gps_bar.dart';
 import 'package:run_solo/widgets/lap_button.dart';
@@ -337,16 +339,11 @@ void main() {
     expect(find.byKey(_map), findsNothing);
     Text fig(String k) => tester.widget<Text>(find.byKey(ValueKey(k)));
     final size = fig('free-distance').style!.fontSize!;
-    expect(size, greaterThanOrEqualTo(64));
-    expect(fig('timer').style!.fontSize, lessThan(size));
-    // 21-Oct review: average pace is demoted; the current-pace dial is the
-    // second-largest number.
-    expect(fig('run-average').style!.fontSize, lessThan(size));
-    final dial = fig('dial-pace').style!.fontSize!;
-    expect(dial, greaterThanOrEqualTo(56));
-    expect(dial, lessThan(size));
-    expect(dial, greaterThan(fig('timer').style!.fontSize!));
-    expect(dial, greaterThan(fig('run-average').style!.fontSize!));
+    expect(size, greaterThanOrEqualTo(48));
+    // 24-Oct review #1: distance, time, average pace and the dial at one size.
+    expect(fig('timer').style!.fontSize, size);
+    expect(fig('run-average').style!.fontSize, size);
+    expect(fig('dial-pace').style!.fontSize, size);
 
     await tester.tap(find.byKey(_toggle));
     await settleAnimations(tester);
@@ -519,5 +516,76 @@ void main() {
     ctl.liveRoute.clear();
     await ctl.syncRoute();
     expect(ctl.liveRoute.count, greaterThan(0));
+  });
+
+  testWidgets('map page: numbers dropped for a tall readout stay dropped when '
+      'it goes (no flicker, #393 P2-1)', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400); // 360 x 800
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    var turnLine = false;
+    late StateSetter set;
+    final track = LiveRouteTrack();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: runSoloTheme(),
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              set = setState;
+              return SizedBox(
+                height: 420,
+                child: LiveMapView(
+                  maps: const FakeMapSurfaceFactory(available: true),
+                  track: track,
+                  typeColor: Colors.blue,
+                  readouts: [
+                    if (turnLine)
+                      const SizedBox(key: ValueKey('turn-line'), height: 160),
+                  ],
+                  numbers: EqualFigures(
+                    figures: const [
+                      LiveFigure(label: 'DISTANCE', value: '0.84 km'),
+                      LiveFigure(label: 'TIME', value: '4:00'),
+                      LiveFigure(label: 'AVG PACE', value: '4:45'),
+                    ],
+                    valueKeys: const [
+                      ValueKey('map-page-distance'),
+                      ValueKey('map-page-time'),
+                      ValueKey('map-page-pace'),
+                    ],
+                    cap: 64,
+                    labelColor: Colors.black,
+                    valueColor: Colors.black,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    final distance = find.byKey(const ValueKey('map-page-distance'));
+    expect(distance, findsOneWidget);
+    final mapBefore = tester.getSize(find.byKey(_map)).height;
+
+    set(() => turnLine = true);
+    await tester.pump();
+    expect(distance, findsNothing);
+    final mapSqueezed = tester.getSize(find.byKey(_map)).height;
+    expect(mapSqueezed, greaterThan(mapBefore));
+
+    // The turn passes: the numbers do not come back, the map does not
+    // jump back to 40 %.
+    set(() => turnLine = false);
+    await tester.pump();
+    expect(distance, findsNothing);
+    expect(tester.getSize(find.byKey(_map)).height, greaterThan(mapBefore));
+    for (var i = 0; i < 3; i++) {
+      set(() => turnLine = !turnLine);
+      await tester.pump();
+      expect(distance, findsNothing);
+    }
+    expect(tester.takeException(), isNull);
   });
 }
