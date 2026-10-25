@@ -1011,8 +1011,9 @@ class CompanionMemoryOffer extends StatefulWidget {
 
 class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
   bool _health = false;
-  // The training-numbers switch is hidden: nothing on the server reads it yet. The stored pref and the protocol field stay.
-  final bool _sync = true;
+  // The training-numbers switch is hidden and nothing on the server reads it, so
+  // Agree must not record a yes the runner never saw. The pref and field stay.
+  final bool _sync = false;
   bool _busy = false;
 
   Future<void> _agree() async {
