@@ -7,6 +7,7 @@ One path per target. Nothing here is hand-bumped and nothing uploads from a lapt
 | Android (Play) | push tag `vX.Y.Z`, or Actions > ci > Run workflow **on main** with **play_upload** ticked | `ci.yml` `release-aab` then `play-upload` | build tested; upload untested until the secret exists |
 | iOS (TestFlight) | push tag `vX.Y.Z`, or Actions > ios > Run workflow **on main** with **testflight** ticked | `ios.yml` `testflight-gate` then `testflight` | **UNTESTED** (no Apple account yet) |
 | Companion server | merge to main, then deploy on the host | `companion-server.yml` (CI) + `~/services/deploy-companion-logged.sh` | live |
+| Public site (privacy, delete, home) | merge to main, then `tools/deploy_site.sh` on the host | none (CI ignores `docs/**`) | live |
 
 ## Release checklist
 
@@ -107,3 +108,25 @@ The deploy always ships origin/main, so rollback is a revert on main:
 - **`--ref <sha>`**: deploy a given commit instead of origin/main, so an emergency rollback does not wait for a revert PR + CI.
 - **Stage, test, then swap**: today main is copied into `$APP` before pytest runs, so a failed test run leaves untested code on disk that a crash-restart would load. Run the suite in the staging dir and copy only on green.
 - **Record what is live**: write `$APP/DEPLOYED_SHA` (and the log path) after a successful restart, so "which sha is live" is one `cat`.
+
+## Public site (runsupreme.taiaroa.xyz)
+
+`https://runsupreme.taiaroa.xyz` serves three pages from `docs/`: `index.html`, `privacy/` and `delete/`. Play and the app link to the last two, so every merged change to them must go live before the release that depends on it. Nothing syncs it automatically: the site is a static copy in `~/sites/run-supreme`, linked to the Vercel project `run-supreme-site` (`.vercel/` in that folder).
+
+One command on the host, after the change is merged:
+
+```bash
+tools/deploy_site.sh --dry-run            # what would change, from origin/main; copies and deploys nothing
+tools/deploy_site.sh                      # backup, copy, deploy, verify
+tools/deploy_site.sh --ref <sha|tag>      # publish a specific commit (also the rollback path)
+```
+
+What it does:
+1. Backs up `~/sites/run-supreme` to `~/sites/run-supreme.bak-<UTC timestamp>`.
+2. Exports the three pages from the ref with `git archive` (never the working tree), then rsyncs them in. `privacy/` and `delete/` are mirrored, so a file removed from `docs/` leaves the site too.
+3. Runs `vercel deploy --prod --yes` in `~/sites/run-supreme` (needs the host's logged-in `vercel` CLI).
+4. Fetches each live page. The body must equal the source byte for byte, and a page with "Last updated <date>" must show the source's date. Any mismatch prints FAIL and exits non-zero, with the rollback line.
+
+Rollback: `tools/deploy_site.sh --ref <previous good sha>`, or copy the printed `.bak-*` folder back and run `vercel deploy --prod --yes` in it.
+
+Bump "Last updated" in the page whenever its content changes, so the check (and readers) can tell versions apart.
