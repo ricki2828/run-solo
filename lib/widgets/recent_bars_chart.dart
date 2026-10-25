@@ -741,7 +741,7 @@ class _BarsPainter extends CustomPainter {
         // top of each other: lift this one clear of the last.
         final prev = lastValueRect;
         if (prev != null &&
-            vx < prev.right + 2 &&
+            vx < prev.right + 6 &&
             vyTop < prev.bottom &&
             vyTop + vl.height > prev.top) {
           vyTop = prev.top - vl.height - 1;
