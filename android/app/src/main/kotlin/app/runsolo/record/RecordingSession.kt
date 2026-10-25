@@ -1643,7 +1643,8 @@ class RecordingSession(
     private fun routeEvent(e: RouteFollower.Event) {
         // OFF ROUTE and the route's end take the screen: an open prompt gives way, quietly.
         if (e is RouteFollower.Event.OffRoute || e is RouteFollower.Event.RouteEnd) {
-            prompter.giveWay(core.status(e.t).elapsedMs)?.let { resolvePrompt(it, e.t) }
+            val t = clock()
+            prompter.giveWay(core.status(t).elapsedMs)?.let { resolvePrompt(it, t) }
         }
         when (e) {
             is RouteFollower.Event.OffRoute -> {
