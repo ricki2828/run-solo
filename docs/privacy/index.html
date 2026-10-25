@@ -326,7 +326,7 @@
   <p>The coach chat is optional and off until you agree to it in the app (Settings, Companion, the companion agreement, version 3). It is for questions about your training, in your own Telegram chat.
   The coach answers your training questions in Telegram and writes briefings before your runs.
   To reply, your run summaries, check-in and background answers, run notes, health flags, first name and what you type go to Claude models, via OpenRouter, with zero data retention.
-  That includes your background answers (goal, usual days, niggle area and why you run, but not weight) and any active health flags such as a niggle or illness, plus each run's per-kilometre paces, rep times and trail details, and the run notes and check-in answers from the last 14 days. The model is a Claude model from Anthropic, but OpenRouter picks the host for each call: in our records the calls were served by Google Cloud (Vertex AI) or Amazon Web Services (Bedrock), not by Anthropic directly. We have not confirmed the regions.
+  That includes your background answers (goal, usual days, niggle area and why you run, but not weight) and any active health flags (ill, injury, urgent or wellbeing), plus each run's per-kilometre paces, rep times and trail details, and the run notes and check-in answers from the last 14 days. The model is a Claude model from Anthropic, but OpenRouter picks the host for each call: in our records the calls were served by Google Cloud (Vertex AI) or Amazon Web Services (Bedrock), not by Anthropic directly. We have not confirmed the regions.
   It can search the web, with no personal details.
   The question is a generic one, with no name, phone number, email, address, place or age (our server refuses a query that has one), and OpenRouter's web search plugin sends it to a search provider. Zero data retention is requested for the search too, but we have not confirmed that every search provider honours it, and no web search has run in our records yet.
   Your GPS tracks and heart rate recordings stay on your phone.
@@ -341,9 +341,7 @@
   exception is the person who runs the test, whose memory is switched on by hand until he agrees in the app too. Memory is off for
   everyone else, and with it off the coach still talks to you; it just starts from zero each time. With it on, the server keeps short
   notes: facts you tell the coach to keep (your goals, schedule, what you like, key runs; up to 20 of up to 160 characters each) and one
-  short summary of your earlier chats (up to 700 characters, rewritten every ten messages you send). The app also records whether the
-  training numbers switch is on (it starts on). Sending your training numbers (estimated race times, best efforts, weekly load and your plan) is
-  not built yet: when it is, the coach will keep them only while that switch is on, and this page will say so. <strong>Health notes</strong>
+  short summary of your earlier chats (up to 700 characters, rewritten every ten messages you send). The coach does not keep your training numbers (estimated race times, best efforts, weekly load or your plan). <strong>Health notes</strong>
   (niggles, injuries and illness) are separate: the coach keeps them only if you tick "Keep health notes too", which starts unticked. With it
   unticked the coach will not save anything about injury, pain or illness, and it leaves them out of the chat summary. Your GPS tracks and
   heart rate recordings are not part of coach memory and stay on your phone.</p>
