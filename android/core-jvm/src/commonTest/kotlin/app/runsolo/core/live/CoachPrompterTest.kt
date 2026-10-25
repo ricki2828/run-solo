@@ -434,6 +434,17 @@ class CoachPrompterTest {
         assertTrue(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = 100.0))
         assertFalse(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = 101.0))
         assertFalse(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null))
+        assertTrue(CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null, trailTurnCue = true))
+    }
+
+    @Test
+    fun `a trail turn-around card holds the question and it opens once the card clears`() {
+        val p = CoachPrompter()
+        val q = decide(p)
+        val busy = { t: Long -> CoachPrompter.routeBusy(off = false, endCueUp = false, turnInM = null, trailTurnCue = t < 930_000) }
+        val (t, s) = assertNotNull(steps(p, 902_000, 990_000, route = busy))
+        assertEquals(932_000L, t)
+        assertEquals(CoachPrompter.PendingStep.Open(q), s)
     }
 
     @Test

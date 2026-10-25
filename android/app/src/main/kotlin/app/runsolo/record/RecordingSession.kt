@@ -1635,8 +1635,8 @@ class RecordingSession(
 
     /** A followed route's cue is on screen or about to be said: a prompt waits for it ([CoachPrompter.openTick]). */
     private fun routeBusy(): Boolean {
-        val f = follower ?: return false
-        return CoachPrompter.routeBusy(f.off, f.endCue != null, f.nextTurnInM)
+        val f = follower
+        return CoachPrompter.routeBusy(f?.off == true, f?.endCue != null, f?.nextTurnInM, trailFeed.state?.turnCue == true)
     }
 
     /** Off route, back on route and the turn cues: a buzz and a line through the cue player (its settings apply to the voice). */

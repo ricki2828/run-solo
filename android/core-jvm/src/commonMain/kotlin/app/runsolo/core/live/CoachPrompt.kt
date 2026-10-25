@@ -521,9 +521,12 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         /** A turn this close ahead is about to be said (the route's own turn cue is at 50 m): no question over it. */
         const val ROUTE_TURN_CLEAR_M = 100.0
 
-        /** A route cue the runner needs now or within seconds: off route, the end cue up, or a turn [ROUTE_TURN_CLEAR_M] ahead. */
-        fun routeBusy(off: Boolean, endCueUp: Boolean, turnInM: Double?): Boolean =
-            off || endCueUp || (turnInM != null && turnInM <= ROUTE_TURN_CLEAR_M)
+        /**
+         * A route cue the runner needs now or within seconds: off route, the end cue up, a turn [ROUTE_TURN_CLEAR_M] ahead,
+         * or the trail ghost's TURN AROUND card ([trailTurnCue]).
+         */
+        fun routeBusy(off: Boolean, endCueUp: Boolean, turnInM: Double?, trailTurnCue: Boolean = false): Boolean =
+            off || endCueUp || trailTurnCue || (turnInM != null && turnInM <= ROUTE_TURN_CLEAR_M)
 
         /** A manual pause this long with a prompt open closes it as a quiet hold ([manualPause]). */
         const val MANUAL_PAUSE_CLOSE_MS = 30_000L
