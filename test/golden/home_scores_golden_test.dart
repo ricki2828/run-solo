@@ -94,13 +94,16 @@ void main() {
           fiveK('then', 50, thenMs),
           fiveK('now', 3, nowMs),
         ], now: now);
-        // Real runs behind the scores, so Recent activity is realistic.
+        // Real runs behind the scores, so Recent activity is realistic. Six
+        // 5Ks 6-8 weeks ago at the old pace set last month's level; three
+        // runs this fortnight at the new pace set today's. Nine runs locks
+        // the level, so the hero's month line is the thing that differs.
         final runs = [
           RunSummary(
             id: 'now',
             mode: RecordMode.free,
             start: testNow.subtract(const Duration(days: 3)),
-            durationMs: 1500000,
+            durationMs: nowMs,
             distanceM: 5000,
             laps: 0,
             // Z2 then Z3 then Z4: the week strip shows stacked zones.
@@ -116,7 +119,8 @@ void main() {
             id: 'mid',
             mode: RecordMode.free,
             start: testNow.subtract(const Duration(days: 1)),
-            durationMs: 2400000,
+            // 8 km at about 10% slower than the 5K pace: an easy run.
+            durationMs: (nowMs * 1.6 * 1.1).round(),
             distanceM: 8000,
             laps: 0,
             hrHist: HrHist(110, [
@@ -131,18 +135,19 @@ void main() {
             id: 'today',
             mode: RecordMode.free,
             start: testNow,
-            durationMs: 1200000,
+            durationMs: (nowMs * 0.7 * 1.1).round(),
             distanceM: 3500,
             laps: 0,
           ),
-          RunSummary(
-            id: 'then',
-            mode: RecordMode.free,
-            start: testNow.subtract(const Duration(days: 50)),
-            durationMs: 1700000,
-            distanceM: 5000,
-            laps: 0,
-          ),
+          for (var i = 0; i < 6; i++)
+            RunSummary(
+              id: i == 0 ? 'then' : 'then$i',
+              mode: RecordMode.free,
+              start: testNow.subtract(Duration(days: 44 + 2 * i)),
+              durationMs: thenMs,
+              distanceM: 5000,
+              laps: 0,
+            ),
         ];
         await pumpApp(
           tester,
@@ -160,6 +165,24 @@ void main() {
         tester.view.physicalSize = Size(1080, height * 3);
         await pumpTimes(tester, 8);
         expect(tester.takeException(), isNull);
+        // The month line is state-driven (UI review 24-Oct #4).
+        final delta = tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(const ValueKey('pack-hero-delta')),
+                matching: find.byType(Text),
+              ),
+            )
+            .data!;
+        expect(
+          delta,
+          startsWith(switch (state) {
+            'up' => 'UP',
+            'down' => 'DOWN',
+            _ => 'HOLDING',
+          }),
+        );
+        expect(find.text('CALIBRATING'), findsNothing);
         final name = 'home_progress_${state}_360x$height';
         expect(
           File('test/golden/goldens/$name.png').existsSync() ||

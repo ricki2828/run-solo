@@ -51,7 +51,7 @@ class HomeLaneBlocks extends StatelessWidget {
         key: ValueKey('home-unlock-${lane.name}'),
         lane: lane,
         value: null,
-        caption: _setBy[lane]!,
+        caption: 'Unlock: ${_setBy[lane]!}',
         onTap: () => onUnlock(laneUnlockApply(lane)),
       );
     }
@@ -70,7 +70,7 @@ class HomeLaneBlocks extends StatelessWidget {
       change: known
           ? ScoreNorms.change(score, sex: profileSex, age: age)
           : null,
-      caption: known ? 'of your age band' : 'add age and sex',
+      caption: known ? 'of your age band' : 'Add age and sex',
       onTap: known
           ? onOpen
           : () => Navigator.of(context).pushNamed(Routes.settings),

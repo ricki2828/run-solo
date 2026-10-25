@@ -45,6 +45,7 @@ class LaneBlock extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
+          constraints: const BoxConstraints(minHeight: 96),
           padding: const EdgeInsets.fromLTRB(
             Space.x8,
             Space.x8,
@@ -68,11 +69,16 @@ class LaneBlock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: Space.x4),
-              Text(
-                value ?? '-',
-                maxLines: 1,
-                style: RunSoloType.display44.copyWith(color: ink),
-              ),
+              if (value != null)
+                Text(
+                  value!,
+                  maxLines: 1,
+                  style: RunSoloType.display44.copyWith(color: ink),
+                )
+              else
+                // Not set yet: the caption is the way in, at a readable
+                // size, instead of a lone dash (UI review 24-Oct #6).
+                const SizedBox(height: Space.x16),
               if (change != null && change != 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: Space.x4),
@@ -99,12 +105,14 @@ class LaneBlock extends StatelessWidget {
                   ),
                 ),
               Text(
-                caption,
-                maxLines: 2,
+                value == null && onTap != null ? '$caption ›' : caption,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: RunSoloType.micro11.copyWith(
+                style: RunSoloType.label13.copyWith(
                   color: ink,
-                  letterSpacing: 0.2,
+                  fontSize: 12,
+                  height: 1.2,
+                  fontWeight: value == null ? FontWeight.w800 : FontWeight.w500,
                 ),
               ),
             ],

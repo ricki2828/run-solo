@@ -173,7 +173,7 @@ class StreakCard extends StatelessWidget {
                       ? 'Undo pause'
                       : pause == 0
                       ? 'Sore or ill? Pause this week'
-                      : 'Sore or ill? Pause last week',
+                      : 'Sore or ill last week? Pause it',
                   style: RunSoloType.label13.copyWith(
                     color: t.inkSecondary,
                     decoration: TextDecoration.underline,

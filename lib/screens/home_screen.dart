@@ -9,6 +9,7 @@ import '../platform/gateway.dart';
 import '../state/block_plan.dart';
 import '../state/companion.dart';
 import '../state/history_store.dart';
+import '../state/history_weeks.dart' show groupByWeek;
 import '../state/live_context.dart';
 import '../state/load_guard.dart';
 import '../state/settings.dart';
@@ -433,6 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: Space.x8),
                           PackHero(
+                            compact: MediaQuery.sizeOf(context).height < 720,
                             level: snap0.level,
                             pack: snap0.pack,
                             runCount: snap0.runCount,
@@ -562,12 +564,37 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: Space.x16),
                           ],
                           if (data != null) ...[
+                            // An empty week is one line, not a card of grey
+                            // ticks (UI review 24-Oct #6).
                             SectionCard(
-                              child: WeekStrip(
-                                runs: data.runs,
-                                zones: services.hrZones,
-                                now: _now,
-                              ),
+                              child:
+                                  groupByWeek([
+                                    for (final r in data.runs)
+                                      if (!r.missing) r,
+                                  ], _now).first.runs.isNotEmpty
+                                  ? WeekStrip(
+                                      runs: data.runs,
+                                      zones: services.hrZones,
+                                      now: _now,
+                                    )
+                                  : Row(
+                                      key: const ValueKey('week-empty'),
+                                      children: [
+                                        Text(
+                                          'YOUR WEEK',
+                                          style: RunSoloType.micro11.copyWith(
+                                            color: t.inkSecondary,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          'No runs yet this week',
+                                          style: RunSoloType.label13.copyWith(
+                                            color: t.inkSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                             ),
                             const SizedBox(height: Space.x16),
                           ],
