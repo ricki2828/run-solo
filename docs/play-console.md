@@ -148,7 +148,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 - Maps SDK: Google derives it from the IP when a map loads; used "to understand SDK usage" (Analytics).
 - Open-Meteo (weather for each run, Settings, Recording): the run location rounded to about 10 km.
 - Coach (only if turned on): the area name where a run started, never the street; the time zone; with "Weather in suggestions" on, the start rounded to 0.1 degree (about 11 km) on the phone, latest one, 30 days; with "Show route shape on cards" (default on), an outline of the route with a random 150-300 m cut off each end, no coordinates, 30 days; with "Show trail names on cards" (default off), the trail's name, taken from the street or place it starts in.
-- Coach care finder: if the runner asks for a physio or GP, the place they type, or the coarse start of their last run, goes to OpenStreetMap (Nominatim, Overpass) rounded to about 1 km; nothing is stored.
+- Coach care finder: if the runner asks for a physio or GP, the place they type, or the coarse start of their last run, goes to OpenStreetMap (Nominatim, Overpass): the typed place goes to Nominatim verbatim, and only the geocoded point is rounded to about 1 km (places.py:193-200); nothing is stored.
 - Shared: Yes because, with coach chat on, the coach is given the runner's time zone (and can look up weather for a 0.1 degree area or a typed place name, which goes to Open-Meteo, not the AI provider).
 <!-- time zone to the model: companion-server/companion/coach/tools.py:192; weather cell only: coach/ext/weather.py:4-5;
      locality: lib/state/companion.dart:2430 ('locality', "never the street"); area 0.1 deg: companion.dart:2439-2442;
@@ -169,7 +169,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 
 **Health info** (coach only)
 - The niggle answer (none, calf, knee, hip, foot, other), expires after 8 weeks.
-- Check-in answers "Sore somewhere" and "Feeling ill": kept 14 days, not in backups.
+- Check-in answers (the evening "Sore somewhere" and the skip prompt's "Sore" and "Ill", checkin_copy.py:55,101): kept 14 days, not in backups.
 - Health flags from the safety check (a kind and times, no text).
 - With coach memory on and "Keep health notes too" ticked (off by default): niggles, injuries and illness the runner told the coach. Turning the tick off deletes them and the chat summary at once.
 - Heart rate on cards (off by default): up to 64 bpm values and zones for a trail run with a strap, 30 days.
@@ -205,7 +205,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
 - Coach: feel taps, button answers, suggestion taken or skipped, survey answers (fixed options); an activity log of kind and time only, 120 days, not in backups.
 <!-- inbound_events 120 days: companion-server/companion/measure.py:21 -->
 
-**Crash logs, Diagnostics, Device or other IDs**: Maps SDK only (crash reporting, request metadata, the SDK identifier Google uses to count daily active SDK users).
+**Crash logs, Diagnostics, Device or other IDs**: Maps SDK (crash reporting, request metadata, the SDK identifier Google uses to count daily active SDK users). Device or other IDs also covers the companion connection token, an app-instance ID (privacy page, section 2b).
 
 ### 7.4 Not declared, and why
 
@@ -257,7 +257,7 @@ If asked: `FOREGROUND_SERVICE_LOCATION` in the manifest, the service is `START_N
 
 Also enter, if asked:
 - **How users turn it on**: off by default. Settings, Send runs to, Health Connect; or Send on a single run.
-- **Privacy policy for Health Connect**: the permission rationale screen opens `https://runsupreme.taiaroa.xyz/privacy/` (section 4 of the policy names the four permissions). <!-- PrivacyPolicyActivity.kt:23; alias ViewPermissionUsageActivity, AndroidManifest.xml:81 -->
+- **Privacy policy for Health Connect**: the permission rationale screen opens `https://runsupreme.taiaroa.xyz/privacy/` (section 4 of the policy names the four permissions). <!-- PrivacyPolicyActivity.kt:23; alias ViewPermissionUsageActivity, android/app/src/main/AndroidManifest.xml:85 -->
 
 ## 10. Other declarations
 
