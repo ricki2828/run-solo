@@ -5,6 +5,8 @@ import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/plan_screen.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/run_index.dart';
+import 'package:run_solo/theme/lanes.dart';
+import 'package:run_solo/theme/theme.dart';
 
 import '../helpers.dart';
 
@@ -33,13 +35,34 @@ void main() {
     await pumpApp(tester, services, home: PlanScreen(now: now));
     expect(find.text('BUILD YOUR 4 WEEKS'), findsOneWidget);
     // No scores yet: the lane Home would recommend (AEROBIC) is preselected.
-    expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(const ValueKey('plan-lane-aerobic')))
-          .selected,
-      isTrue,
-    );
+    Color? fillOf(String lane) {
+      final box = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byKey(ValueKey('plan-lane-$lane')),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      return (box.decoration! as BoxDecoration).color;
+    }
+
+    final t = Theme.of(
+      tester.element(find.byType(PlanScreen)),
+    ).extension<RunSoloTokens>()!;
+    // Selected = filled in the lane's own colour; the others stay raised.
+    expect(fillOf('aerobic'), t.laneFill(engine.IdentityLane.aerobic));
+    expect(fillOf('long'), t.bgRaised);
+    // Hit boxes for RUNS A WEEK -/+ are at least 48 dp.
+    for (final k in ['plan-fewer', 'plan-more']) {
+      final size = tester.getSize(find.byKey(ValueKey(k)));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    }
     await tester.tap(find.byKey(const ValueKey('plan-lane-long')));
+    await tester.pump();
+    expect(fillOf('long'), t.laneFill(engine.IdentityLane.long));
+    expect(fillOf('aerobic'), t.bgRaised);
     await tester.tap(find.byKey(const ValueKey('plan-more')));
     await tester.tap(find.byKey(const ValueKey('plan-more')));
     await tester.pump();

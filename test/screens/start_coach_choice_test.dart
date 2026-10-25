@@ -50,8 +50,8 @@ void main() {
     await open(tester, free);
     expect(find.byKey(chaseKey), findsOneWidget);
     expect(find.byKey(steadyKey), findsOneWidget);
-    expect(find.text('Chase your best'), findsOneWidget);
-    expect(find.text('Steady run'), findsOneWidget);
+    expect(find.text('Chase best'), findsOneWidget);
+    expect(find.text('Steady'), findsOneWidget);
     expect(selected(tester, chaseKey), isTrue);
     expect(selected(tester, steadyKey), isFalse);
   });

@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  testWidgets('consent: Turn on and Not now, same size, nothing pre-selected', (
+  testWidgets('consent: filled Turn on, outlined Not now, nothing pre-selected', (
     tester,
   ) async {
     await pumpApp(
@@ -41,30 +41,37 @@ void main() {
     );
     await pumpTimes(tester, 4);
     expect(find.text('RUN COMPANION'), findsOneWidget);
+    // Three labelled rows lead; the full words sit behind More, unabridged.
+    expect(find.text("WHAT'S SENT"), findsOneWidget);
+    expect(find.text('WHO SEES IT'), findsOneWidget);
+    expect(find.text('HOW LONG'), findsOneWidget);
+    expect(find.text(kCompanionSent), findsNothing);
+    await scrollTo(tester, find.byKey(const ValueKey('companion-consent-more')));
+    await tester.tap(find.byKey(const ValueKey('companion-consent-more')));
+    await pumpTimes(tester, 2);
     expect(find.text(kCompanionSent, skipOffstage: false), findsOneWidget);
     await scrollTo(tester, find.text('Read the privacy page'));
     expect(find.text(kCompanionCheckins, skipOffstage: false), findsOneWidget);
     expect(find.text(kCompanionWhere, skipOffstage: false), findsOneWidget);
+    expect(find.text(kCompanionDelete, skipOffstage: false), findsOneWidget);
     expect(find.textContaining('30 days', skipOffstage: false), findsOneWidget);
     expect(find.text('Read the privacy page'), findsOneWidget);
     // No switch, tick box or radio that could start ticked.
     expect(find.byType(Switch), findsNothing);
     expect(find.byType(Checkbox), findsNothing);
     expect(find.byType(Radio<Object?>), findsNothing);
+    // One pattern: filled Turn on, outlined Not now, same size.
     final on = find.byKey(const ValueKey('companion-turn-on'));
     final off = find.byKey(const ValueKey('companion-not-now'));
     expect(tester.getSize(on), tester.getSize(off));
-    final onBox = tester
-        .widget<Container>(
-          find.descendant(of: on, matching: find.byType(Container)).first,
-        )
-        .decoration;
-    final offBox = tester
-        .widget<Container>(
-          find.descendant(of: off, matching: find.byType(Container)).first,
-        )
-        .decoration;
-    expect(onBox, offBox);
+    expect(
+      find.descendant(of: on, matching: find.byType(FilledButton)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: off, matching: find.byType(OutlinedButton)),
+      findsOneWidget,
+    );
     // Opening the screen enrols nothing and asks nothing.
     expect(http.requests, isEmpty);
     expect(ctl.asked, isFalse);
@@ -320,8 +327,14 @@ void main() {
           findsOneWidget,
         );
         expect(find.text(kCompanionWeatherSheetTitle), findsOneWidget);
+        expect(find.text("WHAT'S SENT"), findsOneWidget);
+        expect(find.text('WHO SEES IT'), findsOneWidget);
+        expect(find.text('HOW LONG'), findsOneWidget);
+        // The four paragraphs are all still there, behind More.
+        await tester.tap(find.byKey(const ValueKey('companion-weather-more')));
+        await tester.pumpAndSettle();
         for (final p in kCompanionWeatherSheet) {
-          expect(find.text(p), findsOneWidget);
+          expect(find.text(p, skipOffstage: false), findsOneWidget);
         }
         // The four things the sheet has to say.
         final all = kCompanionWeatherSheet.join(' ');

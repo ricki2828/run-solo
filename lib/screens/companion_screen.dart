@@ -211,8 +211,9 @@ class _Heading extends StatelessWidget {
   }
 }
 
-/// A choice button. "Turn on" and "Not now" use the same one, so neither
-/// looks like the default.
+/// The one button pattern on every consent sheet (ui review 24-Oct #14):
+/// [primary] is the filled "Turn on" / "Agree", the other is outlined
+/// "Not now" / "Turn off". Both are the shared [RunButton].
 class _ChoiceButton extends StatelessWidget {
   const _ChoiceButton({
     super.key,
@@ -223,36 +224,87 @@ class _ChoiceButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  /// The filled, recommended choice (Agree on the memory sheet).
+  /// The filled, recommended choice.
   final bool primary;
+
+  @override
+  Widget build(BuildContext context) => primary
+      ? RunButton(label: label, onPressed: onTap)
+      : RunButton.secondary(label: label, onPressed: onTap);
+}
+
+/// The consent summary every sheet leads with: three labelled rows (What's
+/// sent, Who sees it, How long) and a "More" link that opens the full words.
+/// Nothing is dropped: [more] holds the whole original copy, word for word.
+class _ConsentFacts extends StatefulWidget {
+  const _ConsentFacts({
+    required this.sent,
+    required this.who,
+    required this.howLong,
+    required this.more,
+    this.moreKey,
+  });
+  final String sent;
+  final String who;
+  final String howLong;
+
+  /// The full copy, shown under "More".
+  final List<Widget> more;
+  final Key? moreKey;
+
+  @override
+  State<_ConsentFacts> createState() => _ConsentFactsState();
+}
+
+class _ConsentFactsState extends State<_ConsentFacts> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.button),
-        child: Container(
-          height: 56,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: primary ? t.inkPrimary : t.bgRaised,
-            borderRadius: BorderRadius.circular(Radii.button),
-            border: Border.all(color: t.inkPrimary, width: 2),
-          ),
-          child: Text(
-            label,
-            style: RunSoloType.body17.copyWith(
+    Widget row(String label, String text) => Padding(
+      padding: const EdgeInsets.only(bottom: Space.x12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: RunSoloType.label13.copyWith(
+              color: t.inkSecondary,
               fontWeight: FontWeight.w700,
-              color: primary
-                  ? t.bgRaised
-                  : (onTap == null ? t.inkMuted : t.inkPrimary),
+            ),
+          ),
+          const SizedBox(height: Space.x4),
+          Text(
+            text,
+            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row("What's sent", widget.sent),
+        row('Who sees it', widget.who),
+        row('How long', widget.howLong),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: widget.moreKey,
+            style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+            onPressed: () => setState(() => _open = !_open),
+            child: Text(
+              _open ? 'Less' : 'More',
+              style: RunSoloType.body15.copyWith(
+                color: t.inkPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
-      ),
+        if (_open) ...widget.more,
+      ],
     );
   }
 }
@@ -301,14 +353,31 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
         Text('RUN COMPANION', style: text.displayMedium),
         const SizedBox(height: Space.x12),
         body(kCompanionIntro),
-        const _Heading('What leaves your phone'),
-        body(kCompanionSent),
-        const _Heading('Check-ins'),
-        body(kCompanionCheckins),
-        const _Heading('Where it goes'),
-        body(kCompanionWhere),
-        const _Heading('How to delete it'),
-        body(kCompanionDelete),
+        const SizedBox(height: Space.x16),
+        _ConsentFacts(
+          moreKey: const ValueKey('companion-consent-more'),
+          sent:
+              'A summary of each run: type, time, distance, pace, heart rate '
+              'zones and a route outline with the ends cut off. Never your '
+              'GPS points or the street.',
+          who:
+              'Our server, a writing service (OpenRouter) that is asked not '
+              'to keep anything, and Telegram, which delivers your notes.',
+          howLong:
+              'Check-in answers 14 days, then deleted. Run data until you '
+              'delete it, or six months after your last run. Delete '
+              'everything wipes it at once.',
+          more: [
+            const _Heading('What leaves your phone'),
+            body(kCompanionSent),
+            const _Heading('Check-ins'),
+            body(kCompanionCheckins),
+            const _Heading('Where it goes'),
+            body(kCompanionWhere),
+            const _Heading('How to delete it'),
+            body(kCompanionDelete),
+          ],
+        ),
         const SizedBox(height: Space.x12),
         Align(
           alignment: Alignment.centerLeft,
@@ -359,6 +428,7 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
           _ChoiceButton(
             key: const ValueKey('companion-confirm'),
             label: 'Confirm',
+            primary: true,
             onTap: () => controller.submitCode(_code.text),
           ),
           const SizedBox(height: Space.x12),
@@ -385,6 +455,7 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
                 child: _ChoiceButton(
                   key: const ValueKey('companion-turn-on'),
                   label: failed ? 'Try again' : 'Turn on',
+                  primary: true,
                   onTap: controller.turnOn,
                 ),
               ),
@@ -537,11 +608,31 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
                           ),
                         ),
                         const SizedBox(height: Space.x8),
-                        Text(
-                          kCompanionCheckins,
-                          style: RunSoloType.body15.copyWith(
-                            color: t.inkPrimary,
-                          ),
+                        _ConsentFacts(
+                          moreKey: const ValueKey('companion-reconsent-more'),
+                          sent:
+                              'Button answers only, nothing typed: how your '
+                              'body feels the evening before a planned '
+                              'session, going or skipping (with why), what '
+                              'was behind a slow easy run, and how many runs '
+                              'you want next week.',
+                          who:
+                              'Only our server. No weather service sees '
+                              'them. With the coach chat on, the coach reads '
+                              'the last 14 days and they go to Claude models '
+                              'through OpenRouter with zero data retention.',
+                          howLong:
+                              '14 days, then deleted, and left out of '
+                              'backups. Delete everything removes them at '
+                              'once.',
+                          more: [
+                            Text(
+                              kCompanionCheckins,
+                              style: RunSoloType.body15.copyWith(
+                                color: t.inkPrimary,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: Space.x16),
                         Row(
@@ -550,6 +641,7 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
                               child: _ChoiceButton(
                                 key: const ValueKey('companion-agree'),
                                 label: 'Agree',
+                                primary: true,
                                 onTap: _busy
                                     ? null
                                     : services.companion!.acceptConsent,
@@ -859,9 +951,24 @@ class _CompanionCoachOfferState extends State<CompanionCoachOffer> {
             ),
           ),
           const SizedBox(height: Space.x8),
-          Text(
-            kCompanionCoachBody,
-            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          _ConsentFacts(
+            moreKey: const ValueKey('companion-coach-detail'),
+            sent:
+                'Your run summaries, check-in and background answers, run '
+                'notes, health flags, first name and what you type.',
+            who:
+                'Claude models, via OpenRouter, with zero data retention. It '
+                'can search the web, with no personal details. Your GPS '
+                'tracks and heart rate recordings stay on your phone.',
+            howLong:
+                'Chats are kept for 30 days. Turn the coach off in Settings, '
+                'Companion, and your chats and coach memory are deleted.',
+            more: [
+              Text(
+                kCompanionCoachBody,
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+            ],
           ),
           const SizedBox(height: Space.x16),
           Row(
@@ -891,7 +998,7 @@ class _CompanionCoachOfferState extends State<CompanionCoachOffer> {
               onPressed: () =>
                   AppServices.of(context).transfer
                       .openUrl(Uri.parse(kCompanionPrivacyUrl)),
-              child: const Text('More: where it is kept and who sees it'),
+              child: const Text('Read the privacy page'),
             ),
           ),
           if (c.problem != null)
@@ -1041,11 +1148,27 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
             ),
           ),
           const SizedBox(height: Space.x8),
-          Text(
-            kCompanionMemoryBody,
-            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          _ConsentFacts(
+            moreKey: const ValueKey('companion-memory-detail'),
+            sent:
+                'Notes about your goals, your schedule, what you like, key '
+                'runs, and a short summary of your chats. Health notes only '
+                'if you tick the box below.',
+            who:
+                'The coach, to reply to you. You can see every note by '
+                'sending /\u2060memory in Telegram. Your GPS tracks and heart '
+                'rate recordings stay on your phone.',
+            howLong:
+                'Until you delete them: any note with /\u2060memory in '
+                'Telegram, or everything with Turn off memory in Settings, '
+                'Companion.',
+            more: [
+              Text(
+                kCompanionMemoryBody,
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+            ],
           ),
-          const SizedBox(height: Space.x8),
           InkWell(
             key: const ValueKey('companion-memory-health-tick'),
             onTap: _busy ? null : () => setState(() => _health = !_health),
@@ -1098,7 +1221,7 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
               onPressed: () =>
                   AppServices.of(context).transfer
                       .openUrl(Uri.parse(kCompanionPrivacyUrl)),
-              child: const Text('More: where it is kept and who sees it'),
+              child: const Text('Read the privacy page'),
             ),
           ),
         ],
@@ -1221,13 +1344,33 @@ class CompanionWeatherSheet extends StatelessWidget {
                       kCompanionWeatherSheetTitle,
                       style: RunSoloType.title28.copyWith(color: t.inkPrimary),
                     ),
-                    for (final p in kCompanionWeatherSheet) ...[
-                      const SizedBox(height: Space.x12),
-                      Text(
-                        p,
-                        style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-                      ),
-                    ],
+                    const SizedBox(height: Space.x16),
+                    _ConsentFacts(
+                      moreKey: const ValueKey('companion-weather-more'),
+                      sent:
+                          'The rough area where each run started, rounded to '
+                          'about 11 km. No place name, street or route.',
+                      who:
+                          'Our server, and Open-Meteo, a weather service, '
+                          'which gets that area and your time zone to give '
+                          'the forecast.',
+                      howLong:
+                          'Our server keeps your latest area up to 30 days '
+                          'after its run. Turn it off any time and it is '
+                          'forgotten as soon as your phone can reach it. '
+                          'Backups keep data up to 14 days.',
+                      more: [
+                        for (final p in kCompanionWeatherSheet) ...[
+                          Text(
+                            p,
+                            style: RunSoloType.body15.copyWith(
+                              color: t.inkPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: Space.x12),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1239,6 +1382,7 @@ class CompanionWeatherSheet extends StatelessWidget {
                   child: _ChoiceButton(
                     key: const ValueKey('companion-weather-on'),
                     label: 'Turn on',
+                    primary: true,
                     onTap: () => Navigator.of(context).pop(true),
                   ),
                 ),

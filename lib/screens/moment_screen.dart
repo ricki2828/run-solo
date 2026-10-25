@@ -9,6 +9,7 @@ import '../state/progress_snapshot.dart';
 import '../theme/caps_text.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
+import '../widgets/chrome.dart';
 
 /// The flat colour behind a moment: its lane, else one brand colour by kind.
 Color momentColour(RunSoloTokens t, Moment m) {
@@ -210,9 +211,18 @@ class _MomentScreenState extends State<MomentScreen>
                         Expanded(
                           child: OutlinedButton(
                             key: const ValueKey('moment-nice'),
+                            // Same height as Share, 2 dp outline, 16 sp
+                            // label (ui review 24-Oct #19). Not RunButton:
+                            // its raised ground would not sit on the flood.
                             style: OutlinedButton.styleFrom(
                               foregroundColor: ink,
+                              minimumSize: const Size.fromHeight(
+                                RunButton.height,
+                              ),
                               side: BorderSide(color: ink, width: 2),
+                              textStyle: RunSoloType.title28.copyWith(
+                                fontSize: 16,
+                              ),
                             ),
                             onPressed: () => Navigator.of(context).maybePop(),
                             child: const CapsText('Nice'),

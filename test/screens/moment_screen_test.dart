@@ -46,6 +46,11 @@ void main() {
     expect(find.byKey(const ValueKey('moment-big')), findsOneWidget);
     expect(find.text('5K'), findsOneWidget);
     expect(find.text('Nice'), findsOneWidget);
+    // Dismiss is as tall as Share (ui review #19).
+    final nice = tester.getSize(find.byKey(const ValueKey('moment-nice')));
+    final share = tester.getSize(find.byKey(const ValueKey('moment-share')));
+    expect(nice.height, share.height);
+    expect(nice.height, greaterThanOrEqualTo(56));
     await tester.tap(find.byKey(const ValueKey('moment-share')));
     expect(shared, 1);
     await tester.tap(find.byKey(const ValueKey('moment-nice')));

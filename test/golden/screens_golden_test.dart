@@ -1846,6 +1846,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Course: Albert Park'), findsOneWidget);
     await golden(tester, 'start_event_course_360x640');
+    // Scrolled to the end: the last line clears the READY UP bar.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await pumpTimes(tester, 4);
+    await golden(tester, 'start_event_course_end_360x640');
   });
 
   // CR2 (A10.8): Home with TRY NEXT and ESTIMATED TIMES, the verdict's

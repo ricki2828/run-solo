@@ -224,7 +224,8 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                 style: text.labelLarge?.copyWith(color: t.semDanger),
               ),
             ),
-          FilledButton(
+          RunButton(
+            label: widget.onboarding ? 'CONTINUE' : 'DONE',
             onPressed: s.canRecord
                 ? () async {
                     if (neededLeft > 0 && !_neededShown) {
@@ -246,12 +247,12 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                     if (context.mounted) Navigator.of(context).pop(true);
                   }
                 : null,
-            child: Text(widget.onboarding ? 'CONTINUE' : 'DONE'),
           ),
           if (widget.onboarding) ...[
             const SizedBox(height: Space.x12),
             Center(
               child: TextButton(
+                style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
                 onPressed: () async {
                   await AppServices.of(context).settings
                       .update((x) => x.copyWith(onboardingDone: true));

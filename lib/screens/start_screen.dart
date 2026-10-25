@@ -1231,7 +1231,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         return Scaffold(
           appBar: const RunAppBar(title: 'SET UP'),
           body: SafeArea(
-            child: ListView(
+            child: _ScrollFade(
+              child: ListView(
               // Build the longer Aurora choices and the settings below them
               // together. The old lazy list did not build the course target and
               // health note until the runner scrolled.
@@ -1490,11 +1491,13 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
-                      const SizedBox(height: Space.x16),
+                      // Room to scroll the last line clear of the READY UP bar.
+                      const SizedBox(height: Space.x16 + RunButton.height),
                     ],
                   ),
                 ),
               ],
+            ),
             ),
           ),
           // Pinned: the primary action stays on screen at 360 x 800 however
@@ -1549,8 +1552,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         style: text.labelLarge?.copyWith(color: t.semDanger),
                       ),
                     ),
-                  FilledButton(
+                  RunButton(
                     key: const ValueKey('start-ready-up'),
+                    label: 'READY UP ›',
                     // The test always goes through its health note first.
                     // Only Ready gates on GPS (goal and event runs); this
                     // button is always on.
@@ -1563,7 +1567,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           )
                         : _openReady,
                     // The only START is on the Ready screen (Ricki, 10-Oct).
-                    child: const CapsText('READY UP ›'),
                   ),
                 ],
               ),
@@ -1571,6 +1574,41 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           ),
         );
       },
+    );
+  }
+}
+
+/// Fades the bottom edge of a scrolling body into the page, so content cut
+/// by the pinned READY UP bar reads as "scroll for more", not as a clipping
+/// bug (ui review 24-Oct #13).
+class _ScrollFade extends StatelessWidget {
+  const _ScrollFade({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 32,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [t.bgBase.withValues(alpha: 0), t.bgBase],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
