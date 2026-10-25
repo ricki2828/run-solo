@@ -23,11 +23,16 @@
 <body>
 <main>
   <h1>Delete your Run companion data</h1>
-  <p class="meta">Run Supreme, Android. Last updated 10 October 2026.</p>
+  <p class="meta">Run Supreme, Android. Last updated 25 October 2026.</p>
 
-  <p>The Run companion is optional. If you turned it on, our server holds your run summaries, your answers to its
-  questions, the notes it sent you, and your Telegram chat (or, later, WhatsApp number). You can delete all of it.
-  You do not need the app.</p>
+  <p>The Run companion and its coach are optional. If you turned them on, our server holds your run summaries, your
+  answers to its questions, notes you typed, the notes it sent you, and your Telegram chat (or, later, WhatsApp number).
+  If you chatted with the coach, it also holds your coach chats (kept 30 days). If you let the coach remember you, it
+  holds the coach's memory: short notes about your goals, schedule and preferences, a summary of earlier chats, and,
+  only if you ticked it, your health notes. You can delete all of it. You do not need the app.</p>
+
+  <!-- Every row keyed by the runner goes in one transaction: companion-server/companion/db.py hard_delete_user;
+       DELETE keyword: companion/service.py (word == "DELETE"); coach chats 30 days: service.py purge; memory: db.py coach_memory -->
 
   <h2>Option 1: send DELETE in the chat</h2>
   <ol>
@@ -45,13 +50,23 @@
   from any address and say you want your Run companion data deleted. Tell us the Telegram username or phone number
   you used, so we can find it. We will delete it and reply to confirm.</p>
 
+  <h2>Deleting only the coach</h2>
+  <ul>
+    <li>Coach memory only: send <strong>/memory</strong> in Telegram to see every note and delete any of them, or tap
+    Turn off memory in Settings, Companion, which deletes all of it at once.</li>
+    <li>Health notes only: untick "Keep health notes too" in Settings, Companion. The health notes and the chat summary
+    are deleted at once.</li>
+    <li>The coach only: tap Turn off coach chat in Settings, Companion. That deletes your coach chats and all coach memory;
+    your run summaries stay until you delete them as above.</li>
+  </ul>
+
   <h2>What happens next</h2>
   <ul>
     <li>Your data is removed from the live server at once.</li>
     <li>Encrypted nightly backups are deleted after 14 days, so it is gone from them within 14 days.</li>
     <li>Meta may keep WhatsApp delivery records for up to 30 days. Telegram keeps the chat under its own policy.</li>
     <li>Notes already in your chat stay there until you delete the chat yourself.</li>
-    <li>The AI writing service receives no names, numbers or chat details, and keeps nothing.</li>
+    <li>The AI provider (OpenRouter and Anthropic) runs with zero data retention, so it holds nothing to delete.</li>
   </ul>
   <p>If you never turned the companion on, we hold nothing about you. Your runs stay on your phone.</p>
 
