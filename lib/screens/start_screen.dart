@@ -24,7 +24,6 @@ import '../state/settings.dart';
 import '../state/target_pace.dart';
 import '../state/today_target.dart';
 import '../state/voice_coach_plan.dart';
-import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coach_choice_row.dart';
