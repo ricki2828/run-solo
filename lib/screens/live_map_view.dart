@@ -232,7 +232,8 @@ class LiveMapView extends StatefulWidget {
   /// room the map does not: the map is capped at [mapFraction] of the height.
   /// They are never shrunk under their own size (the 36 sp floor): when the
   /// route readouts leave too little room they are left off, since page 1
-  /// has them, and the map takes the room (24-Oct review #9).
+  /// has them, and the map takes the room (24-Oct review #9). Once left off
+  /// they stay off for the run, so they never flicker with the readouts.
   final EqualFigures? numbers;
 
   /// No map at all, the numbers take the room. Decided by the caller from
@@ -267,6 +268,13 @@ class LiveMapView extends StatefulWidget {
 
 class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
   bool _foreground = true;
+
+  /// The run numbers were left off for want of room. One way for the life of
+  /// the page: readouts come and go mid-run (a turn line, VS START, the
+  /// ghost), and the numbers must not pop in and out with them, nor the map
+  /// jump between 40 % and full height (review of #393, P2-1). At most one
+  /// change per run, at the first squeeze.
+  bool _numbersDropped = false;
 
   @override
   void initState() {
@@ -344,7 +352,11 @@ class _LiveMapViewState extends State<LiveMapView> with WidgetsBindingObserver {
               builder: (context, c) {
                 final mapH = c.maxHeight * LiveMapView.mapFraction;
                 final room = c.maxHeight - mapH - Space.x8;
-                final fits = numbers.heightFor(context, c.maxWidth) <= room;
+                if (!_numbersDropped &&
+                    numbers.heightFor(context, c.maxWidth) > room) {
+                  _numbersDropped = true;
+                }
+                final fits = !_numbersDropped;
                 // Same three children either way, so the map's platform
                 // view is kept, not rebuilt, when a readout comes or goes.
                 return Column(
