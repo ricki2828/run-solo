@@ -553,12 +553,12 @@ void main() {
       expect(lastConsent(), {
         'consent_version': kCompanionConsentVersion,
         'health_notes': false,
-        'training_sync': true,
+        'training_sync': false,
       });
       expect(kCompanionConsentVersion, 4);
       expect(ctl.memoryOn, isTrue);
       expect(ctl.healthNotesOn, isFalse);
-      expect(ctl.trainingSyncOn, isTrue);
+      expect(ctl.trainingSyncOn, isFalse);
       expect(
         find.byKey(const ValueKey('companion-memory-offer')),
         findsNothing,
@@ -567,7 +567,7 @@ void main() {
     });
 
     testWidgets(
-      'ticking health notes is sent and training sync stays at its default',
+      'ticking health notes is sent and training sync is sent as false',
       (tester) async {
         await open(tester);
         await tester.tap(
@@ -579,7 +579,7 @@ void main() {
         expect(lastConsent(), {
           'consent_version': 4,
           'health_notes': true,
-          'training_sync': true,
+          'training_sync': false,
         });
         // They survive an app restart.
         final again = CompanionController(
@@ -590,7 +590,7 @@ void main() {
         await tester.runAsync(again.load);
         expect(again.memoryOn, isTrue);
         expect(again.healthNotesOn, isTrue);
-        expect(again.trainingSyncOn, isTrue);
+        expect(again.trainingSyncOn, isFalse);
       },
     );
 
@@ -628,7 +628,7 @@ void main() {
         expect(lastConsent(), {
           'consent_version': 4,
           'health_notes': true,
-          'training_sync': true,
+          'training_sync': false,
         });
         await scrollTo(
           tester,
