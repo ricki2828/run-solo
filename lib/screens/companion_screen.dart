@@ -109,13 +109,13 @@ const List<String> kCompanionWeatherSheet = [
 const String kCompanionCoachTitle = 'Chat with the coach';
 
 const String kCompanionCoachBody =
-    'The coach answers your training questions in Telegram and writes short '
-    'spoken briefings before your runs. To reply, your run summaries, '
-    'check-in answers, run notes, first name and what you type go to Claude '
-    'models, via OpenRouter, with zero data retention. It can search the web, '
+    'The coach answers your training questions in Telegram and writes '
+    'briefings before your runs. To reply, your run summaries, check-in and '
+    'background answers, run notes, health flags, first name and what you '
+    'type go to Claude models, via OpenRouter, with zero data retention. It can search the web, '
     'with no personal details. Your GPS tracks and heart rate recordings '
     'stay on your phone. Chats are kept for 30 days. '
-    'Turn the coach off any time in Settings, Companion, and your chats and '
+    'Turn the coach off in Settings, Companion, and your chats and '
     'coach memory are deleted.';
 
 /// The coach memory sheet (consent version 4). Title and body together stay
@@ -125,8 +125,7 @@ const String kCompanionMemoryTitle = 'Let the coach remember you';
 const String kCompanionMemoryBody =
     'The coach can keep notes about your goals, your schedule, what you like, '
     'key runs, and a short summary of your chats, so it does not start from '
-    'zero each time. It keeps your training numbers too: estimated race '
-    'times, best efforts, weekly load and your plan. Your GPS tracks and '
+    'zero each time. Your GPS tracks and '
     'heart rate recordings stay on your phone. You can see and delete every '
     'note by sending /\u2060memory in Telegram. Health notes (niggles and '
     'injuries) are separate: tick below to let the coach keep them.';

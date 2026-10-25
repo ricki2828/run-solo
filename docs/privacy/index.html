@@ -324,14 +324,14 @@
 
   <h3>Coach chat</h3>
   <p>The coach chat is optional and off until you agree to it in the app (Settings, Companion, the companion agreement, version 3). It is for questions about your training, in your own Telegram chat.
-  The coach answers your training questions in Telegram and writes short spoken briefings before your runs.
-  To reply, your run summaries, check-in answers, run notes, first name and what you type go to Claude models, via OpenRouter, with zero data retention.
-  That includes each run's per-kilometre paces, rep times and trail details, and the run notes and check-in answers from the last 14 days. The model is a Claude model from Anthropic, but OpenRouter picks the host for each call: in our records the calls were served by Google Cloud (Vertex AI) or Amazon Web Services (Bedrock), not by Anthropic directly. We have not confirmed the regions.
+  The coach answers your training questions in Telegram and writes briefings before your runs.
+  To reply, your run summaries, check-in and background answers, run notes, health flags, first name and what you type go to Claude models, via OpenRouter, with zero data retention.
+  That includes your background answers (goal, usual days, niggle area and why you run, but not weight) and any active health flags such as a niggle or illness, plus each run's per-kilometre paces, rep times and trail details, and the run notes and check-in answers from the last 14 days. The model is a Claude model from Anthropic, but OpenRouter picks the host for each call: in our records the calls were served by Google Cloud (Vertex AI) or Amazon Web Services (Bedrock), not by Anthropic directly. We have not confirmed the regions.
   It can search the web, with no personal details.
   The question is a generic one, with no name, phone number, email, address, place or age (our server refuses a query that has one), and OpenRouter's web search plugin sends it to a search provider. Zero data retention is requested for the search too, but we have not confirmed that every search provider honours it, and no web search has run in our records yet.
   Your GPS tracks and heart rate recordings stay on your phone.
   Chats are kept for 30 days. They are then deleted, and are left out of the nightly backup.
-  Turn the coach off any time in Settings, Companion, and your chats and coach memory are deleted.
+  Turn the coach off in Settings, Companion, and your chats and coach memory are deleted.
   It happens at once. We record when you agreed. The providers are asked not to keep or train on what they receive.
   The coach gives running guidance, not medical advice. If you tell it about chest pain, fainting or a serious injury it stops giving training advice and tells you to get help.</p>
 
