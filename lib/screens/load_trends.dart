@@ -200,14 +200,38 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
     ),
   );
 
+  /// [w] with `current` off, so `LoadCompare.of` will read its usual.
+  static engine.WeekLoad _complete(engine.WeekLoad w) => engine.WeekLoad(
+    monday: w.monday,
+    load: w.load,
+    km: w.km,
+    minutes: w.minutes,
+    hardMinutes: w.hardMinutes,
+    runs: w.runs,
+    longestKm: w.longestKm,
+    hrRuns: w.hrRuns,
+    zoneShare: w.zoneShare,
+    noHrShare: w.noHrShare,
+    basisShare: w.basisShare,
+    paused: w.paused,
+    beforeStart: w.beforeStart,
+    partialStart: w.partialStart,
+    guardFlagged: w.guardFlagged,
+  );
+
   (List<(String, String)>, Widget, List<Widget>) _week(
     List<engine.WeekLoad> weeks,
     RunSoloTokens t,
   ) {
     final now = weeks.last;
-    final compare = engine.LoadCompare.of(weeks);
+    // The part week is never judged: the compare gets it as the week to set
+    // against its usual only so that the usual (the 4 weeks before it) is
+    // read from the engine's rules. Its band is not shown.
+    final compare = engine.LoadCompare.of([
+      ...weeks.sublist(0, weeks.length - 1),
+      _complete(now),
+    ]);
     final usualOk = compare.state == engine.LoadCompareState.ok;
-    final early = weeks.where((w) => w.runs > 0).length < 2;
     final n = weeks.length;
     final labels = loadWeekLabels([for (final w in weeks) w.monday]);
     return (
@@ -237,7 +261,7 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
         ],
       ),
       [
-        if (early || compare.state == engine.LoadCompareState.firstWeeks)
+        if (compare.state == engine.LoadCompareState.firstWeeks)
           _caption('Usual week after 3 weeks.', t),
       ],
     );

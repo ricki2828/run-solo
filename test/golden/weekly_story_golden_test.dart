@@ -20,6 +20,29 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 200));
 }
 
+/// The bigjump sample's week with the in-week warning not having been up:
+/// more than 1.3x the usual, but a step up, not amber.
+List<engine.WeekLoad> _unflagged() {
+  final w = engine.WeekLoad.sample(engine.LoadSample.bigjump);
+  final l = w.last;
+  return [
+    ...w.sublist(0, w.length - 1),
+    engine.WeekLoad(
+      monday: l.monday,
+      load: l.load,
+      km: l.km,
+      minutes: l.minutes,
+      hardMinutes: l.hardMinutes,
+      runs: l.runs,
+      longestKm: l.longestKm,
+      hrRuns: l.hrRuns,
+      zoneShare: l.zoneShare,
+      noHrShare: l.noHrShare,
+      basisShare: l.basisShare,
+    ),
+  ];
+}
+
 void main() {
   Future<void> shot(
     WidgetTester tester,
@@ -59,6 +82,15 @@ void main() {
           loadWeeks: engine.WeekLoad.sample(engine.LoadSample.usual),
         ),
         'weekly_story_km_360x$h',
+        h,
+      );
+    });
+
+    testWidgets('weekly story load stepup_unflagged 360x$h', (tester) async {
+      await shot(
+        tester,
+        WeeklyLoadPage(weeks: _unflagged()),
+        'weekly_story_load_stepup_unflagged_360x$h',
         h,
       );
     });
@@ -110,6 +142,31 @@ void main() {
     expect(find.byKey(const ValueKey('weekly-load')), findsNothing);
     expect(find.byKey(const ValueKey('weekly-story')), findsNothing);
     expect(find.byKey(const ValueKey('open')), findsOneWidget);
+  });
+
+  testWidgets('over 1.3x without the warning is a step up, with it a jump', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: WeeklyLoadPage(weeks: _unflagged()),
+    );
+    await _settle(tester);
+    expect(
+      find.textContaining('49% more than your usual week'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.warning_amber), findsNothing);
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: WeeklyLoadPage(
+        weeks: engine.WeekLoad.sample(engine.LoadSample.bigjump),
+      ),
+    );
+    await _settle(tester);
+    expect(find.byIcon(Icons.warning_amber), findsOneWidget);
   });
 
   testWidgets('a week with no load to tell keeps Next as it was', (

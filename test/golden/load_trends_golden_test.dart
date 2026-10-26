@@ -135,13 +135,18 @@ void main() {
 
   final cases = <String, (LoadTrendsData?, String?)>{
     'trends_load_week': (_data(), null),
+    // Two full weeks with runs and the part week: still no usual week.
     'trends_load_week_early': (
       _data(
         weeks: [
           for (var i = 0; i < 8; i++)
-            i < 7
+            i < 5
                 ? _week(DateTime(2026, 9, 7 + 7 * i), 0, before: true)
-                : _week(DateTime(2026, 9, 7 + 7 * i), 150, current: true),
+                : _week(
+                    DateTime(2026, 9, 7 + 7 * i),
+                    i == 7 ? 150 : 300.0 + 20 * i,
+                    current: i == 7,
+                  ),
         ],
       ),
       null,
@@ -196,6 +201,35 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('load-bars')), findsNothing);
   });
+
+  testWidgets(
+    'the part week is shown but never judged; under 3 weeks says so',
+    (tester) async {
+      await pumpApp(
+        tester,
+        fakeServices(),
+        home: TrendScreen(
+          loadData: _data(
+            weeks: [
+              for (var i = 0; i < 8; i++)
+                i < 5
+                    ? _week(DateTime(2026, 9, 7 + 7 * i), 0, before: true)
+                    : _week(
+                        DateTime(2026, 9, 7 + 7 * i),
+                        i == 7 ? 150 : 300.0 + 20 * i,
+                        current: i == 7,
+                      ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Usual week after 3 weeks.'), findsOneWidget);
+      expect(find.text('SO FAR'), findsOneWidget);
+      expect(find.byKey(const ValueKey('load-usual-line')), findsNothing);
+    },
+  );
 
   testWidgets('no runs: the empty state, no tiles', (tester) async {
     await pumpApp(tester, fakeServices(), home: const TrendScreen());
