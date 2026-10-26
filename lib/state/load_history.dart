@@ -101,7 +101,8 @@ abstract final class LoadWire {
   }
 
   /// The guard's verdict as of this run, in the server's words: `steady`,
-  /// `high` or `very_high` (the guard's high flag). Null while there is not
+  /// `high` or `very_high` (the guard's high flag), the last two only for the
+  /// load trigger. Null while there is not
   /// enough history to judge. [history] may or may not hold [run].
   static String? stateAt(
     List<RunSummary> history,
@@ -127,7 +128,14 @@ abstract final class LoadWire {
     return switch (c.state) {
       engine.LoadState.notEnoughData => null,
       engine.LoadState.ok => 'steady',
-      engine.LoadState.flagged => c.flag!.high ? 'very_high' : 'high',
+      // A distance-only flag is not a load flag: the coach says "load is
+      // high" only when load is (the in-app warning still shows distance).
+      engine.LoadState.flagged =>
+        c.flag!.trigger != engine.LoadTrigger.load
+            ? 'steady'
+            : c.flag!.high
+            ? 'very_high'
+            : 'high',
     };
   }
 }

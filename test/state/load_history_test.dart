@@ -88,6 +88,39 @@ void main() {
       );
     });
 
+    test('a distance-only flag is steady, not high', () {
+      // Long slow runs: lots of km, little load (weight 1 at a slow pace).
+      RunSummary slow(String id, DateTime t, {double km = 6.5}) => RunSummary(
+        id: id,
+        mode: RecordMode.free,
+        start: t.toUtc(),
+        durationMs: 40 * 60000,
+        distanceM: km * 1000,
+        laps: 0,
+        utcOffsetMin: t.timeZoneOffset.inMinutes,
+        row: const IndexRow(
+          lapCount: 0,
+          movingMs: 40 * 60000,
+          avgHr: 100,
+          hrCoverage: 1,
+        ),
+      );
+      final h = [
+        for (var w = 0; w < 3; w++)
+          for (var d = 0; d < 3; d++)
+            slow('h$w$d', DateTime(2026, 10, 14 - (8 + 7 * w + 2 * d), 7)),
+        for (var i = 0; i < 3; i++)
+          slow('t$i', DateTime(2026, 10, 12 + i, 7), km: 10),
+      ];
+      final c = engine.LoadGuard.check(
+        LoadInputs.runs(h),
+        now: h.last.start.toLocal(),
+        maxHr: 190,
+      );
+      expect(c.flag?.trigger, engine.LoadTrigger.distance);
+      expect(LoadWire.stateAt(h, h.last, maxHr: 190, vdot: null), 'steady');
+    });
+
     test('runs after this one do not count', () {
       final h = history(extra: 3);
       final later = [
