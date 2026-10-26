@@ -255,6 +255,14 @@ void main() {
         }
       }
     });
+
+    test('a list ending in the current part week is never banded', () {
+      final runs = [for (var k = 2; k <= 5; k++) ...week(k, 4), ...week(0, 4)];
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
+      expect(ws.last.current, isTrue);
+      expect(LoadCompare.of(ws).state, LoadCompareState.firstWeeks);
+      expect(LoadCompare.of(ws).band, isNull);
+    });
   });
 
   group('local-date week edges', () {

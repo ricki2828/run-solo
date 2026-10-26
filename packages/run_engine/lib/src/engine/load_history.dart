@@ -309,6 +309,9 @@ class LoadCompare {
       return const LoadCompare(state: LoadCompareState.firstWeeks);
     }
     final week = weeks.last;
+    if (week.current) {
+      return const LoadCompare(state: LoadCompareState.firstWeeks);
+    }
     final prior = weeks.sublist(
       math.max(0, weeks.length - 5),
       weeks.length - 1,
