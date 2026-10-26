@@ -126,7 +126,7 @@ def over_phrase(ratio: float) -> str:
 def _load_calc(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime,
                paused: Sequence[date] = ()) -> tuple[dict[str, Any], float, float] | None:
     """This Mon-Sun week's load against the runner's usual week (the app's rules), or None when the recap should stay on
-    km: fewer than 80% of the runs in this week and the 4 before carry the app's own load; the week has no runs; the
+    km: any run in this week or the 4 before lacks the app's own load; the week has no runs; the
     runner is returning (the 2 weeks before were empty, unpaused and after the first run); fewer than 3 usual weeks;
     or a usual week under 60. The usual week is the mean of the up-to-4 weeks before that HAD runs, leaving out
     paused weeks, weeks before the first run and the first run's own part week. `paused` are the Mondays of weeks the
@@ -268,7 +268,7 @@ LOAD_SITUATION = {"usual": "recap_load_usual", "stepUp": "recap_load_step", "big
 
 
 def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: Mapping[str, datetime],
-          seed: str, paused_weeks: Sequence[date] = ()) -> Recap | None:
+          seed: str, paused_weeks: Sequence[date] | None = ()) -> Recap | None:
     """`runs`: the whole record, newest first. The week is the local Mon-Sun week containing `now`. `paused_weeks`:
     Mondays of the weeks the coach held back (care weeks); the load comparison leaves them out."""
     if not runs:
@@ -298,7 +298,7 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
         diff = km - prev_km
         slots["delta_km"] = f"{abs(diff):.1f}"
         situation = "recap_flat" if abs(diff) < FLAT_KM else "recap_up" if diff > 0 else "recap_down"
-        calc = _load_calc(runs, zone_id, monday, paused_weeks)
+        calc = _load_calc(runs, zone_id, monday, paused_weeks) if paused_weeks is not None else None   # None: the care-week lookup failed, stay on km
         if calc:   # speak in load, against the runner's own usual week
             lf, ratio, usual_raw = calc
             situation = LOAD_SITUATION[lf["band"]]

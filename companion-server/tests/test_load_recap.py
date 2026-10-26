@@ -553,3 +553,34 @@ def test_load_copy_is_descriptive_not_alarmist():
     for t in strings:
         assert not ALARM.search(t), t
         assert "usual" in t
+
+
+def test_build_with_unknown_pauses_stays_on_km():
+    runs = week_of(450, flag=True)
+    assert recap.build(runs, SUN, SG, {}, "w", paused_weeks=[]).rendered.situation == "recap_load_jump"
+    rc = recap.build(runs, SUN, SG, {}, "w", paused_weeks=None)
+    assert rc.rendered.situation in ("recap_up", "recap_down", "recap_flat") and rc.media.facts is None
+
+
+def test_a_failing_care_week_lookup_gives_the_km_recap_not_a_missing_recap(tmp_path, fakes, monkeypatch):
+    from test_channels_media import PNG, media_client
+    import companion.service as svc_mod
+    monkeypatch.setattr(svc_mod, "ci_care_weeks", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with media_client(tmp_path, fakes, card_fns={"weekly_recap": lambda f, m=None: PNG}) as c:
+        enrol(c)
+        con = sqlite3.connect(c.svc.s.db_path)
+        uid = con.execute("SELECT id FROM users").fetchone()[0]
+        con.execute("UPDATE users SET checkin_consent=?, zone_id='UTC'", (c.svc.s.checkin_consent_required,))
+        con.commit()
+        for wk in range(6):
+            for d in (0, 2):
+                start = datetime(2026, 10, 12 + d, 6, 0, tzinfo=U) - timedelta(days=7 * wk)
+                c.svc.ingest_run(uid, RunIn.model_validate(run_payload(
+                    f"f{wk}{d}", start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0, duration_s=1800, distance_m=5000,
+                    load=150.0 if wk else 225.0, load_basis="hr", load_state="high" if wk == 0 else None)), start + timedelta(hours=1))
+        con.execute("UPDATE outbox SET state='done'")
+        con.commit()
+        cid = c.svc._build_recap_card(uid, "2026-W42", datetime(2026, 10, 18, 19, 30, tzinfo=U))
+        assert cid
+        body = con.execute("SELECT body FROM cards WHERE card_id=?", (cid,)).fetchone()[0]
+        assert "load" not in body.lower()

@@ -1834,7 +1834,7 @@ class Service(CheckinMixin, MeasureMixin):
                     if self._ci_consented(c, uid) else []
             except Exception:   # a care-week lookup must never block the recap: no pauses, the usual week is just a little less exact
                 log.exception("care weeks failed for the load recap")
-                paused = []
+                paused = None   # without them the usual week could be wrong: this Sunday stays on the km recap
         rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref, paused_weeks=paused)
         if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
             return None

@@ -479,7 +479,7 @@ SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
         ("Usual week, for reference", "The last week is above your usual week. {session} tomorrow would fit, or rest."),
         ("Light day", "Load is above your usual week, so tomorrow could be {session} at a chat pace, or rest."),
         ("An easy day fits", "This week carries more load than your usual. {session} tomorrow, {start}, would fit."),
-        ("Easy tomorrow", "Your last week is heavier than your usual week. Tomorrow: {session} or a day off."),
+        ("Easy tomorrow", "Your most recent days are heavier than your usual week. Tomorrow: {session} or a day off."),
         ("Your call", "Load is above your usual week. {session} tomorrow is an option, so is rest."),
         ("Rest is an option", "Recent load is above your usual week. {session} tomorrow, or a rest day if you prefer."),
         ("Reference point", "Compared with your usual week, the last week is heavy. Tomorrow: {session}, {start}, or rest."),
