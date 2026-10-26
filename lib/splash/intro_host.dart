@@ -1,4 +1,4 @@
-/// Puts the Lap Draw intro over the app for one cold start (plan §4). The
+/// Puts the Track Bend intro over the app for one cold start (plan §4). The
 /// app underneath builds and starts up at the same time; when the intro
 /// fades out, Home is already there.
 library;
@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import '../app/services.dart';
 import '../app/version.dart';
 import 'intro_gate.dart';
-import 'lap_draw_intro.dart';
+import 'track_bend_intro.dart';
 
 class IntroHost extends StatefulWidget {
   const IntroHost({super.key, required this.kind, required this.child});
@@ -51,7 +51,7 @@ class _IntroHostState extends State<IntroHost> {
       fit: StackFit.expand,
       children: [
         widget.child,
-        LapDrawIntro(
+        TrackBendIntro(
           kind: widget.kind,
           reducedMotion: reduced,
           onDone: () {

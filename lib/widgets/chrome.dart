@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../brand/lap_line_paths.dart';
+import '../brand/track_bend.dart';
+import '../brand/track_bend_paths.dart';
 import '../theme/lanes.dart' show readableOn;
 import '../theme/theme.dart';
 
@@ -87,129 +88,29 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// The Lap Line R (brand mark, `lib/brand/lap_line_paths.dart`) in Bone.
-class LapLineMark extends StatelessWidget {
-  const LapLineMark({super.key, this.height = 48});
+/// The Track Bend mark (brand, `lib/brand/track_bend_paths.dart`): five zone
+/// lanes of a 400 m bend, open to the right.
+class TrackBendMark extends StatelessWidget {
+  const TrackBendMark({super.key, this.height = 48});
   final double height;
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final s = height / LapLineGeometry.cap;
-    return ExcludeSemantics(
-      child: CustomPaint(
-        size: Size(
-          (LapLineGeometry.rRight - LapLineGeometry.rLeft) * s,
-          height,
-        ),
-        painter: _LapLineMarkPainter(t.inkPrimary),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      _TrackBendBox(height: height, progress: null);
 }
 
-class _LapLineMarkPainter extends CustomPainter {
-  _LapLineMarkPainter(this.color);
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.height / LapLineGeometry.cap;
-    canvas.translate(-LapLineGeometry.rLeft * s, 0);
-    canvas.scale(s);
-    canvas.drawPath(lapLineR(), Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_LapLineMarkPainter old) => old.color != color;
-}
-
-/// The whole Lap Line mark: the R cut at the lap line, with the Arc line
-/// running out of the leg (final frame of the Lap Draw intro).
-class LapLineFullMark extends StatelessWidget {
-  const LapLineFullMark({super.key, this.height = 48});
+/// The Track Bend mark drawing itself once: the lanes run round the bend,
+/// outer Z1 first, the inner lanes chasing (the intro's draw, scaled for a
+/// screen). Reduced motion shows the finished [TrackBendMark] at once.
+class TrackBendDrawMark extends StatefulWidget {
+  const TrackBendDrawMark({super.key, this.height = 96});
   final double height;
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final s = height / LapLineGeometry.cap;
-    return ExcludeSemantics(
-      child: CustomPaint(
-        size: Size(
-          (LapLineGeometry.markTailEndX - LapLineGeometry.rLeft) * s,
-          height,
-        ),
-        painter: _LapLineFullPainter(t.inkPrimary, t.accentArc),
-      ),
-    );
-  }
+  State<TrackBendDrawMark> createState() => _TrackBendDrawMarkState();
 }
 
-class _LapLineFullPainter extends CustomPainter {
-  _LapLineFullPainter(this.bone, this.arc, {this.progress = 1});
-  final Color bone;
-  final Color arc;
-
-  /// 0..1: first 45 % the R fades up, the rest the Arc line runs out.
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.height / LapLineGeometry.cap;
-    canvas.translate(-LapLineGeometry.rLeft * s, 0);
-    canvas.scale(s);
-    final cut = Path()
-      ..addRect(
-        Rect.fromLTRB(
-          0,
-          LapLineGeometry.cutY - LapLineGeometry.cutThickness / 2,
-          LapLineGeometry.markTailEndX + 10,
-          LapLineGeometry.cutY + LapLineGeometry.cutThickness / 2,
-        ),
-      );
-    final rIn = Curves.easeOut.transform((progress / 0.45).clamp(0.0, 1.0));
-    final lineIn = Curves.easeInOut.transform(
-      ((progress - 0.35) / 0.65).clamp(0.0, 1.0),
-    );
-    canvas.drawPath(
-      Path.combine(PathOperation.difference, lapLineR(), cut),
-      Paint()..color = bone.withValues(alpha: bone.a * rIn),
-    );
-    if (lineIn <= 0) return;
-    final t = LapLineGeometry.lineThickness;
-    final r = Radius.circular(t / 2);
-    canvas.drawRRect(
-      RRect.fromLTRBAndCorners(
-        LapLineGeometry.legEntryX,
-        LapLineGeometry.cutY - t / 2,
-        LapLineGeometry.legEntryX +
-            (LapLineGeometry.markTailEndX - LapLineGeometry.legEntryX) * lineIn,
-        LapLineGeometry.cutY + t / 2,
-        topRight: r,
-        bottomRight: r,
-      ),
-      Paint()..color = arc,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_LapLineFullPainter old) =>
-      old.bone != bone || old.arc != arc || old.progress != progress;
-}
-
-/// The Lap Line mark drawing itself once: the R settles in, then the Arc
-/// line runs out of the leg (the intro's draw, scaled for a screen). Reduced
-/// motion shows the finished [LapLineFullMark] at once.
-class LapLineDrawMark extends StatefulWidget {
-  const LapLineDrawMark({super.key, this.height = 96});
-  final double height;
-
-  @override
-  State<LapLineDrawMark> createState() => _LapLineDrawMarkState();
-}
-
-class _LapLineDrawMarkState extends State<LapLineDrawMark>
+class _TrackBendDrawMarkState extends State<TrackBendDrawMark>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
@@ -236,26 +137,54 @@ class _LapLineDrawMarkState extends State<LapLineDrawMark>
   }
 
   @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _c,
+    builder: (context, _) => _TrackBendBox(
+      height: widget.height,
+      progress: [
+        for (var i = 0; i < TrackBendGeometry.laneCount; i++)
+          Curves.easeOutCubic.transform(
+            ((_c.value * 900 - i * 90) / 540).clamp(0.0, 1.0),
+          ),
+      ],
+    ),
+  );
+}
+
+class _TrackBendBox extends StatelessWidget {
+  const _TrackBendBox({required this.height, required this.progress});
+  final double height;
+  final List<double>? progress;
+
+  @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).extension<RunSoloTokens>()!;
-    final s = widget.height / LapLineGeometry.cap;
+    final colors = trackBendColors(Theme.of(context).brightness);
     return ExcludeSemantics(
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) => CustomPaint(
-          size: Size(
-            (LapLineGeometry.markTailEndX - LapLineGeometry.rLeft) * s,
-            widget.height,
-          ),
-          painter: _LapLineFullPainter(
-            t.inkPrimary,
-            t.accentArc,
-            progress: _c.value,
-          ),
+      child: CustomPaint(
+        size: Size(
+          TrackBendGeometry.markWidth / TrackBendGeometry.markHeight * height,
+          height,
         ),
+        painter: _TrackBendPainter(colors, progress),
       ),
     );
   }
+}
+
+class _TrackBendPainter extends CustomPainter {
+  _TrackBendPainter(this.colors, this.progress);
+  final List<Color> colors;
+  final List<double>? progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.height / TrackBendGeometry.markHeight);
+    paintTrackBendLanes(canvas, colors: colors, progress: progress);
+  }
+
+  @override
+  bool shouldRepaint(_TrackBendPainter old) =>
+      old.colors != colors || old.progress != progress;
 }
 
 /// Full-bleed 2 px Bone rule with a 24 px gap (design brief §2.2).

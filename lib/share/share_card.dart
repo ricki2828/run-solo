@@ -23,7 +23,7 @@ import '../theme/lanes.dart';
 import '../theme/pack_look.dart';
 import '../theme/theme.dart';
 import '../widgets/home_b/pack_hero.dart' show PackHistogram;
-import '../widgets/chrome.dart' show LapLineFullMark;
+import '../widgets/chrome.dart' show TrackBendMark;
 import '../widgets/recent_activity.dart' show runTypeColor;
 
 /// The card's layout size (4:5). The image is captured at 3x: 1080 x 1350.
@@ -306,7 +306,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.center,
-    children: [const LapLineFullMark(height: 30)],
+    children: [const TrackBendMark(height: 30)],
   );
 }
 

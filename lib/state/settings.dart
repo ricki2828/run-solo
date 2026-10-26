@@ -344,7 +344,7 @@ class AppSettings {
   final bool onboardingDone;
   final SavedStrap? strap;
 
-  /// App version that last played the full Lap Draw intro (plan §4, D8):
+  /// App version that last played the full Track Bend intro (plan §4, D8):
   /// null or older than the running version = full intro, else 0.6 s.
   final String? introSeenVersion;
 
