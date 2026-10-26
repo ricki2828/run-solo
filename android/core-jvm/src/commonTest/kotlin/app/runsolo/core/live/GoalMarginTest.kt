@@ -29,7 +29,11 @@ class GoalMarginTest {
         assertEquals("10 seconds behind 24:30, holding", GoalMargin.phrase(-10_000, 1_000, t))
         assertEquals("10 seconds behind 24:30, slipping", GoalMargin.phrase(-10_000, -8_000, t))
         assertEquals("10 seconds behind 24:30, closing", GoalMargin.phrase(-10_000, 8_000, t))
-        assertEquals("On 24:30 pace", GoalMargin.phrase(2_999, -8_000, t))
+        assertEquals("On 24:30 pace", GoalMargin.phrase(2_999, 1_000, t))
+        assertEquals("On 24:30 pace, slipping", GoalMargin.phrase(2_999, -8_000, t))
+        assertEquals("On 24:30 pace, gaining", GoalMargin.phrase(2_999, 8_000, t))
+        assertEquals("level with 24:30, slipping", GoalMargin.promptPhrase(1_000, -8_000, t))
+        assertEquals("level with 24:30", GoalMargin.promptPhrase(1_000, 0, t))
         assertEquals("20 seconds ahead of 24:30", GoalMargin.phrase(20_000, null, t))
     }
 }

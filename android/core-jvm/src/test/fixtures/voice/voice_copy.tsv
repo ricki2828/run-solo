@@ -107,7 +107,7 @@ goal.status.behind-holding	5	10 seconds behind 24:30, holding
 goal.status.behind-slipping	5	10 seconds behind 24:30, slipping
 goal.status.behind-closing	5	10 seconds behind 24:30, closing
 goal.status.level	3	On 24:30 pace
-goal.status.level-slipping	5	On 24:30 pace, slipping
+goal.status.level-slipping	4	On 24:30 pace, slipping
 goal.status.first-km	5	20 seconds ahead of 24:30
 goal.status.first-predicted	7	20 seconds ahead of your predicted 24:30
 goal.status.first-predicted-level	5	On your predicted 24:30 pace
