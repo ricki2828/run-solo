@@ -1095,7 +1095,6 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: ZoneLadder(
                     zone: s.hr == null ? 0 : s.zone,
                     position: s.zonePosition,
-                    hr: s.hr,
                   ),
                 ),
                 CompareCardLayer(

@@ -7,33 +7,25 @@ import '../theme/zones.dart';
 /// rungs, Z1 at the bottom to Z5 at the top, each labelled 1-5 and filled
 /// from the chart ramp ([HrZones.distributionLight]). Inactive rungs sit at
 /// 30 % opacity; the lit one is full with a Bone outline and a full-width
-/// tick across it, with the bpm beside the tick; the tick's height shows where
+/// outlined tick across it; the tick's height shows where
 /// HR sits within the zone ([position], 0 = bottom, 1 = top). [zone] is the engine tracker's zone (hysteresis applied), so
 /// the ladder never flickers; 0 (no HR) hides it. Colour is never the only
 /// cue: every rung carries its number.
 class ZoneLadder extends StatelessWidget {
-  const ZoneLadder({
-    super.key,
-    required this.zone,
-    this.position = 0.5,
-    this.hr,
-  });
+  const ZoneLadder({super.key, required this.zone, this.position = 0.5});
   final int zone;
-
-  /// The bpm printed beside the tick; null prints nothing.
-  final int? hr;
 
   /// 0 = bottom of the lit rung, 1 = top (`HrZones.positionInZone`).
   final double position;
 
-  /// The ladder's width; the screen reserves [reserve] for it and its bpm
-  /// label slot ([pointer], left of the rungs).
+  /// The ladder's width; the screen reserves [reserve] for it and the tick's
+  /// lead-in ([pointer], left of the rungs).
   static const double width = 18;
-  static const double pointer = 30;
+  static const double pointer = 6;
 
-  /// The tick's thickness and the bpm label's size (>= 14 sp review floor).
+  /// The tick's thickness and its contrasting outline (each side).
   static const double tickThickness = 3;
-  static const double labelSize = 14;
+  static const double tickOutline = 1.5;
 
   /// A clear 8 dp between the ladder's pointer and the numbers: the big
   /// figures scale to fit the gutter, never under the ladder (21-Oct).
@@ -61,13 +53,7 @@ class ZoneLadder extends StatelessWidget {
           children: [
             for (var z = HrZones.count; z >= 1; z--)
               Expanded(
-                child: _Rung(
-                  z: z,
-                  lit: z == zone,
-                  position: position,
-                  hr: hr,
-                  t: t,
-                ),
+                child: _Rung(z: z, lit: z == zone, position: position, t: t),
               ),
           ],
         ),
@@ -81,13 +67,11 @@ class _Rung extends StatelessWidget {
     required this.z,
     required this.lit,
     required this.position,
-    required this.hr,
     required this.t,
   });
   final int z;
   final bool lit;
   final double position;
-  final int? hr;
   final RunSoloTokens t;
 
   @override
@@ -155,9 +139,8 @@ class _Rung extends StatelessWidget {
                       key: const ValueKey('ladder-pointer'),
                       painter: _TickPainter(
                         tick: ink,
-                        label: t.inkPrimary,
+                        outline: ink == t.inkPrimary ? t.bgBase : t.inkPrimary,
                         position: p,
-                        hr: hr,
                       ),
                     ),
                   ),
@@ -169,69 +152,37 @@ class _Rung extends StatelessWidget {
   }
 }
 
-/// A full-width tick across the lit rung with the bpm to its left, in the
-/// label slot; [position] (0 bottom, 1 top) sets its height, kept clear of the
-/// rung's ends. [yFor] is the one mapping the tests also use.
+/// A full-width tick across the lit rung, outlined in the opposite ink so it
+/// reads over the rung numeral; [position] (0 bottom, 1 top) sets its height,
+/// kept clear of the rung's ends.
 class _TickPainter extends CustomPainter {
   _TickPainter({
     required this.tick,
-    required this.label,
+    required this.outline,
     required this.position,
-    required this.hr,
   });
   final Color tick;
-  final Color label;
+  final Color outline;
   final double position;
-  final int? hr;
 
   static const double _margin = 5;
 
-  static double yFor(double position, double height) =>
-      _margin + (1 - position) * (height - 2 * _margin);
-
   @override
   void paint(Canvas canvas, Size size) {
-    final cy = yFor(position, size.height);
+    final cy = _margin + (1 - position) * (size.height - 2 * _margin);
     const t = ZoneLadder.tickThickness;
-    // The tick spans the rung and runs on through the label slot's inner edge.
+    const o = ZoneLadder.tickOutline;
     canvas.drawRect(
-      Rect.fromLTWH(ZoneLadder.pointer - 6, cy - t / 2, 6, t),
-      Paint()..color = label,
+      Rect.fromLTWH(0, cy - t / 2 - o, size.width, t + 2 * o),
+      Paint()..color = outline,
     );
     canvas.drawRect(
-      Rect.fromLTWH(
-        ZoneLadder.pointer,
-        cy - t / 2,
-        size.width - ZoneLadder.pointer,
-        t,
-      ),
+      Rect.fromLTWH(0, cy - t / 2, size.width, t),
       Paint()..color = tick,
-    );
-    final bpm = hr;
-    if (bpm == null) return;
-    final tp = TextPainter(
-      text: TextSpan(
-        text: '$bpm',
-        style: RunSoloType.label13.copyWith(
-          fontSize: ZoneLadder.labelSize,
-          fontWeight: FontWeight.w900,
-          color: label,
-          height: 1,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(maxWidth: ZoneLadder.pointer - 8);
-    tp.paint(
-      canvas,
-      Offset(ZoneLadder.pointer - 8 - tp.width, cy - tp.height / 2),
     );
   }
 
   @override
   bool shouldRepaint(_TickPainter old) =>
-      old.tick != tick ||
-      old.label != label ||
-      old.position != position ||
-      old.hr != hr;
+      old.tick != tick || old.outline != outline || old.position != position;
 }

@@ -4,7 +4,7 @@ import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/theme/zones.dart';
 import 'package:run_solo/widgets/zone_ladder.dart';
 
-Widget host(int zone, {double position = 0.5, int? hr}) => MaterialApp(
+Widget host(int zone, {double position = 0.5}) => MaterialApp(
   theme: runSoloTheme(brightness: Brightness.dark),
   home: Scaffold(
     body: Align(
@@ -12,7 +12,7 @@ Widget host(int zone, {double position = 0.5, int? hr}) => MaterialApp(
       child: SizedBox(
         width: ZoneLadder.width + ZoneLadder.pointer,
         height: 500,
-        child: ZoneLadder(zone: zone, position: position, hr: hr),
+        child: ZoneLadder(zone: zone, position: position),
       ),
     ),
   ),
@@ -93,7 +93,7 @@ void main() {
     // The tick is drawn by a private painter over the lit rung's own height;
     // read its resolved y through the same mapping it paints with.
     Future<double> tickY(double position) async {
-      await tester.pumpWidget(host(3, position: position, hr: 150));
+      await tester.pumpWidget(host(3, position: position));
       await tester.pumpAndSettle();
       final paint = tester.widget<CustomPaint>(
         find.byKey(const ValueKey('ladder-pointer')),
@@ -116,14 +116,14 @@ void main() {
     expect(mid, closeTo(h / 2, 1e-6), reason: 'mid zone');
   });
 
-  testWidgets('the tick spans the whole rung and the bpm is >= 14 sp', (
+  testWidgets('the tick spans the whole rung and the ladder keeps 32 dp', (
     tester,
   ) async {
-    await tester.pumpWidget(host(3, position: 0.8, hr: 152));
+    await tester.pumpWidget(host(3, position: 0.8));
     await tester.pumpAndSettle();
     final tick = tester.getSize(find.byKey(const ValueKey('ladder-pointer')));
     final rung = tester.getSize(find.byKey(const ValueKey('ladder-rung-3')));
     expect(tick.width, ZoneLadder.pointer + rung.width);
-    expect(ZoneLadder.labelSize, greaterThanOrEqualTo(14));
+    expect(ZoneLadder.reserve, 32);
   });
 }
