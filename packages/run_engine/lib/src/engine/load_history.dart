@@ -73,9 +73,10 @@ class WeekLoad {
   /// week that says nothing about a usual one.
   final bool partialStart;
 
-  /// The in-week warning (`LoadGuard.check`, the load trigger) was up on at
-  /// least one day of the week. A big jump is only called when it was, so the
-  /// weekly summary and the warning cannot contradict each other.
+  /// At least one run in the week was flagged high or very high by the guard's
+  /// load trigger when it was made (the run's `load_state`, which the server
+  /// reads too). A big jump is only called when so, so the weekly summary and
+  /// the warning cannot contradict each other.
   final bool guardFlagged;
 
   /// The week that holds `now`: still being run, never banded.
@@ -446,7 +447,7 @@ abstract final class LoadHistory {
           beforeStart: firstMonday == null || monday.isBefore(firstMonday),
           partialStart:
               first != null && monday == firstMonday && first != firstMonday,
-          guardFlagged: _guardFlagged(runs, monday, now, maxHr, vdot),
+          guardFlagged: _guardFlagged(runs, monday, maxHr, vdot),
           current: i == 0,
         ),
       );
@@ -519,22 +520,27 @@ abstract final class LoadHistory {
     );
   }
 
-  /// The load warning was up (the load trigger, high or very high) on some
-  /// day of the week starting [monday], judged as the app judges it each
-  /// day. Days after [now] are not judged.
+  /// A run in the week starting [monday] was flagged `high` or `very_high`:
+  /// the guard's load trigger was up when that run was made, judged as the
+  /// app judges the run it uploads (the runs up to and including it, as of
+  /// its own start). The server's recap reads the same per-run `load_state`,
+  /// so the two agree. A day with no run is not judged, and a flag on the
+  /// Sunday before is not carried into Monday.
   static bool _guardFlagged(
     List<LoadRun> runs,
     DateTime monday,
-    DateTime now,
     double? maxHr,
     double? vdot,
   ) {
-    for (var d = 0; d < 7; d++) {
-      final day = addDays(monday, d);
-      if (day.isAfter(now)) break;
+    final end = addDays(monday, 7);
+    for (final r in runs) {
+      if (r.start.isBefore(monday) || !r.start.isBefore(end)) continue;
       final c = LoadGuard.check(
-        runs,
-        now: DateTime(day.year, day.month, day.day, 23, 59),
+        [
+          for (final q in runs)
+            if (!q.start.isAfter(r.start)) q,
+        ],
+        now: r.start,
         maxHr: maxHr,
         vdot: vdot,
       );

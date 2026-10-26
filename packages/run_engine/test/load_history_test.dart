@@ -9,9 +9,11 @@ final thisMonday = DateTime(2026, 10, 26);
 LoadRun run(DateTime start, {double min = 40, double km = 6.5}) =>
     LoadRun(start: start, movingMin: min, distanceM: km * 1000);
 
-/// [n] runs of load 100 each on the Monday of [weeksAgo] weeks before this one.
+/// [n] runs of load 100 each, one a day from the Monday of [weeksAgo] weeks
+/// before this one (a second lap of the week at 8:00 past 7 runs).
 List<LoadRun> week(int weeksAgo, int n) => [
-  for (var i = 0; i < n; i++) run(DateTime(2026, 10, 26 - 7 * weeksAgo, 7 + i)),
+  for (var i = 0; i < n; i++)
+    run(DateTime(2026, 10, 26 - 7 * weeksAgo + i % 7, 7 + i ~/ 7)),
 ];
 
 /// A history where each of the 4 weeks before [last] has load 100 x [usualN],
@@ -55,7 +57,7 @@ void main() {
       expect(band(4), LoadBand.usual);
       expect(band(2), LoadBand.lighter);
       expect(band(5), LoadBand.stepUp);
-      expect(band(6), LoadBand.bigJump);
+      expect(band(8), LoadBand.bigJump);
     });
     test('1.9 reads as double, not 190% more', () {
       final c = compareFor(8, usualN: 4); // ratio 2.0
@@ -197,15 +199,22 @@ void main() {
   group('the summary and the in-week warning agree', () {
     // The guard flags a week on the load trigger; the summary says big jump
     // only then. Run both over the same fixtures.
-    bool guardUp(List<LoadRun> runs, DateTime monday) {
-      for (var d = 0; d < 7; d++) {
-        final day = DateTime(monday.year, monday.month, monday.day + d, 23, 59);
-        if (LoadGuard.check(runs, now: day).flag?.trigger == LoadTrigger.load) {
-          return true;
-        }
-      }
-      return false;
-    }
+    // The per-run load_state the app uploads: the guard's load trigger as
+    // of that run, with the runs up to it.
+    bool runHigh(List<LoadRun> runs, LoadRun r) =>
+        LoadGuard.check([
+          for (final q in runs)
+            if (!q.start.isAfter(r.start)) q,
+        ], now: r.start).flag?.trigger ==
+        LoadTrigger.load;
+
+    bool guardUp(List<LoadRun> runs, DateTime monday) => runs
+        .where(
+          (r) =>
+              !r.start.isBefore(monday) &&
+              r.start.isBefore(monday.add(const Duration(days: 7))),
+        )
+        .any((r) => runHigh(runs, r));
 
     LoadCompare judge(List<LoadRun> runs) {
       final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
@@ -216,13 +225,17 @@ void main() {
       final runs = [...week(5, 4), ...week(4, 4), ...week(2, 4), ...week(1, 4)];
       final c = judge(runs);
       expect(c.band, LoadBand.usual);
-      expect(guardUp(runs, DateTime(2026, 10, 19)), isFalse);
+      expect(c.usual, 400);
     });
 
     test('1.31-1.44x usual is a step up: the warning never fired', () {
       // usual 400; this week 1.375x = 550 over 5 runs of 110.
+      // Every week's runs on its Monday, so the warning's 7-day window sees
+      // one week at a time.
       final runs = [
-        for (var k = 2; k <= 5; k++) ...week(k, 4),
+        for (var k = 2; k <= 5; k++)
+          for (var i = 0; i < 4; i++)
+            run(DateTime(2026, 10, 26 - 7 * k, 7 + i)),
         for (var i = 0; i < 5; i++) run(DateTime(2026, 10, 19, 7 + i), min: 44),
       ];
       final c = judge(runs);
@@ -232,7 +245,7 @@ void main() {
     });
 
     test('a week the warning flagged is a big jump', () {
-      final runs = [for (var k = 2; k <= 5; k++) ...week(k, 4), ...week(1, 6)];
+      final runs = [for (var k = 2; k <= 5; k++) ...week(k, 4), ...week(1, 8)];
       expect(guardUp(runs, DateTime(2026, 10, 19)), isTrue);
       expect(judge(runs).band, LoadBand.bigJump);
     });
@@ -254,6 +267,61 @@ void main() {
           }
         }
       }
+    });
+
+    test('a flag on a day with no run does not flag the week', () {
+      // A 300 min run on 22 Sep leaves the 28-day window on Tuesday 20 Oct,
+      // so the guard would read high from Tuesday on. Only Monday has a run
+      // (150 min), judged before that: the run was not flagged.
+      final runs = [
+        run(DateTime(2026, 9, 22, 7), min: 300),
+        for (var w = 1; w <= 3; w++)
+          for (final d in [0, 2, 4]) run(DateTime(2026, 10, 19 - 7 * w + d, 7)),
+        run(DateTime(2026, 10, 19, 7), min: 150),
+      ];
+      final tuesday = LoadGuard.check(
+        runs,
+        now: DateTime(2026, 10, 20, 23, 59),
+      );
+      expect(tuesday.flag?.trigger, LoadTrigger.load);
+      final w = LoadHistory.weeks(runs, now: DateTime(2026, 10, 25), weeks: 1);
+      expect(w.single.runs, 1);
+      expect(w.single.guardFlagged, isFalse);
+    });
+
+    test('a Sunday flag is not carried into the next week', () {
+      // Sunday 18 Oct run is flagged high. The next week's only run is the
+      // Sunday 25th, when 18 Oct has left the 7-day window.
+      final runs = [
+        for (var w = 1; w <= 3; w++)
+          for (final d in [0, 2, 4]) run(DateTime(2026, 10, 12 - 7 * w + d, 7)),
+        run(DateTime(2026, 10, 18, 7), min: 200),
+        run(DateTime(2026, 10, 25, 7), min: 20),
+      ];
+      final sunday = runs[runs.length - 2];
+      expect(runHigh(runs, sunday), isTrue);
+      // Day by day the guard still reads high on Monday 19 Oct.
+      expect(
+        LoadGuard.check(
+          runs,
+          now: DateTime(2026, 10, 19, 23, 59),
+        ).flag?.trigger,
+        LoadTrigger.load,
+      );
+      final ws = LoadHistory.weeks(
+        runs,
+        now: DateTime(2026, 10, 25, 12),
+        weeks: 2,
+      );
+      expect(ws[0].guardFlagged, isTrue); // the week of the flagged run
+      expect(ws[1].guardFlagged, isFalse); // not carried into Monday
+    });
+
+    test('a run flagged high flags its week', () {
+      final runs = [for (var k = 2; k <= 5; k++) ...week(k, 4), ...week(1, 8)];
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
+      expect(ws[4].guardFlagged, isTrue);
+      expect(ws[3].guardFlagged, isFalse);
     });
 
     test('a list ending in the current part week is never banded', () {
