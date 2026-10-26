@@ -47,9 +47,8 @@ void main() {
       return (box.decoration! as BoxDecoration).color;
     }
 
-    final t = Theme.of(
-      tester.element(find.byType(PlanScreen)),
-    ).extension<RunSoloTokens>()!;
+    final t = Theme.of(tester.element(find.byType(PlanScreen)))
+        .extension<RunSoloTokens>()!;
     // Selected = filled in the lane's own colour; the others stay raised.
     expect(fillOf('aerobic'), t.laneFill(engine.IdentityLane.aerobic));
     expect(fillOf('long'), t.bgRaised);

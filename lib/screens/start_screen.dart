@@ -1232,271 +1232,273 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           body: SafeArea(
             child: _ScrollFade(
               child: ListView(
-              // Build the longer Aurora choices and the settings below them
-              // together. The old lazy list did not build the course target and
-              // health note until the runner scrolled.
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Space.screenGutter,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: Space.x12),
-                      // Shrunk, never wrapped: the grid below must fit above
-                      // START on a 360 x 640 phone.
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'WHAT ARE YOU RUNNING?',
-                          maxLines: 1,
-                          softWrap: false,
-                          style: RunSoloType.pageHeadline.copyWith(
-                            color: t.inkPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: Space.x12),
-                      if (_todayCard(s) case final today?) ...[
-                        today,
-                        const SizedBox(height: Space.x8),
-                      ],
-                      ModeChipRow(
-                        auroraList: true,
-                        selected: mode,
-                        session: services.pickedSession,
-                        goal: goal,
-                        goalLabel: goalLabel(s),
-                        onGoal: () =>
-                            set((x) => x.copyWith(goalRun: true))
-                                .then((_) => _syncProbe()),
-                        onSelect: (m) => m == RecordMode.intervals
-                            ? _openSheet()
-                            : set(
-                                (x) => x.copyWith(lastMode: m, goalRun: false),
-                              ).then((_) => _syncProbe()),
-                        testsSelected: mode == RecordMode.cooper,
-                        testsLabel: _pickedTest == 'bronco'
-                            ? 'Bronco'
-                            : '12-minute test',
-                        onTests: () =>
-                            set((x) => x.copyWith(lastMode: RecordMode.cooper))
-                                .then((_) => _syncProbe()),
-                      ),
-                      const SizedBox(height: Space.x24),
-                      // Free and distance-goal runs only: the voice follows the pick. Right under the run
-                      // types so a short phone sees it without scrolling.
-                      if (s.coachChoiceAsked) ...[
-                        CoachChoiceRow(
-                          selected: s.coachChoice,
-                          onSelect: (c) =>
-                              set((x) => x.copyWith(coachChoice: c)),
-                        ),
-                        const SizedBox(height: Space.x24),
-                      ],
-                      // 29-Sep field test: the first time a run type is
-                      // picked, say exactly how it runs. Gone once History
-                      // has a run of the type.
-                      if (_firstRunIntro(goal: goal, mode: mode)
-                          case final intro?) ...[
-                        intro,
-                        const SizedBox(height: Space.x24),
-                      ],
-                      if (goal) ...[
-                        GoalPicker(
-                          settings: s,
-                          onPick: (id) => set((x) => x.copyWith(goalId: id)),
-                          onCustom: ({metres, seconds}) => set(
-                            (x) => x.copyWith(
-                              goalCustomMetres: metres,
-                              goalCustomSeconds: seconds,
+                // Build the longer Aurora choices and the settings below them
+                // together. The old lazy list did not build the course target and
+                // health note until the runner scrolled.
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Space.screenGutter,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: Space.x12),
+                        // Shrunk, never wrapped: the grid below must fit above
+                        // START on a 360 x 640 phone.
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'WHAT ARE YOU RUNNING?',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: RunSoloType.pageHeadline.copyWith(
+                              color: t.inkPrimary,
                             ),
                           ),
                         ),
-                        const SizedBox(height: Space.x16),
-                        Text(
-                          s.eventRun
-                              ? '${kEventNames.parkrun} · 5 km, timed from START. '
-                                    'Stand on the start line, then tap START.'
-                              : '${goalLabel(s)}, timed from START. After the '
-                                    'goal the recording keeps going until you stop.',
-                          key: const ValueKey('event-card'),
-                          style: text.bodyMedium?.copyWith(
-                            color: t.inkSecondary,
+                        const SizedBox(height: Space.x12),
+                        if (_todayCard(s) case final today?) ...[
+                          today,
+                          const SizedBox(height: Space.x8),
+                        ],
+                        ModeChipRow(
+                          auroraList: true,
+                          selected: mode,
+                          session: services.pickedSession,
+                          goal: goal,
+                          goalLabel: goalLabel(s),
+                          onGoal: () =>
+                              set((x) => x.copyWith(goalRun: true))
+                                  .then((_) => _syncProbe()),
+                          onSelect: (m) => m == RecordMode.intervals
+                              ? _openSheet()
+                              : set(
+                                  (x) =>
+                                      x.copyWith(lastMode: m, goalRun: false),
+                                ).then((_) => _syncProbe()),
+                          testsSelected: mode == RecordMode.cooper,
+                          testsLabel: _pickedTest == 'bronco'
+                              ? 'Bronco'
+                              : '12-minute test',
+                          onTests: () => set(
+                            (x) => x.copyWith(lastMode: RecordMode.cooper),
+                          ).then((_) => _syncProbe()),
+                        ),
+                        const SizedBox(height: Space.x24),
+                        // Free and distance-goal runs only: the voice follows the pick. Right under the run
+                        // types so a short phone sees it without scrolling.
+                        if (s.coachChoiceAsked) ...[
+                          CoachChoiceRow(
+                            selected: s.coachChoice,
+                            onSelect: (c) =>
+                                set((x) => x.copyWith(coachChoice: c)),
                           ),
-                        ),
-                        _targetLine(s, t),
-                        const SizedBox(height: Space.x16),
-                        _Toggle(
-                          label: 'Voice cues',
-                          value: s.cues,
-                          onChanged: (v) => set((x) => x.copyWith(cues: v)),
-                        ),
-                      ] else if (preset) ...[
-                        _SessionCard(
-                          spec: services.pickedSession,
-                          settings: s,
-                          onChange: _openSheet,
-                          onEdit: set,
-                          // A custom template edits in place (same id); a preset
-                          // becomes a new template pre-filled from its edits.
-                          onSendToWatch: _watchWorkout() == null
-                              ? null
-                              : () => showWatchWorkoutSheet(
-                                  context,
-                                  workout: _watchWorkout()!,
-                                  maxHr: _maxHr(),
-                                ),
-                          onSaveAsCustom: () => _build(
-                            services.sessions.byTemplateId(s.sessionId) ??
-                                SessionChoice.asCustom(
-                                  services.pickedSession,
-                                  services.sessions.newId(),
-                                ),
-                            editing:
-                                services.sessions.byTemplateId(s.sessionId) !=
-                                null,
+                          const SizedBox(height: Space.x24),
+                        ],
+                        // 29-Sep field test: the first time a run type is
+                        // picked, say exactly how it runs. Gone once History
+                        // has a run of the type.
+                        if (_firstRunIntro(goal: goal, mode: mode)
+                            case final intro?) ...[
+                          intro,
+                          const SizedBox(height: Space.x24),
+                        ],
+                        if (goal) ...[
+                          GoalPicker(
+                            settings: s,
+                            onPick: (id) => set((x) => x.copyWith(goalId: id)),
+                            onCustom: ({metres, seconds}) => set(
+                              (x) => x.copyWith(
+                                goalCustomMetres: metres,
+                                goalCustomSeconds: seconds,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: Space.x16),
-                        _Toggle(
-                          label: 'Voice cues',
-                          value: s.cues,
-                          onChanged: (v) => set((x) => x.copyWith(cues: v)),
-                        ),
-                        _Toggle(
-                          label: 'Haptic cues',
-                          value: s.haptics,
-                          onChanged: (v) => set((x) => x.copyWith(haptics: v)),
-                        ),
-                      ] else if (mode == RecordMode.laps) ...[
-                        Text(
-                          'Tap LAP at each interval. No timer phases, no cues; '
-                          'you get a lap table, not a verdict.',
-                          style: text.bodyMedium?.copyWith(
-                            color: t.inkSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: Space.x16),
-                        _Toggle(
-                          label: 'Volume-key lap',
-                          value:
-                              _volumeKeyLaps &&
-                              s.volumeKeyLapFor(RecordMode.laps),
-                          onChanged: _volumeKeyLaps
-                              ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
-                              : null,
-                        ),
-                        if (!_volumeKeyLaps)
+                          const SizedBox(height: Space.x16),
                           Text(
-                            kVolumeKeyToggleReason,
-                            style: RunSoloType.label13.copyWith(
+                            s.eventRun
+                                ? '${kEventNames.parkrun} · 5 km, timed from START. '
+                                      'Stand on the start line, then tap START.'
+                                : '${goalLabel(s)}, timed from START. After the '
+                                      'goal the recording keeps going until you stop.',
+                            key: const ValueKey('event-card'),
+                            style: text.bodyMedium?.copyWith(
                               color: t.inkSecondary,
                             ),
                           ),
-                      ] else if (mode == RecordMode.cooper) ...[
-                        // Tests are a run type alongside the others (founder
-                        // 28-Sep): pick the test, read how it runs, START it.
-                        // The health note stays on screen before every start,
-                        // which is what the old pre-test sheet enforced.
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _TestChoiceCard(
-                                key: const ValueKey('pick-cooper'),
-                                title: '12-MINUTE',
-                                subtitle: 'VO2 max estimate',
-                                selected: _pickedTest == 'cooper',
-                                onTap: () =>
-                                    setState(() => _pickedTest = 'cooper'),
+                          _targetLine(s, t),
+                          const SizedBox(height: Space.x16),
+                          _Toggle(
+                            label: 'Voice cues',
+                            value: s.cues,
+                            onChanged: (v) => set((x) => x.copyWith(cues: v)),
+                          ),
+                        ] else if (preset) ...[
+                          _SessionCard(
+                            spec: services.pickedSession,
+                            settings: s,
+                            onChange: _openSheet,
+                            onEdit: set,
+                            // A custom template edits in place (same id); a preset
+                            // becomes a new template pre-filled from its edits.
+                            onSendToWatch: _watchWorkout() == null
+                                ? null
+                                : () => showWatchWorkoutSheet(
+                                    context,
+                                    workout: _watchWorkout()!,
+                                    maxHr: _maxHr(),
+                                  ),
+                            onSaveAsCustom: () => _build(
+                              services.sessions.byTemplateId(s.sessionId) ??
+                                  SessionChoice.asCustom(
+                                    services.pickedSession,
+                                    services.sessions.newId(),
+                                  ),
+                              editing:
+                                  services.sessions.byTemplateId(s.sessionId) !=
+                                  null,
+                            ),
+                          ),
+                          const SizedBox(height: Space.x16),
+                          _Toggle(
+                            label: 'Voice cues',
+                            value: s.cues,
+                            onChanged: (v) => set((x) => x.copyWith(cues: v)),
+                          ),
+                          _Toggle(
+                            label: 'Haptic cues',
+                            value: s.haptics,
+                            onChanged: (v) =>
+                                set((x) => x.copyWith(haptics: v)),
+                          ),
+                        ] else if (mode == RecordMode.laps) ...[
+                          Text(
+                            'Tap LAP at each interval. No timer phases, no cues; '
+                            'you get a lap table, not a verdict.',
+                            style: text.bodyMedium?.copyWith(
+                              color: t.inkSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: Space.x16),
+                          _Toggle(
+                            label: 'Volume-key lap',
+                            value:
+                                _volumeKeyLaps &&
+                                s.volumeKeyLapFor(RecordMode.laps),
+                            onChanged: _volumeKeyLaps
+                                ? (v) => set((x) => x.copyWith(volumeKeyLap: v))
+                                : null,
+                          ),
+                          if (!_volumeKeyLaps)
+                            Text(
+                              kVolumeKeyToggleReason,
+                              style: RunSoloType.label13.copyWith(
+                                color: t.inkSecondary,
                               ),
                             ),
-                            const SizedBox(width: Space.x8),
-                            Expanded(
-                              child: _TestChoiceCard(
-                                key: const ValueKey('pick-bronco'),
-                                title: 'BRONCO',
-                                subtitle: '5 sets of 240 m',
-                                selected: _pickedTest == 'bronco',
-                                onTap: () =>
-                                    setState(() => _pickedTest = 'bronco'),
+                        ] else if (mode == RecordMode.cooper) ...[
+                          // Tests are a run type alongside the others (founder
+                          // 28-Sep): pick the test, read how it runs, START it.
+                          // The health note stays on screen before every start,
+                          // which is what the old pre-test sheet enforced.
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _TestChoiceCard(
+                                  key: const ValueKey('pick-cooper'),
+                                  title: '12-MINUTE',
+                                  subtitle: 'VO2 max estimate',
+                                  selected: _pickedTest == 'cooper',
+                                  onTap: () =>
+                                      setState(() => _pickedTest = 'cooper'),
+                                ),
+                              ),
+                              const SizedBox(width: Space.x8),
+                              Expanded(
+                                child: _TestChoiceCard(
+                                  key: const ValueKey('pick-bronco'),
+                                  title: 'BRONCO',
+                                  subtitle: '5 sets of 240 m',
+                                  selected: _pickedTest == 'bronco',
+                                  onTap: () =>
+                                      setState(() => _pickedTest = 'bronco'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          for (final l
+                              in _pickedTest == 'bronco'
+                                  ? _broncoTestLines
+                                  : _cooperTestLines) ...[
+                            const SizedBox(height: Space.x12),
+                            Text(
+                              l,
+                              style: text.bodyMedium?.copyWith(
+                                color: t.inkSecondary,
                               ),
                             ),
                           ],
-                        ),
-                        for (final l
-                            in _pickedTest == 'bronco'
-                                ? _broncoTestLines
-                                : _cooperTestLines) ...[
-                          const SizedBox(height: Space.x12),
+                        ] else ...[
                           Text(
-                            l,
+                            'Free run: time, distance, pace and heart rate. No laps. '
+                            'Pause and hold-to-stop as usual.',
                             style: text.bodyMedium?.copyWith(
                               color: t.inkSecondary,
                             ),
                           ),
                         ],
-                      ] else ...[
-                        Text(
-                          'Free run: time, distance, pace and heart rate. No laps. '
-                          'Pause and hold-to-stop as usual.',
-                          style: text.bodyMedium?.copyWith(
-                            color: t.inkSecondary,
+                        if (goal ||
+                            mode == RecordMode.free ||
+                            mode == RecordMode.trail)
+                          TodayTargetLine(
+                            weather: services.weather,
+                            runs: _runs,
+                            units: s.units,
+                            now: services.now,
+                            aimTruePaceSecPerKm: goal ? _goalAim(s) : null,
                           ),
-                        ),
-                      ],
-                      if (goal ||
-                          mode == RecordMode.free ||
-                          mode == RecordMode.trail)
-                        TodayTargetLine(
-                          weather: services.weather,
-                          runs: _runs,
-                          units: s.units,
-                          now: services.now,
-                          aimTruePaceSecPerKm: goal ? _goalAim(s) : null,
-                        ),
-                      if (_followable(s)) ...[
-                        const SizedBox(height: Space.x16),
-                        FollowRouteRow(
-                          route: _route,
-                          units: s.units,
-                          onChoose: _chooseRoute,
-                          onClear: () => setState(() => _route = null),
-                        ),
-                      ],
-                      const SizedBox(height: Space.x16),
-                      Row(
-                        children: [
-                          if (HostCaps.strapPairing) ...[
-                            Icon(Icons.favorite, size: 16, color: t.hrZone),
-                            const SizedBox(width: Space.x8),
-                            Text(
-                              s.strap == null
-                                  ? 'No strap'
-                                  : 'Strap: ${s.strap!.label}',
-                              style: RunSoloType.body15.copyWith(
-                                color: s.strap == null
-                                    ? t.inkSecondary
-                                    : t.inkPrimary,
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          StatusPill(
-                            label: s.units == Units.km ? 'KM' : 'MI',
-                            tone: PillTone.ok,
+                        if (_followable(s)) ...[
+                          const SizedBox(height: Space.x16),
+                          FollowRouteRow(
+                            route: _route,
+                            units: s.units,
+                            onChoose: _chooseRoute,
+                            onClear: () => setState(() => _route = null),
                           ),
                         ],
-                      ),
-                      // Room to scroll the last line clear of the READY UP bar.
-                      const SizedBox(height: Space.x16 + RunButton.height),
-                    ],
+                        const SizedBox(height: Space.x16),
+                        Row(
+                          children: [
+                            if (HostCaps.strapPairing) ...[
+                              Icon(Icons.favorite, size: 16, color: t.hrZone),
+                              const SizedBox(width: Space.x8),
+                              Text(
+                                s.strap == null
+                                    ? 'No strap'
+                                    : 'Strap: ${s.strap!.label}',
+                                style: RunSoloType.body15.copyWith(
+                                  color: s.strap == null
+                                      ? t.inkSecondary
+                                      : t.inkPrimary,
+                                ),
+                              ),
+                            ],
+                            const Spacer(),
+                            StatusPill(
+                              label: s.units == Units.km ? 'KM' : 'MI',
+                              tone: PillTone.ok,
+                            ),
+                          ],
+                        ),
+                        // Room to scroll the last line clear of the READY UP bar.
+                        const SizedBox(height: Space.x16 + RunButton.height),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ),
           ),
           // Pinned: the primary action stays on screen at 360 x 800 however

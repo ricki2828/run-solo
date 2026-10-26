@@ -275,10 +275,7 @@ class _ConsentFactsState extends State<_ConsentFacts> {
             ),
           ),
           const SizedBox(height: Space.x4),
-          Text(
-            text,
-            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-          ),
+          Text(text, style: RunSoloType.body15.copyWith(color: t.inkPrimary)),
         ],
       ),
     );
