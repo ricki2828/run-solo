@@ -231,6 +231,25 @@ void main() {
     },
   );
 
+  testWidgets('an experienced runner mid-week sees the figure, no band, no '
+      'first-weeks text', (tester) async {
+    await pumpApp(tester, fakeServices(), home: TrendScreen(loadData: _data()));
+    await tester.pump();
+    await tester.pump();
+    // Part week 180 so far against a usual 369: plain numbers only.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('load-tile-1')),
+        matching: find.text('369'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Usual week after 3 weeks.'), findsNothing);
+    expect(find.textContaining('usual week'), findsNothing);
+    expect(find.textContaining('takes shape'), findsNothing);
+    expect(find.text('SO FAR'), findsOneWidget);
+  });
+
   testWidgets('no runs: the empty state, no tiles', (tester) async {
     await pumpApp(tester, fakeServices(), home: const TrendScreen());
     await tester.pump();
