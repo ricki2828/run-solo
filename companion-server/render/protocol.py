@@ -41,7 +41,7 @@ ALLOWED_FACT_KEYS = frozenset({
     "place_note", "verdict", "pb", "pb_detail",
     "title", "route_xy", "splits", "reps", "work_pace_s_per_km", "share",
     "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
-    "load", "usual_load", "band", "pct", "weeks",   # weekly_recap only: this week's load against the usual week, and 6 weeks of bars
+    "load", "usual_load", "band", "pct", "words", "weeks",   # weekly_recap only: this week's load against the usual week, and 6 weeks of bars
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
     "session", "reason", "date_local",
@@ -107,7 +107,7 @@ RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headl
                       "title", "route_xy", "splits", "reps", "work_pace_s_per_km"})   # the shape facts: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
-LOAD_KEYS = frozenset({"load", "usual_load", "band", "pct", "weeks"})   # the weekly card's load panel; not the loop's
+LOAD_KEYS = frozenset({"load", "usual_load", "band", "pct", "words", "weeks"})   # the weekly card's load panel; not the loop's
 LOAD_BANDS = ("lighter", "usual", "stepUp", "bigJump")
 NEW_KINDS = frozenset({"suggestion", "milestone", "milestone_loop", "race_countdown", "monthly"})   # these also get value-shape checks
 # Coach cards. The session name is a short label the plan owns; the reason is a fixed enum, never free text.
@@ -186,7 +186,8 @@ def _load_ok(facts: dict) -> bool:
     if not have:
         return True
     if have != LOAD_KEYS or not (_int_in(facts["load"], 0, 50000) and _int_in(facts["usual_load"], 0, 50000)
-                                 and _int_in(facts["pct"], 0, 100000) and facts["band"] in LOAD_BANDS):
+                                 and _int_in(facts["pct"], 0, 100000) and facts["band"] in LOAD_BANDS
+                                 and isinstance(facts["words"], str) and 1 <= len(facts["words"]) <= 48):
         return False
     wk = facts["weeks"]
 

@@ -64,13 +64,8 @@ AMBER = brand.ZONE_RAMP[2]   # the big-jump outline: a warning, never vermillion
 
 
 def _load_words(facts: Mapping[str, Any]) -> str:
-    """The same words as the app's weekly story: a band and a percent, never a ratio."""
-    band, pct, load, usual = facts.get("band"), int(facts.get("pct") or 0), facts.get("load") or 0, facts.get("usual_load") or 0
-    if band == "usual":
-        return "About your usual week"
-    if band == "lighter":
-        return f"{pct}% less than your usual week"
-    return "About double your usual week" if usual and load / usual >= 1.9 else f"{pct}% more than your usual week"
+    """The words the recap chose (the app's headline words, no ratio)."""
+    return str(facts.get("words") or "")
 
 
 def _week_label(iso_day: Any) -> str:

@@ -205,20 +205,20 @@ def _load_weeks(loads: list[int], *, nohr: float = 0.0, paused: tuple[int, ...] 
 def weekly_recap_load_usual() -> dict[str, Any]:
     """The week-41 recap with the load panel: 352 load against a usual 345, so 'About your usual week'."""
     loads = [300, 350, 340, 360, 330, 352]
-    return {**weekly_recap(), "load": 352, "usual_load": 345, "band": "usual", "pct": 2, "weeks": _load_weeks(loads)}
+    return {**weekly_recap(), "load": 352, "usual_load": 345, "band": "usual", "pct": 2, "words": "About your usual week", "weeks": _load_weeks(loads)}
 
 
 def weekly_recap_load_bigjump() -> dict[str, Any]:
     """A big week: 470 against a usual 345 (36% more), with a paused week in the history. The bar gets the amber outline."""
     loads = [300, 350, 0, 340, 330, 470]
     w = _load_weeks(loads, paused=(2,))
-    return {**weekly_recap(), "load": 470, "usual_load": 340, "band": "bigJump", "pct": 38, "weeks": w}
+    return {**weekly_recap(), "load": 470, "usual_load": 340, "band": "bigJump", "pct": 38, "words": "38% more than your usual week", "weeks": w}
 
 
 def weekly_recap_load_nohr() -> dict[str, Any]:
     """A runner with no strap: every bar is the easy-run colour, and the week is lighter than usual."""
     loads = [210, 240, 230, 250, 220, 170]
-    return {**weekly_recap(), "load": 170, "usual_load": 235, "band": "lighter", "pct": 28, "weeks": _load_weeks(loads, nohr=1.0)}
+    return {**weekly_recap(), "load": 170, "usual_load": 235, "band": "lighter", "pct": 28, "words": "28% less than your usual week", "weeks": _load_weeks(loads, nohr=1.0)}
 
 
 def pb_marathon_half() -> dict[str, Any]:

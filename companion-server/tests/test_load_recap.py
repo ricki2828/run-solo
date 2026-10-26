@@ -35,7 +35,7 @@ def mk(i, week, day, load="x", km=7.0, **kw):
     return r
 
 
-def history(loads_by_week, runs_per_week=2):
+def history(loads_by_week, runs_per_week=2, flag=False):
     """`loads_by_week[w]` is the total load of the week `w` weeks before the recap week (0 = the recap week), split over
     `runs_per_week` runs; None = an empty week. Newest first, as the service holds them."""
     out, i = [], 0
@@ -44,13 +44,13 @@ def history(loads_by_week, runs_per_week=2):
             continue
         for d in range(runs_per_week):
             i += 1
-            out.append(mk(i, w, d * 2, load=total / runs_per_week))
+            out.append(mk(i, w, d * 2, load=total / runs_per_week, load_state="high" if flag and w == 0 and d == 1 else None))
     return sorted(out, key=lambda r: r["start_utc"], reverse=True)
 
 
 # a 4-week usual of 300, then the recap week on top
-def week_of(this, usual=300.0):
-    return history([this, usual, usual, usual, usual, usual])
+def week_of(this, usual=300.0, flag=False):
+    return history([this, usual, usual, usual, usual, usual], flag=flag)
 
 
 def facts_for(runs, paused=()):
@@ -62,20 +62,49 @@ def facts_for(runs, paused=()):
 @pytest.mark.parametrize("this,band", [(239, "lighter"), (240, "usual"), (330, "usual"), (331, "stepUp"), (390, "stepUp"),
                                        (391, "bigJump"), (570, "bigJump")])
 def test_band_edges_at_the_apps_ratios(this, band):
-    f = facts_for(week_of(this))
+    f = facts_for(week_of(this, flag=True))
     assert f["band"] == band and f["load"] == this and f["usual_load"] == 300
 
 
 def test_pct_is_whole_percent_either_way():
-    assert facts_for(week_of(405))["pct"] == 35
+    assert facts_for(week_of(405, flag=True))["pct"] == 35
     assert facts_for(week_of(180))["pct"] == 40
 
 
-def test_words_never_show_a_ratio():
-    assert recap.load_words("stepUp", 15, 1.15) == "15% more than your usual week"
-    assert recap.load_words("bigJump", 90, 1.9) == "About double your usual week"
-    assert recap.load_words("lighter", 28, 0.72) == "28% less than your usual week"
-    assert recap.load_words("usual", 2, 1.02) == "About your usual week"
+def test_a_jump_without_the_in_week_warning_is_a_step_up_with_no_amber():
+    """Over 1.3x but no run that week carried load_state high / very_high: the words are a step up, never a big jump."""
+    f = facts_for(week_of(450))
+    assert f["band"] == "stepUp" and f["pct"] == 50
+    assert facts_for(week_of(450, flag=True))["band"] == "bigJump"
+    only_very = history([450, 300, 300, 300, 300, 300])
+    only_very[0]["load_state"] = "very_high"
+    assert facts_for(only_very)["band"] == "bigJump"
+    only_steady = history([450, 300, 300, 300, 300, 300])
+    only_steady[0]["load_state"] = "steady"
+    assert facts_for(only_steady)["band"] == "stepUp"
+    # a flag on an earlier week does not count
+    older = history([450, 300, 300, 300, 300, 300])
+    older[-1]["load_state"] = "high"
+    assert facts_for(older)["band"] == "stepUp"
+    assert facts_for(week_of(240, flag=True))["band"] == "usual"       # a flag never changes the lower bands
+
+
+def test_percent_rounding_matches_the_app_half_away_from_zero():
+    assert recap._r(12.5) == 13 and recap._r(0.5) == 1 and recap._r(2.5) == 3 and recap._r(12.4) == 12
+    assert recap.vs_usual(1.125) == "13% more than your usual week"
+    assert facts_for(week_of(337.5))["pct"] == 13                     # 337.5 / 300 = 1.125
+    assert recap._r(345 * 1.1 / 10) * 10 == 380                        # the cap, to the nearest ten
+
+
+def test_words_never_show_a_ratio_and_follow_the_apps_phrase():
+    assert recap.load_words("stepUp", 1.15) == "15% more than your usual week"
+    assert recap.load_words("bigJump", 1.9) == "About double your usual week"
+    assert recap.load_words("stepUp", 2.2) == "About double your usual week"
+    assert recap.load_words("bigJump", 2.3) == "About 2.5 times your usual week"
+    assert recap.load_words("bigJump", 3.0) == "About 3 times your usual week"
+    assert recap.load_words("lighter", 0.72) == "28% less than your usual week"
+    assert recap.load_words("usual", 1.02) == "About your usual week"
+    assert recap.over_phrase(1.35) == "35% over" and recap.over_phrase(1.95) == "about double"
 
 
 def test_six_weeks_come_back_oldest_first_with_shares_that_add_up():
@@ -119,20 +148,26 @@ def test_no_runs_this_week_is_not_a_load_week():
     assert facts_for(history([None, 300, 300, 300, 300, 300])) is None
 
 
-def test_first_weeks_stay_on_km():
-    assert facts_for(history([300, 300])) is None              # one usual week only
+def test_three_usual_weeks_are_needed():
+    assert facts_for(history([300, 300])) is None
+    assert facts_for(history([300, 300, 300])) is None         # two usual weeks, the older ones predate the first run
+    assert facts_for(history([300, 300, 300, 300])) is not None
+    assert facts_for(history([300, 300, 300, 300, 300])) is not None
     assert facts_for(history([300, 300, None, None, None, None])) is None
 
 
-def test_weeks_before_the_first_run_are_not_zero_weeks():
-    assert facts_for(history([300, 300, 300])) is not None     # 2 usual weeks, the older 2 predate the first run
-    f = facts_for(history([300, 300, 300]))
-    assert f["usual_load"] == 300
+def test_the_first_runs_part_week_is_left_out_of_the_usual():
+    def with_first_on_wednesday(n):
+        runs = history([300] * n)
+        runs[-1]["start_utc"] += timedelta(days=2)             # the first run was on a Wednesday: its week is a part week
+        return runs
+    assert facts_for(with_first_on_wednesday(4)) is None       # only 2 full weeks before this one
+    assert facts_for(with_first_on_wednesday(5))["usual_load"] == 300   # 3 full weeks, the part week left out
 
 
-def test_a_real_rest_week_counts_as_zero():
+def test_a_rest_week_is_left_out_of_the_usual_not_counted_as_zero():
     f = facts_for(history([300, 300, None, 300, 300, 300]))
-    assert f["usual_load"] == 225
+    assert f["usual_load"] == 300 and f["band"] == "usual"     # one sick week must not make a normal week a jump
 
 
 def test_a_returner_compares_with_nothing():
@@ -140,12 +175,18 @@ def test_a_returner_compares_with_nothing():
     assert facts_for(history([300, None, 300, 300, 300, 300])) is not None   # one empty week is a rest week
 
 
+def test_weeks_before_the_first_run_are_not_rest_weeks():
+    assert facts_for(history([300, 300, 300, 300, 300])) is not None   # the 6th week back predates the first run
+
+
 def test_a_paused_week_is_left_out_and_not_a_return():
     pw = (MONDAY - timedelta(days=14)).date()
     f = facts_for(history([300, 300, None, 300, 300, 300]), paused=[pw])
     assert f["usual_load"] == 300
     assert f["weeks"][3]["paused"] is True
-    assert facts_for(history([300, None, None, 300, 300, 300]), paused=[pw]) is not None   # one of the two is paused: not a returner
+    p2 = history([300, 300, 600, 300, 300, 300])
+    assert facts_for(p2)["usual_load"] == 375
+    assert facts_for(p2, paused=[(MONDAY - timedelta(days=14)).date()])["usual_load"] == 300
 
 
 def test_a_usual_week_under_60_is_too_small():
@@ -165,7 +206,7 @@ def test_a_missing_load_falls_back_to_the_zone_minutes_then_to_2_5_a_minute():
 @pytest.mark.parametrize("this,sit", [(100, "recap_load_light"), (300, "recap_load_usual"), (350, "recap_load_step"),
                                       (450, "recap_load_jump")])
 def test_build_speaks_in_load_when_the_gate_is_open(this, sit):
-    rc = recap.build(week_of(this), SUN, SG, {}, "w")
+    rc = recap.build(week_of(this, flag=True), SUN, SG, {}, "w")
     assert rc.rendered.situation == sit and rc.media.card == "weekly_recap" and rc.media.video
     assert str(this) in rc.rendered.body and "300" in rc.rendered.body
     assert rc.media.facts["load"] == this and rc.media.facts["band"] == recap.load_band(this / 300)
@@ -195,7 +236,7 @@ def test_first_week_return_and_missed_stay_as_they_are():
 
 
 def test_all_four_load_situations_have_three_variants_and_known_slots():
-    slots = {"runs_txt", "km", "min", "load", "usual", "pct", "cap", "moment"}
+    slots = {"runs_txt", "km", "min", "load", "usual", "pct", "more", "cap", "moment"}
     for sit in ("recap_load_usual", "recap_load_step", "recap_load_jump", "recap_load_light"):
         vs = voice.RECAPS[sit]
         assert len(vs) == 3 and len({b for _, b in vs}) == 3
@@ -205,9 +246,9 @@ def test_all_four_load_situations_have_three_variants_and_known_slots():
 
 def test_paused_weeks_reach_the_usual_week_through_build():
     pw = (MONDAY - timedelta(days=14)).date()
-    runs = history([300, 300, None, 300, 300, 300])
+    runs = history([300, 300, 600, 300, 300, 300])
     assert recap.build(runs, SUN, SG, {}, "w", paused_weeks=[pw]).media.facts["usual_load"] == 300
-    assert recap.build(runs, SUN, SG, {}, "w").media.facts["usual_load"] == 225
+    assert recap.build(runs, SUN, SG, {}, "w").media.facts["usual_load"] == 375
 
 
 # --- storing the load ------------------------------------------------------------------------
@@ -259,7 +300,7 @@ def test_migration_adds_load_columns_to_an_older_database_and_is_repeatable(tmp_
 
 # --- the picture ----------------------------------------------------------------------------
 
-LOAD_KEYS = ("load", "usual_load", "band", "pct", "weeks")
+LOAD_KEYS = ("load", "usual_load", "band", "pct", "words", "weeks")
 
 
 def test_week_facts_adds_the_load_block_only_when_given_one(tmp_path):
@@ -354,7 +395,8 @@ def test_the_sunday_recap_text_and_card_carry_the_same_load(tmp_path, fakes):
                 start = datetime(2026, 10, 12 + d, 6, 0, tzinfo=U) - timedelta(days=7 * wk)
                 c.svc.ingest_run(uid, RunIn.model_validate(run_payload(
                     f"w{wk}{d}", start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0, duration_s=1800, distance_m=5000,
-                    zone_min={"z2": 25, "z3": 5}, load=per_run, load_basis="hr")), start + timedelta(hours=1))
+                    zone_min={"z2": 25, "z3": 5}, load=per_run, load_basis="hr",
+                    load_state="high" if wk == 0 else None)), start + timedelta(hours=1))
         con.execute("UPDATE users SET zone_id='UTC'")
         con.execute("UPDATE outbox SET state='done'")
         con.commit()

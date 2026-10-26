@@ -445,14 +445,14 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
         ("Steady load", "{runs_txt}, {km} km, {load} load. That is your usual week, {usual}. {moment}"),
     ],
     "recap_load_step": [
-        ("Step up", "{load} load, {pct}% over your usual {usual}. {runs_txt}, {km} km. Hold about here next week. {moment}"),
-        ("A step up", "{runs_txt} and {km} km came to {load} load, {pct}% above your usual {usual}. Hold here before adding more. {moment}"),
-        ("Building", "{load} load, up {pct}% on your usual {usual}. A good step. Stay near it next week. {moment}"),
+        ("Step up", "{load} load, {more} your usual {usual}. {runs_txt}, {km} km. A similar week next would let it settle. {moment}"),
+        ("A step up", "{runs_txt} and {km} km came to {load} load, {more} your usual {usual}. A good step. A similar week next would let it settle before adding more. {moment}"),
+        ("Building", "{load} load against a usual {usual}, {more} it. A similar week next would let it settle. {moment}"),
     ],
     "recap_load_jump": [
-        ("Big week", "{load} load, {pct}% over your usual {usual}. Keep next week near {cap}, easy runs easy. {moment}"),
-        ("Big week for you", "{runs_txt}, {km} km, {load} load. That is {pct}% above your usual {usual}. Next week, stay near {cap} and keep the easy runs easy. {moment}"),
-        ("Well above usual", "{load} load against a usual {usual}, {pct}% more. Ease back toward {cap} next week. {moment}"),
+        ("Big week", "{load} load, {more} your usual {usual}. A week around {cap}, with easy runs easy, would balance it. {moment}"),
+        ("Big week for you", "{runs_txt}, {km} km, {load} load, {more} your usual {usual}. A week around {cap}, with the easy runs easy, would balance it. {moment}"),
+        ("Well above usual", "{load} load against a usual {usual}, {more} it. A week near {cap} next would bring it back toward usual. {moment}"),
     ],
     "recap_load_light": [
         ("Lighter week", "{load} load, {pct}% under your usual {usual}. {runs_txt}, {km} km. Lighter weeks help. {moment}"),
