@@ -11,6 +11,15 @@ import '../helpers.dart';
 
 /// The weekly story: page 1 (km) and page 2 (YOUR LOAD) in every state, at
 /// 360 x 640 and 360 x 800. PNGs come from CI like every golden.
+/// Frames for a route push plus the story's own load: the future lands one
+/// frame after the first build.
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 1600));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
 void main() {
   Future<void> shot(
     WidgetTester tester,
@@ -86,9 +95,9 @@ void main() {
       ),
     );
     await tester.tap(find.byKey(const ValueKey('open')));
-    await tester.pump(const Duration(milliseconds: 1600));
+    await _settle(tester);
     await tester.tap(find.byKey(const ValueKey('story-next')));
-    await tester.pump(const Duration(milliseconds: 1600));
+    await _settle(tester);
     expect(find.byKey(const ValueKey('weekly-load')), findsOneWidget);
     expect(find.byKey(const ValueKey('load-number')), findsOneWidget);
     expect(find.text('520'), findsOneWidget);
@@ -97,8 +106,7 @@ void main() {
       findsOneWidget,
     );
     await tester.tap(find.byKey(const ValueKey('story-done')));
-    await tester.pump(const Duration(milliseconds: 600));
-    await tester.pump(const Duration(milliseconds: 600));
+    await _settle(tester);
     expect(find.byKey(const ValueKey('weekly-load')), findsNothing);
     expect(find.byKey(const ValueKey('weekly-story')), findsNothing);
     expect(find.byKey(const ValueKey('open')), findsOneWidget);
@@ -113,10 +121,10 @@ void main() {
       fakeServices(),
       home: WeeklyStoryScreen(story: ProgressSnapshot.sample('month3').story),
     );
-    await tester.pump(const Duration(milliseconds: 1600));
+    await _settle(tester);
     expect(find.byKey(const ValueKey('story-next')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('story-next')));
-    await tester.pump(const Duration(milliseconds: 600));
+    await _settle(tester);
     expect(find.byKey(const ValueKey('weekly-load')), findsNothing);
   });
 
@@ -128,9 +136,11 @@ void main() {
         weeks: engine.WeekLoad.sample(engine.LoadSample.nohr),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 1600));
+    await _settle(tester);
     expect(find.byKey(const ValueKey('load-nohr-note')), findsOneWidget);
     expect(find.byKey(const ValueKey('load-headline')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('load-why')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('load-why')));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('It is an estimate'), findsOneWidget);

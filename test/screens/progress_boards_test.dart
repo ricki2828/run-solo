@@ -116,6 +116,10 @@ void main() {
     expect(find.byKey(const ValueKey('history-view-0')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('history-view-2')));
     await pumpTimes(tester, 6);
+    // Trends opens on Load; the 4x4 trend is one chip along.
+    expect(find.byKey(const ValueKey('load-bars')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('trends-intervals')));
+    await pumpTimes(tester, 6);
     expect(find.textContaining('NORWEGIAN 4X4'), findsWidgets);
   });
 }

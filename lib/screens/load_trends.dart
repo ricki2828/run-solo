@@ -9,7 +9,7 @@ import '../widgets/chrome.dart';
 import '../widgets/choice_chips.dart';
 import '../widgets/load_bars.dart';
 import '../widgets/recent_bars_chart.dart' show ChartEmptyState;
-import 'weekly_load_page.dart' show loadWeekLabel;
+import 'weekly_load_page.dart' show loadWeekLabels;
 
 const _months = [
   'JAN',
@@ -209,6 +209,7 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
     final usualOk = compare.state == engine.LoadCompareState.ok;
     final early = weeks.where((w) => w.runs > 0).length < 2;
     final n = weeks.length;
+    final labels = loadWeekLabels([for (final w in weeks) w.monday]);
     return (
       [
         ('LOAD SO FAR', '${now.load.round()}'),
@@ -224,12 +225,14 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
                   'usual ${compare.usual.round()}.'
             : 'Load by week. This week so far ${now.load.round()}.',
         bars: [
-          for (final w in weeks)
+          for (var i = 0; i < n; i++)
             LoadBarData.week(
-              w,
-              label: loadWeekLabel(w.monday),
-              outline: w.current ? LoadBarOutline.dashed : LoadBarOutline.none,
-              tag: w.current ? 'SO FAR' : null,
+              weeks[i],
+              label: labels[i],
+              outline: weeks[i].current
+                  ? LoadBarOutline.dashed
+                  : LoadBarOutline.none,
+              tag: weeks[i].current ? 'SO FAR' : null,
             ),
         ],
       ),

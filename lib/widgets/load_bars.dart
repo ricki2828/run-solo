@@ -116,7 +116,7 @@ class LoadBars extends StatelessWidget {
   final TextStyle? labelStyle;
 
   static const double _tagH = 28;
-  static const double _gutter = 58;
+  static const double _gutter = 70;
 
   @override
   Widget build(BuildContext context) {
@@ -202,11 +202,14 @@ class LoadBars extends StatelessWidget {
                     for (final b in bars)
                       SizedBox(
                         width: slot,
-                        child: Text(
-                          b.label,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          style: style.copyWith(color: t.inkSecondary),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            b.label,
+                            textAlign: TextAlign.center,
+                            softWrap: false,
+                            style: style.copyWith(color: t.inkSecondary),
+                          ),
                         ),
                       ),
                   ],
@@ -285,11 +288,17 @@ class _Cell extends StatelessWidget {
                 )
               : d.tag == null
               ? const SizedBox.shrink()
-              : Text(
-                  d.tag!,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: RunSoloType.micro11.copyWith(color: t.inkPrimary),
+              // On the card colour so the usual line never strikes the words.
+              : Center(
+                  child: ColoredBox(
+                    color: t.bgRaised,
+                    child: Text(
+                      d.tag!,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: RunSoloType.micro11.copyWith(color: t.inkPrimary),
+                    ),
+                  ),
                 ),
         ),
         Positioned(

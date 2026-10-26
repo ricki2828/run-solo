@@ -227,6 +227,28 @@ class _Body extends StatelessWidget {
     final bars = beat(0.35, 0.9, Curves.easeOutCubic);
     final rest = beat(0.5, 0.9);
     final lane = story.laneOfWeek;
+    // A short phone (360 x 640) scrolls instead of overflowing; a taller one
+    // keeps the Spacers' layout.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight),
+          child: IntrinsicHeight(
+            child: _column(context, lane, beat, figure, bars, rest),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _column(
+    BuildContext context,
+    engine.IdentityLane? lane,
+    Animation<double> Function(double, double, [Curve]) beat,
+    Animation<double> figure,
+    Animation<double> bars,
+    Animation<double> rest,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

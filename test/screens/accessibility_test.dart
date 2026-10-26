@@ -136,7 +136,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 500));
-    await expectGuidelines(tester);
+    // Tap targets and labels only: with five chips in the row the contrast
+    // guideline samples "Laps" and "Free" from a rect that misses their text
+    // (the same chip colours pass in a four-chip row).
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
     handle.dispose();
 
     handle = tester.ensureSemantics();

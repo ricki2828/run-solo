@@ -6,9 +6,15 @@ import '../theme/lanes.dart';
 import '../theme/theme.dart';
 import '../widgets/load_bars.dart';
 
-/// "15\nSEP": the Monday under a week's bar.
-String loadWeekLabel(DateTime monday) =>
-    '${monday.day}\n${Fmt.dayMonth(monday).split(' ').last.toUpperCase()}';
+/// "15\nSEP" under each week's bar: the Monday, and the month on the first
+/// bar and wherever it changes, so eight bars never read "OCT OCT OCT".
+List<String> loadWeekLabels(List<DateTime> mondays) => [
+  for (var i = 0; i < mondays.length; i++)
+    i == 0 || mondays[i].month != mondays[i - 1].month
+        ? '${mondays[i].day}\n'
+              '${Fmt.dayMonth(mondays[i]).split(' ').last.toUpperCase()}'
+        : '${mondays[i].day}',
+];
 
 /// "20 TO 26 OCT" for the Monday-to-Sunday week starting [monday].
 String loadWeekRange(DateTime monday) {
@@ -84,6 +90,7 @@ class _WeeklyLoadPageState extends State<WeeklyLoadPage>
     // The usual weeks are the 4 bars straight before this week's.
     final usualFrom = (chart.length - 5).clamp(0, chart.length - 1);
     final load = week.load.round();
+    final labels = loadWeekLabels([for (final w in chart) w.monday]);
     return Scaffold(
       key: const ValueKey('weekly-load'),
       backgroundColor: fill,
@@ -142,6 +149,7 @@ class _WeeklyLoadPageState extends State<WeeklyLoadPage>
                               maxLines: 1,
                               style: RunSoloType.display96.copyWith(
                                 fontSize: 160,
+                                height: 0.82,
                                 color: ink,
                               ),
                             ),
@@ -177,10 +185,19 @@ class _WeeklyLoadPageState extends State<WeeklyLoadPage>
                                   top: 2,
                                   right: Space.x8,
                                 ),
-                                child: Icon(
-                                  Icons.warning_amber,
-                                  size: 18,
-                                  color: t.semWarn,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: t.bgRaised,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(2),
+                                    child: Icon(
+                                      Icons.warning_amber,
+                                      size: 18,
+                                      color: t.semWarn,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -220,7 +237,7 @@ class _WeeklyLoadPageState extends State<WeeklyLoadPage>
                                     for (var i = 0; i < chart.length; i++)
                                       LoadBarData.week(
                                         chart[i],
-                                        label: loadWeekLabel(chart[i].monday),
+                                        label: labels[i],
                                         outline: i == chart.length - 1
                                             ? LoadBarOutline.solid
                                             : LoadBarOutline.none,
