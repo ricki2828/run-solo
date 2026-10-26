@@ -38,7 +38,7 @@ class InrunMoment {
 }
 
 /// The last 400 m of a distance step, or the last minute of a timed one:
-/// the record screen's projected-finish swap, and the "last 400 m" moment.
+/// the record screen's to-go accent, and the "last 400 m" moment.
 bool inLastStretch(RecordingSnapshot s) {
   final st = s.currentStep;
   if (st != null && st.target == TargetKind.time) {

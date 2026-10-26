@@ -706,7 +706,8 @@ class _RecordingScreenState extends State<RecordingScreen>
             if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) ...[
               // K1 / A10.10, G3 (A8): distance or time to go is
               // the biggest number, projected finish second;
-              // they swap for the last 400 m / last minute.
+              // they never swap: the last 400 m / last minute only tints
+              // the to-go figure.
               _PausedHidden(
                 paused: s.paused,
                 child: EventBlock(
