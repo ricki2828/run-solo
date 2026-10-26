@@ -10,7 +10,8 @@ import '../theme/theme.dart';
 ///
 /// Same grammar as the run-type cards above it (ui review 24-Oct #12): a 2 px
 /// border in both states (Bone selected, hairline unselected), a one-line
-/// title of 20 sp or less and a fixed height, so nothing wraps or clips at
+/// title of 20 sp or less and a fixed 96 dp height (the same as the run-type
+/// cards), so nothing wraps or clips at
 /// 360 x 640.
 class CoachChoiceRow extends StatelessWidget {
   const CoachChoiceRow({
@@ -90,7 +91,7 @@ class _ChoiceButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          height: 76,
+          height: 96,
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,

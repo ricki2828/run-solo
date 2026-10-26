@@ -24,6 +24,7 @@ import '../state/settings.dart';
 import '../state/target_pace.dart';
 import '../state/today_target.dart';
 import '../state/voice_coach_plan.dart';
+import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
 import '../widgets/coach_choice_row.dart';
@@ -1553,9 +1554,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         style: text.labelLarge?.copyWith(color: t.semDanger),
                       ),
                     ),
-                  RunButton(
+                  // Stays a FilledButton: tests read its onPressed by key.
+                  FilledButton(
                     key: const ValueKey('start-ready-up'),
-                    label: 'READY UP ›',
                     // The test always goes through its health note first.
                     // Only Ready gates on GPS (goal and event runs); this
                     // button is always on.
@@ -1568,6 +1569,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           )
                         : _openReady,
                     // The only START is on the Ready screen (Ricki, 10-Oct).
+                    child: const CapsText('READY UP ›'),
                   ),
                 ],
               ),
