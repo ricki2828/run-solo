@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Mapping, Sequence
 
 from ..facts import fmt_km, fmt_pace
@@ -18,6 +18,11 @@ PART_WEEK_FROM_WEEKDAY = 3   # a first run on Thursday (0 = Monday) or later mak
 FLAT_KM = 1.0                # a swing under this many km is "level"
 QUIET_AFTER_DAYS = 60        # nothing to say to someone who has not run for two months
 WEEKDAY = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+LOAD_COVERAGE = 0.8          # the recap speaks in load only when this share of the last 5 weeks' runs carry the app's own load
+LOAD_USUAL_WEEKS = 4         # the usual week is the mean of this many weeks before the recap week
+LOAD_SHOWN_WEEKS = 6         # the card draws the recap week and the 5 before it
+LOAD_MIN_USUAL = 60          # a usual week lighter than this is too small to compare against (the app's minChronicWeekly)
+LOAD_LIGHTER, LOAD_USUAL, LOAD_JUMP = 0.80, 1.10, 1.30   # ratio edges: lighter < 0.80 <= usual <= 1.10 < step up <= 1.30 < big jump
 PB_NAME = {"5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
            "longest": "longest run", "fastest_km": "fastest km"}
 
@@ -44,6 +49,95 @@ def _week_runs(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime
         if lo <= loc < hi:
             out.append(r)
     return out
+
+
+def run_load(r: Mapping[str, Any]) -> tuple[float, str]:
+    """(load, basis) for one run. The app's own number when it sent one. Otherwise an estimate from the zone minutes
+    (sum of minutes x zone, 1-5), or 2.5 x the minutes when there are no zones: basis 'server_estimate'."""
+    v = r.get("load")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v), str(r.get("load_basis") or "assumed")
+    zm = T._zone_minutes(r)
+    if sum(zm.values()) > 0:
+        return sum(min(z, 5) * m for z, m in zm.items()), "server_estimate"
+    return r["duration_s"] / 60 * 2.5, "server_estimate"
+
+
+def _run_zone_shares(r: Mapping[str, Any]) -> list[float] | None:
+    """The run's share of time in each of Z1-Z5, or None when it has no heart-rate zones."""
+    zm = T._zone_minutes(r)
+    tot = sum(zm.values())
+    if tot <= 0:
+        return None
+    out = [0.0] * 5
+    for z, m in zm.items():
+        out[min(z, 5) - 1] += m / tot
+    return out
+
+
+def load_band(ratio: float) -> str:
+    return "lighter" if ratio < LOAD_LIGHTER else "usual" if ratio <= LOAD_USUAL else "stepUp" if ratio <= LOAD_JUMP else "bigJump"
+
+
+def load_words(band: str, pct: int, ratio: float) -> str:
+    """The card's one line under the hero, the same words as the app's weekly story."""
+    if band == "usual":
+        return "About your usual week"
+    if band == "lighter":
+        return f"{pct}% less than your usual week"
+    return "About double your usual week" if ratio >= 1.9 else f"{pct}% more than your usual week"
+
+
+def load_facts(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime,
+               paused: Sequence[date] = ()) -> dict[str, Any] | None:
+    """This Mon-Sun week's load against the runner's usual week, or None when the recap should stay on km: fewer than
+    80% of the runs in this week and the 4 before carry the app's own load; the week has no runs; the runner is
+    returning (the 2 weeks before were empty and not paused); fewer than 2 usual weeks with runs; or a usual week
+    under 60. `paused` are the Mondays of weeks the coach was in care of: they count for nothing either way."""
+    mondays = [monday - timedelta(days=7 * i) for i in range(LOAD_SHOWN_WEEKS - 1, -1, -1)]
+    by_week: list[list[Mapping[str, Any]]] = [_week_runs(runs, zone_id, m) for m in mondays]
+    if not by_week[-1]:
+        return None
+    window = [r for w in by_week[1:] for r in w]   # this week and the 4 before
+    if sum(1 for r in window if r.get("load") is not None) < LOAD_COVERAGE * len(window):
+        return None
+    pausedset = set(paused)
+    is_paused = [m.date() in pausedset for m in mondays]
+    if all(not by_week[i] and not is_paused[i] for i in (-2, -3)):
+        return None   # a returner: nothing to compare against
+    first = min(_week_start(r, zone_id) for r in runs)
+    weeks = []
+    for m, wr, p in zip(mondays, by_week, is_paused):
+        total, zone, nohr = 0.0, [0.0] * 5, 0.0
+        for r in wr:
+            ld = run_load(r)[0]
+            total += ld
+            sh = _run_zone_shares(r)
+            if sh is None:
+                nohr += ld
+            else:
+                zone = [a + ld * b for a, b in zip(zone, sh)]
+        weeks.append({"monday": m.date().isoformat(), "load": round(total), "paused": p,
+                      "zone_share": [round(z / total, 3) if total else 0.0 for z in zone],
+                      "nohr_share": round(nohr / total, 3) if total else 0.0, "_runs": len(wr), "_raw": total})
+    counted = [w for w, m in zip(weeks[1:5], mondays[1:5]) if not w["paused"] and m >= first]
+    if sum(1 for w in counted if w["_runs"]) < 2:
+        return None
+    usual = sum(w["_raw"] for w in counted) / len(counted)
+    if usual < LOAD_MIN_USUAL:
+        return None
+    this = weeks[-1]["_raw"]
+    ratio = this / usual
+    band = load_band(ratio)
+    pct = round(abs(ratio - 1) * 100)
+    for w in weeks:
+        w.pop("_runs"), w.pop("_raw")
+    return {"load": round(this), "usual_load": round(usual), "band": band, "pct": pct, "weeks": weeks}
+
+
+def _week_start(r: Mapping[str, Any], zone_id: str) -> datetime:
+    loc = to_local(_when(r), r.get("zone_id") or zone_id).replace(tzinfo=None)
+    return (loc - timedelta(days=loc.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _to_utc(naive_local: datetime, zone_id: str) -> datetime:
@@ -123,9 +217,13 @@ def build_monthly(runs: Sequence[Mapping[str, Any]], month_ref: str, zone_id: st
                  tuple(str(x["run_id"]) for x in mine if x.get("run_id")))
 
 
+LOAD_SITUATION = {"usual": "recap_load_usual", "stepUp": "recap_load_step", "bigJump": "recap_load_jump", "lighter": "recap_load_light"}
+
+
 def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: Mapping[str, datetime],
-          seed: str) -> Recap | None:
-    """`runs`: the whole record, newest first. The week is the local Mon-Sun week containing `now`."""
+          seed: str, paused_weeks: Sequence[date] = ()) -> Recap | None:
+    """`runs`: the whole record, newest first. The week is the local Mon-Sun week containing `now`. `paused_weeks`:
+    Mondays of the weeks the coach held back (care weeks); the load comparison leaves them out."""
     if not runs:
         return None
     local = to_local(now, zone_id)
@@ -143,6 +241,7 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
     prev_km = sum(r["distance_m"] for r in prev) / 1000
     minutes = round(sum(r["duration_s"] for r in week) / 60)
     moment = best_moment(week, zone_id)
+    lf = None
     slots = {"runs_txt": T.plural(len(week), "run"), "km": f"{km:.1f}", "min": str(minutes), "moment": moment}
     if not prev:
         situation = "recap_return" if any(_when(r) < _to_utc(monday, zone_id) for r in runs) else "recap_first"
@@ -152,10 +251,15 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
         diff = km - prev_km
         slots["delta_km"] = f"{abs(diff):.1f}"
         situation = "recap_flat" if abs(diff) < FLAT_KM else "recap_up" if diff > 0 else "recap_down"
+        lf = load_facts(runs, zone_id, monday, paused_weeks)
+        if lf:   # speak in load, against the runner's own usual week
+            situation = LOAD_SITUATION[lf["band"]]
+            slots.update(load=str(lf["load"]), usual=str(lf["usual_load"]), pct=str(lf["pct"]),
+                         cap=str(int(round(lf["usual_load"] * 1.1 / 10)) * 10))
     r = voice.render(situation, slots, used, now, seed)
     if r is None:
         return None
     r = voice.Rendered(r.situation, r.variant_id, r.headline, r.body.strip(), r.allowed)
     video = True  # the weekly recap is always a video moment
-    return Recap(r, MediaPlan("weekly_recap", video, "weekly_recap"), voice.exemplars(situation, 3, seed), False,
+    return Recap(r, MediaPlan("weekly_recap", video, "weekly_recap", facts=lf), voice.exemplars(situation, 3, seed), False,
                  tuple(str(r["run_id"]) for r in week if r.get("run_id")))

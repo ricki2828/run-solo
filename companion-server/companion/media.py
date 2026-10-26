@@ -164,8 +164,10 @@ def week_bounds(week_ref: str) -> tuple[date, date]:
     return monday, monday + timedelta(days=6)
 
 
-def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Weekly recap facts from the week's rows. `runs` may hold other weeks; only this ISO week is used."""
+def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]], load: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Weekly recap facts from the week's rows. `runs` may hold other weeks; only this ISO week is used. `load` is the
+    load block the recap decided on (recap.load_facts, stored with the card): added as it is, so the picture shows the
+    numbers the text quoted. Without it the facts are exactly what they were before load existed."""
     monday, _ = week_bounds(week_ref)
     days = [{"date": (monday + timedelta(days=i)).isoformat(), "distance_km": 0.0, "zone_s": [0.0] * 5} for i in range(7)]
     mine, moves = [], {k: 0.0 for k in SCORE_KEYS}
@@ -207,6 +209,8 @@ def week_facts(week_ref: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, An
     text = best_moment(mine, mine[0]["zone_id"]) if mine else ""
     if text:
         facts["best_moment"] = {"text": text}
+    if load:
+        facts.update({k: load[k] for k in P.LOAD_KEYS if k in load})
     return facts
 
 
@@ -388,8 +392,10 @@ class MediaRenderer:
                 return self._still(kind, facts, memory)
             if kind == "weekly_recap":
                 week_ref = str(card["run_id"]).split("recap:", 1)[1]
-                facts = week_facts(week_ref, runs)
-                vkind, vfacts = "week_loop", {**facts, "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
+                facts = week_facts(week_ref, runs, plan.get("facts") or None)
+                vkind = "week_loop"   # the moment loop does not draw load: its facts are the older week facts
+                vfacts = {**{k: v for k, v in facts.items() if k not in P.LOAD_KEYS},
+                          "duration_s": sum(sum(d["zone_s"]) for d in facts["days"])}
             elif kind in ("trail_board", "trail_record", "trail_heart"):
                 run = next(r for r in runs if r["run_id"] == card["run_id"])
                 trail = (run.get("_shape") or {}).get("trail")

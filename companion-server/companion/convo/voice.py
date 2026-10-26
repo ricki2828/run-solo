@@ -437,6 +437,28 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
         ("First recap", "{runs_txt}, {km} km. Nothing to compare yet. {moment}"),
         ("Week logged", "{min} minutes and {km} km. A fine first picture. {moment}"),
     ],
+    # Weekly load against the runner's own usual week (recap.load_facts decides when these apply). Load is minutes
+    # running times how hard they were; `usual` is the mean of the four weeks before. Words, not ratios.
+    "recap_load_usual": [
+        ("Usual week", "{load} load over {runs_txt}, about your usual {usual}. {km} km, {min} min. {moment}"),
+        ("Right on your usual", "{load} load, close to your usual {usual}. {runs_txt} for {km} km. {moment}"),
+        ("Steady load", "{runs_txt}, {km} km, {load} load. That is your usual week, {usual}. {moment}"),
+    ],
+    "recap_load_step": [
+        ("Step up", "{load} load, {pct}% over your usual {usual}. {runs_txt}, {km} km. Hold about here next week. {moment}"),
+        ("A step up", "{runs_txt} and {km} km came to {load} load, {pct}% above your usual {usual}. Hold here before adding more. {moment}"),
+        ("Building", "{load} load, up {pct}% on your usual {usual}. A good step. Stay near it next week. {moment}"),
+    ],
+    "recap_load_jump": [
+        ("Big week", "{load} load, {pct}% over your usual {usual}. Keep next week near {cap}, easy runs easy. {moment}"),
+        ("Big week for you", "{runs_txt}, {km} km, {load} load. That is {pct}% above your usual {usual}. Next week, stay near {cap} and keep the easy runs easy. {moment}"),
+        ("Well above usual", "{load} load against a usual {usual}, {pct}% more. Ease back toward {cap} next week. {moment}"),
+    ],
+    "recap_load_light": [
+        ("Lighter week", "{load} load, {pct}% under your usual {usual}. {runs_txt}, {km} km. Lighter weeks help. {moment}"),
+        ("Quieter than usual", "{runs_txt} for {km} km, {load} load, {pct}% below your usual {usual}. Lighter weeks do their work. {moment}"),
+        ("Easing off", "{load} load, under your usual {usual} by {pct}%. {km} km over {runs_txt}. Recovery counts. {moment}"),
+    ],
     # The month poster (the 1st, for the month just ended). Totals only: the picture adds each run's day, type and
     # distance from the stored rows, and nothing the runner has not already sent.
     "recap_month": [

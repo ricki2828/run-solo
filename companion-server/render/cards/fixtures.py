@@ -189,6 +189,38 @@ def weekly_recap_big() -> dict[str, Any]:
             "pace_s_per_km": 39900 / 123.4, "quickest_pace_s_per_km": 301}
 
 
+_LOAD_MONDAYS = ("2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28", "2026-10-05")
+
+
+def _load_weeks(loads: list[int], *, nohr: float = 0.0, paused: tuple[int, ...] = ()) -> list[dict[str, Any]]:
+    """Six weeks of load, oldest first: heart-rate zones split as a mostly easy runner's would, `nohr` of each week with
+    no strap. A paused week counts for nothing."""
+    zone = [0.06, 0.52, 0.24, 0.14, 0.04]
+    return [{"monday": m, "load": 0 if i in paused else ld, "paused": i in paused,
+             "zone_share": [0.0] * 5 if i in paused else [round(z * (1 - nohr), 3) for z in zone],
+             "nohr_share": 0.0 if i in paused else nohr}
+            for i, (m, ld) in enumerate(zip(_LOAD_MONDAYS, loads))]
+
+
+def weekly_recap_load_usual() -> dict[str, Any]:
+    """The week-41 recap with the load panel: 352 load against a usual 345, so 'About your usual week'."""
+    loads = [300, 350, 340, 360, 330, 352]
+    return {**weekly_recap(), "load": 352, "usual_load": 345, "band": "usual", "pct": 2, "weeks": _load_weeks(loads)}
+
+
+def weekly_recap_load_bigjump() -> dict[str, Any]:
+    """A big week: 470 against a usual 345 (36% more), with a paused week in the history. The bar gets the amber outline."""
+    loads = [300, 350, 0, 340, 330, 470]
+    w = _load_weeks(loads, paused=(2,))
+    return {**weekly_recap(), "load": 470, "usual_load": 340, "band": "bigJump", "pct": 38, "weeks": w}
+
+
+def weekly_recap_load_nohr() -> dict[str, Any]:
+    """A runner with no strap: every bar is the easy-run colour, and the week is lighter than usual."""
+    loads = [210, 240, 230, 250, 220, 170]
+    return {**weekly_recap(), "load": 170, "usual_load": 235, "band": "lighter", "pct": 28, "weeks": _load_weeks(loads, nohr=1.0)}
+
+
 def pb_marathon_half() -> dict[str, Any]:
     """An hour-plus PB (half marathon, 1:45:12): the hero is as wide as it gets."""
     f = pb_5k()

@@ -41,6 +41,7 @@ ALLOWED_FACT_KEYS = frozenset({
     "place_note", "verdict", "pb", "pb_detail",
     "title", "route_xy", "splits", "reps", "work_pace_s_per_km", "share",
     "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
+    "load", "usual_load", "band", "pct", "weeks",   # weekly_recap only: this week's load against the usual week, and 6 weeks of bars
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
     # decides to send them; each one is something the card's own text already says, see KIND_FACT_KEYS)
     "session", "reason", "date_local",
@@ -106,6 +107,8 @@ RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headl
                       "title", "route_xy", "splits", "reps", "work_pace_s_per_km"})   # the shape facts: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
+LOAD_KEYS = frozenset({"load", "usual_load", "band", "pct", "weeks"})   # the weekly card's load panel; not the loop's
+LOAD_BANDS = ("lighter", "usual", "stepUp", "bigJump")
 NEW_KINDS = frozenset({"suggestion", "milestone", "milestone_loop", "race_countdown", "monthly"})   # these also get value-shape checks
 # Coach cards. The session name is a short label the plan owns; the reason is a fixed enum, never free text.
 COACH_KINDS = frozenset({"today", "today_verdict", "moved", "pinned_week"})
@@ -120,7 +123,7 @@ WEEK_DAY_KEYS = frozenset({"type", "planned_km", "done_km"})
 COACH_REQUIRED = {"today": {"type", "session"}, "today_verdict": {"type", "session"}, "moved": {"type", "session", "to_day"},
                   "pinned_week": {"days"}}
 KIND_FACT_KEYS = {
-    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "share": RUN_KEYS | {"share"}, "weekly_recap": WEEK_KEYS,
+    "light": RUN_KEYS, "flood": RUN_KEYS, "pb": RUN_KEYS, "share": RUN_KEYS | {"share"}, "weekly_recap": WEEK_KEYS | LOAD_KEYS,
     "run": RUN_KEYS, "weekly": WEEK_KEYS,   # the videos
     "run_loop": RUN_KEYS, "week_loop": WEEK_KEYS,   # the v4 moment loops: the same facts, no new key
     "milestone_loop": frozenset({"kind", "value", "line"}),
@@ -164,6 +167,8 @@ def check_request(req: Any) -> tuple[str, str, dict]:
             raise ProtocolError("bad_request")
         if (kind in TRAIL_KINDS or kind == HEART_KIND) and not _trail_values_ok(facts):
             raise ProtocolError("bad_request")
+        if kind == "weekly_recap" and not _load_ok(facts):
+            raise ProtocolError("bad_request")
         if kind == "share" and not _share_ok(facts.get("share")):
             raise ProtocolError("bad_request")
         if kind == HEART_KIND and not _heart_ok(facts):
@@ -172,6 +177,26 @@ def check_request(req: Any) -> tuple[str, str, dict]:
                                         and "ghost_gap" in facts and len(facts["trail_board"]) >= 2):
             raise ProtocolError("bad_request")   # a race needs a hill to run along and a ghost to run against
     return op, kind, facts
+
+
+def _load_ok(facts: dict) -> bool:
+    """The weekly card's load block is all or nothing: a bounded load and usual, a known band, a percent, and exactly 6
+    weeks of a Monday date, a load, a paused flag and the zone and no-heart-rate shares of that week's load."""
+    have = LOAD_KEYS & set(facts)
+    if not have:
+        return True
+    if have != LOAD_KEYS or not (_int_in(facts["load"], 0, 5000) and _int_in(facts["usual_load"], 0, 5000)
+                                 and _int_in(facts["pct"], 0, 1000) and facts["band"] in LOAD_BANDS):
+        return False
+    wk = facts["weeks"]
+
+    def share(x: Any) -> bool:
+        return _num(x) and 0 <= x <= 1.0001
+    return isinstance(wk, list) and len(wk) == 6 and all(
+        isinstance(w, dict) and set(w) <= {"monday", "load", "paused", "zone_share", "nohr_share"} and _text(w.get("monday", ""))
+        and len(w["monday"]) == 10 and _int_in(w.get("load"), 0, 5000) and isinstance(w.get("paused", False), bool)
+        and isinstance(w.get("zone_share"), list) and len(w["zone_share"]) == 5 and all(share(x) for x in w["zone_share"])
+        and share(w.get("nohr_share", 0)) for w in wk)
 
 
 SHARE_FLAGS = frozenset({"route", "place", "time", "climb", "hr", "reps", "pace", "name", "date"})

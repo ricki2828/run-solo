@@ -37,7 +37,7 @@ from . import trail as cv_trail
 from .convo import engine as cv_engine
 from .convo import recap as cv_recap
 from . import default_week as cv_default_week
-from .checkins import at_local as cv_ci_at_local, planned_from_run as ci_planned_from_run, usual_weekdays as ci_usual_weekdays
+from .checkins import care_weeks as ci_care_weeks, at_local as cv_ci_at_local, planned_from_run as ci_planned_from_run, usual_weekdays as ci_usual_weekdays
 from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
@@ -249,6 +249,8 @@ class RunIn(BaseModel):
     locality: str | None = Field(default=None, max_length=60)  # suburb only, never a street
     route_id: str | None = Field(default=None, max_length=64)
     load_state: str | None = Field(default=None, pattern=r"^(low|steady|high|very_high)$")
+    load: float | None = Field(default=None, ge=0, le=2000)   # LoadGuard.load for this run: minutes x how hard (1-5)
+    load_basis: str | None = Field(default=None, pattern=r"^(hr|pace|assumed)$")
     pb: str | None = Field(default=None, pattern=r"^(5k|10k|half|longest|fastest_km)$")
     plan_kind: str | None = Field(default=None, pattern=r"^(easy|long|quality)$")
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
@@ -300,6 +302,8 @@ class RunIn(BaseModel):
                 raise ValueError("route is not a normalised shape")
         if self.splits is not None and sum(x.km for x in self.splits) > self.distance_m / 1000 + 0.5:
             raise ValueError("splits are longer than the run")
+        if self.load is None:
+            self.load_basis = None   # a basis alone says nothing
         return self
 
     @field_validator("session_name", "work_pace_s_per_km", "reps_done", "rep_spread_s", "recovery_pace_s_per_km",
@@ -317,6 +321,15 @@ class RunIn(BaseModel):
             out = out.strip()
             return out if known_session(out) or CUSTOM_SESSION_RE.match(out) else None
         return out
+
+    @field_validator("load", "load_basis", mode="wrap")
+    @classmethod
+    def _load_field_is_optional_extra(cls, v, handler):
+        """A bad load value drops that one field (stored as none), never the run: the recap just falls back to km."""
+        try:
+            return handler(v)
+        except ValidationError:
+            return None
 
     @field_validator("plan_kind", "plan_target_m", "plan_week", "plan_weeks", "plan_next", mode="wrap")
     @classmethod
@@ -1304,14 +1317,14 @@ class Service(CheckinMixin, MeasureMixin):
                         "UPDATE runs SET real_upload=1, received_at=?, "
                         "start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, app_type=?, duration_s=?, "
                         "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
-                        "climb_m=?, locality=?, route_id=?, load_state=?, pb=?, plan_kind=?, plan_target_m=?, "
+                        "climb_m=?, locality=?, route_id=?, load_state=?, load=?, load_basis=?, pb=?, plan_kind=?, plan_target_m=?, "
                         "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
                         "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?), session_name=?, work_pace_s_per_km=?, reps_done=?, "
                         "rep_spread_s=?, recovery_pace_s_per_km=?, goal_reached=? WHERE user_id=? AND run_id=?",
                         (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
-                         run.route_id, run.load_state, run.pb, run.plan_kind, run.plan_target_m,
+                         run.route_id, run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
                     self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
@@ -1325,14 +1338,14 @@ class Service(CheckinMixin, MeasureMixin):
             c.execute(
                 "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, app_type, "
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
-                "locality, route_id, load_state, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
+                "locality, route_id, load_state, load, load_basis, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
                 "plan_next_week, plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, "
                 "recovery_pace_s_per_km, goal_reached, received_at, "
-                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
-                 run.load_state, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
+                 run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)
@@ -1815,7 +1828,10 @@ class Service(CheckinMixin, MeasureMixin):
             zone_id = c.execute("SELECT zone_id FROM users WHERE id=?", (uid,)).fetchone()["zone_id"]
             empty_before = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='recap_empty' AND ts>?",
                                      (uid, iso(now - timedelta(days=9)))).fetchone()[0]
-        rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref)
+            # the weeks the coach held back (ill or sore) are left out of the usual week; only for a runner who agreed to check-ins
+            paused = ci_care_weeks(self._ci_answers(c, uid, now), to_local(now, zone_id).date(), cv_recap.LOAD_SHOWN_WEEKS) \
+                if self._ci_consented(c, uid) else []
+        rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref, paused_weeks=paused)
         if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
             return None
         with db.ro(self.s.db_path) as c:  # the newest run this week with a note: it is quoted at send time, not stored
