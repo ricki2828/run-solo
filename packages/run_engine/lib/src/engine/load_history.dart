@@ -32,6 +32,7 @@ class WeekLoad {
     this.paused = false,
     this.beforeStart = false,
     this.partialStart = false,
+    this.guardFlagged = false,
     this.current = false,
   });
 
@@ -72,6 +73,11 @@ class WeekLoad {
   /// week that says nothing about a usual one.
   final bool partialStart;
 
+  /// The in-week warning (`LoadGuard.check`, the load trigger) was up on at
+  /// least one day of the week. A big jump is only called when it was, so the
+  /// weekly summary and the warning cannot contradict each other.
+  final bool guardFlagged;
+
   /// The week that holds `now`: still being run, never banded.
   final bool current;
 
@@ -97,9 +103,10 @@ class WeekLoad {
       bool before = false,
       bool noHr = false,
       bool assumed = false,
+      bool flagged = false,
     }) {
       if (load == 0 && !paused && !before) {
-        return WeekLoad(monday: mon(i), current: i == 5);
+        return WeekLoad(monday: mon(i));
       }
       if (before) return WeekLoad(monday: mon(i), beforeStart: true);
       if (paused) return WeekLoad(monday: mon(i), paused: true);
@@ -119,7 +126,7 @@ class WeekLoad {
             : noHr
             ? const {LoadBasis.pace: 1.0}
             : const {LoadBasis.heartRate: 1.0},
-        current: i == 5,
+        guardFlagged: flagged,
       );
     }
 
@@ -130,7 +137,11 @@ class WeekLoad {
       case LoadSample.stepup:
         return [...usual, w(4, 350), w(5, 420, hard: 55, longest: 13)];
       case LoadSample.bigjump:
-        return [...usual, w(4, 350), w(5, 520, hard: 80, longest: 18)];
+        return [
+          ...usual,
+          w(4, 350),
+          w(5, 520, hard: 80, longest: 18, flagged: true),
+        ];
       case LoadSample.lighter:
         return [...usual, w(4, 350), w(5, 240, runs: 3, hard: 15)];
       case LoadSample.first:
@@ -287,10 +298,12 @@ class LoadCompare {
       ? LoadBand.stepUp
       : LoadBand.bigJump;
 
-  /// [weeks] oldest first, the last the week to judge (a complete week; the
-  /// caller drops the current part week). Usual is the mean of the up to 4
-  /// weeks before it, leaving out paused weeks and weeks before the first run.
-  /// An empty unpaused week counts as 0: a real rest week is real.
+  /// [weeks] oldest first, the last the week to judge: a complete week. A
+  /// list ending in the current part week is never banded (`firstWeeks`).
+  /// Usual is the mean of the up to 4 weeks before it that had runs, leaving
+  /// out empty weeks, paused weeks, weeks before the first run and a part
+  /// first week. [bandOf] is the pure ratio; here `bigJump` also needs
+  /// [WeekLoad.guardFlagged].
   static LoadCompare of(List<WeekLoad> weeks) {
     if (weeks.isEmpty) {
       return const LoadCompare(state: LoadCompareState.firstWeeks);
@@ -315,9 +328,11 @@ class LoadCompare {
     }
     final counted = [
       for (final w in prior)
-        if (!w.paused && !w.beforeStart && !w.partialStart) w,
+        // An empty week is not a usual week: one rest week (sick, travel)
+        // must not drag the usual down and make a normal week a jump.
+        if (!w.paused && !w.beforeStart && !w.partialStart && w.runs > 0) w,
     ];
-    final withRuns = counted.where((w) => w.runs > 0).length;
+    final withRuns = counted.length;
     double mean(double Function(WeekLoad) f) => counted.isEmpty
         ? 0
         : counted.fold(0.0, (a, w) => a + f(w)) / counted.length;
@@ -330,7 +345,9 @@ class LoadCompare {
       );
     }
     final ratio = week.load / usual;
-    final band = bandOf(ratio);
+    // Amber only when the in-week warning agrees; else it is a step up.
+    var band = bandOf(ratio);
+    if (band == LoadBand.bigJump && !week.guardFlagged) band = LoadBand.stepUp;
     final pct = band == LoadBand.lighter
         ? ((1 - ratio) * 100).round()
         : ((ratio - 1) * 100).round();
@@ -426,6 +443,7 @@ abstract final class LoadHistory {
           beforeStart: firstMonday == null || monday.isBefore(firstMonday),
           partialStart:
               first != null && monday == firstMonday && first != firstMonday,
+          guardFlagged: _guardFlagged(runs, monday, now, maxHr, vdot),
           current: i == 0,
         ),
       );
@@ -441,6 +459,7 @@ abstract final class LoadHistory {
     required bool paused,
     required bool beforeStart,
     required bool partialStart,
+    required bool guardFlagged,
     required bool current,
   }) {
     var load = 0.0, km = 0.0, min = 0.0, hard = 0.0, longest = 0.0;
@@ -492,8 +511,33 @@ abstract final class LoadHistory {
       paused: paused,
       beforeStart: beforeStart,
       partialStart: partialStart,
+      guardFlagged: guardFlagged,
       current: current,
     );
+  }
+
+  /// The load warning was up (the load trigger, high or very high) on some
+  /// day of the week starting [monday], judged as the app judges it each
+  /// day. Days after [now] are not judged.
+  static bool _guardFlagged(
+    List<LoadRun> runs,
+    DateTime monday,
+    DateTime now,
+    double? maxHr,
+    double? vdot,
+  ) {
+    for (var d = 0; d < 7; d++) {
+      final day = addDays(monday, d);
+      if (day.isAfter(now)) break;
+      final c = LoadGuard.check(
+        runs,
+        now: DateTime(day.year, day.month, day.day, 23, 59),
+        maxHr: maxHr,
+        vdot: vdot,
+      );
+      if (c.flag?.trigger == LoadTrigger.load) return true;
+    }
+    return false;
   }
 
   /// The [months] calendar months ending with the one that holds [now].

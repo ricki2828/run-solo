@@ -99,10 +99,12 @@ void main() {
       expect(c.usual, 400);
       expect(c.band, LoadBand.usual);
     });
-    test('an empty unpaused week counts as 0', () {
+    test('an empty unpaused week is left out, not counted as 0', () {
       final runs = [...week(2, 4), ...week(4, 4), ...week(5, 4), ...week(1, 4)];
       final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
-      expect(LoadCompare.of(ws.sublist(0, 5)).usual, 300);
+      final c = LoadCompare.of(ws.sublist(0, 5));
+      expect(c.usual, 400);
+      expect(c.band, LoadBand.usual);
     });
     test('weeks before the first run are skipped', () {
       final runs = [...week(2, 4), ...week(3, 4), ...week(4, 4), ...week(1, 4)];
@@ -189,6 +191,69 @@ void main() {
         LoadCompare.of(ws.sublist(0, 5)).state,
         isNot(LoadCompareState.returning),
       );
+    });
+  });
+
+  group('the summary and the in-week warning agree', () {
+    // The guard flags a week on the load trigger; the summary says big jump
+    // only then. Run both over the same fixtures.
+    bool guardUp(List<LoadRun> runs, DateTime monday) {
+      for (var d = 0; d < 7; d++) {
+        final day = DateTime(monday.year, monday.month, monday.day + d, 23, 59);
+        if (LoadGuard.check(runs, now: day).flag?.trigger == LoadTrigger.load) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    LoadCompare judge(List<LoadRun> runs) {
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
+      return LoadCompare.of(ws.sublist(0, 5));
+    }
+
+    test('a normal week after one rest week is not a jump', () {
+      final runs = [...week(5, 4), ...week(4, 4), ...week(2, 4), ...week(1, 4)];
+      final c = judge(runs);
+      expect(c.band, LoadBand.usual);
+      expect(guardUp(runs, DateTime(2026, 10, 19)), isFalse);
+    });
+
+    test('1.31-1.44x usual is a step up: the warning never fired', () {
+      // usual 400; this week 1.375x = 550 over 5 runs of 110.
+      final runs = [
+        for (var k = 2; k <= 5; k++) ...week(k, 4),
+        for (var i = 0; i < 5; i++) run(DateTime(2026, 10, 19, 7 + i), min: 44),
+      ];
+      final c = judge(runs);
+      expect(c.ratio, closeTo(1.375, 1e-9));
+      expect(guardUp(runs, DateTime(2026, 10, 19)), isFalse);
+      expect(c.band, LoadBand.stepUp);
+    });
+
+    test('a week the warning flagged is a big jump', () {
+      final runs = [for (var k = 2; k <= 5; k++) ...week(k, 4), ...week(1, 6)];
+      expect(guardUp(runs, DateTime(2026, 10, 19)), isTrue);
+      expect(judge(runs).band, LoadBand.bigJump);
+    });
+
+    test('big jump implies the warning was up, on every fixture', () {
+      for (final n in [3, 4, 5, 6, 7, 9]) {
+        for (final usualN in [3, 4]) {
+          final runs = [
+            for (var k = 2; k <= 5; k++) ...week(k, usualN),
+            ...week(1, n),
+          ];
+          final c = judge(runs);
+          if (c.band == LoadBand.bigJump) {
+            expect(
+              guardUp(runs, DateTime(2026, 10, 19)),
+              isTrue,
+              reason: '$n/$usualN',
+            );
+          }
+        }
+      }
     });
   });
 
