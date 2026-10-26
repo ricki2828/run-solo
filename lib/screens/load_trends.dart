@@ -244,6 +244,7 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
         key: const ValueKey('load-bars'),
         usual: usualOk ? compare.usual : null,
         usualFrom: (n - 5).clamp(0, n - 1),
+        usualTo: n - 2,
         semanticsLabel: usualOk
             ? 'Load by week. This week so far ${now.load.round()}, '
                   'usual ${compare.usual.round()}.'
@@ -262,7 +263,9 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
       ),
       [
         if (compare.state == engine.LoadCompareState.firstWeeks)
-          _caption('Usual week after 3 weeks.', t),
+          _caption('Usual week ${engine.LoadWords.afterThreeWeeks}.', t)
+        else if (compare.state == engine.LoadCompareState.returning)
+          _caption('Usual week ${engine.LoadWords.backThreeWeeks}.', t),
       ],
     );
   }
@@ -272,15 +275,18 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
     RunSoloTokens t,
   ) {
     final now = months.last;
-    final compare = engine.LoadCompare.months(months);
-    final usualOk = compare.state == engine.LoadCompareState.ok;
     final n = months.length;
+    // One baseline for the line and the sentence: last month (the last
+    // complete one) against the 3 months before it. The month being run is
+    // never judged, so the line stops at last month's bar.
     final lastDone = n >= 2 ? months[n - 2] : null;
+    final compare = lastDone == null
+        ? const engine.LoadCompare(state: engine.LoadCompareState.firstWeeks)
+        : engine.LoadCompare.months(months.sublist(0, n - 1));
+    final usualOk = compare.state == engine.LoadCompareState.ok;
     final line = lastDone == null || lastDone.runs == 0
         ? null
-        : engine.LoadWords.monthLine(
-            engine.LoadCompare.months(months.sublist(0, n - 1)),
-          );
+        : engine.LoadWords.monthLine(compare);
     return (
       [
         ('LOAD', '${now.load.round()}'),
@@ -290,10 +296,12 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
       LoadBars(
         key: const ValueKey('load-bars'),
         usual: usualOk ? compare.usual : null,
-        usualFrom: (n - 4).clamp(0, n - 1),
+        usualFrom: (n - 5).clamp(0, n - 1),
+        usualTo: n - 2,
         semanticsLabel: usualOk
-            ? 'Load by month. This month so far ${now.load.round()}, '
-                  'usual ${compare.usual.round()}.'
+            ? 'Load by month. Last month ${lastDone!.load.round()}, '
+                  'usual ${compare.usual.round()}. '
+                  'This month so far ${now.load.round()}.'
             : 'Load by month. This month so far ${now.load.round()}.',
         bars: [
           for (final p in months)

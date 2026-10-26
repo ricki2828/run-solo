@@ -94,6 +94,7 @@ class LoadBars extends StatelessWidget {
     required this.bars,
     this.usual,
     this.usualFrom = 0,
+    this.usualTo,
     this.barsHeight = 120,
     this.grow = 1,
     this.semanticsLabel,
@@ -106,6 +107,9 @@ class LoadBars extends StatelessWidget {
   /// edge, labelled in the gutter. Null draws no line and no gutter.
   final double? usual;
   final int usualFrom;
+
+  /// The last bar the line covers; null runs it to the right edge.
+  final int? usualTo;
 
   /// Height of the bar area (the tags and the date labels sit outside it).
   final double barsHeight;
@@ -174,7 +178,9 @@ class LoadBars extends StatelessWidget {
                             painter: _UsualLine(
                               y: usualY,
                               x0: usualFrom * slot + 2,
-                              x1: width,
+                              x1: usualTo == null
+                                  ? width
+                                  : (usualTo! + 1) * slot - 2,
                               colour: t.inkSecondary,
                             ),
                           ),
@@ -198,6 +204,7 @@ class LoadBars extends StatelessWidget {
                 ),
                 const SizedBox(height: Space.x8),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (final b in bars)
                       SizedBox(

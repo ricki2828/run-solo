@@ -225,7 +225,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(find.text('Usual week after 3 weeks.'), findsOneWidget);
+      expect(find.text('Usual week after 3 weeks of running.'), findsOneWidget);
       expect(find.text('SO FAR'), findsOneWidget);
       expect(find.byKey(const ValueKey('load-usual-line')), findsNothing);
     },
@@ -244,10 +244,36 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Usual week after 3 weeks.'), findsNothing);
+    expect(find.text('Usual week after 3 weeks of running.'), findsNothing);
     expect(find.textContaining('usual week'), findsNothing);
     expect(find.textContaining('takes shape'), findsNothing);
     expect(find.text('SO FAR'), findsOneWidget);
+  });
+
+  testWidgets('month: the line and the sentence share one baseline', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await pumpApp(tester, fakeServices(), home: TrendScreen(loadData: _data()));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('load-view-month')));
+    await tester.pump();
+    final label = tester
+        .getSemantics(find.bySemanticsLabel(RegExp(r'^Load by month')))
+        .label;
+    final m = RegExp(r'Last month (\d+), usual (\d+)\.').firstMatch(label)!;
+    final last = int.parse(m[1]!), usual = int.parse(m[2]!);
+    // Sep 1500 against Jun-Aug (1100, 1250, 1300): the line's value is the
+    // very baseline the sentence uses, and it leaves out the month judged.
+    expect(usual, 1217);
+    final pct = (((last / usual) - 1) * 100).round();
+    expect(
+      find.text('$pct% more than your usual month'),
+      findsOneWidget,
+      reason: 'the line says $usual, so the sentence must be $pct%',
+    );
+    handle.dispose();
   });
 
   testWidgets('no runs: the empty state, no tiles', (tester) async {
