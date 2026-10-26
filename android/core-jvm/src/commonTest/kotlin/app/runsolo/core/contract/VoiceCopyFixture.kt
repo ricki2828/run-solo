@@ -222,6 +222,7 @@ object VoiceCopyFixture {
         add("goal.status.behind-slipping", GoalMargin.phrase(-10_000, -8_000, t2430))
         add("goal.status.behind-closing", GoalMargin.phrase(-10_000, 8_000, t2430))
         add("goal.status.level", GoalMargin.phrase(1_000, 0, t2430))
+        add("goal.status.level-slipping", GoalMargin.phrase(1_000, -4_000, t2430))
         add("goal.status.first-km", GoalMargin.phrase(20_000, null, t2430))
         add("goal.status.first-predicted", GoalMargin.phrase(20_000, null, t2430, predicted = true))
         add("goal.status.first-predicted-level", GoalMargin.phrase(1_000, null, t2430, predicted = true))

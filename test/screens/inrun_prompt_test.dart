@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
@@ -417,4 +418,41 @@ void main() {
       expect(bar(), inInclusiveRange(0.4, 0.75));
     });
   });
+
+  // 26-Oct goal-run voice: the goal prompts are the longest questions; at a large
+  // text scale on a short phone the ellipsis must not cut what Push means.
+  for (final scale in [1.0, 1.5]) {
+    testWidgets(
+      'the longest goal prompt shows whole at text scale $scale on 360 x 640',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 640 * 3.0);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final fake = await openRun(tester);
+        await step(tester, fake, 900);
+        await open(tester, fake, prompt(text: goalPromptLongest));
+        final text = find.byKey(const ValueKey('inrun-prompt-text'));
+        final para = tester.renderObject<RenderParagraph>(text);
+        expect(
+          para.didExceedMaxLines,
+          isFalse,
+          reason: 'ellipsis cut the question',
+        );
+        // And it fits the room the card gives it: nothing paints over the bar.
+        final room = tester.getRect(
+          find.ancestor(of: text, matching: find.byType(Expanded)).first,
+        );
+        expect(
+          tester.getRect(text).bottom,
+          lessThanOrEqualTo(room.bottom + 0.5),
+        );
+        expect(button(0), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
+
+/// The longest goal-time last-2-km prompt (CoachPrompter, 16 words).
+const goalPromptLongest =
+    '2.5 k to go, 1 minute 59 under 1:27:59, shrinking. Push to bank more, or hold?';
