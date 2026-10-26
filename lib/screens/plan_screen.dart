@@ -159,17 +159,11 @@ class _CreateFormState extends State<_CreateForm> {
                 if (l != engine.IdentityLane.values.first)
                   const SizedBox(width: Space.x8),
                 Expanded(
-                  child: ChoiceChip(
+                  child: _LaneChip(
                     key: ValueKey('plan-lane-${l.name}'),
-                    showCheckmark: false,
-                    labelPadding: EdgeInsets.zero,
-                    padding: const EdgeInsets.symmetric(horizontal: Space.x4),
-                    label: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(l.name.toUpperCase()),
-                    ),
+                    lane: l,
                     selected: l == lane,
-                    onSelected: (_) => setState(() => _lane = l),
+                    onSelected: () => setState(() => _lane = l),
                   ),
                 ),
               ],
@@ -189,6 +183,7 @@ class _CreateFormState extends State<_CreateForm> {
             children: [
               IconButton(
                 key: const ValueKey('plan-fewer'),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: 'Fewer runs',
                 onPressed: _perWeek > engine.BlockPlanner.minPerWeek
                     ? () => setState(() => _perWeek--)
@@ -202,6 +197,7 @@ class _CreateFormState extends State<_CreateForm> {
               ),
               IconButton(
                 key: const ValueKey('plan-more'),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 tooltip: 'More runs',
                 onPressed: _perWeek < engine.BlockPlanner.maxPerWeek
                     ? () => setState(() => _perWeek++)
@@ -216,8 +212,9 @@ class _CreateFormState extends State<_CreateForm> {
             style: RunSoloType.body15.copyWith(color: t.inkSecondary),
           ),
           const SizedBox(height: Space.x24),
-          FilledButton(
+          RunButton(
             key: const ValueKey('plan-build'),
+            label: 'Build my 4 weeks',
             onPressed: () async {
               await services.plans.create(
                 engine.BlockPlanner.build(
@@ -229,9 +226,58 @@ class _CreateFormState extends State<_CreateForm> {
               );
               widget.onBuilt();
             },
-            child: const Text('Build my 4 weeks'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A lane chip: selected = filled in the lane's own colour (each score keeps
+/// its colour, ui review 24-Oct #21), unselected = hairline outline.
+class _LaneChip extends StatelessWidget {
+  const _LaneChip({
+    super.key,
+    required this.lane,
+    required this.selected,
+    required this.onSelected,
+  });
+  final engine.IdentityLane lane;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final fill = t.laneFill(lane);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: lane.name,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onSelected,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(horizontal: Space.x4),
+          decoration: BoxDecoration(
+            color: selected ? fill : t.bgRaised,
+            borderRadius: BorderRadius.circular(Radii.button),
+            border: Border.all(color: selected ? fill : t.lineHair, width: 2),
+          ),
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              lane.name.toUpperCase(),
+              style: RunSoloType.body15.copyWith(
+                fontWeight: FontWeight.w600,
+                color: selected ? readableOn(fill) : t.laneText(lane),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -283,10 +329,10 @@ class _PlanBody extends StatelessWidget {
           ],
           if (view.finished) ...[
             const SizedBox(height: Space.x12),
-            FilledButton(
+            RunButton(
               key: const ValueKey('plan-build-next'),
+              label: 'Build the next 4 weeks',
               onPressed: onBuildNext,
-              child: const Text('Build the next 4 weeks'),
             ),
           ],
           for (var w = 1; w <= engine.BlockPlanner.weeks; w++) ...[
@@ -323,10 +369,10 @@ class _PlanBody extends StatelessWidget {
             style: RunSoloType.label13.copyWith(color: t.inkMuted),
           ),
           const SizedBox(height: Space.x12),
-          TextButton(
+          RunButton.tertiary(
             key: const ValueKey('plan-end'),
+            label: 'End plan',
             onPressed: () => _confirmEnd(context, services),
-            child: const Text('End plan'),
           ),
         ],
       ),

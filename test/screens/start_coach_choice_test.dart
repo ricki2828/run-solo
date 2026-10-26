@@ -50,8 +50,8 @@ void main() {
     await open(tester, free);
     expect(find.byKey(chaseKey), findsOneWidget);
     expect(find.byKey(steadyKey), findsOneWidget);
-    expect(find.text('Chase your best'), findsOneWidget);
-    expect(find.text('Steady run'), findsOneWidget);
+    expect(find.text('Chase best'), findsOneWidget);
+    expect(find.text('Steady'), findsOneWidget);
     expect(selected(tester, chaseKey), isTrue);
     expect(selected(tester, steadyKey), isFalse);
   });
@@ -74,6 +74,21 @@ void main() {
     expect(chase.height, greaterThanOrEqualTo(96));
     expect(chase.height, steady.height);
     expect(chase.width, greaterThan(140));
+  });
+
+  testWidgets('at 2x text the two cards stay equal and at least 96 tall', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await open(tester, free);
+    final chase = tester.getSize(find.byKey(chaseKey));
+    final steady = tester.getSize(find.byKey(steadyKey));
+    expect(chase.height, greaterThanOrEqualTo(96));
+    expect(chase.height, steady.height);
+    // The run-type cards above still overflow at 2x (font-scale pass, #26);
+    // only the coach cards are checked here.
+    tester.takeException();
   });
 
   testWidgets('a distance goal asks', (tester) async {

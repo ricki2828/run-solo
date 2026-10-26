@@ -73,6 +73,25 @@ void main() {
     await check(tester, 'companion_consent_360x640');
   });
 
+  testWidgets('companion consent more 360x640', (tester) async {
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 6);
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('companion-consent-more')),
+    );
+    await tester.tap(find.byKey(const ValueKey('companion-consent-more')));
+    await pumpTimes(tester, 4);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -260));
+    await pumpTimes(tester, 2);
+    await check(tester, 'companion_consent_more_360x640');
+  });
+
   testWidgets('companion knows 360x640', (tester) async {
     await tester.runAsync(() => enrolNow(ctl));
     await pumpApp(
@@ -220,6 +239,26 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('companion-weather-switch')));
     await tester.pumpAndSettle();
     await check(tester, 'companion_weather_sheet_360x640');
+  });
+
+  testWidgets('companion weather sheet more 360x640', (tester) async {
+    await tester.runAsync(() => enrolNow(ctl));
+    await pumpApp(
+      tester,
+      fakeServices(companion: ctl),
+      home: const CompanionScreen(),
+    );
+    tester.view.physicalSize = const Size(1080, 640 * 3);
+    await pumpTimes(tester, 8);
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('companion-weather-switch')),
+    );
+    await tester.tap(find.byKey(const ValueKey('companion-weather-switch')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('companion-weather-more')));
+    await tester.pumpAndSettle();
+    await check(tester, 'companion_weather_sheet_more_360x640');
   });
 
   testWidgets('companion feel row 360x640', (tester) async {
