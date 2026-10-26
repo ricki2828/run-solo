@@ -83,15 +83,15 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("Good grunt", "{climb} m of climb costs pace. You paid {delta} s/km."),
     ],
     "slower_load": [
-        ("Carrying a load", "Training load is up, and {pace}/km is {delta} s/km slower. Tired legs, not lost fitness."),
-        ("Tired legs", "{delta} s/km slower with load high. The fix is boring: an easy day."),
-        ("Slower, loaded", "{km} km at {pace}/km, {delta} s/km down. Load is high, so that tracks."),
-        ("Load is showing", "{delta} s/km slower than last time. You have stacked a lot of work lately."),
-        ("Heavy week", "{pace}/km, {delta} s/km slower. After this much load, I'd expect it."),
-        ("Pay-back day", "Slower by {delta} s/km, load high. Rest is part of the plan, not a break from it."),
-        ("Running on fumes", "{km} km at {pace}/km, {delta} s/km slower. Load is high, so that fits."),
-        ("Absorbing", "{delta} s/km down with high load. The work lands when you back off."),
-        ("Fatigue, not form", "Pace is {delta} s/km slower. Load is high. Not the same thing as getting worse."),
+        ("Load is up", "Your recent load is above your usual week, and {pace}/km is {delta} s/km slower."),
+        ("Slower, with load up", "{delta} s/km slower than last time, with more load lately than your usual week."),
+        ("Slower, loaded", "{km} km at {pace}/km, {delta} s/km down. Recent load is above your usual week, which can go with that."),
+        ("Load in context", "{delta} s/km slower than last time. The last few days carry more load than your usual week."),
+        ("Heavier days", "{pace}/km, {delta} s/km slower, after recent days heavier than your usual week."),
+        ("A slower day", "Slower by {delta} s/km, with recent load above your usual week. An easy day would fit; your call."),
+        ("Above usual", "{km} km at {pace}/km, {delta} s/km slower. Recent load is above your usual week, so it is not a surprise."),
+        ("Still absorbing", "{delta} s/km down while load is above your usual week. Easier days are where the work settles in."),
+        ("Just this run", "Pace is {delta} s/km slower and load is above your usual week. A single run says little about fitness."),
     ],
     "baseline": [
         ("Baseline set", "{km} km at {pace}/km. That is your starting line. Everything from here gets compared to it."),
@@ -437,6 +437,28 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
         ("First recap", "{runs_txt}, {km} km. Nothing to compare yet. {moment}"),
         ("Week logged", "{min} minutes and {km} km. A fine first picture. {moment}"),
     ],
+    # Weekly load against the runner's own usual week (recap.load_facts decides when these apply). Load is minutes
+    # running times how hard they were; `usual` is the mean of the four weeks before. Words, not ratios.
+    "recap_load_usual": [
+        ("Usual week", "{load} load over {runs_txt}, about your usual {usual}. {km} km, {min} min. {moment}"),
+        ("Right on your usual", "{load} load, close to your usual {usual}. {runs_txt} for {km} km. {moment}"),
+        ("Steady load", "{runs_txt}, {km} km, {load} load. That is your usual week, {usual}. {moment}"),
+    ],
+    "recap_load_step": [
+        ("Step up", "{load} load, {more} your usual {usual}. {runs_txt}, {km} km. A similar week next would let it settle. {moment}"),
+        ("A step up", "{runs_txt} and {km} km came to {load} load, {more} your usual {usual}. A good step. A similar week next would let it settle before adding more. {moment}"),
+        ("Building", "{load} load against a usual {usual}, {more} it. A similar week next would let it settle. {moment}"),
+    ],
+    "recap_load_jump": [
+        ("Big week", "{load} load, {more} your usual {usual}. A week around {cap}, with easy runs easy, would balance it. {moment}"),
+        ("Big week for you", "{runs_txt}, {km} km, {load} load, {more} your usual {usual}. A week around {cap}, with the easy runs easy, would balance it. {moment}"),
+        ("Well above usual", "{load} load against a usual {usual}, {more} it. A week near {cap} next would bring it back toward usual. {moment}"),
+    ],
+    "recap_load_light": [
+        ("Lighter week", "{load} load, {pct}% under your usual {usual}. {runs_txt}, {km} km. Lighter weeks help. {moment}"),
+        ("Quieter than usual", "{runs_txt} for {km} km, {load} load, {pct}% below your usual {usual}. Lighter weeks do their work. {moment}"),
+        ("Quieter days", "{load} load, under your usual {usual} by {pct}%. {km} km over {runs_txt}. Recovery counts. {moment}"),
+    ],
     # The month poster (the 1st, for the month just ended). Totals only: the picture adds each run's day, type and
     # distance from the stored rows, and nothing the runner has not already sent.
     "recap_month": [
@@ -453,14 +475,14 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
 # "around 6:30". The reason (load, a hard run, weather, plan, gap, how the last run felt) is the clause.
 SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
     "sugg_easy_load": [
-        ("For tomorrow", "Load is high. Tomorrow: {session}, or a rest day."),
-        ("Back off", "You've stacked a lot lately. Tomorrow: {session}, nothing more."),
-        ("Light day", "Load is high, so tomorrow is {session} at a chat pace, or rest."),
-        ("Ease off", "Load says easy. {session} tomorrow, {start}."),
-        ("Easy tomorrow", "Your load is high. Tomorrow: {session} or a day off."),
-        ("Pull the reins", "High load right now. Keep tomorrow to {session}."),
-        ("Rest is training", "Load is high. {session} tomorrow, or skip it and rest."),
-        ("Go gentle", "Too much load lately. Tomorrow: {session}, {start}."),
+        ("For tomorrow", "Your recent load is above your usual week. Tomorrow: {session}, or a rest day. Your call."),
+        ("Usual week, for reference", "The last week is above your usual week. {session} tomorrow would fit, or rest."),
+        ("Light day", "Load is above your usual week, so tomorrow could be {session} at a chat pace, or rest."),
+        ("An easy day fits", "This week carries more load than your usual. {session} tomorrow, {start}, would fit."),
+        ("Easy tomorrow", "Your most recent days are heavier than your usual week. Tomorrow: {session} or a day off."),
+        ("Your call", "Load is above your usual week. {session} tomorrow is an option, so is rest."),
+        ("Rest is an option", "Recent load is above your usual week. {session} tomorrow, or a rest day if you prefer."),
+        ("Reference point", "Compared with your usual week, the last week is heavy. Tomorrow: {session}, {start}, or rest."),
     ],
     "sugg_recover": [
         ("For tomorrow", "Your last run was hard, {hours_txt} ago. Tomorrow: {session}."),

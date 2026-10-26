@@ -20,6 +20,7 @@ from ..timeutil import iso, parse_iso, to_local
 
 MAX_RESULT_CHARS = 12000
 MAX_RECENT_RUNS = 30
+LOAD_STATE_DAYS = 7   # a load_state older than this is not shown to the model
 MAX_SPLITS = 50
 COACH_TYPES = {"easy": ("easy",), "long": ("long",), "quality": ("tempo", "interval"), "race": ("race",)}
 # Memory answers the coach may see: the same enumerated digest the card writer gets (writer.digest_lines), minus the
@@ -140,6 +141,10 @@ class ReadTools:
     def _local_day(self, utc_iso: str, zone_id: str) -> date:
         return to_local(parse_iso(utc_iso), zone_id).date()
 
+    def _fresh_load(self, r) -> str | None:
+        """A run's load_state only while it is recent: a flag from weeks ago says nothing about now."""
+        return r["load_state"] if parse_iso(r["start_utc"]) >= self.now - timedelta(days=LOAD_STATE_DAYS) else None
+
     def _run_row(self, r, zone_id: str, note: str | None = None) -> dict:
         d = self._local_day(r["start_utc"], r["zone_id"] or zone_id)
         out: dict[str, Any] = {
@@ -149,7 +154,8 @@ class ReadTools:
             "work_pace_per_km": mmss(r["work_pace_s_per_km"]), "reps_done": r["reps_done"],
             "rep_spread_s": round(r["rep_spread_s"]) if r["rep_spread_s"] is not None else None,
             "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": r["goal_reached"],
-            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"], "load_state": r["load_state"],
+            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"],
+            "load_state": self._fresh_load(r),
         }
         try:
             zones = json.loads(r["zone_min"] or "{}")
@@ -247,14 +253,12 @@ class ReadTools:
             longest = c.execute("SELECT run_id, start_utc, zone_id, distance_m, duration_s FROM runs WHERE user_id=? "
                                 "ORDER BY distance_m DESC LIMIT 1", (self.uid,)).fetchone()
         totals = {first + timedelta(weeks=i): [0.0, 0] for i in range(weeks)}
-        load = None
         for r in rows:
             d = self._local_day(r["start_utc"], r["zone_id"] or u["zone_id"])
             wk = d - timedelta(days=d.weekday())
             if wk in totals:
                 totals[wk][0] += r["distance_m"] or 0
                 totals[wk][1] += 1
-            load = r["load_state"] or load
         weekly = [{"week_of": day_of(wk), "km": km(t[0]), "runs": t[1]} for wk, t in sorted(totals.items())]
         seen, best = set(), []
         for r in pbs:
@@ -263,7 +267,8 @@ class ReadTools:
             seen.add(r["pb"])
             best.append({"pb": r["pb"], "run_id": r["run_id"], **day_of(self._local_day(r["start_utc"], r["zone_id"] or u["zone_id"])),
                          "distance_km": km(r["distance_m"]), "duration": mmss(r["duration_s"])})
-        out: dict[str, Any] = {"weekly_km": weekly, "pbs": best, "load_state": load}
+        out: dict[str, Any] = {"weekly_km": weekly, "pbs": best,
+                               "load_state": self._fresh_load(rows[-1]) if rows else None}   # the newest run's own state, null stays null
         if longest:
             out["longest_run"] = {"run_id": longest["run_id"], "distance_km": km(longest["distance_m"]),
                                   "duration": mmss(longest["duration_s"]),
