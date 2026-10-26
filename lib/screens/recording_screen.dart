@@ -1271,6 +1271,43 @@ String eventToGoText(
   return Fmt.clock(ctl.displayRemainingMs + 999);
 }
 
+/// The to-go figure as the run starts (the goal distance or the full clock):
+/// the widest form it takes, used to hold its block's width. Null before the
+/// step is known.
+String? eventStartText(RecordingSnapshot s, Units units) {
+  final st = s.currentStep;
+  if (st == null) return null;
+  if (s.distanceStep || s.metresToGo != null) {
+    return eventDistanceToGo(st.value.toDouble(), units);
+  }
+  return Fmt.clock((st.value * 1000).round());
+}
+
+/// The widest the projected figure gets, so its block holds its width from
+/// the "--" before the first 200 m to the full projection.
+String? eventFinishWidest(RecordingSnapshot s, Units units) {
+  final st = s.currentStep;
+  if (s.distanceStep || s.metresToGo != null) {
+    return st != null && st.value >= 15000 ? '8:88:88' : '88:88';
+  }
+  return units == Units.mi ? '88.88 mi' : '88.88 km';
+}
+
+double _widestBlock(BuildContext context, TextStyle style, List<String> texts) {
+  final scaler = MediaQuery.textScalerOf(context);
+  var widest = 0.0;
+  for (final text in texts) {
+    final p = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout();
+    if (p.width > widest) widest = p.width;
+    p.dispose();
+  }
+  return widest;
+}
+
 /// The event / goal "projected" figure (finish time, or distance for a
 /// time goal).
 String eventFinishText(
@@ -3612,6 +3649,7 @@ class EventBlock extends StatelessWidget {
       required bool big,
       bool odo = false,
       bool accent = false,
+      String? reference,
     }) {
       final dashed = text == '--';
       // The last stretch changes emphasis only (accent colour); the size and
@@ -3633,20 +3671,17 @@ class EventBlock extends StatelessWidget {
             padding: const EdgeInsets.only(right: Space.x8),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              // A distance never scales up past an "8.88 km" block when it
-              // drops to metres at 1 km, so the figure keeps its size and
-              // place (26-Oct: nothing moves in the last stretch).
+              // The figure never scales up as it shortens (1.00 km to 990 m,
+              // 10.00 km to 9.99 km, 10:00 to 9:59): the block keeps the
+              // width of the widest form this run starts from, so size and
+              // place hold for the whole run (26-Oct). Measured at the user's
+              // text scale, as the figure itself is drawn.
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minWidth: odo
-                      ? (TextPainter(
-                          text: TextSpan(
-                            text: units == Units.mi ? '8.88 mi' : '8.88 km',
-                            style: style,
-                          ),
-                          textDirection: TextDirection.ltr,
-                        )..layout()).width
-                      : 0,
+                  minWidth: _widestBlock(context, style, [
+                    if (odo) units == Units.mi ? '8.88 mi' : '8.88 km',
+                    ?reference,
+                  ]),
                 ),
                 child: Center(
                   child: odo && kOdometerDistance && !dashed
@@ -3671,6 +3706,7 @@ class EventBlock extends StatelessWidget {
       big: true,
       odo: toGoIsDistance,
       accent: last,
+      reference: eventStartText(s, units),
     );
     final finish = CompareSlot(
       link: last ? null : card,
@@ -3681,6 +3717,7 @@ class EventBlock extends StatelessWidget {
           finishText,
           eventFinishLabel(s),
           big: false,
+          reference: eventFinishWidest(s, units),
         ),
       ),
     );

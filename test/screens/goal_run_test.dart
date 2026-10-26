@@ -290,6 +290,13 @@ void main() {
       await pumpTimes(tester, 4);
       expect(find.text('25:00'), findsOneWidget);
       expect(find.text('7.50 km'), findsOneWidget);
+      // Captured with the strap's ladder showing; positions hold from here.
+      final toGoTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-to-go')))
+          .dy;
+      final finishTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-finish')))
+          .dy;
       expect(
         size(tester, 'event-to-go'),
         greaterThan(size(tester, 'event-finish')),
@@ -305,6 +312,15 @@ void main() {
       expect(
         size(tester, 'event-to-go'),
         greaterThan(size(tester, 'event-finish')),
+      );
+      // Nothing moved from 30:00 to the last minute (the clock is 0:xx).
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-to-go'))).dy,
+        toGoTop,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-finish'))).dy,
+        finishTop,
       );
       for (var i = 0; i < 70; i++) {
         fake.advance(const Duration(seconds: 1));
@@ -406,7 +422,28 @@ void main() {
       await pumpTimes(tester, 4);
       expect(find.text('9.75 km'), findsOneWidget);
       expect(find.text('40:00'), findsOneWidget);
-      for (var i = 0; i < 2400; i++) {
+      final toGoTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-to-go')))
+          .dy;
+      // Down past 1 km to go ("9.75 km" to "900 m"): the figure holds.
+      for (var i = 0; i < 2124; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpTimes(tester, 4);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('event-to-go')),
+          matching: find.textContaining(RegExp(r'^\d+ m$')),
+        ),
+        findsOneWidget,
+        reason: 'now in metres',
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-to-go'))).dy,
+        toGoTop,
+        reason: 'km to metres keeps the figure in place',
+      );
+      for (var i = 0; i < 276; i++) {
         fake.advance(const Duration(seconds: 1));
       }
       await pumpTimes(tester, 6);
