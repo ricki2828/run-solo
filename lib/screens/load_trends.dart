@@ -262,9 +262,11 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
         ],
       ),
       [
-        if (compare.state == engine.LoadCompareState.firstWeeks)
+        if (compare.state == engine.LoadCompareState.firstWeeks &&
+            !compare.afterBreak)
           _caption('Usual week ${engine.LoadWords.afterThreeWeeks}.', t)
-        else if (compare.state == engine.LoadCompareState.returning)
+        else if (compare.state == engine.LoadCompareState.returning ||
+            compare.afterBreak)
           _caption('Usual week ${engine.LoadWords.backThreeWeeks}.', t),
       ],
     );
@@ -295,10 +297,12 @@ class _LoadTrendsViewState extends State<LoadTrendsView> {
       ],
       LoadBars(
         key: const ValueKey('load-bars'),
-        usual: usualOk ? compare.usual : null,
+        // The line goes whenever the sentence does: no runs last month, no
+        // judgement, no line.
+        usual: usualOk && line != null ? compare.usual : null,
         usualFrom: (n - 5).clamp(0, n - 1),
         usualTo: n - 2,
-        semanticsLabel: usualOk
+        semanticsLabel: usualOk && line != null
             ? 'Load by month. Last month ${lastDone!.load.round()}, '
                   'usual ${compare.usual.round()}. '
                   'This month so far ${now.load.round()}.'

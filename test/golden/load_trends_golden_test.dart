@@ -276,6 +276,34 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('no runs last month: no sentence and no usual line', (
+    tester,
+  ) async {
+    final d = _data();
+    final months = [
+      for (final p in d.months)
+        p.start.month == 9 ? engine.PeriodLoad(start: p.start) : p,
+    ];
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: TrendScreen(
+        loadData: LoadTrendsData(
+          weeks: d.weeks,
+          months: months,
+          year: d.year,
+          hasRuns: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('load-view-month')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('load-month-line')), findsNothing);
+    expect(find.byKey(const ValueKey('load-usual-line')), findsNothing);
+  });
+
   testWidgets('no runs: the empty state, no tiles', (tester) async {
     await pumpApp(tester, fakeServices(), home: const TrendScreen());
     await tester.pump();
