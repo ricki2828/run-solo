@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/screens/home_screen.dart';
+import 'package:run_solo/screens/load_trends.dart';
 import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/settings_screen.dart';
+import 'package:run_solo/screens/weekly_load_page.dart';
 import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/theme/lanes.dart';
 import 'package:run_solo/theme/theme.dart';
@@ -166,6 +169,111 @@ void main() {
     await expectGuidelines(tester);
     handle.dispose();
   });
+
+  testWidgets(
+    'Load trends (the default view) and the load page meet the rules',
+    (tester) async {
+      // Load is the default Trends view. Its Week, Month and Year views and the
+      // weekly story's load page get the tap-target and label guidelines; the
+      // pixel contrast guideline is not run on the chip row (see above), so the
+      // text colours these screens use are checked by token.
+      final weeks = engine.WeekLoad.sample(engine.LoadSample.usual);
+      final data = LoadTrendsData(
+        weeks: [
+          ...weeks,
+          engine.WeekLoad(
+            monday: DateTime(2026, 10, 26),
+            load: 150,
+            km: 12,
+            minutes: 70,
+            runs: 2,
+            zoneShare: const [.1, .45, .3, .12, .03],
+            current: true,
+          ),
+        ],
+        months: [
+          for (var i = 0; i < 6; i++)
+            engine.PeriodLoad(
+              start: DateTime(2026, 5 + i),
+              load: 1000.0 + 50 * i,
+              km: 90,
+              minutes: 500,
+              runs: 14,
+              current: i == 5,
+            ),
+        ],
+        year: engine.YearLoad(
+          months: [
+            for (var m = 0; m < 12; m++)
+              engine.PeriodLoad(
+                start: DateTime(2026, m + 1),
+                load: m < 10 ? 900 : 0,
+                km: m < 10 ? 80 : 0,
+                minutes: m < 10 ? 400 : 0,
+                runs: m < 10 ? 12 : 0,
+                current: m == 9,
+                future: m > 9,
+              ),
+          ],
+          km: 800,
+          runs: 120,
+          minutes: 4000,
+          lastYearKm: 600,
+          lastYearRuns: 70,
+        ),
+        hasRuns: true,
+      );
+      for (final view in ['week', 'month', 'year']) {
+        final handle = tester.ensureSemantics();
+        await pumpApp(
+          tester,
+          fakeServices(),
+          home: TrendScreen(loadData: data),
+        );
+        await pumpTimes(tester, 4);
+        await tester.tap(find.byKey(ValueKey('load-view-$view')));
+        await pumpTimes(tester, 4);
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        handle.dispose();
+      }
+
+      final handle = tester.ensureSemantics();
+      await pumpApp(
+        tester,
+        fakeServices(),
+        home: WeeklyLoadPage(
+          weeks: engine.WeekLoad.sample(engine.LoadSample.bigjump),
+        ),
+      );
+      await pumpTimes(tester, 4);
+      await tester.pump(const Duration(milliseconds: 1600));
+      await expectGuidelines(tester);
+      handle.dispose();
+
+      for (final tokens in [RunSoloTokens.dark, RunSoloTokens.light]) {
+        // Usual, SO FAR, dates, "Taller is more load" (inkSecondary on the card).
+        expect(
+          contrastRatio(tokens.inkSecondary, tokens.bgRaised),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrastRatio(tokens.inkPrimary, tokens.bgRaised),
+          greaterThanOrEqualTo(4.5),
+        );
+      }
+      // The load page's explainer and footnote: ink at 0.85 on the aurora fill.
+      const fill = AuroraStory.fill;
+      final ink = readableOn(fill);
+      expect(
+        contrastRatio(
+          Color.alphaBlend(ink.withValues(alpha: 0.85), fill),
+          fill,
+        ),
+        greaterThanOrEqualTo(4.5),
+      );
+    },
+  );
 
   testWidgets('HOLD TO STOP exposes a long-press action for screen readers', (
     tester,
