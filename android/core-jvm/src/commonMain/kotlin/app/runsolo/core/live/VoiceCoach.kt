@@ -4,20 +4,21 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 /**
- * Voice coaching during a run: target status and heart-rate zone drift, said as short lines on the
+ * Voice coaching during a run: target status, heart-rate zone drift and the first time the heart rate
+ * reaches each zone from 3 up ([zoneUp]), said as short lines on the
  * recorder's 1 Hz tick so they work with the screen off. The third coaching line, the next step,
  * is the ten-seconds cue itself (`CueWords.nextStep`), so there is only one voice for it.
  *
  * Rules: a line is only returned when no speech is queued ([Input.busyUntil]), so coaching never
  * piles up behind a cue and a status line that could not start within [STALE_MS] of being due is
  * dropped. Priority is next step (the cue, always first: nothing is said within [NEAR_END_MS] of
- * a part ending) > drift > status. Replays and Minimal detail never construct one that speaks.
+ * a part ending) > drift > zone up > status. Replays and Minimal detail never construct one that speaks.
  */
 class VoiceCoach(private val config: Config) {
     /**
      * [full] false = Minimal (next step only): this class says nothing. [targetPaceSecPerKm] null =
      * no target status. [slowerIsFine]: an easy-run ceiling, slow is on target. [zoneBottomsBpm] =
-     * the bottoms of zones 2..5 (as `HrZones`); with [plannedMaxZone] it turns drift on.
+     * the bottoms of zones 2..5 (as `HrZones`): it turns the zone-up line on, and with [plannedMaxZone] drift.
      * [plannedKind] (`easy` or `long`) and [plannedMinutes] turn on [PlannedTimeCues]; null (a
      * config persisted before they existed, or any other run) = no planned-time lines.
      * The start briefing ([app.runsolo.core.record.StartBriefing]): [briefingTemplate] (the coach's) and
@@ -71,7 +72,7 @@ class VoiceCoach(private val config: Config) {
      */
     data class GoalProgress(val target: app.runsolo.core.model.LiveTarget, val distanceM: Double, val elapsedMs: Long)
 
-    enum class Kind { drift, status }
+    enum class Kind { drift, zoneUp, status }
 
     data class Line(val kind: Kind, val text: String)
 
@@ -125,6 +126,11 @@ class VoiceCoach(private val config: Config) {
     private var aboveSinceT: Long? = null
     private var lastDriftT: Long? = null
 
+    // Zone up: the highest zone said (or passed over) this run, and the zone being held and since when.
+    private var topZoneSaid = FIRST_ZONE_UP - 1
+    private var risingZone = 0
+    private var risingSinceT: Long? = null
+
     // Goal runs: the margin to the goal clock (ms ahead) at the last two whole km, for the trend.
     private var goalKm = 0
     private var kmMargin: Long? = null
@@ -153,6 +159,7 @@ class VoiceCoach(private val config: Config) {
         }
         if (i.segment == null) {
             aboveSinceT = null
+            risingSinceT = null
             return null
         }
         // A between-reps answer lasts one rep: it is gone once the segment after the first one it saw begins.
@@ -170,11 +177,18 @@ class VoiceCoach(private val config: Config) {
         i.goal?.let { goalSnapshot(it) }
         check(i)
         val drift = driftAbove(i)
+        val up = zoneUp(i)
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
         // Drift first: it outranks status, and a status that comes due while it speaks goes stale.
         if (drift != null && quiet && drift.firesAt <= i.t) {
             lastDriftT = i.t
             return Line(Kind.drift, "Heart rate in zone ${drift.zone}. Ease back to zone ${config.plannedMaxZone}.")
+        }
+        if (up != null && quiet) {
+            // Said once: a zone skipped on the way up (2 straight to 4) is never said afterwards either.
+            topZoneSaid = up
+            risingSinceT = null
+            return Line(Kind.zoneUp, "Heart rate up to zone $up.")
         }
         return status(i, quiet)
     }
@@ -198,6 +212,33 @@ class VoiceCoach(private val config: Config) {
         val since = aboveSinceT ?: i.t.also { aboveSinceT = it }
         val coolOff = lastDriftT?.let { it + DRIFT_EVERY_MS } ?: Long.MIN_VALUE
         return Drift(zone, maxOf(since + DRIFT_AFTER_MS, coolOff))
+    }
+
+    /** The zone 3 to 5 that is due its once-a-run line: higher than any said before, held [ZONE_UP_HOLD_MS]. */
+    private fun zoneUp(i: Input): Int? {
+        val bottoms = config.zoneBottomsBpm
+        val hr = i.hr
+        if (bottoms == null || hr == null) {
+            risingSinceT = null
+            return null
+        }
+        val zone = (5 downTo 2).firstOrNull { hr >= bottoms[it - 2] } ?: 1
+        if (zone <= topZoneSaid) {
+            risingSinceT = null
+            return null
+        }
+        // Above the plan's top zone, drift says it (with what to do), so this run's line for that zone is spent.
+        config.plannedMaxZone?.let {
+            if (zone > it) {
+                topZoneSaid = zone
+                risingSinceT = null
+                return null
+            }
+        }
+        // A new zone needs holding: a spike that drops back restarts the clock; a further climb keeps it.
+        if (risingSinceT == null || zone < risingZone) risingSinceT = i.t
+        risingZone = zone
+        return if (i.t - risingSinceT!! >= ZONE_UP_HOLD_MS) zone else null
     }
 
     /**
@@ -338,5 +379,11 @@ class VoiceCoach(private val config: Config) {
 
         /** At most one drift line per this. */
         const val DRIFT_EVERY_MS = 180_000L
+
+        /** The lowest zone the zone-up line is said for: zone 2 is every warm-up. */
+        const val FIRST_ZONE_UP = 3
+
+        /** In a new zone this long before its zone-up line. */
+        const val ZONE_UP_HOLD_MS = 20_000L
     }
 }

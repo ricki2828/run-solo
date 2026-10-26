@@ -76,7 +76,8 @@ abstract final class VoiceCoachPlan {
       full: full,
       slowerIsFine: goalPaceSecPerKm == null && _ceiling(kind),
       targetPaceSecPerKm: on && full ? pace : null,
-      zoneBottomsBpm: on && full && easy
+      // Every full-detail run gets the zones, for the first-time zone-up line; only an easy run gets drift.
+      zoneBottomsBpm: on && full
           ? [for (var z = 2; z <= 5; z++) zones.bottom(z).toDouble()]
           : null,
       plannedMaxZone: on && full && easy ? 2 : null,
