@@ -211,7 +211,7 @@ class _MomentScreenState extends State<MomentScreen>
                         Expanded(
                           child: OutlinedButton(
                             key: const ValueKey('moment-nice'),
-                            // Same height as Share, 2 dp outline, 16 sp
+                            // Same height as Share, 2 dp outline, 22 sp
                             // label (ui review 24-Oct #19). Not RunButton:
                             // its raised ground would not sit on the flood.
                             style: OutlinedButton.styleFrom(
@@ -221,7 +221,7 @@ class _MomentScreenState extends State<MomentScreen>
                               ),
                               side: BorderSide(color: ink, width: 2),
                               textStyle: RunSoloType.title28.copyWith(
-                                fontSize: 16,
+                                fontSize: 22,
                               ),
                             ),
                             onPressed: () => Navigator.of(context).maybePop(),
