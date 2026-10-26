@@ -81,8 +81,14 @@ void main() {
     );
     tester.view.physicalSize = const Size(1080, 640 * 3);
     await pumpTimes(tester, 6);
+    await scrollTo(
+      tester,
+      find.byKey(const ValueKey('companion-consent-more')),
+    );
     await tester.tap(find.byKey(const ValueKey('companion-consent-more')));
     await pumpTimes(tester, 4);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -260));
+    await pumpTimes(tester, 2);
     await check(tester, 'companion_consent_more_360x640');
   });
 
