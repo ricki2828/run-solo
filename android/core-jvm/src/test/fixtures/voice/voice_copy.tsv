@@ -108,6 +108,8 @@ goal.status.behind-slipping	5	10 seconds behind 24:30, slipping
 goal.status.behind-closing	5	10 seconds behind 24:30, closing
 goal.status.level	3	On 24:30 pace
 goal.status.first-km	5	20 seconds ahead of 24:30
+goal.status.first-predicted	7	20 seconds ahead of your predicted 24:30
+goal.status.first-predicted-level	5	On your predicted 24:30 pace
 goal.status.longest	8	1 minute 59 ahead of 1:27:59, margin shrinking
 prompt.goal.last2k-ahead-shrinking	15	2 k to go, 12 seconds under 24:30, shrinking. Push to bank more, or hold?
 prompt.goal.last2k-behind-slipping	15	2 k to go, 18 seconds over 24:30. Push to get under it, or hold?

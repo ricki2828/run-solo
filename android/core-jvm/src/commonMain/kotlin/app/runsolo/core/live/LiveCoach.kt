@@ -427,6 +427,13 @@ class LiveCoach(
             return context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 }
         }
 
+    /**
+     * What [VoiceCoach] needs on a goal run with a target time at [distanceM] / [activeMs]; null on every other run and
+     * once the goal is reached (the cool-down says km splits only).
+     */
+    fun goalProgress(distanceM: Double, activeMs: Long): VoiceCoach.GoalProgress? =
+        goalTarget?.takeIf { !goalReached }?.let { VoiceCoach.GoalProgress(it, distanceM, activeMs) }
+
     /** The km and active ms of the last goal km cue seen (0, 0 = Start), for the jump guard. */
     private var chaseCueKm = 0
 

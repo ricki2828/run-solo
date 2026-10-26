@@ -1244,7 +1244,7 @@ class RecordingSession(
                 busyUntil = if (planned != null) Long.MAX_VALUE else if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
                 // A goal run with a target time: the status describes the margin to that clock instead of ordering pace.
-                goal = coach.goalTarget?.takeIf { !coach.goalReached }?.let { VoiceCoach.GoalProgress(it, ticker.distanceM, st.activeMs) },
+                goal = coach.goalProgress(ticker.distanceM, st.activeMs),
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")

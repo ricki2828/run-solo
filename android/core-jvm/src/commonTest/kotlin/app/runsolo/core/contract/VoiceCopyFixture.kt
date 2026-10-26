@@ -223,6 +223,8 @@ object VoiceCopyFixture {
         add("goal.status.behind-closing", GoalMargin.phrase(-10_000, 8_000, t2430))
         add("goal.status.level", GoalMargin.phrase(1_000, 0, t2430))
         add("goal.status.first-km", GoalMargin.phrase(20_000, null, t2430))
+        add("goal.status.first-predicted", GoalMargin.phrase(20_000, null, t2430, predicted = true))
+        add("goal.status.first-predicted-level", GoalMargin.phrase(1_000, null, t2430, predicted = true))
         add("goal.status.longest", GoalMargin.phrase(119_000, -8_000, 5_279_000))
         // Prompts: a km before (to learn the margin), then the km that asks. Facts: km, gap, label, proxy, goal m, behind, chase, goal ms.
         fun goalPrompt(prevBehind: Long, behind: Long, goalM: Double): String? {

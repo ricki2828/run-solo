@@ -17,6 +17,12 @@ object GoalMargin {
     /** A margin or a km-to-km change inside this is level / steady. */
     const val DEAD_BAND_MS = 3_000L
 
+    /** Once "on pace", the runner stays level until the margin passes this (hysteresis: no flip at the 3 s edge). */
+    const val LEVEL_EXIT_MS = 5_000L
+
+    /** Past this far behind, a status line is said once a km at most. */
+    const val FAR_BEHIND_MS = 60_000L
+
     /** Ms ahead of the goal clock (negative = behind) at [distanceM] after [elapsedMs]: the even split minus the time taken. */
     fun aheadMs(target: LiveTarget, distanceM: Double, elapsedMs: Long): Long =
         (target.targetMs * (distanceM / target.distanceM)).toLong() - elapsedMs
@@ -30,11 +36,19 @@ object GoalMargin {
 
     /**
      * "20 seconds ahead of 24:30, margin shrinking", "10 seconds behind 24:30, holding", "On 24:30 pace".
-     * [changeMs] null = no trend yet (the first km): the trend part is left out. At most 9 words.
+     * [changeMs] null = no trend yet (the first km): the trend part is left out. [level] = on pace (default: inside
+     * the dead band; [VoiceCoach] passes its hysteresis). [predicted] = say "your predicted" before the time: the
+     * first line only, the target being a prediction the runner saw on Start. At most 9 words.
      */
-    fun phrase(aheadMs: Long, changeMs: Long?, targetMs: Long): String {
-        val t = CueWords.clock(targetMs.toDouble())
-        if (abs(aheadMs) < DEAD_BAND_MS) return "On $t pace"
+    fun phrase(
+        aheadMs: Long,
+        changeMs: Long?,
+        targetMs: Long,
+        level: Boolean = abs(aheadMs) < DEAD_BAND_MS,
+        predicted: Boolean = false,
+    ): String {
+        val t = CueWords.clock(targetMs.toDouble()).let { if (predicted) "your predicted $it" else it }
+        if (level) return "On $t pace"
         val ahead = aheadMs > 0
         val s = abs(aheadMs / 1_000.0).roundToLong()
         val head = "${CueWords.gap(s)} ${if (ahead) "ahead of" else "behind"} $t"

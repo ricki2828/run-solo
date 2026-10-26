@@ -130,16 +130,35 @@ class VoiceCoach(private val config: Config) {
     private var kmMargin: Long? = null
     private var prevKmMargin: Long? = null
 
-    private fun goalSnapshot(g: GoalProgress) {
-        val km = (g.distanceM / 1_000).toInt()
+    // A GPS jump is distance that never happened: the part of a tick's step no runner could cover is left out of the margin.
+    private var jumpExcessM = 0.0
+    private var lastGoalT: Long? = null
+    private var lastGoalD: Double? = null
+
+    private fun goalDistance(i: Input, g: GoalProgress): Double {
+        val pt = lastGoalT
+        val pd = lastGoalD
+        lastGoalT = i.t
+        lastGoalD = g.distanceM
+        if (pt != null && pd != null && i.t > pt) {
+            val allowed = MAX_RUN_MPS * (i.t - pt) / 1_000.0 + JUMP_SLACK_M
+            val step = g.distanceM - pd
+            if (step > allowed) jumpExcessM += step - allowed
+        }
+        return g.distanceM - jumpExcessM
+    }
+
+    private fun goalSnapshot(g: GoalProgress, d: Double) {
+        val km = (d / 1_000).toInt()
         if (km <= goalKm) return
         goalKm = km
         prevKmMargin = kmMargin
-        kmMargin = GoalMargin.aheadMs(g.target, g.distanceM, g.elapsedMs)
+        kmMargin = GoalMargin.aheadMs(g.target, d, g.elapsedMs)
     }
 
     fun tick(i: Input): Line? {
         if (!config.full) return null
+        val goalD = i.goal?.let { goalDistance(i, it) }
         if (i.segment != segment) {
             segment = i.segment
             nextEvalMs = FIRST_EVAL_MS
@@ -166,7 +185,7 @@ class VoiceCoach(private val config: Config) {
             window.addLast(it)
             while (window.size > WINDOW_SAMPLES) window.removeFirst()
         }
-        i.goal?.let { goalSnapshot(it) }
+        i.goal?.let { goalSnapshot(it, goalD!!) }
         check(i)
         val drift = driftAbove(i)
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
@@ -220,9 +239,11 @@ class VoiceCoach(private val config: Config) {
     }
 
     /**
-     * A goal run's status: where the runner stands against the goal time and which way the margin is heading, said
-     * on the same cadence as the pace status. Descriptive, never "Ease off" or "Pick it up". Silent until the first
-     * whole km (nothing to measure), and the same line is not said twice running.
+     * A goal run's status: where the runner stands against the goal time and which way the margin is heading.
+     * Descriptive, never "Ease off" or "Pick it up". Silent until the first whole km (nothing to measure). The slot
+     * comes round on the usual cadence but a line is said only when something changed: the trend, the margin by
+     * [SAY_MOVE_MS] since the last line, or a new km (never for a repeated "On pace"); once he is over a minute
+     * behind, at most once a km. "On pace" has hysteresis ([GoalMargin.LEVEL_EXIT_MS]).
      */
     private fun goalStatus(i: Input, g: GoalProgress, quiet: Boolean): Line? {
         val margin = kmMargin ?: return null
@@ -235,15 +256,27 @@ class VoiceCoach(private val config: Config) {
         }
         if (!quiet) return null
         skipSlot(i)
-        val now = GoalMargin.aheadMs(g.target, g.distanceM, g.elapsedMs)
+        val now = GoalMargin.aheadMs(g.target, g.distanceM - jumpExcessM, g.elapsedMs)
         val change = prevKmMargin?.let { margin - it }
-        val text = GoalMargin.phrase(now, change, g.target.targetMs)
-        if (text == lastGoalText) return null
-        lastGoalText = text
+        val trend = change?.let { GoalMargin.trend(it) }
+        val level = abs(now) < (if (goalLevel) GoalMargin.LEVEL_EXIT_MS else GoalMargin.DEAD_BAND_MS)
+        goalLevel = level
+        val last = lastSaid
+        val far = now <= -GoalMargin.FAR_BEHIND_MS
+        val newKm = goalKm > (last?.km ?: 0)
+        val say = last == null ||
+            (newKm && !(level && last.level)) ||
+            (!far && !(level && last.level) && (level != last.level || trend != last.trend || abs(now - last.ahead) >= SAY_MOVE_MS))
+        if (!say) return null
+        lastSaid = Said(now, trend, level, goalKm)
+        val text = GoalMargin.phrase(now, change, g.target.targetMs, level, predicted = g.target.predicted && last == null)
         return Line(Kind.status, text)
     }
 
-    private var lastGoalText: String? = null
+    private class Said(val ahead: Long, val trend: MarginTrend?, val level: Boolean, val km: Int)
+
+    private var lastSaid: Said? = null
+    private var goalLevel = false
 
     private fun status(i: Input, quiet: Boolean): Line? {
         i.goal?.let { return goalStatus(i, it, quiet) }
@@ -310,6 +343,13 @@ class VoiceCoach(private val config: Config) {
 
         /** Then one check a minute. */
         const val EVERY_MS = 60_000L
+
+        /** A goal status line is said again when the margin has moved this much since the last one (ms). */
+        const val SAY_MOVE_MS = 5_000L
+
+        /** A tick's step above this speed (m/s, a 2:23 km) plus [JUMP_SLACK_M] is a GPS jump, not running. */
+        const val MAX_RUN_MPS = 7.0
+        const val JUMP_SLACK_M = 3.0
 
         /** Nothing coaching is said this close to a part ending: the next-step cue owns that moment. */
         const val NEAR_END_MS = 12_000L
