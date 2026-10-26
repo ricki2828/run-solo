@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
+import 'package:run_solo/state/block_plan.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/load_guard.dart';
 import 'package:run_solo/state/load_history.dart';
@@ -168,6 +169,41 @@ void main() {
       );
       expect(on.keys.toSet(), {'load', 'load_basis', 'load_state'});
     });
+  });
+
+  group('guardFlagged is the uploaded load_state', () {
+    // The week flag must equal "some run in the week has LoadWire.stateAt
+    // high or very_high", the value the server recap reads.
+    final now = DateTime(2026, 10, 14, 9);
+    final zones = engine.HrZones.percentMax(190);
+
+    bool flaggedByUpload(List<RunSummary> h) {
+      final monday = DateTime(2026, 10, 12);
+      return [
+        for (final r in h)
+          if (!PlanInputs.wallClock(r).isBefore(monday))
+            LoadWire.stateAt(h, r, maxHr: 190, vdot: null),
+      ].any((s) => s == 'high' || s == 'very_high');
+    }
+
+    bool flaggedByWeek(List<RunSummary> h) => LoadHistoryInputs.weeks(
+      h,
+      now: now,
+      zones: zones,
+      maxHr: 190,
+      vdot: null,
+    ).last.guardFlagged;
+
+    for (final (name, h, expected) in [
+      ('steady', history(), false),
+      ('high', history(extra: 5), true),
+      ('very high', history(extra: 9), true),
+    ]) {
+      test('$name week', () {
+        expect(flaggedByUpload(h), expected);
+        expect(flaggedByWeek(h), flaggedByUpload(h));
+      });
+    }
   });
 
   group('LoadHistoryInputs', () {
