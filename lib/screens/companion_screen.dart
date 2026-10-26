@@ -355,8 +355,9 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
           moreKey: const ValueKey('companion-consent-more'),
           sent:
               'A summary of each run: type, time, distance, pace, heart rate '
-              'zones and a route outline with the ends cut off. Never your '
-              'GPS points or the street.',
+              'zones, the name of the area where you started, and a route '
+              'outline with the ends cut off. A distinctive route could '
+              'still be recognised. Never your GPS points or the street.',
           who:
               'Our server, a writing service (OpenRouter) that is asked not '
               'to keep anything, and Telegram, which delivers your notes.',
@@ -612,12 +613,14 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
                               'body feels the evening before a planned '
                               'session, going or skipping (with why), what '
                               'was behind a slow easy run, and how many runs '
-                              'you want next week.',
+                              'you want next week. Sore and ill are health '
+                              'information, used only to go lighter. If you '
+                              'skip, the session moves to a later day.',
                           who:
-                              'Only our server. No weather service sees '
-                              'them. With the coach chat on, the coach reads '
-                              'the last 14 days and they go to Claude models '
-                              'through OpenRouter with zero data retention.',
+                              'Our server. With the coach chat on, also '
+                              'Claude models through OpenRouter, which read '
+                              'the last 14 days, with zero data retention. '
+                              'No weather service sees them.',
                           howLong:
                               '14 days, then deleted, and left out of '
                               'backups. Delete everything removes them at '
@@ -948,6 +951,12 @@ class _CompanionCoachOfferState extends State<CompanionCoachOffer> {
             ),
           ),
           const SizedBox(height: Space.x8),
+          Text(
+            'The coach answers your training questions in Telegram and '
+            'writes briefings before your runs.',
+            style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+          ),
+          const SizedBox(height: Space.x12),
           _ConsentFacts(
             moreKey: const ValueKey('companion-coach-detail'),
             sent:
@@ -1152,9 +1161,11 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
                 'runs, and a short summary of your chats. Health notes only '
                 'if you tick the box below.',
             who:
-                'The coach, to reply to you. You can see every note by '
-                'sending /\u2060memory in Telegram. Your GPS tracks and heart '
-                'rate recordings stay on your phone.',
+                'Claude models via OpenRouter (hosted by Google Cloud or '
+                'Amazon Web Services), with zero data retention, to reply to '
+                'you. You can see every note by sending /\u2060memory in '
+                'Telegram. Your GPS tracks and heart rate recordings stay on '
+                'your phone.',
             howLong:
                 'Until you delete them: any note with /\u2060memory in '
                 'Telegram, or everything with Turn off memory in Settings, '
