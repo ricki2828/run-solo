@@ -283,7 +283,7 @@ class LoadCompare {
   final bool afterPause;
 
   /// [LoadCompareState.firstWeeks] for a runner who already had runs before
-  /// an empty stretch: weeks 2 and 3 back read as building back, not as a
+  /// 2 empty unpaused weeks in a row: weeks 2 and 3 back read as building back, not as a
   /// new runner's first weeks.
   final bool afterBreak;
 
@@ -349,11 +349,14 @@ class LoadCompare {
     final usual = mean((w) => w.load);
     if (withRuns < minWeeks || usual < LoadGuard.minChronicWeekly) {
       final firstRun = weeks.indexWhere((w) => w.runs > 0);
-      final afterBreak =
-          week.runs > 0 &&
-          firstRun >= 0 &&
-          firstRun < weeks.length - 1 &&
-          weeks.sublist(firstRun + 1, weeks.length - 1).any(rest);
+      // A break is 2 empty unpaused weeks in a row after the first run (the
+      // returning rule, the server's too); one skipped week is not.
+      var afterBreak = false;
+      if (week.runs > 0 && firstRun >= 0) {
+        for (var i = firstRun + 1; i + 1 < weeks.length - 1; i++) {
+          if (rest(weeks[i]) && rest(weeks[i + 1])) afterBreak = true;
+        }
+      }
       return LoadCompare(
         state: LoadCompareState.firstWeeks,
         usual: usual,

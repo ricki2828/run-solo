@@ -183,6 +183,12 @@ void main() {
         LoadWords.headline(ws[5], c),
         endsWith("We'll compare once you have 3 weeks back."),
       );
+      // A new runner who skips one week keeps the first-weeks words too.
+      final skip = [...week(4, 3), ...week(2, 3), ...week(1, 3)];
+      final sw = LoadHistory.weeks(skip, now: now, weeks: 7);
+      final sc = LoadCompare.of(sw.sublist(0, 6));
+      expect(sc.state, LoadCompareState.firstWeeks);
+      expect(sc.afterBreak, isFalse);
       // A new runner with no gap keeps the first-weeks words.
       final fresh = [...week(3, 3), ...week(2, 3), ...week(1, 3)];
       final fw = LoadHistory.weeks(fresh, now: now, weeks: 7);
