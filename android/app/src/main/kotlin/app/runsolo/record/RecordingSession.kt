@@ -1241,8 +1241,11 @@ class RecordingSession(
                 paceSecPerKm = truePace,
                 hr = hr?.toDouble(),
                 msToPhaseEnd = toEndMs,
-                busyUntil = if (planned != null) Long.MAX_VALUE else if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
+                // A prompt waiting or open owns the speech: no status line lands in its answer window.
+                busyUntil = if (planned != null || prompter.pending != null || prompter.open != null) Long.MAX_VALUE else if (cues.nudgePending) t + 1 else cues.coachBusyUntil,
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
+                // A goal run with a target time: the status describes the margin to that clock instead of ordering pace.
+                goal = coach.goalProgress(ticker.distanceM, st.activeMs),
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")

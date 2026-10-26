@@ -45,6 +45,21 @@ void main() {
     await shot(tester, 'inrun_prompt_last2k_360x640', height: 640);
   });
 
+  testWidgets('prompt: goal last 2 km names the goal time, short phone', (
+    tester,
+  ) async {
+    final fake = await openRun(tester);
+    await step(tester, fake, 900);
+    await open(
+      tester,
+      fake,
+      prompt(
+        text: '2 k to go, 12 seconds under 24:30, shrinking. Push to bank more, or hold?',
+      ),
+    );
+    await shot(tester, 'inrun_prompt_goal_last2k_360x640', height: 640);
+  });
+
   testWidgets('prompt: falling behind, push or ease off', (tester) async {
     final fake = await openRun(tester);
     await step(tester, fake, 900);

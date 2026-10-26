@@ -252,4 +252,145 @@ class VoiceCoachTest {
         assertNull(c.say(at(91_000, pace = target, hr = 160.0, busyUntil = 92_000)), "busy: nothing speaks")
         assertEquals(VoiceCoach.Kind.drift, c.tick(at(92_000, pace = target, hr = 160.0))?.kind)
     }
+
+    // ---- goal run with a target time: descriptive, never "Ease off" (26-Oct goal-run voice) ----
+
+    private val goalMs = 1_470_000L // 24:30 for 5 km: 294 s/km
+    private val goalTarget = app.runsolo.core.model.LiveTarget(5_000.0, goalMs, predicted = true) // a goal target is always a prediction in production
+
+    private fun goalCoach() = VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0))
+
+    /** A run at 1 Hz: [pace] (s/km) at each distance; the lines said, with the second. */
+    private fun VoiceCoach.goalRun(untilM: Double, jumpAtS: Int? = null, pace: (Double) -> Double): List<Pair<Int, String>> {
+        val said = ArrayList<Pair<Int, String>>()
+        var d = 0.0
+        var s = 0
+        while (d < untilM) {
+            s++
+            val p = pace(d)
+            d += 1_000.0 / p
+            if (s == jumpAtS) d += 150.0 // a GPS leap: 150 m that were never run
+            val t = s * 1_000L
+            tick(VoiceCoach.Input(t, 0, t, p, null, null, 0, false, VoiceCoach.GoalProgress(goalTarget, d, t)))?.let { said.add(s to it.text) }
+        }
+        return said
+    }
+
+    @Test
+    fun `replay 30 s ahead at 2 km then losing 8 s per km never says ease off and names 24-30 and shrinking`() {
+        // 279 s/km to 2 km (558 s, 30 s up on 294 s/km), then 302 s/km: the lead drops 8 s each km.
+        val said = goalCoach().goalRun(4_600.0) { d -> if (d < 2_000.0) 279.0 else 302.0 }
+        assertTrue(said.isNotEmpty(), "$said")
+        for ((_, text) in said) {
+            assertTrue(text.contains("24:30"), text)
+            assertTrue(!text.contains("ease", ignoreCase = true) && !text.contains("pick it up", ignoreCase = true), text)
+            assertTrue(CueWordsCount.of(text) <= 9, text)
+        }
+        assertTrue(said.any { it.second.endsWith("ahead of 24:30, margin shrinking") }, "$said")
+    }
+
+    @Test
+    fun `a goal run says nothing before the first km and an on-goal run says on 24-30 pace once`() {
+        val said = goalCoach().goalRun(4_000.0) { 294.0 }
+        assertTrue(said.first().first >= 294, "first line after km 1: $said")
+        assertEquals(listOf("On your predicted 24:30 pace"), said.map { it.second }, "predicted once, and a level run says nothing more")
+        assertEquals(1, said.size, "the same line is not said twice running: $said")
+    }
+
+    @Test
+    fun `behind and holding is described not ordered and ease off being picked does not silence it`() {
+        val c = goalCoach()
+        c.applyEffect(PromptEffect.EASE)
+        // 10 s down after km 1 (304 s/km), then level with the goal pace: the gap holds.
+        val said = c.goalRun(4_000.0) { d -> if (d < 1_000.0) 304.0 else 294.0 }
+        assertTrue(said.isNotEmpty(), "$said")
+        assertTrue(said.all { it.second.contains("behind") && it.second.contains("24:30") }, "$said")
+        assertTrue(said.any { it.second.endsWith("holding") }, "$said")
+    }
+
+    @Test
+    fun `predicted is said once on the first line then the time is bare`() {
+        val said = goalCoach().goalRun(4_600.0) { d -> if (d < 2_000.0) 279.0 else 302.0 }.map { it.second }
+        assertTrue(said.first().contains("your predicted 24:30"), said.first())
+        assertTrue(said.drop(1).none { it.contains("predicted") }, "$said")
+    }
+
+    @Test
+    fun `a creeping margin does not talk every minute - at most a line a km`() {
+        // 10 s up after km 1, then 1 s/km more: the number creeps, the trend is steady, nothing changes.
+        val said = goalCoach().goalRun(4_600.0) { d -> if (d < 1_000.0) 284.0 else 293.0 }
+        assertTrue(said.size in 1..5, "one a km at most, not one a minute: $said")
+        assertTrue(said.zipWithNext().all { (a, b) -> b.first - a.first >= 60 }, "$said")
+    }
+
+    @Test
+    fun `a fade that turns the trend is said inside the next km`() {
+        // 20 s up at km 1, level to km 2, then -6 s a km: the trend turns at km 3.
+        val said = goalCoach().goalRun(4_600.0) { d -> if (d < 1_000.0) 274.0 else if (d < 2_000.0) 294.0 else 300.0 }
+        assertTrue(said.any { it.second.endsWith("margin shrinking") }, "$said")
+    }
+
+    @Test
+    fun `far behind is said once a km at most`() {
+        // 36 s a km behind: past a minute from km 2. Each km a line, not a line a minute.
+        val said = goalCoach().goalRun(4_600.0) { 330.0 }
+        // Past a minute behind (about 510 s on): the new-km floor only, km 2, 3 and 4.
+        assertTrue(said.filter { it.first > 600 }.size <= 3, "once a km: $said")
+        assertTrue(said.all { it.second.contains("behind") }, "$said")
+    }
+
+    @Test
+    fun `on pace has hysteresis - a margin wobbling around 3 s does not flip the line`() {
+        // Level for km 1 and 2, then about 4 s ahead (inside the 5 s exit): still level, no new line.
+        val said = goalCoach().goalRun(3_900.0) { d -> if (d < 2_000.0) 294.0 else if (d < 3_000.0) 290.0 else 294.0 }
+        assertTrue(said.all { it.second.startsWith("On ") }, "$said")
+    }
+
+    @Test
+    fun `a dropout catch-up - flat for 30 s then 100 m in one tick - leaves the margin sane and says nothing behind`() {
+        val c = goalCoach()
+        val said = ArrayList<Pair<Int, String>>()
+        var d = 0.0
+        var t = 0
+        while (d < 3_500.0) {
+            t++
+            when (t) {
+                in 442..471 -> Unit // no fixes: the distance stands still
+                472 -> d += 31 * 1_000.0 / 294 // the first good fix: the whole span lands at once
+                else -> d += 1_000.0 / 294
+            }
+            val ms = t * 1_000L
+            c.tick(VoiceCoach.Input(ms, 0, ms, 294.0, null, null, 0, false, VoiceCoach.GoalProgress(goalTarget, d, ms)))?.let { said.add(t to it.text) }
+        }
+        val after = said.filter { it.first >= 472 }
+        assertTrue(after.isNotEmpty() || said.isNotEmpty(), "$said")
+        assertTrue(after.none { it.second.contains("behind") || it.second.contains("slipping") }, "no false behind after the catch-up: $said")
+        assertTrue(said.all { it.second.startsWith("On ") }, "level on pace throughout the lines said: $said")
+    }
+
+    @Test
+    fun `level but losing ground says so - on pace and slipping`() {
+        // +2 s at km 1 (level), 4 s lost in km 2: -2 s is still level, but the trend is shrinking.
+        val said = goalCoach().goalRun(3_500.0) { d -> if (d < 1_000.0) 292.0 else if (d < 2_000.0) 298.0 else 294.0 }.map { it.second }
+        assertEquals("On your predicted 24:30 pace", said.first())
+        assertTrue(said.contains("On 24:30 pace, slipping"), "$said")
+    }
+
+    @Test
+    fun `plus 3 s and losing 8 s a km says slipping at the first line after the km`() {
+        val said = goalCoach().goalRun(3_500.0) { d -> if (d < 1_000.0) 292.0 else 302.0 }
+        assertEquals("On your predicted 24:30 pace", said.first().second)
+        // Km 2 ends at 594 s; the first line after it carries the trend.
+        assertTrue(said.first { it.first >= 594 }.second.endsWith("slipping"), "$said")
+    }
+
+    @Test
+    fun `without a goal the same fast pace still says ease off`() {
+        // The gate: only a goal run with a target time changes. Everything else is as before.
+        assertEquals(listOf(30 to "Ease off, 15 seconds fast"), VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0)).run(0, 30) { 279.0 })
+    }
+}
+
+private object CueWordsCount {
+    fun of(s: String) = s.trim().split(Regex("\\s+")).size
 }

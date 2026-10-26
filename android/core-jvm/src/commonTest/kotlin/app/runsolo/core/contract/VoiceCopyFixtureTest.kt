@@ -18,7 +18,7 @@ class VoiceCopyFixtureTest {
     }
 
     @Test
-    fun `every line fits its word budget 16 a run summary 32 a briefing 40 has no em dash and every id is unique`() {
+    fun `every line fits its word budget 16 a run summary 32 a briefing 40 a prompt 16 has no em dash and every id is unique`() {
         val lines = VoiceCopyFixture.lines()
         assertEquals(lines.map { it.first }.distinct(), lines.map { it.first })
         for ((id, text) in lines) {
@@ -27,6 +27,8 @@ class VoiceCopyFixtureTest {
             val budget = when {
                 id.startsWith("summary.end") -> 32
                 id.startsWith("briefing.") -> StartBriefing.MAX_WORDS
+                // A two-button prompt is a question on its own, not appended to a cue: the goal-time ones say what each button gets him.
+                id.startsWith("prompt.") -> 16
                 else -> CueComposer.MAX_WORDS
             }
             assertTrue(CueComposer.words(text) <= budget, "$id: $text")
