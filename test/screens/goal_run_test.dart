@@ -270,7 +270,7 @@ void main() {
         .fontSize!;
 
     testWidgets('time goal: time to go primary, distance on pace second; the '
-        'last minute swaps; after the goal the cool-down with the locked '
+        'last minute keeps both in place; after the goal the cool-down with the locked '
         'distance', (tester) async {
       final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
       final services = fakeServices(recorder: fake);
@@ -290,6 +290,13 @@ void main() {
       await pumpTimes(tester, 4);
       expect(find.text('25:00'), findsOneWidget);
       expect(find.text('7.50 km'), findsOneWidget);
+      // Captured with the strap's ladder showing; positions hold from here.
+      final toGoTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-to-go')))
+          .dy;
+      final finishTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-finish')))
+          .dy;
       expect(
         size(tester, 'event-to-go'),
         greaterThan(size(tester, 'event-finish')),
@@ -299,10 +306,21 @@ void main() {
       }
       await pumpTimes(tester, 4);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('GOAL · LAST MINUTE'), findsOneWidget);
+      // Changed deliberately (26-Oct): the last minute no longer swaps the
+      // figures or the title; only the to-go colour changes.
+      expect(find.text('GOAL · 30 MIN'), findsOneWidget);
       expect(
-        size(tester, 'event-finish'),
-        greaterThan(size(tester, 'event-to-go')),
+        size(tester, 'event-to-go'),
+        greaterThan(size(tester, 'event-finish')),
+      );
+      // Nothing moved from 30:00 to the last minute (the clock is 0:xx).
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-to-go'))).dy,
+        toGoTop,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-finish'))).dy,
+        finishTop,
       );
       for (var i = 0; i < 70; i++) {
         fake.advance(const Duration(seconds: 1));
@@ -385,6 +403,48 @@ void main() {
       expect(find.byType(OdometerDistance), findsOneWidget);
     });
 
+    testWidgets('a paired strap reserves the ladder gutter from the first '
+        'frame: nothing shifts when the first HR arrives', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      Rect rect(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      expect(services.recording.snapshot.hr, isNull, reason: 'no HR yet');
+      final before = (rect('event-to-go'), rect('event-finish'));
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 4);
+      expect(services.recording.snapshot.hr, isNotNull, reason: 'HR arrived');
+      final after = (rect('event-to-go'), rect('event-finish'));
+      expect(after.$1.left, before.$1.left);
+      expect(after.$1.right, before.$1.right);
+      expect(after.$1.top, before.$1.top);
+      expect(after.$2.top, before.$2.top);
+    });
+
+    testWidgets('no HR source at all keeps the full width', (tester) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 240
+        ..hrPaired = false;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 4);
+      final w = tester.getSize(find.byKey(const ValueKey('event-to-go'))).width;
+      expect(w, greaterThan(320), reason: 'no ladder gutter without HR');
+    });
+
     testWidgets('distance goal: to go and on pace, then the cool-down locks '
         'the goal time', (tester) async {
       final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
@@ -404,7 +464,28 @@ void main() {
       await pumpTimes(tester, 4);
       expect(find.text('9.75 km'), findsOneWidget);
       expect(find.text('40:00'), findsOneWidget);
-      for (var i = 0; i < 2400; i++) {
+      final toGoTop = tester
+          .getTopLeft(find.byKey(const ValueKey('event-to-go')))
+          .dy;
+      // Down past 1 km to go ("9.75 km" to "900 m"): the figure holds.
+      for (var i = 0; i < 2124; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpTimes(tester, 4);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('event-to-go')),
+          matching: find.textContaining(RegExp(r'^\d+ m$')),
+        ),
+        findsOneWidget,
+        reason: 'now in metres',
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('event-to-go'))).dy,
+        toGoTop,
+        reason: 'km to metres keeps the figure in place',
+      );
+      for (var i = 0; i < 276; i++) {
         fake.advance(const Duration(seconds: 1));
       }
       await pumpTimes(tester, 6);

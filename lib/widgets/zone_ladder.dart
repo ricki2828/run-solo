@@ -6,9 +6,9 @@ import '../theme/zones.dart';
 /// The zone ladder on the run screen's right edge (Full Instrument): five
 /// rungs, Z1 at the bottom to Z5 at the top, each labelled 1-5 and filled
 /// from the chart ramp ([HrZones.distributionLight]). Inactive rungs sit at
-/// 30 % opacity; the lit one is full with a Bone outline and a small pointer
-/// facing in; the pointer's height shows where HR sits within the zone
-/// ([position], 0 = bottom, 1 = top). [zone] is the engine tracker's zone (hysteresis applied), so
+/// 30 % opacity; the lit one is full with a Bone outline and a full-width
+/// outlined tick across it; the tick's height shows where
+/// HR sits within the zone ([position], 0 = bottom, 1 = top). [zone] is the engine tracker's zone (hysteresis applied), so
 /// the ladder never flickers; 0 (no HR) hides it. Colour is never the only
 /// cue: every rung carries its number.
 class ZoneLadder extends StatelessWidget {
@@ -18,9 +18,17 @@ class ZoneLadder extends StatelessWidget {
   /// 0 = bottom of the lit rung, 1 = top (`HrZones.positionInZone`).
   final double position;
 
-  /// The ladder's width; the screen reserves [reserve] for it and its pointer.
+  /// The ladder's width; the screen reserves [reserve] for it and the tick's
+  /// lead-in ([pointer], left of the rungs).
   static const double width = 18;
   static const double pointer = 6;
+
+  /// The tick's thickness and its contrasting outline (each side).
+  static const double tickThickness = 3;
+  static const double tickOutline = 1.5;
+
+  /// The lit numeral's halo, in the rung's colour.
+  static const double numeralHalo = 1.5;
 
   /// A clear 8 dp between the ladder's pointer and the numbers: the big
   /// figures scale to fit the gutter, never under the ladder (21-Oct).
@@ -83,65 +91,113 @@ class _Rung extends StatelessWidget {
               HrZones.contrast(t.bgBase, fill)
         ? t.inkPrimary
         : t.bgBase;
+    // On the lit rung the numeral is painted above the tick with a hard
+    // 1.5 dp halo in the rung's colour (eight zero-blur shadows), so the glyph
+    // reads while the tick still shows through around it at mid-zone.
+    final halo = onInk ? t.inkPrimary : fill;
+    const h = ZoneLadder.numeralHalo;
+    final numeral = Text(
+      '$z',
+      style: RunSoloType.label13.copyWith(
+        fontSize: ZoneLadder.numeralSize,
+        color: lit ? ink : t.inkPrimary,
+        fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
+        height: 1,
+        shadows: lit
+            ? [
+                for (final o in const [
+                  Offset(h, 0),
+                  Offset(-h, 0),
+                  Offset(0, h),
+                  Offset(0, -h),
+                  Offset(h, h),
+                  Offset(-h, h),
+                  Offset(h, -h),
+                  Offset(-h, -h),
+                ])
+                  Shadow(color: halo, offset: o),
+              ]
+            : null,
+      ),
+    );
+    final row = Row(
+      children: [
+        SizedBox(width: ZoneLadder.pointer),
+        Expanded(
+          child: Container(
+            key: ValueKey('ladder-rung-$z'),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: lit
+                  ? (onInk ? t.inkPrimary : fill)
+                  : fill.withValues(
+                      alpha: onInk
+                          ? ZoneLadder.inactiveAlphaOnInk
+                          : ZoneLadder._inactiveAlpha,
+                    ),
+              borderRadius: BorderRadius.circular(4),
+              border: lit
+                  ? Border.all(color: t.inkPrimary, width: 3)
+                  : onInk
+                  ? Border.all(color: t.lineHair)
+                  : null,
+            ),
+            child: lit ? null : numeral,
+          ),
+        ),
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: ZoneLadder.pointer,
-            child: lit
-                ? TweenAnimationBuilder<double>(
+      child: lit
+          ? Stack(
+              key: const ValueKey('ladder-lit-stack'),
+              clipBehavior: Clip.none,
+              children: [
+                row,
+                Positioned.fill(
+                  child: TweenAnimationBuilder<double>(
                     tween: Tween<double>(end: position.clamp(0.0, 1.0)),
                     duration: const Duration(milliseconds: 400),
                     curve: Curves.easeOut,
                     builder: (context, p, _) => CustomPaint(
                       key: const ValueKey('ladder-pointer'),
-                      painter: _PointerPainter(t.inkPrimary, p),
-                    ),
-                  )
-                : null,
-          ),
-          Expanded(
-            child: Container(
-              key: ValueKey('ladder-rung-$z'),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: lit
-                    ? (onInk ? t.inkPrimary : fill)
-                    : fill.withValues(
-                        alpha: onInk
-                            ? ZoneLadder.inactiveAlphaOnInk
-                            : ZoneLadder._inactiveAlpha,
+                      painter: _TickPainter(
+                        tick: ink,
+                        outline: ink == t.inkPrimary ? t.bgBase : t.inkPrimary,
+                        position: p,
                       ),
-                borderRadius: BorderRadius.circular(4),
-                border: lit
-                    ? Border.all(color: t.inkPrimary, width: 3)
-                    : onInk
-                    ? Border.all(color: t.lineHair)
-                    : null,
-              ),
-              child: Text(
-                '$z',
-                style: RunSoloType.label13.copyWith(
-                  fontSize: ZoneLadder.numeralSize,
-                  color: lit ? ink : t.inkPrimary,
-                  fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
-                  height: 1,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
+                // The zone numeral is painted above the tick, haloed in the
+                // rung's colour; same centre as before, so nothing moves.
+                Positioned.fill(
+                  child: Row(
+                    children: [
+                      const SizedBox(width: ZoneLadder.pointer),
+                      Expanded(child: Center(child: numeral)),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : row,
     );
   }
 }
 
-/// A small triangle at the rung's left edge, pointing in (right); [position]
-/// (0 bottom, 1 top) sets its height, kept clear of the rung's ends.
-class _PointerPainter extends CustomPainter {
-  _PointerPainter(this.colour, this.position);
-  final Color colour;
+/// A full-width tick across the lit rung, outlined in the opposite ink so it
+/// reads over the rung numeral; [position] (0 bottom, 1 top) sets its height,
+/// kept clear of the rung's ends.
+class _TickPainter extends CustomPainter {
+  _TickPainter({
+    required this.tick,
+    required this.outline,
+    required this.position,
+  });
+  final Color tick;
+  final Color outline;
   final double position;
 
   static const double _margin = 5;
@@ -149,17 +205,19 @@ class _PointerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final cy = _margin + (1 - position) * (size.height - 2 * _margin);
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, cy - 5)
-        ..lineTo(size.width, cy)
-        ..lineTo(0, cy + 5)
-        ..close(),
-      Paint()..color = colour,
+    const t = ZoneLadder.tickThickness;
+    const o = ZoneLadder.tickOutline;
+    canvas.drawRect(
+      Rect.fromLTWH(0, cy - t / 2 - o, size.width, t + 2 * o),
+      Paint()..color = outline,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, cy - t / 2, size.width, t),
+      Paint()..color = tick,
     );
   }
 
   @override
-  bool shouldRepaint(_PointerPainter old) =>
-      old.colour != colour || old.position != position;
+  bool shouldRepaint(_TickPainter old) =>
+      old.tick != tick || old.outline != outline || old.position != position;
 }

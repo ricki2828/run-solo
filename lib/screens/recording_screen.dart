@@ -507,7 +507,9 @@ class _RecordingScreenState extends State<RecordingScreen>
             ],
           );
           // No strap, no zone ladder (D3): its gutter goes back to the screen.
-          final ladderShown = s.hr != null && s.zone > 0;
+          // A paired strap reserves the gutter from the first frame, so the
+          // figures don't shift ~15 dp when the first HR arrives (26-Oct).
+          final ladderShown = (s.hr != null && s.zone > 0) || s.hrPaired;
           final rightGutter = ladderShown
               ? ZoneLadder.reserve
               : Space.recordGutter;
@@ -706,7 +708,8 @@ class _RecordingScreenState extends State<RecordingScreen>
             if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) ...[
               // K1 / A10.10, G3 (A8): distance or time to go is
               // the biggest number, projected finish second;
-              // they swap for the last 400 m / last minute.
+              // they never swap: the last 400 m / last minute only tints
+              // the to-go figure.
               _PausedHidden(
                 paused: s.paused,
                 child: EventBlock(
@@ -1271,6 +1274,43 @@ String eventToGoText(
   return Fmt.clock(ctl.displayRemainingMs + 999);
 }
 
+/// The to-go figure as the run starts (the goal distance or the full clock):
+/// the widest form it takes, used to hold its block's width. Null before the
+/// step is known.
+String? eventStartText(RecordingSnapshot s, Units units) {
+  final st = s.currentStep;
+  if (st == null) return null;
+  if (s.distanceStep || s.metresToGo != null) {
+    return eventDistanceToGo(st.value.toDouble(), units);
+  }
+  return Fmt.clock((st.value * 1000).round());
+}
+
+/// The widest the projected figure gets, so its block holds its width from
+/// the "--" before the first 200 m to the full projection.
+String? eventFinishWidest(RecordingSnapshot s, Units units) {
+  final st = s.currentStep;
+  if (s.distanceStep || s.metresToGo != null) {
+    return st != null && st.value >= 15000 ? '8:88:88' : '88:88';
+  }
+  return units == Units.mi ? '88.88 mi' : '88.88 km';
+}
+
+double _widestBlock(BuildContext context, TextStyle style, List<String> texts) {
+  final scaler = MediaQuery.textScalerOf(context);
+  var widest = 0.0;
+  for (final text in texts) {
+    final p = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout();
+    if (p.width > widest) widest = p.width;
+    p.dispose();
+  }
+  return widest;
+}
+
 /// The event / goal "projected" figure (finish time, or distance for a
 /// time goal).
 String eventFinishText(
@@ -1299,13 +1339,8 @@ String eventFinishLabel(RecordingSnapshot s) =>
 LiveHero liveHero(RecordingSnapshot s, RecordingController ctl, Units units) {
   final unit = units == Units.mi ? 'mi' : 'km';
   if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) {
-    // To go leads; on the last stretch the projected finish does.
-    return eventLastStretch(s)
-        ? LiveHero(
-            text: eventFinishText(s, ctl, units),
-            label: eventFinishLabel(s),
-          )
-        : LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
+    // To go leads for the whole run: the hero never swaps in the last stretch.
+    return LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
   }
   if (s.isGoal && s.phase == Phase.cooldown) {
     return LiveHero(
@@ -1385,6 +1420,17 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
         fontSize: RunSoloType.runSize(compact ? 128 : 168),
       );
 
+/// The to-go figure's last-stretch emphasis colour: the arc accent where it
+/// holds 3:1 (large figures) on the zone's flood, else its deeper day
+/// variant, else plain ink. Never a size or position change.
+Color lastStretchAccent(RunSoloTokens t, int zone) {
+  final fill = HrZones.background(zone);
+  for (final c in [t.accentArc, NightSessionLight.accentArc]) {
+    if (HrZones.contrast(c, fill) >= 3) return c;
+  }
+  return t.inkPrimary;
+}
+
 /// Rep (a work step of a structured session) in the Intervals magenta,
 /// recovery in mint; everything else Bone. The words stay too (colour is never
 /// the only cue), and the countdown box keeps its outline. A hue that does not
@@ -1445,14 +1491,13 @@ String phaseTitle(RecordingSnapshot s) {
   if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
   if (isEventRun(s) && s.phase == Phase.work) {
     final name = kEventNames.parkrun.toUpperCase();
-    return eventLastStretch(s) ? '$name · LAST 400 M' : '$name · 5 KM';
+    return '$name · 5 KM';
   }
   if (s.isGoal) {
     final name = (s.spec?.name ?? '').toUpperCase();
     if (s.phase == Phase.cooldown) return 'COOL-DOWN · $name DONE';
     if (s.phase == Phase.work) {
-      if (!eventLastStretch(s)) return 'GOAL · $name';
-      return s.distanceStep ? 'GOAL · LAST 400 M' : 'GOAL · LAST MINUTE';
+      return 'GOAL · $name';
     }
   }
   final step = s.currentStep;
@@ -1899,14 +1944,22 @@ class _Vitals extends StatelessWidget {
                   ),
                   // One line, scaled down rather than run into TOTAL
                   // (24-Oct review #10, font scale 1.3).
-                  if (s.zone > 0 && s.hr != null)
+                  // Event and goal runs keep the line (blank) until the first
+                  // HR and while the strap reconnects: their figures are
+                  // centred under this row, so they would shift when HR
+                  // arrives or drops (26-Oct).
+                  if ((s.zone > 0 && s.hr != null) || isEventRun(s) || s.isGoal)
                     ExcludeSemantics(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          HrZones.label(s.zone, paired: true),
-                          key: const ValueKey('vitals-zone'),
+                          s.zone > 0 && s.hr != null
+                              ? HrZones.label(s.zone, paired: true)
+                              : ' ',
+                          key: s.zone > 0 && s.hr != null
+                              ? const ValueKey('vitals-zone')
+                              : null,
                           softWrap: false,
                           style: label.copyWith(
                             color: HrZones.labelOn(s.zone, secondary),
@@ -3590,7 +3643,7 @@ class EventBlock extends StatelessWidget {
   final bool reduced;
 
   /// The live compare card, over the projected finish (secondary) before
-  /// the last 400 m; none after the swap (A10.1). The slot's link.
+  /// the last 400 m; none in it (A10.1). The slot's link.
   final LayerLink? card;
 
   @override
@@ -3606,12 +3659,19 @@ class EventBlock extends StatelessWidget {
       String label, {
       required bool big,
       bool odo = false,
+      bool accent = false,
+      String? reference,
     }) {
       final dashed = text == '--';
-      final style = primaryStyle(
-        compact,
-        secondary: !big,
-      ).copyWith(color: big && !dashed ? t.inkPrimary : muted);
+      // The last stretch changes emphasis only (accent colour); the size and
+      // the digit block's width never move.
+      final style = primaryStyle(compact, secondary: !big).copyWith(
+        color: accent && !dashed
+            ? lastStretchAccent(t, s.zone)
+            : big && !dashed
+            ? t.inkPrimary
+            : muted,
+      );
       return Column(
         key: ValueKey(key),
         mainAxisSize: MainAxisSize.min,
@@ -3622,9 +3682,24 @@ class EventBlock extends StatelessWidget {
             padding: const EdgeInsets.only(right: Space.x8),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: odo && kOdometerDistance && !dashed
-                  ? OdometerDistance(value: text, style: style)
-                  : Text(text, softWrap: false, style: style),
+              // The figure never scales up as it shortens (1.00 km to 990 m,
+              // 10.00 km to 9.99 km, 10:00 to 9:59): the block keeps the
+              // width of the widest form this run starts from, so size and
+              // place hold for the whole run (26-Oct). Measured at the user's
+              // text scale, as the figure itself is drawn.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: _widestBlock(context, style, [
+                    if (odo) units == Units.mi ? '8.88 mi' : '8.88 km',
+                    ?reference,
+                  ]),
+                ),
+                child: Center(
+                  child: odo && kOdometerDistance && !dashed
+                      ? OdometerDistance(value: text, style: style)
+                      : Text(text, softWrap: false, style: style),
+                ),
+              ),
             ),
           ),
           Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
@@ -3639,8 +3714,10 @@ class EventBlock extends StatelessWidget {
       'event-to-go',
       toGoText,
       'to go',
-      big: !last,
+      big: true,
       odo: toGoIsDistance,
+      accent: last,
+      reference: eventStartText(s, units),
     );
     final finish = CompareSlot(
       link: last ? null : card,
@@ -3650,19 +3727,18 @@ class EventBlock extends StatelessWidget {
           'event-finish',
           finishText,
           eventFinishLabel(s),
-          big: last,
+          big: false,
+          reference: eventFinishWidest(s, units),
         ),
       ),
     );
-    return AnimatedSwitcher(
-      duration: reduced ? Duration.zero : const Duration(milliseconds: 240),
-      child: Column(
-        key: ValueKey(last),
-        mainAxisSize: MainAxisSize.min,
-        children: last
-            ? [finish, SizedBox(height: compact ? Space.x8 : Space.x16), toGo]
-            : [toGo, SizedBox(height: compact ? Space.x8 : Space.x16), finish],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        toGo,
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        finish,
+      ],
     );
   }
 }

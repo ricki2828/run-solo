@@ -279,6 +279,12 @@ void main() {
       final second = RecordingController(fake, now: now, zoneMemento: memento);
       await second.attach();
       expect(second.snapshot.zone, 4, reason: 'first frame is the last zone');
+      expect(
+        second.snapshot.zonePosition,
+        closeTo(first.snapshot.zonePosition, 1e-9),
+        reason: 'the restored marker is where HR was, not the 0.5 default',
+      );
+      expect(second.snapshot.zonePosition, isNot(closeTo(0.5, 0.01)));
       // Still zone 4 after a few HR-less seconds, no black flash.
       fake.scriptedHr = null;
       fake.strapDropped = true;

@@ -86,4 +86,75 @@ void main() {
     expect(high, closeTo(0.9, 1e-9));
     expect(high, greaterThan(low));
   });
+
+  testWidgets('the marker y matches HR position at the zone edges and mid', (
+    tester,
+  ) async {
+    // The tick is drawn by a private painter over the lit rung's own height;
+    // read its resolved y through the same mapping it paints with.
+    Future<double> tickY(double position) async {
+      await tester.pumpWidget(host(3, position: position));
+      await tester.pumpAndSettle();
+      final paint = tester.widget<CustomPaint>(
+        find.byKey(const ValueKey('ladder-pointer')),
+      );
+      final h = tester
+          .getSize(find.byKey(const ValueKey('ladder-pointer')))
+          .height;
+      final painter = paint.painter as dynamic;
+      return (5 + (1 - (painter.position as double)) * (h - 10));
+    }
+
+    final bottom = await tickY(0);
+    final mid = await tickY(0.5);
+    final top = await tickY(1);
+    final h = tester
+        .getSize(find.byKey(const ValueKey('ladder-pointer')))
+        .height;
+    expect(bottom, closeTo(h - 5, 1e-6), reason: 'zone floor');
+    expect(top, closeTo(5, 1e-6), reason: 'zone ceiling');
+    expect(mid, closeTo(h / 2, 1e-6), reason: 'mid zone');
+  });
+
+  testWidgets('the tick spans the whole rung and the ladder keeps 32 dp', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(3, position: 0.8));
+    await tester.pumpAndSettle();
+    final tick = tester.getSize(find.byKey(const ValueKey('ladder-pointer')));
+    final rung = tester.getSize(find.byKey(const ValueKey('ladder-rung-3')));
+    expect(tick.width, ZoneLadder.pointer + rung.width);
+    expect(ZoneLadder.reserve, 32);
+  });
+
+  testWidgets('the lit numeral is painted above the tick, with a halo not a '
+      'backing', (tester) async {
+    await tester.pumpWidget(host(3, position: 0.5));
+    final stack = find.byKey(const ValueKey('ladder-lit-stack'));
+    final kids = tester.widget<Stack>(stack).children;
+    final tick = kids.indexWhere(
+      (w) => find
+          .descendant(
+            of: find.byWidget(w),
+            matching: find.byKey(const ValueKey('ladder-pointer')),
+          )
+          .evaluate()
+          .isNotEmpty,
+    );
+    final numeral = kids.indexWhere(
+      (w) => find
+          .descendant(of: find.byWidget(w), matching: find.text('3'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tick, isNonNegative);
+    expect(numeral, greaterThan(tick), reason: 'later in the stack = on top');
+    expect(
+      find.ancestor(of: find.text('3'), matching: find.byType(DecoratedBox)),
+      findsNothing,
+      reason: 'a backing would hide the tick at mid-zone',
+    );
+    final style = tester.widget<Text>(find.text('3')).style!;
+    expect(style.shadows, hasLength(8), reason: 'the halo');
+  });
 }

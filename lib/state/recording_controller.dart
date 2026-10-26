@@ -666,7 +666,13 @@ class RecordingController extends ChangeNotifier {
           hr: m.hr,
           atMs: m.elapsedMs,
         );
-        _snap = _snap.copyWith(zone: m.zone, runId: status.runId);
+        _snap = _snap.copyWith(
+          zone: m.zone,
+          zonePosition: m.hr == null
+              ? null
+              : _zones().positionInZone(m.zone, m.hr!),
+          runId: status.runId,
+        );
         notifyListeners();
       } else {
         _tracker = engine.HrZoneTracker(zones: _zones());

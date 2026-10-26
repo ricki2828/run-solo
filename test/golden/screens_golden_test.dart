@@ -413,6 +413,25 @@ void main() {
     );
   });
 
+  // 26-Oct: the ladder tick at the zone's edges and middle. Z2 is 113.4-132.3
+  // bpm on the default 189 max, so 116 is ~0.14, 124 ~0.56, 129 ~0.82.
+  for (final h in [800, 640]) {
+    for (final (name, hr) in [('low', 116), ('mid', 124), ('high', 129)]) {
+      if (name == 'mid' && h == 800) continue; // record_free_z2_360x800
+      testWidgets('record: Z2 ladder tick $name at 360 x $h', (tester) async {
+        await recordWithHr(
+          tester,
+          RecordMode.free,
+          hr,
+          name == 'mid'
+              ? 'record_free_z2_360x$h'
+              : 'record_free_z2_${name}_360x$h',
+          height: h,
+        );
+      });
+    }
+  }
+
   for (final h in [800, 640]) {
     testWidgets(
       'record: Z4 rep with the target band and next step at 360 x $h',
@@ -1753,6 +1772,81 @@ void main() {
       await golden(tester, 'record_goal_half_360x$h');
     });
   }
+
+  // 26-Oct: the last stretch once the moment banner has cleared (no scrim),
+  // so the to-go figure, the finish line and the stats rows can be judged
+  // against the pre-stretch screens: nothing moves.
+  testWidgets('last stretch with the moment cleared: event, goal time, goal '
+      'distance at 360 x 640', (tester) async {
+    Future<void> lastStretch(
+      engine.SessionSpec spec,
+      int seconds,
+      String name,
+    ) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 285
+        ..scriptedHr = 165;
+      final run = fakeServices(recorder: fake);
+      await run.recording.start(
+        RecordMode.intervals,
+        spec.toPigeon(),
+        Units.km,
+      );
+      for (var i = 0; i < seconds; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpApp(tester, run, pushRoute: Routes.recording);
+      tester.view.physicalSize = const Size(1080, 640 * 3.0);
+      await pumpTimes(tester, 6);
+      // Past the moment's hold, so no scrim over the figures.
+      await tester.pump(const Duration(seconds: 8));
+      await pumpTimes(tester, 4);
+      await settleAnimations(tester);
+      await golden(tester, name);
+    }
+
+    await lastStretch(
+      engine.SessionSpec.parkrun(kEventNames.parkrun),
+      1360,
+      'record_event_last_clear_360x640',
+    );
+    await lastStretch(
+      engine.SessionSpec.goalTime(1800, '30 min'),
+      1750,
+      'record_goal_time_last_clear_360x640',
+    );
+    await lastStretch(
+      engine.SessionSpec.goalDistance(10000, '10K'),
+      2740,
+      'record_goal_dist_last_clear_360x640',
+    );
+  });
+
+  // 26-Oct: a strap is paired but the first HR hasn't arrived. The figures
+  // sit where they will sit with HR (compare the pair: nothing shifts).
+  testWidgets('goal: before and after the first HR at 360 x 800', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now)
+      ..liveSecPerKm = 285
+      ..scriptedHr = 165;
+    final run = fakeServices(recorder: fake);
+    await run.recording.start(
+      RecordMode.intervals,
+      engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+      Units.km,
+    );
+    await pumpApp(tester, run, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    expect(run.recording.snapshot.hr, isNull);
+    await golden(tester, 'record_goal_pre_hr_360x800');
+    fake.advance(const Duration(seconds: 2));
+    await pumpTimes(tester, 4);
+    await settleAnimations(tester);
+    expect(run.recording.snapshot.hr, 165);
+    await golden(tester, 'record_goal_first_hr_360x800');
+  });
 
   // PD2 on Start (A10.10, #84 review): the goal card's target line.
   testWidgets('goal: Start with a target line at 360 x 640', (tester) async {
