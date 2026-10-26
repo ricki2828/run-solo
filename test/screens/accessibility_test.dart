@@ -9,6 +9,7 @@ import 'package:run_solo/screens/permissions_screen.dart';
 import 'package:run_solo/screens/run_detail_screen.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
+import 'package:run_solo/theme/lanes.dart';
 import 'package:run_solo/theme/theme.dart';
 import 'package:run_solo/widgets/hold_button.dart';
 
@@ -136,11 +137,27 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 500));
-    // Tap targets and labels only: with five chips in the row the contrast
-    // guideline samples "Laps" and "Free" from a rect that misses their text
-    // (the same chip colours pass in a four-chip row).
+    // The text-contrast guideline finds a chip's text colour from the
+    // second most common pixel colour in its rect. In this five-chip row the
+    // chips land on fractional x, so for "Laps" and "Free" that colour is an
+    // anti-aliased blend (B1B4B7), not the ink: moving the row by 0.6 dp makes
+    // the same row pass, and 0.3 dp flags "Load" instead. So this step runs
+    // the tap-target and label guidelines and checks the chip colours by
+    // their tokens (8:1 and better); the pixel guideline still covers every
+    // other screen in this test.
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    for (final tokens in [RunSoloTokens.dark, RunSoloTokens.light]) {
+      // Unselected chip label on its fill; selected label on the ink fill.
+      expect(
+        contrastRatio(tokens.inkSecondary, tokens.bgRaised),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        contrastRatio(tokens.bgRaised, tokens.inkPrimary),
+        greaterThanOrEqualTo(4.5),
+      );
+    }
     handle.dispose();
 
     handle = tester.ensureSemantics();
