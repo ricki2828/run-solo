@@ -57,6 +57,7 @@ void main() {
       expect(band(4), LoadBand.usual);
       expect(band(2), LoadBand.lighter);
       expect(band(5), LoadBand.stepUp);
+      expect(band(6), LoadBand.stepUp);
       expect(band(8), LoadBand.bigJump);
     });
     test('1.9 reads as double, not 190% more', () {
