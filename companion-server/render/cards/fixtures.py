@@ -215,6 +215,13 @@ def weekly_recap_load_bigjump() -> dict[str, Any]:
     return {**weekly_recap(), "load": 470, "usual_load": 340, "band": "bigJump", "pct": 38, "words": "38% more than your usual week", "weeks": w}
 
 
+def weekly_recap_load_stepup() -> dict[str, Any]:
+    """460 against a usual 340 is over 1.3x, but no run that week carried a high load_state: a step up, no amber."""
+    loads = [300, 350, 330, 340, 350, 460]
+    return {**weekly_recap(), "load": 460, "usual_load": 340, "band": "stepUp", "pct": 35,
+            "words": "35% more than your usual week", "weeks": _load_weeks(loads)}
+
+
 def weekly_recap_load_nohr() -> dict[str, Any]:
     """A runner with no strap: every bar is the easy-run colour, and the week is lighter than usual."""
     loads = [210, 240, 230, 250, 220, 170]

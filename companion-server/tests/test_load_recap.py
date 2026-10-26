@@ -322,7 +322,7 @@ def test_the_loop_and_the_video_never_get_the_load_block():
             P.check_request({"v": 1, "op": op, "kind": kind, "facts": {**f, "duration_s": 1}})
 
 
-@pytest.mark.parametrize("name", ["weekly_recap_load_usual", "weekly_recap_load_bigjump", "weekly_recap_load_nohr"])
+@pytest.mark.parametrize("name", ["weekly_recap_load_usual", "weekly_recap_load_bigjump", "weekly_recap_load_stepup", "weekly_recap_load_nohr"])
 def test_the_load_fixtures_pass_the_worker_check(name):
     P.check_request({"v": 1, "op": "card", "kind": "weekly_recap", "facts": getattr(F, name)()})
 
@@ -535,3 +535,9 @@ def test_load_copy_is_descriptive_not_alarmist():
                           "verdict": None, "pb": None, "true_pace_s_per_km": 355.0}, [], {})
     txt = [f.text for f in res.facts if f.id == "load"]
     assert txt == ["This week's load is well above your usual week"]
+
+
+def test_a_step_up_over_1_3x_has_no_amber_on_the_card():
+    html = build_weekly_html(F.weekly_recap_load_stepup(), {})
+    assert "35% more than your usual week" in html and 'stroke="#D9A21B"' not in html
+    assert F.weekly_recap_load_stepup()["load"] / F.weekly_recap_load_stepup()["usual_load"] > 1.3

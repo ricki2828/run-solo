@@ -316,6 +316,7 @@ GOLDENS = {
     "weekly_recap": ("render_weekly_recap", F.weekly_recap),
     "weekly_recap_load_usual": ("render_weekly_recap", F.weekly_recap_load_usual),
     "weekly_recap_load_bigjump": ("render_weekly_recap", F.weekly_recap_load_bigjump),
+    "weekly_recap_load_stepup": ("render_weekly_recap", F.weekly_recap_load_stepup),
     "weekly_recap_load_nohr": ("render_weekly_recap", F.weekly_recap_load_nohr),
     "race_countdown": ("render_race_countdown", F.race_countdown),
     "monthly_poster": ("render_monthly_poster", F.monthly_poster),
