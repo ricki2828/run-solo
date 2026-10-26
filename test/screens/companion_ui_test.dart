@@ -32,7 +32,7 @@ void main() {
   });
 
   testWidgets(
-    'consent: filled Turn on, outlined Not now, nothing pre-selected',
+    'consent: Turn on and Not now, equal weight, nothing pre-selected',
     (tester) async {
       await pumpApp(
         tester,
@@ -69,18 +69,20 @@ void main() {
       expect(find.byType(Switch), findsNothing);
       expect(find.byType(Checkbox), findsNothing);
       expect(find.byType(Radio<Object?>), findsNothing);
-      // One pattern: filled Turn on, outlined Not now, same size.
+      // The privacy page promises two equal buttons: same size, same style.
       final on = find.byKey(const ValueKey('companion-turn-on'));
       final off = find.byKey(const ValueKey('companion-not-now'));
       expect(tester.getSize(on), tester.getSize(off));
-      expect(
-        find.descendant(of: on, matching: find.byType(FilledButton)),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: off, matching: find.byType(OutlinedButton)),
-        findsOneWidget,
-      );
+      for (final b in [on, off]) {
+        expect(
+          find.descendant(of: b, matching: find.byType(OutlinedButton)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: b, matching: find.byType(FilledButton)),
+          findsNothing,
+        );
+      }
       // Opening the screen enrols nothing and asks nothing.
       expect(http.requests, isEmpty);
       expect(ctl.asked, isFalse);

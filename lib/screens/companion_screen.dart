@@ -295,9 +295,11 @@ class _Heading extends StatelessWidget {
   }
 }
 
-/// The one button pattern on every consent sheet (ui review 24-Oct #14):
-/// [primary] is the filled "Turn on" / "Agree", the other is outlined
-/// "Not now" / "Turn off". Both are the shared [RunButton].
+/// The button on every consent sheet (ui review 24-Oct #14), the shared
+/// [RunButton]. "Turn on" and "Not now" on the setup screen and the weather
+/// sheet are the same outlined style at equal weight, neither pre-selected
+/// (the privacy page says so). Only Agree (coach, memory, reconsent) and the
+/// lone Confirm are [primary].
 class _ChoiceButton extends StatelessWidget {
   const _ChoiceButton({
     super.key,
@@ -528,7 +530,6 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
                 child: _ChoiceButton(
                   key: const ValueKey('companion-turn-on'),
                   label: failed ? 'Try again' : 'Turn on',
-                  primary: true,
                   onTap: controller.turnOn,
                 ),
               ),
@@ -1166,7 +1167,7 @@ class _CompanionCoachSettingsState extends State<CompanionCoachSettings> {
 }
 
 /// The memory sheet as a card: the words, the health notes tick (off), the
-/// training numbers switch (on), Agree and Not now at equal weight. Agree
+/// training numbers switch (on), Agree (filled) and Not now. Agree
 /// records version 4 with both choices; Not now changes nothing.
 class CompanionMemoryOffer extends StatefulWidget {
   const CompanionMemoryOffer({super.key, required this.controller});
@@ -1424,7 +1425,6 @@ class CompanionWeatherSheet extends StatelessWidget {
                   child: _ChoiceButton(
                     key: const ValueKey('companion-weather-on'),
                     label: 'Turn on',
-                    primary: true,
                     onTap: () => Navigator.of(context).pop(true),
                   ),
                 ),
