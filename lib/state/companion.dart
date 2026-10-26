@@ -587,6 +587,7 @@ class CoachNext {
     this.careWeeks = const [],
     this.quest,
     this.supportsQuests = false,
+    this.supportsLoad = false,
   });
   final CoachSession? session;
   final CoachLine? line;
@@ -603,6 +604,10 @@ class CoachNext {
   /// keys (an older server sends neither). Only then does a run upload carry a
   /// `quest` block, because an older server refuses any key it does not know.
   final bool supportsQuests;
+
+  /// The server takes `load` and `load_basis` on a run: its reply says
+  /// `accepts_load`. An older server refuses the whole run for either key.
+  final bool supportsLoad;
 
   bool get isEmpty => session == null && line == null;
 
@@ -621,6 +626,7 @@ class CoachNext {
       ],
       quest: CoachQuest.fromJson(j['quest']),
       supportsQuests: j.containsKey('quest') || j.containsKey('care_weeks'),
+      supportsLoad: j['accepts_load'] == true,
     );
   }
 }
@@ -1449,6 +1455,11 @@ class CompanionController extends ChangeNotifier {
   /// server): the block is optional, so waiting costs only a later offer.
   bool get questsSupported =>
       enrolled && consentCurrent && (_coachNext?.supportsQuests ?? false);
+
+  /// The server's last next-session reply says it takes `load` and
+  /// `load_basis`. False until a reply says so.
+  bool get loadSupported =>
+      enrolled && consentCurrent && (_coachNext?.supportsLoad ?? false);
 
   /// The quest accepted in Telegram, if the last reply said so.
   CoachQuest? get coachQuest =>
@@ -2394,6 +2405,7 @@ Map<String, Object?>? companionSummary(
   Map<String, Object?> plan = const {},
   Map<String, Object?>? trail,
   Map<String, Object?>? quest,
+  Map<String, Object?> load = const {},
 }) {
   final s = d.summary;
   final run = d.run;
@@ -2434,6 +2446,8 @@ Map<String, Object?>? companionSummary(
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
     'trail': ?trail,
+    // load, load_basis, load_state (LoadWire.facts).
+    ...load,
     // Built by questWire, only for a server that knows quests.
     'quest': ?quest,
     // Only with "Weather in suggestions" on: the start point rounded to 0.1
@@ -2532,6 +2546,14 @@ class CompanionTarget extends ExportTarget {
   Future<Map<String, Object?>?> Function(RunDetail run, {required bool names})?
   questFacts;
 
+  /// The load fields for a run (`LoadWire.facts`), wired by AppServices; null
+  /// sends none. Gets whether the server takes `load` and `load_basis`.
+  Future<Map<String, Object?>> Function(
+    RunDetail run, {
+    required bool withLoad,
+  })?
+  loadFacts;
+
   /// When the server last answered 422 (older than this app). For
   /// [outdatedWait] no run is sent and no automatic try is spent; a new app
   /// start clears it, so it is also retried on the next open.
@@ -2558,6 +2580,17 @@ class CompanionTarget extends ExportTarget {
       return await planFacts?.call(run) ?? const {};
     } catch (e) {
       companionLog('plan read failed (${e.runtimeType})');
+      return const {};
+    }
+  }
+
+  /// A load read that fails sends the run without load fields, never fails it.
+  Future<Map<String, Object?>> _load(RunDetail run) async {
+    try {
+      return await loadFacts?.call(run, withLoad: controller.loadSupported) ??
+          const {};
+    } catch (e) {
+      companionLog('load read failed (${e.runtimeType})');
       return const {};
     }
   }
@@ -2622,6 +2655,7 @@ class CompanionTarget extends ExportTarget {
         plan: await _plan(d),
         trail: await _trail(d),
         quest: await _quest(d),
+        load: await _load(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

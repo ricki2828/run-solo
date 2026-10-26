@@ -39,6 +39,7 @@ import '../state/route_library.dart';
 import '../state/recording_controller.dart';
 import '../state/intervals_icu.dart';
 import '../state/load_guard.dart';
+import '../state/load_history.dart';
 import '../state/send_runs.dart';
 import '../state/watch_export.dart';
 import '../state/sessions.dart';
@@ -143,8 +144,36 @@ class AppServices {
         t.planFacts ??= planFactsFor;
         t.trailFacts ??= trailBlockFor;
         t.questFacts ??= questBlockFor;
+        t.loadFacts ??= loadFactsFor;
       }
     }
+  }
+
+  /// `load_state` (and, for a server that takes them, `load` and
+  /// `load_basis`) for a run's companion summary, from History's index rows
+  /// and the same VDOT estimate Home's load warning uses.
+  Future<Map<String, Object?>> loadFactsFor(
+    RunDetail d, {
+    required bool withLoad,
+  }) async {
+    var scores = const <engine.IdentityLane, engine.IdentityScore>{};
+    try {
+      scores = live?.identityScores() ?? scores;
+    } catch (_) {}
+    final all = await history.list();
+    final ctx = PlanContext(
+      runs: all,
+      scores: scores,
+      now: now(),
+      maxHr: maxHr.maxHr,
+    );
+    return LoadWire.facts(
+      all,
+      d.summary,
+      maxHr: maxHr.maxHr,
+      vdot: ctx.vdot,
+      withLoad: withLoad,
+    );
   }
 
   /// The plan's facts for a run's companion summary: the stored block, judged

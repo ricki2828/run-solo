@@ -7,6 +7,7 @@ import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/state/companion.dart';
 import 'package:run_solo/state/history_store.dart';
 import 'package:run_solo/state/intervals_icu.dart';
+import 'package:run_solo/state/load_history.dart';
 import 'package:run_solo/state/send_runs.dart';
 import 'package:run_solo/state/settings.dart';
 
@@ -92,6 +93,8 @@ Future<void> enrolNow(CompanionController c, [String code = '123456']) async {
   await c.turnOn();
   await c.submitCode(code);
 }
+
+const _loadKeys = {'load', 'load_basis', 'load_state'};
 
 void main() {
   final start = DateTime.utc(2026, 9, 24, 6);
@@ -367,6 +370,56 @@ void main() {
       expect(j['goal_reached'], isFalse);
       expect(j.containsKey('work_pace_s_per_km'), isFalse);
     });
+
+    test('load fields ride along when given, and only then', () async {
+      final plain = await summaryOf();
+      expect(plain.keys.toSet().intersection(_loadKeys), isEmpty);
+      await store.setUtcOffset(run.id, 480);
+      final d = (await store.load(run.id))!;
+      final facts = LoadWire.facts(
+        [d.summary],
+        d.summary,
+        maxHr: 190,
+        vdot: null,
+        withLoad: true,
+      );
+      expect(facts['load'], isA<double>());
+      expect(facts['load'] as double, greaterThan(0));
+      expect(['hr', 'pace', 'assumed'], contains(facts['load_basis']));
+      final j = companionSummary(
+        d,
+        zones: engine.HrZones.percentMax(190),
+        load: facts,
+      )!;
+      expect(j['load'], facts['load']);
+      expect(j['load_basis'], facts['load_basis']);
+      // One run is not enough history to judge: no load_state.
+      expect(j.containsKey('load_state'), isFalse);
+      // The server's wire model takes exactly these names.
+      expect(_loadKeys, containsAll(['load', 'load_basis', 'load_state']));
+    });
+
+    test(
+      'the load fields match the JSON the server validator is tested with',
+      () async {
+        await store.setUtcOffset(run.id, 480);
+        final d = (await store.load(run.id))!;
+        final j = companionSummary(
+          d,
+          zones: engine.HrZones.percentMax(190),
+          load: {'load': 118.4, 'load_basis': 'hr', 'load_state': 'high'},
+        )!;
+        final file = File(
+          'companion-server/tests/fixtures/app_load_fields.json',
+        );
+        if (Platform.environment['UPDATE_FIXTURE'] == '1') {
+          file.writeAsStringSync(
+            '${const JsonEncoder.withIndent(' ').convert(j)}\n',
+          );
+        }
+        expect(jsonDecode(file.readAsStringSync()), jsonDecode(jsonEncode(j)));
+      },
+    );
 
     test('compact fields, no route points, no street', () async {
       await store.setPlace(run.id, 'Albert Park');
@@ -1370,6 +1423,38 @@ void main() {
         expect(sent.containsKey('plan_week'), isFalse);
       },
     );
+
+    test('load facts ride on the run; withLoad follows the server', () async {
+      await enrol();
+      bool? asked;
+      target.loadFacts = (_, {required withLoad}) async {
+        asked = withLoad;
+        return {'load_state': 'high'};
+      };
+      await coordinator.sendAuto(run.id);
+      final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+      expect(sent['load_state'], 'high');
+      // No next-session reply has said accepts_load: the run asks without.
+      expect(asked, isFalse);
+    });
+
+    test('a load read that throws still sends the run', () async {
+      await enrol();
+      target.loadFacts = (_, {required withLoad}) async =>
+          throw StateError('x');
+      await coordinator.sendAuto(run.id);
+      final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+      expect(sent['run_id'], run.id);
+      expect(sent.containsKey('load_state'), isFalse);
+    });
+
+    test('accepts_load in the reply is what turns load and load_basis on', () {
+      expect(CoachNext.parse({'v': 1})!.supportsLoad, isFalse);
+      expect(
+        CoachNext.parse({'v': 1, 'accepts_load': true})!.supportsLoad,
+        isTrue,
+      );
+    });
 
     test('the trail block rides on the run', () async {
       await enrol();
