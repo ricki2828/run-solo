@@ -10,6 +10,7 @@ import 'package:run_solo/screens/recording_screen.dart';
 import 'package:run_solo/screens/verdict_screen.dart';
 import 'package:run_solo/state/recording_controller.dart';
 import 'package:run_solo/widgets/mode_chip.dart';
+import 'package:run_solo/theme/theme.dart';
 
 import '../helpers.dart';
 
@@ -89,7 +90,9 @@ void main() {
   });
 
   testWidgets('record: distance to go is primary, projected finish second; '
-      'the last 400 m swap; auto-stop goes to the result', (tester) async {
+      'the last 400 m changes emphasis only; auto-stop goes to the result', (
+    tester,
+  ) async {
     final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
     final services = fakeServices(recorder: fake);
     await services.recording.start(RecordMode.intervals, eventSpec(), Units.km);
@@ -119,6 +122,13 @@ void main() {
     expect(find.text('4.75 km'), findsOneWidget);
     expect(find.text('20:00'), findsOneWidget, reason: '240 s/km × 5');
     expect(size('event-to-go'), greaterThan(size('event-finish')));
+    final toGoTop = tester.getTopLeft(
+      find.byKey(const ValueKey('event-to-go')),
+    );
+    final finishTop = tester.getTopLeft(
+      find.byKey(const ValueKey('event-finish')),
+    );
+    final toGoSize = size('event-to-go');
 
     // To 4.70 km run: 300 m left, the last stretch.
     for (var i = 0; i < 1068; i++) {
@@ -126,8 +136,32 @@ void main() {
     }
     await pumpTimes(tester, 4);
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('${name.toUpperCase()} · LAST 400 M'), findsOneWidget);
-    expect(size('event-finish'), greaterThan(size('event-to-go')));
+    // The last stretch changes emphasis only (changed deliberately, 26-Oct:
+    // it used to swap the two figures): same title, same order, same sizes,
+    // same positions; the to-go number takes the accent colour.
+
+    expect(find.text('${name.toUpperCase()} · 5 KM'), findsOneWidget);
+    expect(size('event-to-go'), toGoSize);
+    expect(size('event-to-go'), greaterThan(size('event-finish')));
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('event-to-go'))).dy,
+      toGoTop.dy,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('event-finish'))).dy,
+      finishTop.dy,
+    );
+    final toGoText = tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('event-to-go')),
+            matching: find.byType(Text),
+          )
+          .first,
+    );
+    final tokens = Theme.of(tester.element(find.byType(RecordingScreen)))
+        .extension<RunSoloTokens>()!;
+    expect(toGoText.style!.color, tokens.accentArc);
 
     // Auto-stop at 5.00 km: the result replaces the record screen.
     for (var i = 0; i < 80; i++) {

@@ -1095,6 +1095,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: ZoneLadder(
                     zone: s.hr == null ? 0 : s.zone,
                     position: s.zonePosition,
+                    hr: s.hr,
                   ),
                 ),
                 CompareCardLayer(
@@ -1299,13 +1300,8 @@ String eventFinishLabel(RecordingSnapshot s) =>
 LiveHero liveHero(RecordingSnapshot s, RecordingController ctl, Units units) {
   final unit = units == Units.mi ? 'mi' : 'km';
   if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) {
-    // To go leads; on the last stretch the projected finish does.
-    return eventLastStretch(s)
-        ? LiveHero(
-            text: eventFinishText(s, ctl, units),
-            label: eventFinishLabel(s),
-          )
-        : LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
+    // To go leads for the whole run: the hero never swaps in the last stretch.
+    return LiveHero(text: eventToGoText(s, ctl, units), label: 'to go');
   }
   if (s.isGoal && s.phase == Phase.cooldown) {
     return LiveHero(
@@ -1445,14 +1441,13 @@ String phaseTitle(RecordingSnapshot s) {
   if (!s.isPreset) return 'LAP ${s.lapIndex + 1}';
   if (isEventRun(s) && s.phase == Phase.work) {
     final name = kEventNames.parkrun.toUpperCase();
-    return eventLastStretch(s) ? '$name · LAST 400 M' : '$name · 5 KM';
+    return '$name · 5 KM';
   }
   if (s.isGoal) {
     final name = (s.spec?.name ?? '').toUpperCase();
     if (s.phase == Phase.cooldown) return 'COOL-DOWN · $name DONE';
     if (s.phase == Phase.work) {
-      if (!eventLastStretch(s)) return 'GOAL · $name';
-      return s.distanceStep ? 'GOAL · LAST 400 M' : 'GOAL · LAST MINUTE';
+      return 'GOAL · $name';
     }
   }
   final step = s.currentStep;
@@ -3590,7 +3585,7 @@ class EventBlock extends StatelessWidget {
   final bool reduced;
 
   /// The live compare card, over the projected finish (secondary) before
-  /// the last 400 m; none after the swap (A10.1). The slot's link.
+  /// the last 400 m; none in it (A10.1). The slot's link.
   final LayerLink? card;
 
   @override
@@ -3606,12 +3601,18 @@ class EventBlock extends StatelessWidget {
       String label, {
       required bool big,
       bool odo = false,
+      bool accent = false,
     }) {
       final dashed = text == '--';
-      final style = primaryStyle(
-        compact,
-        secondary: !big,
-      ).copyWith(color: big && !dashed ? t.inkPrimary : muted);
+      // The last stretch changes emphasis only (accent colour); the size and
+      // the digit block's width never move.
+      final style = primaryStyle(compact, secondary: !big).copyWith(
+        color: accent && !dashed
+            ? t.accentArc
+            : big && !dashed
+            ? t.inkPrimary
+            : muted,
+      );
       return Column(
         key: ValueKey(key),
         mainAxisSize: MainAxisSize.min,
@@ -3622,9 +3623,27 @@ class EventBlock extends StatelessWidget {
             padding: const EdgeInsets.only(right: Space.x8),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: odo && kOdometerDistance && !dashed
-                  ? OdometerDistance(value: text, style: style)
-                  : Text(text, softWrap: false, style: style),
+              // A distance never scales up past an "8.88 km" block when it
+              // drops to metres at 1 km, so the figure keeps its size and
+              // place (26-Oct: nothing moves in the last stretch).
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: odo
+                      ? (TextPainter(
+                          text: TextSpan(
+                            text: units == Units.mi ? '8.88 mi' : '8.88 km',
+                            style: style,
+                          ),
+                          textDirection: TextDirection.ltr,
+                        )..layout()).width
+                      : 0,
+                ),
+                child: Center(
+                  child: odo && kOdometerDistance && !dashed
+                      ? OdometerDistance(value: text, style: style)
+                      : Text(text, softWrap: false, style: style),
+                ),
+              ),
             ),
           ),
           Text(label, style: RunSoloType.runCaption.copyWith(color: muted)),
@@ -3639,8 +3658,9 @@ class EventBlock extends StatelessWidget {
       'event-to-go',
       toGoText,
       'to go',
-      big: !last,
+      big: true,
       odo: toGoIsDistance,
+      accent: last,
     );
     final finish = CompareSlot(
       link: last ? null : card,
@@ -3650,19 +3670,17 @@ class EventBlock extends StatelessWidget {
           'event-finish',
           finishText,
           eventFinishLabel(s),
-          big: last,
+          big: false,
         ),
       ),
     );
-    return AnimatedSwitcher(
-      duration: reduced ? Duration.zero : const Duration(milliseconds: 240),
-      child: Column(
-        key: ValueKey(last),
-        mainAxisSize: MainAxisSize.min,
-        children: last
-            ? [finish, SizedBox(height: compact ? Space.x8 : Space.x16), toGo]
-            : [toGo, SizedBox(height: compact ? Space.x8 : Space.x16), finish],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        toGo,
+        SizedBox(height: compact ? Space.x8 : Space.x16),
+        finish,
+      ],
     );
   }
 }

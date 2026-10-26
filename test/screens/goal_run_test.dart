@@ -270,7 +270,7 @@ void main() {
         .fontSize!;
 
     testWidgets('time goal: time to go primary, distance on pace second; the '
-        'last minute swaps; after the goal the cool-down with the locked '
+        'last minute keeps both in place; after the goal the cool-down with the locked '
         'distance', (tester) async {
       final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
       final services = fakeServices(recorder: fake);
@@ -299,10 +299,12 @@ void main() {
       }
       await pumpTimes(tester, 4);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('GOAL · LAST MINUTE'), findsOneWidget);
+      // Changed deliberately (26-Oct): the last minute no longer swaps the
+      // figures or the title; only the to-go colour changes.
+      expect(find.text('GOAL · 30 MIN'), findsOneWidget);
       expect(
-        size(tester, 'event-finish'),
-        greaterThan(size(tester, 'event-to-go')),
+        size(tester, 'event-to-go'),
+        greaterThan(size(tester, 'event-finish')),
       );
       for (var i = 0; i < 70; i++) {
         fake.advance(const Duration(seconds: 1));
