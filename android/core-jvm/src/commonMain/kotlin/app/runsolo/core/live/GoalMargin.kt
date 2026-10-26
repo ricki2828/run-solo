@@ -48,7 +48,15 @@ object GoalMargin {
         predicted: Boolean = false,
     ): String {
         val t = CueWords.clock(targetMs.toDouble()).let { if (predicted) "your predicted $it" else it }
-        if (level) return "On $t pace"
+        if (level) {
+            // Level now but not holding: say which way it is going.
+            val way = changeMs?.let { trend(it) }
+            return when (way) {
+                MarginTrend.shrinking -> "On $t pace, slipping"
+                MarginTrend.growing -> "On $t pace, gaining"
+                else -> "On $t pace"
+            }
+        }
         val ahead = aheadMs > 0
         val s = abs(aheadMs / 1_000.0).roundToLong()
         val head = "${CueWords.gap(s)} ${if (ahead) "ahead of" else "behind"} $t"
@@ -68,7 +76,9 @@ object GoalMargin {
      */
     fun promptPhrase(aheadMs: Long, changeMs: Long?, targetMs: Long): String {
         val t = CueWords.clock(targetMs.toDouble())
-        if (abs(aheadMs) < DEAD_BAND_MS) return "level with $t"
+        if (abs(aheadMs) < DEAD_BAND_MS) {
+            return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "level with $t, slipping" else "level with $t"
+        }
         val s = CueWords.gap(abs(aheadMs / 1_000.0).roundToLong())
         if (aheadMs < 0) return "$s over $t"
         return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "$s under $t, shrinking" else "$s under $t"

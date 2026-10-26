@@ -347,10 +347,41 @@ class VoiceCoachTest {
     }
 
     @Test
-    fun `a 150 m GPS jump does not add 45 s to ahead or corrupt the trend`() {
-        val said = goalCoach().goalRun(4_600.0, jumpAtS = 400) { 294.0 }
-        // Level on pace the whole run: the leap is left out, so no line claims a lead or a trend.
-        assertTrue(said.all { it.second.startsWith("On ") }, "$said")
+    fun `a dropout catch-up - flat for 30 s then 100 m in one tick - leaves the margin sane and says nothing behind`() {
+        val c = goalCoach()
+        val said = ArrayList<Pair<Int, String>>()
+        var d = 0.0
+        var t = 0
+        while (d < 3_500.0) {
+            t++
+            when (t) {
+                in 442..471 -> Unit // no fixes: the distance stands still
+                472 -> d += 31 * 1_000.0 / 294 // the first good fix: the whole span lands at once
+                else -> d += 1_000.0 / 294
+            }
+            val ms = t * 1_000L
+            c.tick(VoiceCoach.Input(ms, 0, ms, 294.0, null, null, 0, false, VoiceCoach.GoalProgress(goalTarget, d, ms)))?.let { said.add(t to it.text) }
+        }
+        val after = said.filter { it.first >= 472 }
+        assertTrue(after.isNotEmpty() || said.isNotEmpty(), "$said")
+        assertTrue(after.none { it.second.contains("behind") || it.second.contains("slipping") }, "no false behind after the catch-up: $said")
+        assertTrue(said.all { it.second.startsWith("On ") }, "level on pace throughout the lines said: $said")
+    }
+
+    @Test
+    fun `level but losing ground says so - on pace and slipping`() {
+        // +2 s at km 1 (level), 4 s lost in km 2: -2 s is still level, but the trend is shrinking.
+        val said = goalCoach().goalRun(3_500.0) { d -> if (d < 1_000.0) 292.0 else if (d < 2_000.0) 298.0 else 294.0 }.map { it.second }
+        assertEquals("On your predicted 24:30 pace", said.first())
+        assertTrue(said.contains("On 24:30 pace, slipping"), "$said")
+    }
+
+    @Test
+    fun `plus 3 s and losing 8 s a km says slipping at the first line after the km`() {
+        val said = goalCoach().goalRun(3_500.0) { d -> if (d < 1_000.0) 292.0 else 302.0 }
+        assertEquals("On your predicted 24:30 pace", said.first().second)
+        // Km 2 ends at 594 s; the first line after it carries the trend.
+        assertTrue(said.first { it.first >= 594 }.second.endsWith("slipping"), "$said")
     }
 
     @Test

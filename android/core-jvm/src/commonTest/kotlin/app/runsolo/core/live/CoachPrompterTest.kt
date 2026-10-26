@@ -820,4 +820,12 @@ class CoachPrompterTest {
         assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, chase = false, goalMs = t2430)))
         assertNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, chase = false, goalMs = t2430)))
     }
+
+    @Test
+    fun `level but slipping is said in the last 2 km prompt`() {
+        val p = CoachPrompter()
+        assertNull(km(p, facts(2, goal = 5_000.0, behind = -4_000, goalMs = t2430)))
+        val q = assertNotNull(km(p, facts(3, goal = 5_000.0, behind = 1_000, goalMs = t2430)))
+        assertEquals("2 k to go, level with 24:30, slipping. Push to get under it, or hold?", q.text)
+    }
 }
