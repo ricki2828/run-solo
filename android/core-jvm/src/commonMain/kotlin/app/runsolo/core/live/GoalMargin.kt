@@ -47,4 +47,16 @@ object GoalMargin {
         }
         return if (tail == null) head else "$head, $tail"
     }
+
+    /**
+     * The last-2-km prompt's version, where "under" is ahead of the goal clock: "12 seconds under 24:30, shrinking",
+     * "18 seconds over 24:30", "level with 24:30". The trend is only said for a lead that is shrinking.
+     */
+    fun promptPhrase(aheadMs: Long, changeMs: Long?, targetMs: Long): String {
+        val t = CueWords.clock(targetMs.toDouble())
+        if (abs(aheadMs) < DEAD_BAND_MS) return "level with $t"
+        val s = CueWords.gap(abs(aheadMs / 1_000.0).roundToLong())
+        if (aheadMs < 0) return "$s over $t"
+        return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "$s under $t, shrinking" else "$s under $t"
+    }
 }

@@ -283,9 +283,10 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         val goalTime = f.goalTimeMs?.takeIf { f.behindTargetMs != null }
         if (toGo != null && !last2kDone && goalTime != null) {
             val ahead = -f.behindTargetMs!!
-            val where = GoalMargin.phrase(ahead, prevBehind?.let { ahead + it }, goalTime).replaceFirstChar { it.lowercase() }
-            val t = CueWords.clock(goalTime.toDouble())
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. Push for under $t, or hold this pace?", nowMs)
+            val where = GoalMargin.promptPhrase(ahead, prevBehind?.let { ahead + it }, goalTime)
+            // Ahead of the clock the push banks time; level or behind it gets him under the goal time.
+            val push = if (ahead >= GoalMargin.DEAD_BAND_MS) "Push to bank more" else "Push to get under it"
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $push, or hold?", nowMs)
         }
         if (toGo != null && !last2kDone) {
             val lead = if (phrase != null) "$toGo to go, $phrase" else "$toGo to go."
@@ -301,7 +302,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         ) {
             if (f.goalTimeMs != null) {
                 val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
-                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to get back on it, or ease off?", nowMs)
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to win it back, or ease off?", nowMs)
             }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)
