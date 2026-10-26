@@ -1773,6 +1773,55 @@ void main() {
     });
   }
 
+  // 26-Oct: the last stretch once the moment banner has cleared (no scrim),
+  // so the to-go figure, the finish line and the stats rows can be judged
+  // against the pre-stretch screens: nothing moves.
+  testWidgets('last stretch with the moment cleared: event, goal time, goal '
+      'distance at 360 x 640', (tester) async {
+    Future<void> lastStretch(
+      engine.SessionSpec spec,
+      int seconds,
+      String name,
+    ) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 285
+        ..scriptedHr = 165;
+      final run = fakeServices(recorder: fake);
+      await run.recording.start(
+        RecordMode.intervals,
+        spec.toPigeon(),
+        Units.km,
+      );
+      for (var i = 0; i < seconds; i++) {
+        fake.advance(const Duration(seconds: 1));
+      }
+      await pumpApp(tester, run, pushRoute: Routes.recording);
+      tester.view.physicalSize = const Size(1080, 640 * 3.0);
+      await pumpTimes(tester, 6);
+      // Past the moment's hold, so no scrim over the figures.
+      await tester.pump(const Duration(seconds: 8));
+      await pumpTimes(tester, 4);
+      await settleAnimations(tester);
+      await golden(tester, name);
+    }
+
+    await lastStretch(
+      engine.SessionSpec.parkrun(kEventNames.parkrun),
+      1360,
+      'record_event_last_clear_360x640',
+    );
+    await lastStretch(
+      engine.SessionSpec.goalTime(1800, '30 min'),
+      1750,
+      'record_goal_time_last_clear_360x640',
+    );
+    await lastStretch(
+      engine.SessionSpec.goalDistance(10000, '10K'),
+      2740,
+      'record_goal_dist_last_clear_360x640',
+    );
+  });
+
   // PD2 on Start (A10.10, #84 review): the goal card's target line.
   testWidgets('goal: Start with a target line at 360 x 640', (tester) async {
     final efforts = engine.RunBestEfforts(
