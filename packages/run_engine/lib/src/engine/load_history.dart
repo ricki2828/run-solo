@@ -31,6 +31,7 @@ class WeekLoad {
     this.basisShare = const {},
     this.paused = false,
     this.beforeStart = false,
+    this.partialStart = false,
     this.current = false,
   });
 
@@ -66,6 +67,10 @@ class WeekLoad {
 
   /// The week is before the runner's first run.
   final bool beforeStart;
+
+  /// The week of the first run, when that run was after the Monday: a part
+  /// week that says nothing about a usual one.
+  final bool partialStart;
 
   /// The week that holds `now`: still being run, never banded.
   final bool current;
@@ -186,6 +191,7 @@ class PeriodLoad {
     this.current = false,
     this.future = false,
     this.beforeStart = false,
+    this.partialStart = false,
   });
 
   /// First day of the month.
@@ -199,6 +205,9 @@ class PeriodLoad {
   /// After this month (the year view's hairline stubs).
   final bool future;
   final bool beforeStart;
+
+  /// The month of the first run, when that run was after the 1st.
+  final bool partialStart;
 }
 
 /// This year by month, with the same stretch of last year for a km line.
@@ -263,6 +272,13 @@ class LoadCompare {
   /// "Keep next week near" this: usual plus 10%, to the nearest 10.
   int get cap => ((usual * 1.1) / 10).round() * 10;
 
+  /// Weeks with runs the usual week needs before any band shows; the copy
+  /// says "after 3 weeks of running".
+  static const int minWeeks = 3;
+
+  /// Months with runs the usual month needs.
+  static const int minMonths = 3;
+
   static LoadBand bandOf(double ratio) => ratio < 0.8
       ? LoadBand.lighter
       : ratio <= 1.1
@@ -299,14 +315,14 @@ class LoadCompare {
     }
     final counted = [
       for (final w in prior)
-        if (!w.paused && !w.beforeStart) w,
+        if (!w.paused && !w.beforeStart && !w.partialStart) w,
     ];
     final withRuns = counted.where((w) => w.runs > 0).length;
     double mean(double Function(WeekLoad) f) => counted.isEmpty
         ? 0
         : counted.fold(0.0, (a, w) => a + f(w)) / counted.length;
     final usual = mean((w) => w.load);
-    if (withRuns < 2 || usual < LoadGuard.minChronicWeekly) {
+    if (withRuns < minWeeks || usual < LoadGuard.minChronicWeekly) {
       return LoadCompare(
         state: LoadCompareState.firstWeeks,
         usual: usual,
@@ -341,13 +357,13 @@ class LoadCompare {
     final m = months.last;
     final prior = months
         .sublist(math.max(0, months.length - 4), months.length - 1)
-        .where((p) => !p.beforeStart)
+        .where((p) => !p.beforeStart && !p.partialStart)
         .toList();
     final withRuns = prior.where((p) => p.runs > 0).length;
     final usual = prior.isEmpty
         ? 0.0
         : prior.fold(0.0, (a, p) => a + p.load) / prior.length;
-    if (withRuns < 2 || usual < LoadGuard.minChronicWeekly) {
+    if (withRuns < minMonths || usual < LoadGuard.minChronicWeekly * 4) {
       return LoadCompare(state: LoadCompareState.firstWeeks, usual: usual);
     }
     final ratio = m.load / usual;
@@ -408,6 +424,8 @@ abstract final class LoadHistory {
           vdot: vdot,
           paused: pausedWeeks.contains(ProgressMath.weekIndex(monday)),
           beforeStart: firstMonday == null || monday.isBefore(firstMonday),
+          partialStart:
+              first != null && monday == firstMonday && first != firstMonday,
           current: i == 0,
         ),
       );
@@ -422,6 +440,7 @@ abstract final class LoadHistory {
     required double? vdot,
     required bool paused,
     required bool beforeStart,
+    required bool partialStart,
     required bool current,
   }) {
     var load = 0.0, km = 0.0, min = 0.0, hard = 0.0, longest = 0.0;
@@ -472,6 +491,7 @@ abstract final class LoadHistory {
       },
       paused: paused,
       beforeStart: beforeStart,
+      partialStart: partialStart,
       current: current,
     );
   }
@@ -497,9 +517,7 @@ abstract final class LoadHistory {
           vdot: vdot,
           current: i == 0,
           future: false,
-          beforeStart:
-              first == null ||
-              DateTime(start.year, start.month + 1).compareTo(first) <= 0,
+          first: first,
         ),
       );
     }
@@ -514,7 +532,7 @@ abstract final class LoadHistory {
     required double? vdot,
     required bool current,
     required bool future,
-    required bool beforeStart,
+    required DateTime? first,
   }) {
     var load = 0.0, km = 0.0, min = 0.0, n = 0;
     for (final r in runs) {
@@ -532,7 +550,9 @@ abstract final class LoadHistory {
       runs: n,
       current: current,
       future: future,
-      beforeStart: beforeStart,
+      beforeStart: first == null || !end.isAfter(first),
+      partialStart:
+          first != null && first.isBefore(end) && first.isAfter(start),
     );
   }
 
@@ -555,8 +575,7 @@ abstract final class LoadHistory {
           vdot: vdot,
           current: m == now.month,
           future: m > now.month,
-          beforeStart:
-              first == null || DateTime(now.year, m + 1).compareTo(first) <= 0,
+          first: first,
         ),
     ];
     final today = dateOnly(now);

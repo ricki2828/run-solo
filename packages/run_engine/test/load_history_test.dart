@@ -105,16 +105,45 @@ void main() {
       expect(LoadCompare.of(ws.sublist(0, 5)).usual, 300);
     });
     test('weeks before the first run are skipped', () {
-      final runs = [...week(2, 4), ...week(3, 4), ...week(1, 4)];
+      final runs = [...week(2, 4), ...week(3, 4), ...week(4, 4), ...week(1, 4)];
       final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
-      expect(ws[1].beforeStart, isTrue);
-      expect(ws[2].beforeStart, isFalse);
+      expect(ws[0].beforeStart, isTrue);
+      expect(ws[1].beforeStart, isFalse);
       final c = LoadCompare.of(ws.sublist(0, 5));
       expect(c.state, LoadCompareState.ok);
       expect(c.usual, 400);
     });
-    test('under 2 counted weeks with runs is firstWeeks', () {
+    test('under 3 counted weeks with runs is firstWeeks', () {
       final runs = [...week(2, 4), ...week(1, 4)];
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
+      expect(
+        LoadCompare.of(ws.sublist(0, 5)).state,
+        LoadCompareState.firstWeeks,
+      );
+    });
+    test('a first run on a Sunday: the part week is left out of usual', () {
+      final sunday = run(DateTime(2026, 9, 27, 7)); // week of 21 Sep
+      final runs = [
+        sunday,
+        ...week(4, 4),
+        ...week(3, 4),
+        ...week(2, 4),
+        ...week(1, 4),
+      ];
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
+      expect(ws[0].partialStart, isTrue);
+      final c = LoadCompare.of(ws.sublist(0, 5));
+      expect(c.state, LoadCompareState.ok);
+      expect(c.usual, 400);
+      expect(c.band, LoadBand.usual);
+    });
+    test('a part first week plus 2 full weeks is still firstWeeks', () {
+      final runs = [
+        run(DateTime(2026, 9, 27, 7)),
+        ...week(4, 4),
+        ...week(3, 4),
+        ...week(1, 4),
+      ];
       final ws = LoadHistory.weeks(runs, now: now, weeks: 6);
       expect(
         LoadCompare.of(ws.sublist(0, 5)).state,
@@ -280,6 +309,30 @@ void main() {
     test('no line with no run last year', () {
       final y = LoadHistory.year([run(DateTime(2026, 3, 1))], now: now);
       expect(LoadWords.yearLine(y), isNull);
+    });
+    test('a usual month needs 3 prior months with runs', () {
+      PeriodLoad m(int i, {int runs = 5, bool partial = false}) => PeriodLoad(
+        start: DateTime(2026, 5 + i),
+        load: runs * 100.0,
+        runs: runs,
+        partialStart: partial,
+      );
+      expect(
+        LoadCompare.months([m(0), m(1), m(2)]).state,
+        LoadCompareState.firstWeeks,
+      );
+      expect(
+        LoadCompare.months([m(0), m(1), m(2), m(3)]).state,
+        LoadCompare.months([m(0), m(1), m(2), m(3)]).state,
+      );
+      final ok = LoadCompare.months([m(0), m(1), m(2), m(3)]);
+      expect(ok.state, LoadCompareState.ok);
+      expect(ok.band, LoadBand.usual);
+      // A part first month is left out: only 2 full months before.
+      expect(
+        LoadCompare.months([m(0, partial: true), m(1), m(2), m(3)]).state,
+        LoadCompareState.firstWeeks,
+      );
     });
     test('a single first month is still drawn', () {
       final m = LoadHistory.months(
