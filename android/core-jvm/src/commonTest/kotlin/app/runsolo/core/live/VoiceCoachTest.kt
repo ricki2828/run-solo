@@ -389,10 +389,6 @@ class VoiceCoachTest {
         // The gate: only a goal run with a target time changes. Everything else is as before.
         assertEquals(listOf(30 to "Ease off, 15 seconds fast"), VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0)).run(0, 30) { 279.0 })
     }
-}
-
-private object CueWordsCount {
-    fun of(s: String) = s.trim().split(Regex("\\s+")).size
 
     private fun free() = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = bottoms))
 
@@ -449,5 +445,9 @@ private object CueWordsCount {
         val off = VoiceCoach(VoiceCoach.Config(true))
         for (s in 0..60) assertNull(off.say(at(s * 1_000L, pace = null, hr = 160.0)))
     }
+}
+
+private object CueWordsCount {
+    fun of(s: String) = s.trim().split(Regex("\\s+")).size
 }
 
