@@ -1249,7 +1249,7 @@ class RecordingSession(
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")
-        cues.announce(line.text, if (line.kind == VoiceCoach.Kind.drift) CueSlot.zoneDrift else CueSlot.paceStatus)
+        cues.announce(line.text, if (line.kind == VoiceCoach.Kind.status) CueSlot.paceStatus else CueSlot.zoneDrift)
     }
 
     // ---- mid-run two-button prompts (decisions 22-Oct) ----
