@@ -209,7 +209,9 @@ class VoiceCoachTest {
     fun `drift is off with no planned zone and in Minimal`() {
         val noPlan = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = bottoms))
         assertNull(noPlan.say(at(0, hr = 180.0)))
-        assertNull(noPlan.say(at(120_000, hr = 180.0)))
+        // No drift line: only the once-a-run zone-up line speaks.
+        assertEquals("Heart rate up to zone 5.", noPlan.say(at(120_000, hr = 180.0)))
+        assertNull(noPlan.say(at(400_000, hr = 180.0)))
         val minimal = VoiceCoach(VoiceCoach.Config(false, zoneBottomsBpm = bottoms, plannedMaxZone = 2))
         assertNull(minimal.say(at(0, hr = 180.0)))
         assertNull(minimal.say(at(120_000, hr = 180.0)))
