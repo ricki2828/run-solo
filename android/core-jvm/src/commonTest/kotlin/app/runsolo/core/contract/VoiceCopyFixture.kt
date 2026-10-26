@@ -3,8 +3,11 @@ package app.runsolo.core.contract
 import app.runsolo.core.live.CompareKind
 import app.runsolo.core.live.CompareResult
 import app.runsolo.core.live.CooperProjection
+import app.runsolo.core.live.CoachPrompter
 import app.runsolo.core.live.CueComposer
 import app.runsolo.core.live.GoalCoach
+import app.runsolo.core.live.GoalMargin
+import app.runsolo.core.live.KmFacts
 import app.runsolo.core.live.LiveWords
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
@@ -209,6 +212,28 @@ object VoiceCopyFixture {
         brief("briefing.long", "Long run. $longLine", StartBriefing.Slots())
         brief("briefing.coach-template", "Easy day, {minutes} at a relaxed effort. Nice and conversational, and settle in.", StartBriefing.Slots(minutes = 40))
         brief("briefing.coach-template-quality", "Today is {session}. Warm up as long as you like, then {reps} at {pace}. Recover well.", nor)
+
+        // A goal run with a target time (VoiceCoach status and CoachPrompter): where he stands against the goal clock, no orders.
+        val t2430 = 1_470_000L
+        add("goal.status.ahead-shrinking", GoalMargin.phrase(20_000, -8_000, t2430))
+        add("goal.status.ahead-growing", GoalMargin.phrase(20_000, 9_000, t2430))
+        add("goal.status.ahead-holding", GoalMargin.phrase(10_000, 1_000, t2430))
+        add("goal.status.behind-holding", GoalMargin.phrase(-10_000, 0, t2430))
+        add("goal.status.behind-slipping", GoalMargin.phrase(-10_000, -8_000, t2430))
+        add("goal.status.behind-closing", GoalMargin.phrase(-10_000, 8_000, t2430))
+        add("goal.status.level", GoalMargin.phrase(1_000, 0, t2430))
+        add("goal.status.first-km", GoalMargin.phrase(20_000, null, t2430))
+        add("goal.status.longest", GoalMargin.phrase(119_000, -8_000, 5_279_000))
+        // Prompts: a km before (to learn the margin), then the km that asks. Facts: km, gap, label, proxy, goal m, behind, chase, goal ms.
+        fun goalPrompt(prevBehind: Long, behind: Long, goalM: Double): String? {
+            val p = CoachPrompter()
+            fun km(k: Int, b: Long) = p.atKm(KmFacts(k, null, "5K", false, goalM, b, true, t2430), k * 300_000L, k * 1_000.0 + 2)
+            km(2, prevBehind)
+            return km(3, behind)?.text
+        }
+        add("prompt.goal.last2k-ahead-shrinking", goalPrompt(-20_000, -12_000, 5_000.0))
+        add("prompt.goal.last2k-behind-slipping", goalPrompt(10_000, 18_000, 5_000.0))
+        add("prompt.goal.behind-slipping", goalPrompt(10_000, 30_000, 10_000.0))
 
         // Nudges (engine-owned lines, as packed into the LiveContext).
         add("nudge.fast-start", ReplayScenarios.T4.FAST_START_5K)

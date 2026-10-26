@@ -22,7 +22,8 @@ class CoachPrompterTest {
         chase: Boolean = true,
         label: String? = "5K",
         proxy: Boolean = false,
-    ) = KmFacts(km, gapMs, label, proxy, goal, behind, chase)
+        goalMs: Long? = null,
+    ) = KmFacts(km, gapMs, label, proxy, goal, behind, chase, goalMs)
 
     /** A km mark at a steady 5:00/km, the runner at [km] km at [km * 300] s. */
     private fun km(p: CoachPrompter, f: KmFacts) = p.atKm(f, f.km * 300_000L, f.km * 1_000.0 + 2)
@@ -744,5 +745,49 @@ class CoachPrompterTest {
         p.answer(a.id, 0, PromptSource.tap, a.openedAtMs + 2_000)
         assertNull(p.atKm(facts(6, goal = 10_000.0, behind = 120_000), 2_400_000, 6_002.0))
         assertNull(p.atKm(facts(7, goal = 10_000.0, behind = 160_000), 2_800_000, 7_002.0))
+    }
+
+    // ---- a goal run with a target time names it (26-Oct goal-run voice) ----
+
+    private val t2430 = 1_470_000L
+
+    @Test
+    fun `last 2 km of a goal with a time names the target the margin and its trend and says what each button does`() {
+        val p = CoachPrompter()
+        assertNull(km(p, facts(2, goal = 5_000.0, behind = -20_000, goalMs = t2430)))
+        val q = assertNotNull(km(p, facts(3, goal = 5_000.0, behind = -12_000, goalMs = t2430)))
+        assertEquals(PromptKind.last2k, q.kind)
+        assertEquals("2 k to go, 12 seconds ahead of 24:30, margin shrinking. Push for under 24:30, or hold this pace?", q.text)
+        assertEquals(listOf(PromptChoice.push, PromptChoice.hold), q.options)
+        assertFalse(q.text.contains("best"), "the reference is the goal time, not the PB")
+    }
+
+    @Test
+    fun `last 2 km of a goal with a time before any trend leaves the trend out and level reads as on pace`() {
+        assertEquals(
+            "2 k to go, 8 seconds behind 24:30. Push for under 24:30, or hold this pace?",
+            km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, goalMs = t2430))!!.text,
+        )
+        assertEquals(
+            "2 k to go, on 24:30 pace. Push for under 24:30, or hold this pace?",
+            km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 1_000, goalMs = t2430))!!.text,
+        )
+    }
+
+    @Test
+    fun `falling behind a goal time names it and never the target`() {
+        val p = CoachPrompter()
+        assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, goalMs = t2430)))
+        val q = assertNotNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, goalMs = t2430)))
+        assertEquals(PromptKind.behindTarget, q.kind)
+        assertEquals("30 seconds behind 24:30, slipping. Push to get back on it, or ease off?", q.text)
+        assertEquals(listOf(PromptChoice.push, PromptChoice.ease), q.options)
+    }
+
+    @Test
+    fun `no goal time Steady or a distrusted km keeps the old wording`() {
+        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000))!!.text)
+        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, chase = false, goalMs = t2430))!!.text)
+        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = null, goalMs = t2430))!!.text)
     }
 }

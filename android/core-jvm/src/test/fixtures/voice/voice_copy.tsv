@@ -100,6 +100,18 @@ briefing.long-distance-miles	17	Long run, 9.3 miles or more. Start patient and s
 briefing.long	13	Long run. Start patient and steady, and save something for the last third.
 briefing.coach-template	14	Easy day, 40 minutes at a relaxed effort. Nice and conversational, and settle in.
 briefing.coach-template-quality	24	Today is Norwegian 4 by 4. Warm up as long as you like, then four reps at 4 minutes 48 per kilometre. Recover well.
+goal.status.ahead-shrinking	7	20 seconds ahead of 24:30, margin shrinking
+goal.status.ahead-growing	7	20 seconds ahead of 24:30, margin growing
+goal.status.ahead-holding	6	10 seconds ahead of 24:30, holding
+goal.status.behind-holding	5	10 seconds behind 24:30, holding
+goal.status.behind-slipping	5	10 seconds behind 24:30, slipping
+goal.status.behind-closing	5	10 seconds behind 24:30, closing
+goal.status.level	3	On 24:30 pace
+goal.status.first-km	5	20 seconds ahead of 24:30
+goal.status.longest	8	1 minute 59 ahead of 1:27:59, margin shrinking
+prompt.goal.last2k-ahead-shrinking	19	2 k to go, 12 seconds ahead of 24:30, margin shrinking. Push for under 24:30, or hold this pace?
+prompt.goal.last2k-behind-slipping	17	2 k to go, 18 seconds behind 24:30, slipping. Push for under 24:30, or hold this pace?
+prompt.goal.behind-slipping	14	30 seconds behind 24:30, slipping. Push to get back on it, or ease off?
 nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.

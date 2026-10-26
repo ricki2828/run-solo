@@ -252,4 +252,68 @@ class VoiceCoachTest {
         assertNull(c.say(at(91_000, pace = target, hr = 160.0, busyUntil = 92_000)), "busy: nothing speaks")
         assertEquals(VoiceCoach.Kind.drift, c.tick(at(92_000, pace = target, hr = 160.0))?.kind)
     }
+
+    // ---- goal run with a target time: descriptive, never "Ease off" (26-Oct goal-run voice) ----
+
+    private val goalMs = 1_470_000L // 24:30 for 5 km: 294 s/km
+    private val goalTarget = app.runsolo.core.model.LiveTarget(5_000.0, goalMs, predicted = false)
+
+    private fun goalCoach() = VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0))
+
+    /** A run at 1 Hz: [pace] (s/km) at each distance; the lines said, with the second. */
+    private fun VoiceCoach.goalRun(untilM: Double, pace: (Double) -> Double): List<Pair<Int, String>> {
+        val said = ArrayList<Pair<Int, String>>()
+        var d = 0.0
+        var s = 0
+        while (d < untilM) {
+            s++
+            val p = pace(d)
+            d += 1_000.0 / p
+            val t = s * 1_000L
+            tick(VoiceCoach.Input(t, 0, t, p, null, null, 0, false, VoiceCoach.GoalProgress(goalTarget, d, t)))?.let { said.add(s to it.text) }
+        }
+        return said
+    }
+
+    @Test
+    fun `replay 30 s ahead at 2 km then losing 8 s per km never says ease off and names 24-30 and shrinking`() {
+        // 279 s/km to 2 km (558 s, 30 s up on 294 s/km), then 302 s/km: the lead drops 8 s each km.
+        val said = goalCoach().goalRun(4_600.0) { d -> if (d < 2_000.0) 279.0 else 302.0 }
+        assertTrue(said.isNotEmpty(), "$said")
+        for ((_, text) in said) {
+            assertTrue(text.contains("24:30"), text)
+            assertTrue(!text.contains("ease", ignoreCase = true) && !text.contains("pick it up", ignoreCase = true), text)
+            assertTrue(CueWordsCount.of(text) <= 9, text)
+        }
+        assertTrue(said.any { it.second.endsWith("ahead of 24:30, margin shrinking") }, "$said")
+    }
+
+    @Test
+    fun `a goal run says nothing before the first km and an on-goal run says on 24-30 pace once`() {
+        val said = goalCoach().goalRun(4_000.0) { 294.0 }
+        assertTrue(said.first().first >= 294, "first line after km 1: $said")
+        assertEquals(listOf("On 24:30 pace"), said.map { it.second }.distinct())
+        assertEquals(1, said.size, "the same line is not said twice running: $said")
+    }
+
+    @Test
+    fun `behind and holding is described not ordered and ease off being picked does not silence it`() {
+        val c = goalCoach()
+        c.applyEffect(PromptEffect.EASE)
+        // 10 s down after km 1 (304 s/km), then level with the goal pace: the gap holds.
+        val said = c.goalRun(4_000.0) { d -> if (d < 1_000.0) 304.0 else 294.0 }
+        assertTrue(said.isNotEmpty(), "$said")
+        assertTrue(said.all { it.second.contains("behind 24:30") }, "$said")
+        assertTrue(said.any { it.second.endsWith("holding") }, "$said")
+    }
+
+    @Test
+    fun `without a goal the same fast pace still says ease off`() {
+        // The gate: only a goal run with a target time changes. Everything else is as before.
+        assertEquals(listOf(30 to "Ease off, 15 seconds fast"), VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0)).run(0, 30) { 279.0 })
+    }
+}
+
+private object CueWordsCount {
+    fun of(s: String) = s.trim().split(Regex("\\s+")).size
 }

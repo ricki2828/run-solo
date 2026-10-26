@@ -61,7 +61,15 @@ class VoiceCoach(private val config: Config) {
         val msToPhaseEnd: Long?,
         val busyUntil: Long,
         val wideBand: Boolean = false,
+        val goal: GoalProgress? = null,
     )
+
+    /**
+     * A goal run with a target time ([target]), [distanceM] and [elapsedMs] (active) so far. Set only on those runs: it
+     * turns the status line into a description of the margin to the goal clock (no "Ease off" order) and nothing
+     * else changes. Null on Free, Trail, intervals, Cooper and event runs, and once the goal is reached.
+     */
+    data class GoalProgress(val target: app.runsolo.core.model.LiveTarget, val distanceM: Double, val elapsedMs: Long)
 
     enum class Kind { drift, status }
 
@@ -117,6 +125,19 @@ class VoiceCoach(private val config: Config) {
     private var aboveSinceT: Long? = null
     private var lastDriftT: Long? = null
 
+    // Goal runs: the margin to the goal clock (ms ahead) at the last two whole km, for the trend.
+    private var goalKm = 0
+    private var kmMargin: Long? = null
+    private var prevKmMargin: Long? = null
+
+    private fun goalSnapshot(g: GoalProgress) {
+        val km = (g.distanceM / 1_000).toInt()
+        if (km <= goalKm) return
+        goalKm = km
+        prevKmMargin = kmMargin
+        kmMargin = GoalMargin.aheadMs(g.target, g.distanceM, g.elapsedMs)
+    }
+
     fun tick(i: Input): Line? {
         if (!config.full) return null
         if (i.segment != segment) {
@@ -145,6 +166,7 @@ class VoiceCoach(private val config: Config) {
             window.addLast(it)
             while (window.size > WINDOW_SAMPLES) window.removeFirst()
         }
+        i.goal?.let { goalSnapshot(it) }
         check(i)
         val drift = driftAbove(i)
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
@@ -197,7 +219,34 @@ class VoiceCoach(private val config: Config) {
         checked = true
     }
 
+    /**
+     * A goal run's status: where the runner stands against the goal time and which way the margin is heading, said
+     * on the same cadence as the pace status. Descriptive, never "Ease off" or "Pick it up". Silent until the first
+     * whole km (nothing to measure), and the same line is not said twice running.
+     */
+    private fun goalStatus(i: Input, g: GoalProgress, quiet: Boolean): Line? {
+        val margin = kmMargin ?: return null
+        if (i.segmentActiveMs < nextEvalMs) return null
+        if (i.msToPhaseEnd != null && i.msToPhaseEnd <= NEAR_END_MS) return null
+        val due = dueSinceT ?: i.t.also { dueSinceT = it }
+        if (i.t - due > SpeechClock.STALE_MS) {
+            skipSlot(i)
+            return null
+        }
+        if (!quiet) return null
+        skipSlot(i)
+        val now = GoalMargin.aheadMs(g.target, g.distanceM, g.elapsedMs)
+        val change = prevKmMargin?.let { margin - it }
+        val text = GoalMargin.phrase(now, change, g.target.targetMs)
+        if (text == lastGoalText) return null
+        lastGoalText = text
+        return Line(Kind.status, text)
+    }
+
+    private var lastGoalText: String? = null
+
     private fun status(i: Input, quiet: Boolean): Line? {
+        i.goal?.let { return goalStatus(i, it, quiet) }
         if (targetPace == null || !checked || i.paceSecPerKm == null) return null
         if (i.segmentActiveMs < nextEvalMs) return null
         if (checkDir != 0 && offStreak < 2) return null // wait for the second check

@@ -202,6 +202,8 @@ data class KmFacts(
     val behindTargetMs: Long?,
     /** Chase mode: gap prompts need the PB comparison; Steady has no comparisons. */
     val chase: Boolean,
+    /** A distance goal's target time (ms), set only when the target is for the goal's own distance; null = no goal time. */
+    val goalTimeMs: Long? = null,
 )
 
 /**
@@ -277,6 +279,14 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (!gapOk(nowMs, distanceM)) return null
         val phrase = gapPhrase(f)
         val toGo = f.goalDistanceM?.let { goal -> toGoText(goal, f.km) }
+        // A goal with a target time names it: where he stands against that clock and what each button means.
+        val goalTime = f.goalTimeMs?.takeIf { f.chase && f.behindTargetMs != null }
+        if (toGo != null && !last2kDone && goalTime != null) {
+            val ahead = -f.behindTargetMs!!
+            val where = GoalMargin.phrase(ahead, prevBehind?.let { ahead + it }, goalTime).replaceFirstChar { it.lowercase() }
+            val t = CueWords.clock(goalTime.toDouble())
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. Push for under $t, or hold this pace?", nowMs)
+        }
         if (toGo != null && !last2kDone) {
             val lead = if (phrase != null) "$toGo to go, $phrase" else "$toGo to go."
             return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead Push or hold?", nowMs)
@@ -289,6 +299,10 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (f.chase && !behindAsked && !easedOff && behind != null && prevBehind != null &&
             behind >= BEHIND_MS && behind - prevBehind >= GROWING_MS
         ) {
+            if (goalTime != null) {
+                val where = GoalMargin.phrase(-behind, -(behind - prevBehind), goalTime)
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to get back on it, or ease off?", nowMs)
+            }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)
         }

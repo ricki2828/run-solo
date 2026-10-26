@@ -7,6 +7,7 @@ import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.LiveBoard
 import app.runsolo.core.model.LiveBoardKind
 import app.runsolo.core.model.LiveContext
+import app.runsolo.core.model.LiveTarget
 import app.runsolo.core.model.NudgePlan
 import app.runsolo.core.model.Phase
 import app.runsolo.core.model.RunMode
@@ -14,6 +15,7 @@ import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.StepKind
 import app.runsolo.core.model.TargetKind
 import app.runsolo.core.record.RecorderCore
+import kotlin.math.abs
 import kotlin.math.floor
 
 /**
@@ -414,6 +416,17 @@ class LiveCoach(
         return c.atKm(km, gap, board?.pbSplitsLabel ?: board?.label)
     }
 
+    /**
+     * A distance goal's target time (the context's target, when it is for the goal's own distance); null on every
+     * other run. Gates the goal-time wording: the prompts ([KmFacts.goalTimeMs]) and the voice status ([VoiceCoach.GoalProgress]).
+     */
+    val goalTarget: LiveTarget?
+        get() {
+            val s = spec?.takeIf { it.isGoal } ?: return null
+            val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
+            return context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 }
+        }
+
     /** The km and active ms of the last goal km cue seen (0, 0 = Start), for the jump guard. */
     private var chaseCueKm = 0
 
@@ -443,7 +456,7 @@ class LiveCoach(
         val behind = context?.target?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
         kmFacts = KmFacts(
             index, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true,
-            step.value.toDouble(), behind, chasing,
+            step.value.toDouble(), behind, chasing, goalTarget?.targetMs,
         )
         return c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
     }
