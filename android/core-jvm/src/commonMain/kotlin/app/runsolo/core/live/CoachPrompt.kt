@@ -279,8 +279,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (!gapOk(nowMs, distanceM)) return null
         val phrase = gapPhrase(f)
         val toGo = f.goalDistanceM?.let { goal -> toGoText(goal, f.km) }
-        // A goal with a target time names it: where he stands against that clock and what each button means.
-        val goalTime = f.goalTimeMs?.takeIf { f.chase && f.behindTargetMs != null }
+        // A goal with a target time names it, Steady included (the status line does too): where he stands against that clock.
+        val goalTime = f.goalTimeMs?.takeIf { f.behindTargetMs != null }
         if (toGo != null && !last2kDone && goalTime != null) {
             val ahead = -f.behindTargetMs!!
             val where = GoalMargin.phrase(ahead, prevBehind?.let { ahead + it }, goalTime).replaceFirstChar { it.lowercase() }
@@ -299,8 +299,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (f.chase && !behindAsked && !easedOff && behind != null && prevBehind != null &&
             behind >= BEHIND_MS && behind - prevBehind >= GROWING_MS
         ) {
-            if (goalTime != null) {
-                val where = GoalMargin.phrase(-behind, -(behind - prevBehind), goalTime)
+            if (f.goalTimeMs != null) {
+                val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
                 return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to get back on it, or ease off?", nowMs)
             }
             val s = behind / 1_000

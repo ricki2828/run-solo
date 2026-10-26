@@ -785,9 +785,17 @@ class CoachPrompterTest {
     }
 
     @Test
-    fun `no goal time Steady or a distrusted km keeps the old wording`() {
+    fun `no goal time or a distrusted km keeps the old wording`() {
         assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000))!!.text)
-        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, chase = false, goalMs = t2430))!!.text)
         assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = null, goalMs = t2430))!!.text)
+    }
+
+    @Test
+    fun `a Steady goal run names the goal time in the last 2 km but is never asked the falling-behind nag`() {
+        val q = assertNotNull(km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, chase = false, goalMs = t2430)))
+        assertTrue(q.text.contains("24:30"), q.text)
+        val p = CoachPrompter()
+        assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, chase = false, goalMs = t2430)))
+        assertNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, chase = false, goalMs = t2430)))
     }
 }
