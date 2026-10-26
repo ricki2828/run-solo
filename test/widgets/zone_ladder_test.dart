@@ -126,4 +126,15 @@ void main() {
     expect(tick.width, ZoneLadder.pointer + rung.width);
     expect(ZoneLadder.reserve, 32);
   });
+
+  testWidgets('the lit numeral is painted above the tick', (tester) async {
+    await tester.pumpWidget(host(3, position: 0.5));
+    final all = tester.allWidgets.toList();
+    final tick = all.indexWhere(
+      (w) => w.key == const ValueKey('ladder-pointer'),
+    );
+    final numeral = all.indexWhere((w) => w is Text && w.data == '3');
+    expect(tick, isNonNegative);
+    expect(numeral, greaterThan(tick), reason: 'later in the stack = on top');
+  });
 }

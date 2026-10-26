@@ -88,6 +88,15 @@ class _Rung extends StatelessWidget {
               HrZones.contrast(t.bgBase, fill)
         ? t.inkPrimary
         : t.bgBase;
+    final numeral = Text(
+      '$z',
+      style: RunSoloType.label13.copyWith(
+        fontSize: ZoneLadder.numeralSize,
+        color: lit ? ink : t.inkPrimary,
+        fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
+        height: 1,
+      ),
+    );
     final row = Row(
       children: [
         SizedBox(width: ZoneLadder.pointer),
@@ -110,15 +119,7 @@ class _Rung extends StatelessWidget {
                   ? Border.all(color: t.lineHair)
                   : null,
             ),
-            child: Text(
-              '$z',
-              style: RunSoloType.label13.copyWith(
-                fontSize: ZoneLadder.numeralSize,
-                color: lit ? ink : t.inkPrimary,
-                fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
-                height: 1,
-              ),
-            ),
+            child: lit ? null : numeral,
           ),
         ),
       ],
@@ -143,6 +144,33 @@ class _Rung extends StatelessWidget {
                         position: p,
                       ),
                     ),
+                  ),
+                ),
+                // The zone numeral is painted above the tick, on a small
+                // backing in the rung's colour so both read; same centre as
+                // before, so nothing moves.
+                Positioned.fill(
+                  child: Row(
+                    children: [
+                      const SizedBox(width: ZoneLadder.pointer),
+                      Expanded(
+                        child: Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: onInk ? t.inkPrimary : fill,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                                vertical: 1,
+                              ),
+                              child: numeral,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
