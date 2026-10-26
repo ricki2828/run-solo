@@ -260,6 +260,7 @@ class LoadCompare {
     this.usualRuns = 0,
     this.usualMin = 0,
     this.afterPause = false,
+    this.afterBreak = false,
   });
 
   final LoadCompareState state;
@@ -280,6 +281,11 @@ class LoadCompare {
 
   /// The week or the one before it was a paused week.
   final bool afterPause;
+
+  /// [LoadCompareState.firstWeeks] for a runner who already had runs before
+  /// an empty stretch: weeks 2 and 3 back read as building back, not as a
+  /// new runner's first weeks.
+  final bool afterBreak;
 
   /// "A week around" this: usual plus 10%, to the nearest 10.
   int get cap => ((usual * 1.1) / 10).round() * 10;
@@ -342,10 +348,17 @@ class LoadCompare {
         : counted.fold(0.0, (a, w) => a + f(w)) / counted.length;
     final usual = mean((w) => w.load);
     if (withRuns < minWeeks || usual < LoadGuard.minChronicWeekly) {
+      final firstRun = weeks.indexWhere((w) => w.runs > 0);
+      final afterBreak =
+          week.runs > 0 &&
+          firstRun >= 0 &&
+          firstRun < weeks.length - 1 &&
+          weeks.sublist(firstRun + 1, weeks.length - 1).any(rest);
       return LoadCompare(
         state: LoadCompareState.firstWeeks,
         usual: usual,
         afterPause: afterPause,
+        afterBreak: afterBreak,
       );
     }
     final ratio = week.load / usual;
@@ -689,6 +702,9 @@ abstract final class LoadWords {
     final load = _n(w.load);
     switch (c.state) {
       case LoadCompareState.firstWeeks:
+        if (c.afterBreak) {
+          return "$load load. We'll compare $backThreeWeeks.";
+        }
         return '$load load. Your usual week takes shape $afterThreeWeeks.';
       case LoadCompareState.returning:
         return "$load load, your first week back. We'll compare "
@@ -734,6 +750,9 @@ abstract final class LoadWords {
   static String suggest(WeekLoad w, LoadCompare c) {
     switch (c.state) {
       case LoadCompareState.firstWeeks:
+        if (c.afterBreak) {
+          return 'Building back over two or three weeks would fit.';
+        }
         return 'Your own usual week takes shape $afterThreeWeeks, and this '
             'compares you with it.';
       case LoadCompareState.returning:

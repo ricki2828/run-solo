@@ -173,6 +173,27 @@ void main() {
       expect(c.state, LoadCompareState.returning);
       expect(c.band, isNull);
     });
+    test('weeks 2 and 3 back read as building back, not as a new runner', () {
+      final runs = [...week(6, 4), ...week(5, 4), ...week(2, 3), ...week(1, 3)];
+      final ws = LoadHistory.weeks(runs, now: now, weeks: 7);
+      final c = LoadCompare.of(ws.sublist(0, 6));
+      expect(c.state, LoadCompareState.firstWeeks);
+      expect(c.afterBreak, isTrue);
+      expect(
+        LoadWords.headline(ws[5], c),
+        endsWith("We'll compare once you have 3 weeks back."),
+      );
+      // A new runner with no gap keeps the first-weeks words.
+      final fresh = [...week(3, 3), ...week(2, 3), ...week(1, 3)];
+      final fw = LoadHistory.weeks(fresh, now: now, weeks: 7);
+      final fc = LoadCompare.of(fw.sublist(0, 6));
+      expect(fc.state, LoadCompareState.firstWeeks);
+      expect(fc.afterBreak, isFalse);
+      expect(
+        LoadWords.headline(fw[5], fc),
+        contains('takes shape after 3 weeks of running'),
+      );
+    });
     test('2 paused weeks before is not returning', () {
       final runs = [...week(4, 4), ...week(5, 4), ...week(1, 3)];
       final paused = {
