@@ -674,6 +674,13 @@ abstract final class LoadWords {
       'Most runs this week had no heart rate or pace estimate, so load is '
       'a rough guess.';
 
+  /// The one phrase for the usual-week threshold (3 weeks with runs): the
+  /// headline, the suggestion and the Trends caption all use it.
+  static const String afterThreeWeeks = 'after 3 weeks of running';
+
+  /// The same threshold for a runner back from a break.
+  static const String backThreeWeeks = 'once you have 3 weeks back';
+
   static String _n(double v) => '${v.round()}';
   static String _km(double v) => v.toStringAsFixed(1);
   static String _runs(int n) => n == 1 ? '1 run' : '$n runs';
@@ -682,11 +689,10 @@ abstract final class LoadWords {
     final load = _n(w.load);
     switch (c.state) {
       case LoadCompareState.firstWeeks:
-        return '$load load. Your usual week takes shape after 3 weeks of '
-            'running.';
+        return '$load load. Your usual week takes shape $afterThreeWeeks.';
       case LoadCompareState.returning:
-        return "$load load, your first week back. We'll compare from next "
-            'week.';
+        return "$load load, your first week back. We'll compare "
+            '$backThreeWeeks.';
       case LoadCompareState.ok:
         final u = _n(c.usual);
         switch (c.band!) {
@@ -728,7 +734,8 @@ abstract final class LoadWords {
   static String suggest(WeekLoad w, LoadCompare c) {
     switch (c.state) {
       case LoadCompareState.firstWeeks:
-        return 'Three weeks of running and this compares you with your own usual.';
+        return 'Your own usual week takes shape $afterThreeWeeks, and this '
+            'compares you with it.';
       case LoadCompareState.returning:
         return 'Building back over two or three weeks would fit.';
       case LoadCompareState.ok:

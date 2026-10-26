@@ -520,7 +520,8 @@ void main() {
       );
       expect(
         h(LoadSample.returning),
-        "200 load, your first week back. We'll compare from next week.",
+        "200 load, your first week back. We'll compare once you have 3 weeks "
+        'back.',
       );
       final big = WeekLoad.sample(LoadSample.bigjump);
       final c = LoadCompare.of(big);
