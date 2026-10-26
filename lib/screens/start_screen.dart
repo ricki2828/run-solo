@@ -1493,8 +1493,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                             ),
                           ],
                         ),
-                        // Room to scroll the last line clear of the READY UP bar.
-                        const SizedBox(height: Space.x16 + RunButton.height),
+                        const SizedBox(height: Space.x16),
                       ],
                     ),
                   ),
