@@ -1,0 +1,87 @@
+{
+ "run_id": "00000000-0000-4000-8000-000000000001",
+ "type": "intervals",
+ "start_utc": "2026-09-24T06:00:00.000Z",
+ "utc_offset_min": 480,
+ "zone_id": "Etc/GMT-8",
+ "duration_s": 2460,
+ "distance_m": 7315.7,
+ "pace_s_per_km": 336.3,
+ "true_pace_s_per_km": 336.3,
+ "verdict": "baselineSet",
+ "zone_min": {
+  "z1": 0.0,
+  "z2": 5.2,
+  "z3": 16.9,
+  "z4": 19.0,
+  "z5": 0.0
+ },
+ "session_name": "Norwegian 4x4",
+ "work_pace_s_per_km": 284.2,
+ "reps_done": 4,
+ "rep_spread_s": 5.0,
+ "recovery_pace_s_per_km": 370.0,
+ "load": 118.4,
+ "load_basis": "hr",
+ "load_state": "high",
+ "splits": [
+  {
+   "km": 1.0,
+   "pace_s": 393.0,
+   "zone": 3
+  },
+  {
+   "km": 1.0,
+   "pace_s": 306.9,
+   "zone": 4
+  },
+  {
+   "km": 1.0,
+   "pace_s": 325.2,
+   "zone": 4
+  },
+  {
+   "km": 1.0,
+   "pace_s": 325.5,
+   "zone": 4
+  },
+  {
+   "km": 1.0,
+   "pace_s": 306.7,
+   "zone": 4
+  },
+  {
+   "km": 1.0,
+   "pace_s": 306.2,
+   "zone": 4
+  },
+  {
+   "km": 1.0,
+   "pace_s": 373.3,
+   "zone": 3
+  },
+  {
+   "km": 0.316,
+   "pace_s": 390.0,
+   "zone": 2
+  }
+ ],
+ "reps": [
+  {
+   "time_s": 223.0,
+   "zone": 4
+  },
+  {
+   "time_s": 223.0,
+   "zone": 4
+  },
+  {
+   "time_s": 223.0,
+   "zone": 4
+  },
+  {
+   "time_s": 223.0,
+   "zone": 4
+  }
+ ]
+}

@@ -840,7 +840,8 @@ class CheckinMixin:
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),
-                "quest": quest, "care_weeks": [d.isoformat() for d in care_weeks]}
+                "quest": quest, "care_weeks": [d.isoformat() for d in care_weeks],
+                "accepts_load": True}   # this server stores a run's `load` and `load_basis`: the app sends them only when it sees this
 
     # ------------------------------------------------------------------ export and retention (P1)
     def _ci_export(self, c, uid: str, now: datetime) -> list[dict]:

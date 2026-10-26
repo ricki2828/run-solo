@@ -237,10 +237,10 @@ def test_a_basis_alone_is_dropped():
     assert m.load is None and m.load_basis is None
 
 
-def test_the_load_range_is_0_to_2000():
-    for ok in (0, 2000):
+def test_the_load_range_is_0_to_5000():
+    for ok in (0, 2100, 5000):
         assert RunIn.model_validate({**run_payload("a1"), "load": ok}).load == ok
-    assert RunIn.model_validate({**run_payload("a1"), "load": 2000.5}).load is None
+    assert RunIn.model_validate({**run_payload("a1"), "load": 5000.5}).load is None
 
 
 def test_migration_adds_load_columns_to_an_older_database_and_is_repeatable(tmp_path):
@@ -384,3 +384,112 @@ def test_a_runner_with_no_load_gets_the_km_recap_and_the_plain_card(tmp_path, fa
         body = sqlite3.connect(c.svc.s.db_path).execute("SELECT body FROM cards WHERE kind='recap'").fetchone()[0]
         assert "load" not in body.lower()
     assert not set(LOAD_KEYS) & set(cards[0])
+
+
+# --- the app's fixture, the contract flag, and old apps ------------------------------------------
+
+def test_the_apps_load_fixture_validates_and_is_stored(client, fakes):
+    import json
+    from pathlib import Path
+    body = json.loads((Path(__file__).parent / "fixtures" / "app_load_fields.json").read_text())
+    m = RunIn.model_validate(body)
+    assert (m.load, m.load_basis, m.load_state) == (118.4, "hr", "high")
+    t = enrol(client)
+    body = {**body, "start_utc": (datetime.now(U) - timedelta(hours=3)).isoformat()}
+    assert client.post("/v1/runs", json=body, headers=auth(t)).status_code == 202
+    c = sqlite3.connect(client.svc.s.db_path)
+    assert c.execute("SELECT load, load_basis, load_state FROM runs").fetchone() == (118.4, "hr", "high")
+
+
+def test_an_old_app_with_no_load_fields_still_uploads(client, fakes):
+    t = enrol(client)
+    assert client.post("/v1/runs", json=run_payload("old1", load_state="steady"), headers=auth(t)).status_code == 202
+    assert _rows(client) == [("old1", None, None)]
+
+
+def test_a_two_hour_run_at_a_high_weight_is_not_a_range_error():
+    assert RunIn.model_validate({**run_payload("a1"), "load": 2100.0, "load_basis": "assumed"}).load == 2100.0
+
+
+# --- a stale load_state steers nothing -------------------------------------------------------------
+
+def test_the_evening_suggestion_honours_load_state_only_within_48_hours():
+    from datetime import timezone as tz
+    from companion.facts import suggest_evening
+    from companion.convo import suggest
+    t0 = datetime(2026, 10, 9, 20, 0, tzinfo=tz.utc)
+
+    def h(hours_ago, **kw):
+        r = mk(int(hours_ago), 0, 0, load_state=kw.pop("load_state", None))
+        r["start_utc"] = t0 - timedelta(hours=hours_ago)
+        return r
+    fresh = [h(30, load_state="high"), h(80), h(130)]
+    stale = [h(70, load_state="high"), h(120), h(170)]
+    assert suggest_evening(fresh, t0).reason == "load"
+    got = suggest_evening(stale, t0)
+    assert got is None or got.reason != "load"
+    assert suggest.evening(fresh, t0, None, {}, "s").suggestion.reason == "load"
+    got = suggest.evening(stale, t0, None, {}, "s")
+    assert got is None or got.suggestion is None or got.suggestion.reason != "load"
+
+
+def _coach_tools(client, uid, now):
+    from companion.coach.tools import ReadTools
+    return ReadTools(client.svc, [], uid, now)
+
+
+def _seed_runs(client, specs):
+    """specs: (run_id, days_ago, load_state) against a fixed 'now'."""
+    now = datetime(2026, 10, 20, 8, 0, tzinfo=U)
+    t = enrol(client)
+    c = sqlite3.connect(client.svc.s.db_path)
+    uid = c.execute("SELECT id FROM users").fetchone()[0]
+    for rid, days, ls in specs:
+        start = now - timedelta(days=days)
+        client.svc.ingest_run(uid, RunIn.model_validate(run_payload(
+            rid, start_utc=start.isoformat(), zone_id="UTC", utc_offset_min=0, load_state=ls)), start + timedelta(hours=1))
+    return uid, now
+
+
+def test_get_stats_reports_only_the_newest_runs_state_and_only_within_7_days(client, fakes):
+    uid, now = _seed_runs(client, [("a", 20, "high"), ("b", 2, None)])
+    assert _coach_tools(client, uid, now).get_stats()["load_state"] is None     # newest is null: an old flag is not carried over
+
+
+def test_get_stats_load_state_expires_after_7_days(client, fakes):
+    uid, now = _seed_runs(client, [("a", 10, "high")])
+    assert _coach_tools(client, uid, now).get_stats()["load_state"] is None
+    assert _coach_tools(client, uid, now - timedelta(days=5)).get_stats()["load_state"] == "high"
+
+
+def test_get_stats_keeps_a_fresh_newest_state(client, fakes):
+    uid, now = _seed_runs(client, [("a", 9, None), ("b", 1, "very_high")])
+    assert _coach_tools(client, uid, now).get_stats()["load_state"] == "very_high"
+
+
+def test_the_run_list_hides_an_old_load_state(client, fakes):
+    uid, now = _seed_runs(client, [("a", 12, "high"), ("b", 1, "high")])
+    out = _coach_tools(client, uid, now).get_recent_runs(days=30)
+    by_id = {r["run_id"]: r.get("load_state") for r in out["runs"]}
+    assert by_id == {"a": None, "b": "high"}
+
+
+# --- the words ------------------------------------------------------------------------------
+
+ALARM = re.compile(r"too much load|fumes|pull the reins|back off|ease off|tired legs|training load|very high|nothing more|pay-back|stacked a lot|fix is boring|lost fitness", re.I)
+
+
+def test_load_copy_is_descriptive_not_alarmist():
+    from companion.convo import suggest, touches
+    from companion import facts as fx
+    for sit in ("slower_load",):
+        for h, b in voice.SITUATIONS[sit]:
+            assert not ALARM.search(h + " " + b), (h, b)
+            assert "usual" in b, (h, b)       # it names its reference
+    for h, b in voice.SUGGESTIONS["sugg_easy_load"]:
+        assert not ALARM.search(h + " " + b), (h, b)
+        assert "usual" in b
+    res = fx.build_facts({**mk(1, 0, 0, load_state="very_high"), "feel": None, "plan_kind": None, "plan_target_m": None,
+                          "verdict": None, "pb": None, "true_pace_s_per_km": 355.0}, [], {})
+    txt = [f.text for f in res.facts if f.id == "load"]
+    assert txt == ["This week's load is well above your usual week"]

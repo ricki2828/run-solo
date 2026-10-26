@@ -249,7 +249,7 @@ class RunIn(BaseModel):
     locality: str | None = Field(default=None, max_length=60)  # suburb only, never a street
     route_id: str | None = Field(default=None, max_length=64)
     load_state: str | None = Field(default=None, pattern=r"^(low|steady|high|very_high)$")
-    load: float | None = Field(default=None, ge=0, le=2000)   # LoadGuard.load for this run: minutes x how hard (1-5)
+    load: float | None = Field(default=None, ge=0, le=5000)   # LoadGuard.load for this run: minutes x how hard (1-5)
     load_basis: str | None = Field(default=None, pattern=r"^(hr|pace|assumed)$")
     pb: str | None = Field(default=None, pattern=r"^(5k|10k|half|longest|fastest_km)$")
     plan_kind: str | None = Field(default=None, pattern=r"^(easy|long|quality)$")

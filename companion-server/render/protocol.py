@@ -185,8 +185,8 @@ def _load_ok(facts: dict) -> bool:
     have = LOAD_KEYS & set(facts)
     if not have:
         return True
-    if have != LOAD_KEYS or not (_int_in(facts["load"], 0, 5000) and _int_in(facts["usual_load"], 0, 5000)
-                                 and _int_in(facts["pct"], 0, 1000) and facts["band"] in LOAD_BANDS):
+    if have != LOAD_KEYS or not (_int_in(facts["load"], 0, 50000) and _int_in(facts["usual_load"], 0, 50000)
+                                 and _int_in(facts["pct"], 0, 100000) and facts["band"] in LOAD_BANDS):
         return False
     wk = facts["weeks"]
 
@@ -194,7 +194,7 @@ def _load_ok(facts: dict) -> bool:
         return _num(x) and 0 <= x <= 1.0001
     return isinstance(wk, list) and len(wk) == 6 and all(
         isinstance(w, dict) and set(w) <= {"monday", "load", "paused", "zone_share", "nohr_share"} and _text(w.get("monday", ""))
-        and len(w["monday"]) == 10 and _int_in(w.get("load"), 0, 5000) and isinstance(w.get("paused", False), bool)
+        and len(w["monday"]) == 10 and _int_in(w.get("load"), 0, 50000) and isinstance(w.get("paused", False), bool)
         and isinstance(w.get("zone_share"), list) and len(w["zone_share"]) == 5 and all(share(x) for x in w["zone_share"])
         and share(w.get("nohr_share", 0)) for w in wk)
 

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from statistics import median
 from typing import Any, Mapping, Sequence
 
-from ..facts import LOAD_ALERT, Suggestion, days_since_hard, fmt_km, is_hard_run
+from ..facts import LOAD_ALERT, LOAD_FRESH_H, Suggestion, days_since_hard, fmt_km, is_hard_run
 from ..timeutil import parse_iso, to_local
 from . import voice
 from .touches import WEEKDAYS, hard_share, plural
@@ -222,7 +222,7 @@ def _kind_reason(kind: str) -> str:
 
 
 def feel_cause(prev_situation: str | None) -> str:
-    return {"slower_heat": "Heat.", "slower_load": "Load is high.", "slower_hills": "Hills."}.get(
+    return {"slower_heat": "Heat.", "slower_load": "Load was above your usual week.", "slower_hills": "Hills."}.get(
         prev_situation or "", "Worth watching.")
 
 
@@ -265,7 +265,7 @@ def evening(history: Sequence[Mapping[str, Any]], now: datetime, forecast: Forec
     felt_hard = (last.get("feel") == "hard" and last["type"] == "easy" and (share is None or share < 0.15)
                  and since_last <= timedelta(hours=FEEL_WINDOW_H))
 
-    if last.get("load_state") in LOAD_ALERT:
+    if last.get("load_state") in LOAD_ALERT and since_last <= timedelta(hours=LOAD_FRESH_H):
         kind = "easy_load"
     elif is_hard_run(last) and since_last <= timedelta(hours=40):
         kind = "recover"

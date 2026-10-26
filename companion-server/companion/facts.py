@@ -246,6 +246,7 @@ PB_LABEL = {
 # looser than the app's, so without this a runner's second run on a new route got "Faster today" off a gap the app refused.
 NO_COMPARISON_VERDICTS = {"noVerdict", "baselineSet", "indoorRun"}
 LOAD_ALERT = {"high", "very_high"}
+LOAD_FRESH_H = 48   # a run's load_state steers the evening suggestion only this long: rest brings the acute load down
 SLOW_DAY_S_PER_KM = 10  # a day at least this much slower is called slow, plainly
 DELTA_MIN_S_PER_KM = 3
 MIN_DURATION_S = 300
@@ -385,7 +386,7 @@ def _recent_count(history: Sequence[Mapping[str, Any]], now: datetime, days: int
 def suggest_after_run(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> Suggestion | None:
     now = _when(run)
     if run.get("load_state") in LOAD_ALERT:
-        return Suggestion("easy_next", "load", "Load is high right now, so an easy day or a rest day next suits you.")
+        return Suggestion("easy_next", "load", "Your recent load is above your usual week. An easy day would fit next; your call.")
     if is_hard_run(run):
         return Suggestion("recover", "hard_today", "That was a hard session, so an easy day next lets it land.")
     gap = days_since_hard(history, now)
@@ -469,8 +470,8 @@ def suggest_evening(history: Sequence[Mapping[str, Any]], now: datetime) -> Sugg
     last = history[0]
     if _recent_count(history, now, 14) < 3:
         return None
-    if last.get("load_state") in LOAD_ALERT:
-        return Suggestion("easy_next", "load", "Load is high right now, so tomorrow is best easy or a rest day.")
+    if last.get("load_state") in LOAD_ALERT and (now - _when(last)) <= timedelta(hours=LOAD_FRESH_H):
+        return Suggestion("easy_next", "load", "Your recent load is above your usual week. An easy day or a rest day tomorrow would fit; your call.")
     if is_hard_run(last) and (now - _when(last)) <= timedelta(hours=40):
         return Suggestion("recover", "hard_recent", "Your last run was a hard one, so keep tomorrow easy.")
     gap = days_since_hard(history, now)
@@ -541,7 +542,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
                 worthy.append(Fact("delta", f"Level with {what} ({unit})"))
 
     if run.get("load_state") in LOAD_ALERT:
-        worthy.append(Fact("load", f"Training load is {run['load_state'].replace('_', ' ')}"))
+        worthy.append(Fact("load", "This week's load is " + ("well above" if run["load_state"] == "very_high" else "above") + " your usual week"))
 
     pk = run.get("plan_kind")
     if pk:

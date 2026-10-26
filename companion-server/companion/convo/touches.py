@@ -197,7 +197,7 @@ def feel_echo(c: Ctx) -> Touch | None:
     share = hard_share(prev)
     if share is not None and share >= 0.15:
         return None  # it really was hard
-    cause = {"slower_heat": "Heat.", "slower_load": "Load is high.", "slower_hills": "Hills."}.get(
+    cause = {"slower_heat": "Heat.", "slower_load": "Load was above your usual week.", "slower_hills": "Hills."}.get(
         c.prev_situation or "", "Worth watching.")
     return Touch("feel_echo", f"feel:{prev['run_id']}", {"weekday": WEEKDAYS[c.local(prev).weekday()], "cause": cause})
 
