@@ -413,6 +413,25 @@ void main() {
     );
   });
 
+  // 26-Oct: the ladder tick at the zone's edges and middle. Z2 is 113.4-132.3
+  // bpm on the default 189 max, so 116 is ~0.14, 124 ~0.56, 129 ~0.82.
+  for (final h in [800, 640]) {
+    for (final (name, hr) in [('low', 116), ('mid', 124), ('high', 129)]) {
+      if (name == 'mid' && h == 800) continue; // record_free_z2_360x800
+      testWidgets('record: Z2 ladder tick $name at 360 x $h', (tester) async {
+        await recordWithHr(
+          tester,
+          RecordMode.free,
+          hr,
+          name == 'mid'
+              ? 'record_free_z2_360x$h'
+              : 'record_free_z2_${name}_360x$h',
+          height: h,
+        );
+      });
+    }
+  }
+
   for (final h in [800, 640]) {
     testWidgets(
       'record: Z4 rep with the target band and next step at 360 x $h',

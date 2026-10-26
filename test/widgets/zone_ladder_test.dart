@@ -127,14 +127,34 @@ void main() {
     expect(ZoneLadder.reserve, 32);
   });
 
-  testWidgets('the lit numeral is painted above the tick', (tester) async {
+  testWidgets('the lit numeral is painted above the tick, with a halo not a '
+      'backing', (tester) async {
     await tester.pumpWidget(host(3, position: 0.5));
-    final all = tester.allWidgets.toList();
-    final tick = all.indexWhere(
-      (w) => w.key == const ValueKey('ladder-pointer'),
+    final stack = find.byKey(const ValueKey('ladder-lit-stack'));
+    final kids = tester.widget<Stack>(stack).children;
+    final tick = kids.indexWhere(
+      (w) => find
+          .descendant(
+            of: find.byWidget(w),
+            matching: find.byKey(const ValueKey('ladder-pointer')),
+          )
+          .evaluate()
+          .isNotEmpty,
     );
-    final numeral = all.indexWhere((w) => w is Text && w.data == '3');
+    final numeral = kids.indexWhere(
+      (w) => find
+          .descendant(of: find.byWidget(w), matching: find.text('3'))
+          .evaluate()
+          .isNotEmpty,
+    );
     expect(tick, isNonNegative);
     expect(numeral, greaterThan(tick), reason: 'later in the stack = on top');
+    expect(
+      find.ancestor(of: find.text('3'), matching: find.byType(DecoratedBox)),
+      findsNothing,
+      reason: 'a backing would hide the tick at mid-zone',
+    );
+    final style = tester.widget<Text>(find.text('3')).style!;
+    expect(style.shadows, hasLength(8), reason: 'the halo');
   });
 }

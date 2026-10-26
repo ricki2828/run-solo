@@ -27,6 +27,9 @@ class ZoneLadder extends StatelessWidget {
   static const double tickThickness = 3;
   static const double tickOutline = 1.5;
 
+  /// The lit numeral's halo, in the rung's colour.
+  static const double numeralHalo = 1.5;
+
   /// A clear 8 dp between the ladder's pointer and the numbers: the big
   /// figures scale to fit the gutter, never under the ladder (21-Oct).
   static const double reserve = width + pointer + 8;
@@ -88,6 +91,11 @@ class _Rung extends StatelessWidget {
               HrZones.contrast(t.bgBase, fill)
         ? t.inkPrimary
         : t.bgBase;
+    // On the lit rung the numeral is painted above the tick with a hard
+    // 1.5 dp halo in the rung's colour (eight zero-blur shadows), so the glyph
+    // reads while the tick still shows through around it at mid-zone.
+    final halo = onInk ? t.inkPrimary : fill;
+    const h = ZoneLadder.numeralHalo;
     final numeral = Text(
       '$z',
       style: RunSoloType.label13.copyWith(
@@ -95,6 +103,21 @@ class _Rung extends StatelessWidget {
         color: lit ? ink : t.inkPrimary,
         fontWeight: lit ? FontWeight.w900 : FontWeight.w700,
         height: 1,
+        shadows: lit
+            ? [
+                for (final o in const [
+                  Offset(h, 0),
+                  Offset(-h, 0),
+                  Offset(0, h),
+                  Offset(0, -h),
+                  Offset(h, h),
+                  Offset(-h, h),
+                  Offset(h, -h),
+                  Offset(-h, -h),
+                ])
+                  Shadow(color: halo, offset: o),
+              ]
+            : null,
       ),
     );
     final row = Row(
@@ -128,6 +151,7 @@ class _Rung extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: lit
           ? Stack(
+              key: const ValueKey('ladder-lit-stack'),
               clipBehavior: Clip.none,
               children: [
                 row,
@@ -146,30 +170,13 @@ class _Rung extends StatelessWidget {
                     ),
                   ),
                 ),
-                // The zone numeral is painted above the tick, on a small
-                // backing in the rung's colour so both read; same centre as
-                // before, so nothing moves.
+                // The zone numeral is painted above the tick, haloed in the
+                // rung's colour; same centre as before, so nothing moves.
                 Positioned.fill(
                   child: Row(
                     children: [
                       const SizedBox(width: ZoneLadder.pointer),
-                      Expanded(
-                        child: Center(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: onInk ? t.inkPrimary : fill,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2,
-                                vertical: 1,
-                              ),
-                              child: numeral,
-                            ),
-                          ),
-                        ),
-                      ),
+                      Expanded(child: Center(child: numeral)),
                     ],
                   ),
                 ),
