@@ -1429,7 +1429,7 @@ void main() {
     await golden(tester, 'setup_needed_step_360x640');
   });
 
-  // B3 / brief A9: the Lap Draw intro over Home. The ticker starts on the
+  // Track Bend intro over Home. The ticker starts on the
   // first frame after pumpApp, so frame times are from there.
   Future<void> introAt(
     WidgetTester tester,
@@ -1443,15 +1443,15 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   }
 
-  testWidgets('intro: full, line drawing through the R', (tester) async {
+  testWidgets('intro full lanes drawing round the bend', (tester) async {
     await introAt(tester, IntroKind.full, 450, 'intro_full_draw');
   });
 
-  testWidgets('intro: full, final composition', (tester) async {
+  testWidgets('intro full final composition', (tester) async {
     await introAt(tester, IntroKind.full, 1120, 'intro_full_final');
   });
 
-  testWidgets('intro: 0.6 s, final frame', (tester) async {
+  testWidgets('intro short final frame', (tester) async {
     await introAt(tester, IntroKind.short, 400, 'intro_short_final');
   });
 
