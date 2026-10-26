@@ -507,7 +507,9 @@ class _RecordingScreenState extends State<RecordingScreen>
             ],
           );
           // No strap, no zone ladder (D3): its gutter goes back to the screen.
-          final ladderShown = s.hr != null && s.zone > 0;
+          // A paired strap reserves the gutter from the first frame, so the
+          // figures don't shift ~15 dp when the first HR arrives (26-Oct).
+          final ladderShown = (s.hr != null && s.zone > 0) || s.hrPaired;
           final rightGutter = ladderShown
               ? ZoneLadder.reserve
               : Space.recordGutter;
@@ -1942,14 +1944,22 @@ class _Vitals extends StatelessWidget {
                   ),
                   // One line, scaled down rather than run into TOTAL
                   // (24-Oct review #10, font scale 1.3).
-                  if (s.zone > 0 && s.hr != null)
+                  // Event and goal runs keep the line (blank) until the first
+                  // HR and while the strap reconnects: their figures are
+                  // centred under this row, so they would shift when HR
+                  // arrives or drops (26-Oct).
+                  if ((s.zone > 0 && s.hr != null) || isEventRun(s) || s.isGoal)
                     ExcludeSemantics(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          HrZones.label(s.zone, paired: true),
-                          key: const ValueKey('vitals-zone'),
+                          s.zone > 0 && s.hr != null
+                              ? HrZones.label(s.zone, paired: true)
+                              : ' ',
+                          key: s.zone > 0 && s.hr != null
+                              ? const ValueKey('vitals-zone')
+                              : null,
                           softWrap: false,
                           style: label.copyWith(
                             color: HrZones.labelOn(s.zone, secondary),

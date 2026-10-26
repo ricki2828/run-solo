@@ -1822,6 +1822,32 @@ void main() {
     );
   });
 
+  // 26-Oct: a strap is paired but the first HR hasn't arrived. The figures
+  // sit where they will sit with HR (compare the pair: nothing shifts).
+  testWidgets('goal: before and after the first HR at 360 x 800', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now)
+      ..liveSecPerKm = 285
+      ..scriptedHr = 165;
+    final run = fakeServices(recorder: fake);
+    await run.recording.start(
+      RecordMode.intervals,
+      engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+      Units.km,
+    );
+    await pumpApp(tester, run, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    expect(run.recording.snapshot.hr, isNull);
+    await golden(tester, 'record_goal_pre_hr_360x800');
+    fake.advance(const Duration(seconds: 2));
+    await pumpTimes(tester, 4);
+    await settleAnimations(tester);
+    expect(run.recording.snapshot.hr, 165);
+    await golden(tester, 'record_goal_first_hr_360x800');
+  });
+
   // PD2 on Start (A10.10, #84 review): the goal card's target line.
   testWidgets('goal: Start with a target line at 360 x 640', (tester) async {
     final efforts = engine.RunBestEfforts(

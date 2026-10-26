@@ -403,6 +403,48 @@ void main() {
       expect(find.byType(OdometerDistance), findsOneWidget);
     });
 
+    testWidgets('a paired strap reserves the ladder gutter from the first '
+        'frame: nothing shifts when the first HR arrives', (tester) async {
+      final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      Rect rect(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      expect(services.recording.snapshot.hr, isNull, reason: 'no HR yet');
+      final before = (rect('event-to-go'), rect('event-finish'));
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 4);
+      expect(services.recording.snapshot.hr, isNotNull, reason: 'HR arrived');
+      final after = (rect('event-to-go'), rect('event-finish'));
+      expect(after.$1.left, before.$1.left);
+      expect(after.$1.right, before.$1.right);
+      expect(after.$1.top, before.$1.top);
+      expect(after.$2.top, before.$2.top);
+    });
+
+    testWidgets('no HR source at all keeps the full width', (tester) async {
+      final fake = FakeRecorderGateway(now: now)
+        ..liveSecPerKm = 240
+        ..hrPaired = false;
+      final services = fakeServices(recorder: fake);
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(10000, '10K').toPigeon(),
+        Units.km,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(seconds: 2));
+      await pumpTimes(tester, 4);
+      final w = tester.getSize(find.byKey(const ValueKey('event-to-go'))).width;
+      expect(w, greaterThan(320), reason: 'no ladder gutter without HR');
+    });
+
     testWidgets('distance goal: to go and on pace, then the cool-down locks '
         'the goal time', (tester) async {
       final fake = FakeRecorderGateway(now: now)..liveSecPerKm = 240;
