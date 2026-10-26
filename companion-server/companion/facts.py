@@ -542,7 +542,7 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
                 worthy.append(Fact("delta", f"Level with {what} ({unit})"))
 
     if run.get("load_state") in LOAD_ALERT:
-        worthy.append(Fact("load", "This week's load is " + ("well above" if run["load_state"] == "very_high" else "above") + " your usual week"))
+        worthy.append(Fact("load", "Your last 7 days are " + ("well above" if run["load_state"] == "very_high" else "above") + " your usual week"))
 
     pk = run.get("plan_kind")
     if pk:

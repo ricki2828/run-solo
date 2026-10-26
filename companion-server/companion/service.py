@@ -1829,8 +1829,12 @@ class Service(CheckinMixin, MeasureMixin):
             empty_before = c.execute("SELECT COUNT(*) FROM convo_log WHERE user_id=? AND kind='recap_empty' AND ts>?",
                                      (uid, iso(now - timedelta(days=9)))).fetchone()[0]
             # the weeks the coach held back (ill or sore) are left out of the usual week; only for a runner who agreed to check-ins
-            paused = ci_care_weeks(self._ci_answers(c, uid, now), to_local(now, zone_id).date(), cv_recap.LOAD_SHOWN_WEEKS) \
-                if self._ci_consented(c, uid) else []
+            try:
+                paused = ci_care_weeks(self._ci_answers(c, uid, now), to_local(now, zone_id).date(), cv_recap.LOAD_SHOWN_WEEKS) \
+                    if self._ci_consented(c, uid) else []
+            except Exception:   # a care-week lookup must never block the recap: no pauses, the usual week is just a little less exact
+                log.exception("care weeks failed for the load recap")
+                paused = []
         rc = cv_recap.build(runs, now, zone_id, usage.variants, seed=week_ref, paused_weeks=paused)
         if rc is None or (rc.empty and empty_before):  # one gentle nudge after a missed week, never two in a row
             return None

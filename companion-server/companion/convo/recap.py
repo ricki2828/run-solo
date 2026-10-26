@@ -19,7 +19,7 @@ PART_WEEK_FROM_WEEKDAY = 3   # a first run on Thursday (0 = Monday) or later mak
 FLAT_KM = 1.0                # a swing under this many km is "level"
 QUIET_AFTER_DAYS = 60        # nothing to say to someone who has not run for two months
 WEEKDAY = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-LOAD_COVERAGE = 0.8          # the recap speaks in load only when this share of the last 5 weeks' runs carry the app's own load
+LOAD_COVERAGE = 1.0          # the recap speaks in load only when this share of the last 5 weeks' runs carry the app's own load: all of them, so a server estimate never sits in the usual
 LOAD_USUAL_WEEKS = 4         # the usual week is the mean of this many weeks before the recap week
 LOAD_SHOWN_WEEKS = 6         # the card draws the recap week and the 5 before it
 LOAD_MIN_WEEKS = 3           # usual weeks with runs the comparison needs (the app's copy says after 3 weeks of running)
@@ -124,7 +124,7 @@ def over_phrase(ratio: float) -> str:
 
 
 def _load_calc(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime,
-               paused: Sequence[date] = ()) -> tuple[dict[str, Any], float] | None:
+               paused: Sequence[date] = ()) -> tuple[dict[str, Any], float, float] | None:
     """This Mon-Sun week's load against the runner's usual week (the app's rules), or None when the recap should stay on
     km: fewer than 80% of the runs in this week and the 4 before carry the app's own load; the week has no runs; the
     runner is returning (the 2 weeks before were empty, unpaused and after the first run); fewer than 3 usual weeks;
@@ -179,7 +179,7 @@ def _load_calc(runs: Sequence[Mapping[str, Any]], zone_id: str, monday: datetime
     for w in weeks:
         w.pop("_runs"), w.pop("_raw")
     return {"load": _r(this), "usual_load": _r(usual), "band": band, "pct": abs(pct),
-            "words": load_words(band, ratio), "weeks": weeks}, ratio
+            "words": load_words(band, ratio), "weeks": weeks}, ratio, usual
 
 
 def _week_start(r: Mapping[str, Any], zone_id: str) -> datetime:
@@ -300,10 +300,10 @@ def build(runs: Sequence[Mapping[str, Any]], now: datetime, zone_id: str, used: 
         situation = "recap_flat" if abs(diff) < FLAT_KM else "recap_up" if diff > 0 else "recap_down"
         calc = _load_calc(runs, zone_id, monday, paused_weeks)
         if calc:   # speak in load, against the runner's own usual week
-            lf, ratio = calc
+            lf, ratio, usual_raw = calc
             situation = LOAD_SITUATION[lf["band"]]
             slots.update(load=str(lf["load"]), usual=str(lf["usual_load"]), pct=str(lf["pct"]), more=over_phrase(ratio),
-                         cap=str(_r(lf["usual_load"] * 1.1 / 10) * 10))
+                         cap=str(_r(usual_raw * 1.1 / 10) * 10))   # from the unrounded usual, as the app does
     r = voice.render(situation, slots, used, now, seed)
     if r is None:
         return None

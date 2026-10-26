@@ -84,12 +84,12 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
     ],
     "slower_load": [
         ("Load is up", "Your recent load is above your usual week, and {pace}/km is {delta} s/km slower."),
-        ("Slower, with load up", "{delta} s/km slower than last time, in a week with more load than your usual."),
+        ("Slower, with load up", "{delta} s/km slower than last time, with more load lately than your usual week."),
         ("Slower, loaded", "{km} km at {pace}/km, {delta} s/km down. Recent load is above your usual week, which can go with that."),
         ("Load in context", "{delta} s/km slower than last time. The last few days carry more load than your usual week."),
-        ("Heavier week", "{pace}/km, {delta} s/km slower, in a week heavier than your usual."),
-        ("A slower day", "Slower by {delta} s/km in a heavier week than usual. An easy day would fit; your call."),
-        ("Above usual", "{km} km at {pace}/km, {delta} s/km slower. This week's load is above your usual, so it is not a surprise."),
+        ("Heavier days", "{pace}/km, {delta} s/km slower, after recent days heavier than your usual week."),
+        ("A slower day", "Slower by {delta} s/km, with recent load above your usual week. An easy day would fit; your call."),
+        ("Above usual", "{km} km at {pace}/km, {delta} s/km slower. Recent load is above your usual week, so it is not a surprise."),
         ("Still absorbing", "{delta} s/km down while load is above your usual week. Easier days are where the work settles in."),
         ("Just this run", "Pace is {delta} s/km slower and load is above your usual week. A single run says little about fitness."),
     ],
@@ -457,7 +457,7 @@ RECAPS: dict[str, list[tuple[str, str]]] = {
     "recap_load_light": [
         ("Lighter week", "{load} load, {pct}% under your usual {usual}. {runs_txt}, {km} km. Lighter weeks help. {moment}"),
         ("Quieter than usual", "{runs_txt} for {km} km, {load} load, {pct}% below your usual {usual}. Lighter weeks do their work. {moment}"),
-        ("Easing off", "{load} load, under your usual {usual} by {pct}%. {km} km over {runs_txt}. Recovery counts. {moment}"),
+        ("Quieter days", "{load} load, under your usual {usual} by {pct}%. {km} km over {runs_txt}. Recovery counts. {moment}"),
     ],
     # The month poster (the 1st, for the month just ended). Totals only: the picture adds each run's day, type and
     # distance from the stored rows, and nothing the runner has not already sent.
@@ -482,7 +482,7 @@ SUGGESTIONS: dict[str, list[tuple[str, str]]] = {
         ("Easy tomorrow", "Your last week is heavier than your usual week. Tomorrow: {session} or a day off."),
         ("Your call", "Load is above your usual week. {session} tomorrow is an option, so is rest."),
         ("Rest is an option", "Recent load is above your usual week. {session} tomorrow, or a rest day if you prefer."),
-        ("Reference point", "Compared with your usual week, the last week is heavy. Tomorrow: {session}, {start}."),
+        ("Reference point", "Compared with your usual week, the last week is heavy. Tomorrow: {session}, {start}, or rest."),
     ],
     "sugg_recover": [
         ("For tomorrow", "Your last run was hard, {hours_txt} ago. Tomorrow: {session}."),

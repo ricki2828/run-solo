@@ -125,15 +125,22 @@ def test_a_run_with_zones_splits_its_load_by_zone_and_one_without_is_no_hr():
 
 # --- the gate and the states that stay on km ---------------------------------------------------
 
-def test_the_gate_is_80_percent_of_the_last_five_weeks_runs():
-    runs = week_of(300)               # 12 runs in the window of 5 weeks (2 per week x 5 = 10 after the 5th prior is left out)
+def test_the_gate_needs_every_run_of_the_last_five_weeks_to_carry_the_apps_load():
+    runs = week_of(300)               # 2 runs a week: 10 in the window (this week and the 4 before)
     window = [r for r in runs if r["start_utc"] >= (MONDAY - timedelta(days=28)).replace(tzinfo=U) - timedelta(hours=8)]
     assert len(window) == 10
     assert facts_for(runs) is not None
-    runs[0]["load"] = runs[1]["load"] = None          # 8 of 10 carry load: exactly 80%
-    assert facts_for(runs) is not None
-    runs[2]["load"] = None                            # 7 of 10
+    runs[0]["load"] = None            # 9 of 10: a server estimate would sit in the usual, so the km recap stays
     assert facts_for(runs) is None
+    assert recap.build(runs, SUN, SG, {}, "w").rendered.situation in ("recap_up", "recap_down", "recap_flat")
+
+
+def test_the_cap_comes_from_the_raw_usual_like_the_app():
+    runs = history([450, 340, 341, 340, 341, 300], flag=True)   # usual 340.5
+    f = facts_for(runs)
+    assert f["usual_load"] == 341
+    rc = recap.build(runs, SUN, SG, {}, "w")
+    assert rc.rendered.situation == "recap_load_jump" and "370" in rc.rendered.body and "380" not in rc.rendered.body
 
 
 def test_runs_older_than_the_window_do_not_count_toward_the_gate():
@@ -518,26 +525,31 @@ def test_the_run_list_hides_an_old_load_state(client, fakes):
 
 # --- the words ------------------------------------------------------------------------------
 
-ALARM = re.compile(r"too much load|fumes|pull the reins|back off|ease off|tired legs|training load|very high|nothing more|pay-back|stacked a lot|fix is boring|lost fitness", re.I)
+ALARM = re.compile(r"too much load|fumes|pull the reins|back off|ease off|easing off|tired legs|training load|very high|nothing more|"
+                   r"pay-back|stacked a lot|fix is boring|lost fitness|\bkeep\b|\bhold\b|back to\b|\bmust\b|\bshould\b|\bneed to\b", re.I)
 
 
 def test_load_copy_is_descriptive_not_alarmist():
-    from companion.convo import suggest, touches
     from companion import facts as fx
+    texts = []
     for sit in ("slower_load",):
-        for h, b in voice.SITUATIONS[sit]:
-            assert not ALARM.search(h + " " + b), (h, b)
-            assert "usual" in b, (h, b)       # it names its reference
-    for h, b in voice.SUGGESTIONS["sugg_easy_load"]:
-        assert not ALARM.search(h + " " + b), (h, b)
-        assert "usual" in b
-    res = fx.build_facts({**mk(1, 0, 0, load_state="very_high"), "feel": None, "plan_kind": None, "plan_target_m": None,
-                          "verdict": None, "pb": None, "true_pace_s_per_km": 355.0}, [], {})
-    txt = [f.text for f in res.facts if f.id == "load"]
-    assert txt == ["This week's load is well above your usual week"]
-
-
-def test_a_step_up_over_1_3x_has_no_amber_on_the_card():
-    html = build_weekly_html(F.weekly_recap_load_stepup(), {})
-    assert "35% more than your usual week" in html and 'stroke="#D9A21B"' not in html
-    assert F.weekly_recap_load_stepup()["load"] / F.weekly_recap_load_stepup()["usual_load"] > 1.3
+        texts += [(sit, h, b) for h, b in voice.SITUATIONS[sit]]
+    texts += [("sugg_easy_load", h, b) for h, b in voice.SUGGESTIONS["sugg_easy_load"]]
+    for sit in ("recap_load_usual", "recap_load_step", "recap_load_jump", "recap_load_light"):
+        texts += [(sit, h, b) for h, b in voice.RECAPS[sit]]
+    for sit, h, b in texts:
+        assert not ALARM.search(h + " " + b), (sit, h, b)
+        if sit in ("slower_load", "sugg_easy_load") or sit.startswith("recap_load_") and sit != "recap_load_usual":
+            assert "usual" in b, (sit, h, b)       # it names its reference
+        if sit == "sugg_easy_load":
+            assert re.search(r"rest|day off|your call|option|if you prefer|would fit", b), (sit, h, b)   # a choice, not an order
+    run = {**mk(1, 0, 0, load_state="very_high"), "feel": None, "plan_kind": None, "plan_target_m": None,
+           "verdict": None, "pb": None, "true_pace_s_per_km": 355.0}
+    strings = [f.text for f in fx.build_facts(run, [], {}).facts if f.id == "load"]
+    strings.append(fx.suggest_after_run(run, []).text)
+    t0 = run["start_utc"] + timedelta(hours=20)
+    strings.append(fx.suggest_evening([run, mk(2, 0, 0), mk(3, 0, 0)], t0).text)
+    assert strings[0] == "Your last 7 days are well above your usual week"
+    for t in strings:
+        assert not ALARM.search(t), t
+        assert "usual" in t
