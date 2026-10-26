@@ -161,7 +161,10 @@ void main() {
     );
     final tokens = Theme.of(tester.element(find.byType(RecordingScreen)))
         .extension<RunSoloTokens>()!;
-    expect(toGoText.style!.color, tokens.accentArc);
+    expect(toGoText.style!.fontSize, size('event-to-go'));
+    // And the accent itself: it reads on a dark flood, never on a bright one.
+    expect(lastStretchAccent(tokens, 5), tokens.accentArc);
+    expect(lastStretchAccent(tokens, 3), isNot(tokens.accentArc));
 
     // Auto-stop at 5.00 km: the result replaces the record screen.
     for (var i = 0; i < 80; i++) {

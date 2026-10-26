@@ -1380,6 +1380,17 @@ TextStyle primaryStyle(bool compact, {bool secondary = false}) => secondary
         fontSize: RunSoloType.runSize(compact ? 128 : 168),
       );
 
+/// The to-go figure's last-stretch emphasis colour: the arc accent where it
+/// holds 3:1 (large figures) on the zone's flood, else its deeper day
+/// variant, else plain ink. Never a size or position change.
+Color lastStretchAccent(RunSoloTokens t, int zone) {
+  final fill = HrZones.background(zone);
+  for (final c in [t.accentArc, NightSessionLight.accentArc]) {
+    if (HrZones.contrast(c, fill) >= 3) return c;
+  }
+  return t.inkPrimary;
+}
+
 /// Rep (a work step of a structured session) in the Intervals magenta,
 /// recovery in mint; everything else Bone. The words stay too (colour is never
 /// the only cue), and the countdown box keeps its outline. A hue that does not
@@ -3607,7 +3618,7 @@ class EventBlock extends StatelessWidget {
       // the digit block's width never move.
       final style = primaryStyle(compact, secondary: !big).copyWith(
         color: accent && !dashed
-            ? t.accentArc
+            ? lastStretchAccent(t, s.zone)
             : big && !dashed
             ? t.inkPrimary
             : muted,
