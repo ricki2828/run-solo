@@ -431,7 +431,7 @@ class VoiceCoachTest {
     }
 
     @Test
-    fun `on an easy run drift says the zone above plan, not zone up`() {
+    fun `on an easy run drift says the zone above plan and zone up does not`() {
         val said = drift().hrRun(0, 120, hr = { 140.0 })
         assertEquals(listOf(60 to "Heart rate in zone 3. Ease back to zone 2."), said)
     }
