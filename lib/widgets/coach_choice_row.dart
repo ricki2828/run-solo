@@ -10,9 +10,9 @@ import '../theme/theme.dart';
 ///
 /// Same grammar as the run-type cards above it (ui review 24-Oct #12): a 2 px
 /// border in both states (Bone selected, hairline unselected), a one-line
-/// title of 20 sp or less and a fixed 96 dp height (the same as the run-type
-/// cards), so nothing wraps or clips at
-/// 360 x 640.
+/// title of 20 sp or less and a 96 dp minimum height (the same as the run-type
+/// cards). Both cards grow to the taller one at large text sizes, so nothing
+/// wraps unevenly or clips at 360 x 640.
 class CoachChoiceRow extends StatelessWidget {
   const CoachChoiceRow({
     super.key,
@@ -37,28 +37,31 @@ class CoachChoiceRow extends StatelessWidget {
           style: RunSoloType.label13.copyWith(color: t.inkSecondary),
         ),
         const SizedBox(height: Space.x8),
-        Row(
-          children: [
-            Expanded(
-              child: _ChoiceButton(
-                key: chaseKey,
-                title: 'Chase best',
-                subtitle: 'Vs your best, live',
-                selected: selected == engine.CoachChoice.chase,
-                onTap: () => onSelect(engine.CoachChoice.chase),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _ChoiceButton(
+                  key: chaseKey,
+                  title: 'Chase best',
+                  subtitle: 'Vs your best, live',
+                  selected: selected == engine.CoachChoice.chase,
+                  onTap: () => onSelect(engine.CoachChoice.chase),
+                ),
               ),
-            ),
-            const SizedBox(width: Space.x8),
-            Expanded(
-              child: _ChoiceButton(
-                key: steadyKey,
-                title: 'Steady',
-                subtitle: 'No comparisons',
-                selected: selected == engine.CoachChoice.steady,
-                onTap: () => onSelect(engine.CoachChoice.steady),
+              const SizedBox(width: Space.x8),
+              Expanded(
+                child: _ChoiceButton(
+                  key: steadyKey,
+                  title: 'Steady',
+                  subtitle: 'No comparisons',
+                  selected: selected == engine.CoachChoice.steady,
+                  onTap: () => onSelect(engine.CoachChoice.steady),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -91,7 +94,7 @@ class _ChoiceButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          height: 96,
+          constraints: const BoxConstraints(minHeight: 96),
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: t.bgRaised,
