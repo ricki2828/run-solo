@@ -12,6 +12,7 @@ import '../widgets/chrome.dart';
 import '../widgets/choice_chips.dart';
 import '../widgets/delta_glyph.dart';
 import '../widgets/recent_bars_chart.dart';
+import 'load_trends.dart';
 import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 
 /// Trend per run type (design brief §4.9); Intervals group by comparison
@@ -25,14 +26,28 @@ import 'cooper_result_screen.dart' show cooperTests, primeOf, primeRangeLineOf;
 /// sessions: "Two 4x4s draw the first line" as an empty state. Charts are
 /// `CustomPainter`, no package.
 class TrendScreen extends StatefulWidget {
-  const TrendScreen({super.key});
+  /// [initial] is the chip first shown; null is Load. [loadData] stands in
+  /// for History in tests and goldens.
+  const TrendScreen({super.key, this.initial, this.loadData});
+  final RecordMode? initial;
+  final LoadTrendsData? loadData;
 
   @override
   State<TrendScreen> createState() => _TrendScreenState();
 }
 
+/// The chips in order; null is Load.
+const _chipModes = <RecordMode?>[
+  null,
+  RecordMode.intervals,
+  RecordMode.laps,
+  RecordMode.free,
+  RecordMode.cooper,
+];
+
 class _TrendScreenState extends State<TrendScreen> {
-  RecordMode _type = RecordMode.intervals;
+  /// The selected chip; null is Load.
+  late RecordMode? _type = widget.initial;
 
   /// Selected Intervals comparison key; null = the most recent one.
   String? _key;
@@ -49,6 +64,18 @@ class _TrendScreenState extends State<TrendScreen> {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final settings = AppServices.of(context).settings.settings;
     final units = settings.units;
+    final chips = ChoiceChips(
+      labels: const ['Load', 'Intervals', 'Laps', 'Free', 'Test'],
+      keys: const [
+        ValueKey('trends-load'),
+        ValueKey('trends-intervals'),
+        ValueKey('trends-laps'),
+        ValueKey('trends-free'),
+        ValueKey('trends-test'),
+      ],
+      selected: _chipModes.indexOf(_type),
+      onSelect: (i) => setState(() => _type = _chipModes[i]),
+    );
     // Own Material ancestor on the base colour: bare Text under a route
     // without a Scaffold falls back to the debug yellow underline.
     return Material(
@@ -58,8 +85,23 @@ class _TrendScreenState extends State<TrendScreen> {
           future: _runs,
           builder: (context, snap) {
             final all = snap.data ?? const <RunSummary>[];
+            final mode = _type;
+            if (mode == null) {
+              return ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.screenGutter,
+                ),
+                children: [
+                  const SizedBox(height: Space.x8),
+                  chips,
+                  const SizedBox(height: Space.x24),
+                  LoadTrends(data: widget.loadData),
+                  const SizedBox(height: Space.x24),
+                ],
+              );
+            }
             final typed =
-                all.where((r) => r.mode == _type && !r.missing).toList()
+                all.where((r) => r.mode == mode && !r.missing).toList()
                   ..sort((a, b) => a.start.compareTo(b.start));
             // Intervals: one trend per comparison key, newest key first,
             // titled by the latest run's session name.
@@ -68,7 +110,7 @@ class _TrendScreenState extends State<TrendScreen> {
               final k = trendKey(r);
               if (k != null) keys.putIfAbsent(k, () => runTitle(r));
             }
-            final key = _type != RecordMode.intervals
+            final key = mode != RecordMode.intervals
                 ? null
                 : keys.containsKey(_key)
                 ? _key
@@ -77,7 +119,7 @@ class _TrendScreenState extends State<TrendScreen> {
                 ? typed
                 : typed.where((r) => trendKey(r) == key).toList();
             final title = key == null
-                ? modeTitle(_type).toUpperCase()
+                ? modeTitle(mode).toUpperCase()
                 : keys[key]!.toUpperCase();
             return ListView(
               padding: const EdgeInsets.symmetric(
@@ -85,23 +127,7 @@ class _TrendScreenState extends State<TrendScreen> {
               ),
               children: [
                 const SizedBox(height: Space.x8),
-                ChoiceChips(
-                  labels: const ['Intervals', 'Laps', 'Free', 'Test'],
-                  selected: const [
-                    RecordMode.intervals,
-                    RecordMode.laps,
-                    RecordMode.free,
-                    RecordMode.cooper,
-                  ].indexOf(_type),
-                  onSelect: (i) => setState(
-                    () => _type = const [
-                      RecordMode.intervals,
-                      RecordMode.laps,
-                      RecordMode.free,
-                      RecordMode.cooper,
-                    ][i],
-                  ),
-                ),
+                chips,
                 if (keys.length > 1) ...[
                   const SizedBox(height: Space.x12),
                   ChoiceChips(
@@ -116,11 +142,11 @@ class _TrendScreenState extends State<TrendScreen> {
                 _LaneHeader(
                   title:
                       '$title · ${runs.length} '
-                      '${_type == RecordMode.cooper ? 'TEST' : 'SESSION'}'
+                      '${mode == RecordMode.cooper ? 'TEST' : 'SESSION'}'
                       '${runs.length == 1 ? '' : 'S'}',
                 ),
                 const SizedBox(height: Space.x24),
-                switch (_type) {
+                switch (mode) {
                   // Every session shape: I3 gives each key its work pace,
                   // floor and bests; runs of one key only.
                   RecordMode.intervals => _FourByFourTrend(
@@ -135,7 +161,7 @@ class _TrendScreenState extends State<TrendScreen> {
                   // Trail has no pace trend (no pace verdict yet), so the
                   // selector never offers it; the case only keeps the switch exhaustive.
                   RecordMode.laps || RecordMode.free || RecordMode.trail =>
-                    _DistanceTrend(runs: runs, units: units, mode: _type),
+                    _DistanceTrend(runs: runs, units: units, mode: mode),
                 },
                 const SizedBox(height: Space.x24),
                 if (runs.isEmpty)

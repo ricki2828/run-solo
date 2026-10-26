@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/services.dart';
+import '../state/load_source.dart';
 import '../state/progress_snapshot.dart';
 import '../theme/lanes.dart';
 import '../theme/theme.dart';
+import 'weekly_load_page.dart';
 
 const _months = [
   'Jan',
@@ -39,12 +41,15 @@ String weekLabel(DateTime start) {
 }
 
 /// The weekly story, full screen: week label, the week's km, one headline,
-/// Monday-to-Sunday bars in lane colours, the lane of the week. Opened by
-/// name (`Routes.weeklyStory`); [story] is passed in by tests, otherwise it
-/// is read from the progress snapshot.
+/// Monday-to-Sunday bars in lane colours, the lane of the week. Next opens
+/// page 2, the week's load against the usual week ([WeeklyLoadPage]), when
+/// the week has load to tell. Opened by name (`Routes.weeklyStory`);
+/// [story] (and [loadWeeks], oldest first, the last the story's week) are
+/// passed in by tests, otherwise both are read from History.
 class WeeklyStoryScreen extends StatefulWidget {
-  const WeeklyStoryScreen({super.key, this.story});
+  const WeeklyStoryScreen({super.key, this.story, this.loadWeeks});
   final WeeklyStory? story;
+  final List<engine.WeekLoad>? loadWeeks;
 
   @override
   State<WeeklyStoryScreen> createState() => _WeeklyStoryScreenState();
@@ -56,15 +61,15 @@ class _WeeklyStoryScreenState extends State<WeeklyStoryScreen>
     vsync: this,
     duration: const Duration(milliseconds: 1200),
   );
-  Future<WeeklyStory?>? _load;
+  Future<_Told>? _load;
   bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _load ??= widget.story != null
-        ? Future.value(widget.story)
-        : _fromSnapshot();
+    _load ??= widget.story != null && widget.loadWeeks != null
+        ? Future.value(_Told(widget.story, widget.loadWeeks))
+        : _read();
     if (_started) return;
     _started = true;
     if (MediaQuery.of(context).disableAnimations) {
@@ -74,16 +79,41 @@ class _WeeklyStoryScreenState extends State<WeeklyStoryScreen>
     }
   }
 
-  Future<WeeklyStory?> _fromSnapshot() async {
+  Future<_Told> _read() async {
     final s = AppServices.of(context);
-    final runs = await s.history.list();
+    final src = await LoadSource.read(s);
     final p = s.settings.settings;
-    return buildProgressSnapshot(
-      runs,
-      now: s.now(),
-      sex: p.profileSex,
-      birthYear: p.birthYear,
-    ).story;
+    final story =
+        widget.story ??
+        buildProgressSnapshot(
+          src.runs,
+          now: src.now,
+          sex: p.profileSex,
+          birthYear: p.birthYear,
+        ).story;
+    List<engine.WeekLoad>? weeks;
+    try {
+      weeks = story == null ? null : src.weeksEnding(story.weekStart);
+    } catch (e) {
+      // A failed load read must not take the km story with it.
+      debugPrint('weekly story: no load page ($e)');
+    }
+    return _Told(story, weeks);
+  }
+
+  /// Next: the load page when there is one, then Done closes both.
+  Future<void> _next(List<engine.WeekLoad>? weeks) async {
+    if (weeks == null) {
+      await Navigator.of(context).maybePop();
+      return;
+    }
+    final done = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: 'weekly-load'),
+        builder: (_) => WeeklyLoadPage(weeks: weeks),
+      ),
+    );
+    if (done == true && mounted) Navigator.of(context).maybePop();
   }
 
   @override
@@ -97,10 +127,10 @@ class _WeeklyStoryScreenState extends State<WeeklyStoryScreen>
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     const fill = AuroraStory.fill;
     final ink = readableOn(fill);
-    return FutureBuilder<WeeklyStory?>(
+    return FutureBuilder<_Told>(
       future: _load,
       builder: (context, snap) {
-        final story = snap.data;
+        final story = snap.data?.story;
         return Scaffold(
           key: const ValueKey('weekly-story'),
           backgroundColor: fill,
@@ -117,13 +147,27 @@ class _WeeklyStoryScreenState extends State<WeeklyStoryScreen>
                       ink: ink,
                       loading: snap.connectionState != ConnectionState.done,
                     )
-                  : _Body(story: story, t: t, ink: ink, fill: fill, c: _c),
+                  : _Body(
+                      story: story,
+                      t: t,
+                      ink: ink,
+                      fill: fill,
+                      c: _c,
+                      onNext: () => _next(snap.data?.weeks),
+                    ),
             ),
           ),
         );
       },
     );
   }
+}
+
+/// The story and, when its week has runs, the weeks the load page tells.
+class _Told {
+  const _Told(this.story, this.weeks);
+  final WeeklyStory? story;
+  final List<engine.WeekLoad>? weeks;
 }
 
 class _Empty extends StatelessWidget {
@@ -163,7 +207,9 @@ class _Body extends StatelessWidget {
     required this.ink,
     required this.fill,
     required this.c,
+    required this.onNext,
   });
+  final VoidCallback onNext;
   final WeeklyStory story;
   final RunSoloTokens t;
   final Color ink;
@@ -342,7 +388,7 @@ class _Body extends StatelessWidget {
               backgroundColor: ink,
               foregroundColor: fill,
             ),
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: onNext,
             child: const Text('Next'),
           ),
         ),

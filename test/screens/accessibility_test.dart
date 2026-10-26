@@ -125,7 +125,11 @@ void main() {
     handle.dispose();
 
     handle = tester.ensureSemantics();
-    await pumpApp(tester, services, home: const TrendScreen());
+    await pumpApp(
+      tester,
+      services,
+      home: const TrendScreen(initial: RecordMode.intervals),
+    );
     await pumpTimes(tester, 6);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
