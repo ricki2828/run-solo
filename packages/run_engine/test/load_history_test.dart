@@ -457,7 +457,7 @@ void main() {
       final c = LoadCompare.of(big);
       expect(
         LoadWords.suggest(big.last, c),
-        'Keep next week near 380 and the easy runs easy.',
+        'A week around 380, with the easy runs easy, would balance it.',
       );
       expect(LoadWords.changed(big.last, c), 'Hard minutes: 80, usual 40.');
       final first = WeekLoad.sample(LoadSample.first);
@@ -465,6 +465,26 @@ void main() {
         LoadWords.changed(first.last, LoadCompare.of(first)),
         '3 runs, 136 minutes, 25.0 km.',
       );
+    });
+    test('every suggestion describes, none orders', () {
+      final imperative = RegExp(
+        r'^(Keep|Hold|Add|Run|Build|Back|Try|Take|Rest|Ease|Do)\b|\b(Keep|Hold|Add|Build back)\b',
+      );
+      for (final stage in LoadSample.values) {
+        final ws = WeekLoad.sample(stage);
+        final c = LoadCompare.of(ws);
+        final text = LoadWords.suggest(ws.last, c);
+        expect(imperative.hasMatch(text), isFalse, reason: '$stage: $text');
+      }
+      const after = LoadCompare(
+        state: LoadCompareState.ok,
+        band: LoadBand.lighter,
+        ratio: 0.6,
+        usual: 300,
+        afterPause: true,
+      );
+      final t = LoadWords.suggest(WeekLoad(monday: DateTime(2026)), after);
+      expect(imperative.hasMatch(t), isFalse, reason: t);
     });
     test('changed rules fall through in order', () {
       WeekLoad w({

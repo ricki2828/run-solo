@@ -280,7 +280,7 @@ class LoadCompare {
   /// The week or the one before it was a paused week.
   final bool afterPause;
 
-  /// "Keep next week near" this: usual plus 10%, to the nearest 10.
+  /// "A week around" this: usual plus 10%, to the nearest 10.
   int get cap => ((usual * 1.1) / 10).round() * 10;
 
   /// Weeks with runs the usual week needs before any band shows; the copy
@@ -722,24 +722,24 @@ abstract final class LoadWords {
   static String suggest(WeekLoad w, LoadCompare c) {
     switch (c.state) {
       case LoadCompareState.firstWeeks:
-        return 'Run three weeks and this compares you with your own usual.';
+        return 'Three weeks of running and this compares you with your own usual.';
       case LoadCompareState.returning:
-        return 'Build back over two or three weeks.';
+        return 'Building back over two or three weeks would fit.';
       case LoadCompareState.ok:
         switch (c.band!) {
           case LoadBand.bigJump:
-            return 'Keep next week near ${c.cap} and the easy runs easy.';
+            return 'A week around ${c.cap}, with the easy runs easy, would balance it.';
           case LoadBand.stepUp:
-            return 'A good step. Hold about here next week before adding '
-                'more.';
+            return 'A good step. A similar week next would let it settle before '
+                'adding more.';
           case LoadBand.usual:
-            return 'Steady. If you feel fresh, add 10 minutes to your long '
-                'run.';
+            return 'Steady. If you feel fresh, 10 more minutes on the long run '
+                'would fit.';
           case LoadBand.lighter:
             return c.afterPause
-                ? 'A lighter week. Build back over two or three weeks.'
-                : 'A lighter week. Back to about ${_n(c.usual)} next week is '
-                      'fine.';
+                ? 'A lighter week. Building back over two or three weeks would fit.'
+                : 'A lighter week. About ${_n(c.usual)} next week would be a '
+                      'return to usual.';
         }
     }
   }
