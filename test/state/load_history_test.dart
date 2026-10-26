@@ -59,6 +59,22 @@ void main() {
       expect(none.load, 100);
     });
 
+    test('a very long run is clamped to the server range', () {
+      final r7 = LoadWire.of(
+        run('a', DateTime(2026, 10, 14, 7), min: 460, avgHr: 175, cov: 1),
+        maxHr: 190,
+        vdot: null,
+      )!;
+      expect(r7.load, greaterThan(2000));
+      expect(r7.load, lessThan(5000));
+      final day = LoadWire.of(
+        run('b', DateTime(2026, 10, 14, 7), min: 30 * 60, avgHr: 180, cov: 1),
+        maxHr: 190,
+        vdot: null,
+      )!;
+      expect(day.load, 5000);
+    });
+
     test('the same number the guard sums', () {
       final r = run('a', DateTime(2026, 10, 14, 7), avgHr: 150, cov: 0.95);
       final w = LoadWire.of(r, maxHr: 190, vdot: null)!;

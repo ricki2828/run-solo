@@ -62,6 +62,9 @@ abstract final class LoadHistoryInputs {
 
 /// The load facts of one uploaded run.
 abstract final class LoadWire {
+  /// The most load one run uploads (a 7.5 h run at weight 4.5 is about 2000).
+  static const double maxUploadLoad = 5000;
+
   /// This run's load (1 decimal) and where its weight came from, `hr`,
   /// `pace` or `assumed`. Null for a run the index cannot size.
   static ({double load, String basis})? of(
@@ -76,7 +79,9 @@ abstract final class LoadWire {
     final basis = engine.LoadGuard.weight(r, maxHr: max, vdot: vdot).$2;
     final load = engine.LoadGuard.load(r, maxHr: max, vdot: vdot);
     return (
-      load: (load * 10).roundToDouble() / 10,
+      // The server takes 0 to 5000: a recording left running for a day must
+      // not fail the whole run on a range error.
+      load: (load.clamp(0.0, maxUploadLoad) * 10).roundToDouble() / 10,
       basis: switch (basis) {
         engine.LoadBasis.heartRate => 'hr',
         engine.LoadBasis.pace => 'pace',
