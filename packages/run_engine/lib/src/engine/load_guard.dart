@@ -22,6 +22,7 @@ class LoadRun {
     this.isIntervals = false,
     this.avgHr,
     this.hrCoverage,
+    this.zoneSec,
   });
   final DateTime start;
   final double movingMin;
@@ -33,9 +34,28 @@ class LoadRun {
 
   /// Share of moving time that had a heart rate, 0 to 1.
   final double? hrCoverage;
+
+  /// Moving seconds in HR zones 1-5 (slot 0 unused), when the run has a heart
+  /// rate. Feeds hard minutes and the zone-stacked bars of the load history;
+  /// [LoadGuard.check] never reads it.
+  final List<double>? zoneSec;
 }
 
 enum LoadBasis { heartRate, pace, assumed }
+
+/// "15% more than usual", or for a ratio of 1.9 or more a multiple ("about
+/// double your usual", "about 2.5 times your usual"). "115% above" read as
+/// either 2.15x or 1.15x (design review S13). [usual] ends the percent form,
+/// [your] the multiple form. [ratio] is this over usual and above 1.
+String loadVsUsualPhrase(double ratio, String usual, String your) {
+  if (ratio < 1.9) return '${((ratio - 1) * 100).round()}% more than $usual';
+  if (ratio < 2.25) return 'about double $your';
+  final half = (ratio * 2).round() / 2;
+  final n = half == half.roundToDouble()
+      ? '${half.round()}'
+      : half.toStringAsFixed(1);
+  return 'about $n times $your';
+}
 
 enum LoadTrigger { load, distance }
 
@@ -65,20 +85,8 @@ class LoadFlag {
   /// Whole percent above usual for the number that tripped the flag.
   int get percent => ((ratio - 1) * 100).round();
 
-  /// "15% more than usual", or for a ratio of 1.9 or more a multiple ("about
-  /// double your usual", "about 2.5 times your usual"). "115% above" read as
-  /// either 2.15x or 1.15x (design review S13). [usual] ends the percent
-  /// form, [your] the multiple form.
-  String _phrase(String usual, String your) {
-    final r = ratio;
-    if (r < 1.9) return '$percent% more than $usual';
-    if (r < 2.25) return 'about double $your';
-    final half = (r * 2).round() / 2;
-    final n = half == half.roundToDouble()
-        ? '${half.round()}'
-        : half.toStringAsFixed(1);
-    return 'about $n times $your';
-  }
+  String _phrase(String usual, String your) =>
+      loadVsUsualPhrase(ratio, usual, your);
 
   String get message => trigger == LoadTrigger.load
       ? 'This week is ${_phrase('usual', 'your usual')}. '
