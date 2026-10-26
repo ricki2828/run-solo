@@ -62,6 +62,90 @@ const String kCompanionDelete =
     'You can also send DELETE to the companion in Telegram. Notes already in '
     'your chat stay there until you delete them.';
 
+/// The three summary rows each consent sheet leads with (ui review #14).
+/// Short forms of the verbatim k-constants above; `companion_summary_test`
+/// checks their key facts against docs/privacy. Plain words, no em dashes.
+
+const String kCompanionConsentSent =
+    'A summary of each run: type, time, distance, pace, heart rate '
+    'zones, the name of the area where you started, and a route '
+    'outline with the ends cut off. A distinctive route could '
+    'still be recognised. Never your GPS points or the street.';
+
+const String kCompanionConsentWho =
+    'Our server, a writing service (OpenRouter) that is asked not '
+    'to keep anything, and Telegram, which delivers your notes.';
+
+const String kCompanionConsentHowLong =
+    'Check-in answers 14 days, then deleted. Run data until you '
+    'delete it, or six months after your last run. Delete '
+    'everything wipes it at once.';
+
+const String kCompanionReconsentSent =
+    'Button answers only, nothing typed: how your '
+    'body feels the evening before a planned '
+    'session, going or skipping (with why), what '
+    'was behind a slow easy run, and how many runs '
+    'you want next week. Sore and ill are health '
+    'information, used only to go lighter. If you '
+    'skip, the session moves to a later day.';
+
+const String kCompanionReconsentWho =
+    'Our server. With the coach chat on, also '
+    'Claude models through OpenRouter, which read '
+    'the last 14 days, with zero data retention. '
+    'No weather service sees them.';
+
+const String kCompanionReconsentHowLong =
+    '14 days, then deleted, and left out of '
+    'backups. Delete everything removes them at '
+    'once.';
+
+const String kCompanionCoachSent =
+    'Your run summaries, check-in and background answers, run '
+    'notes, health flags, first name and what you type.';
+
+const String kCompanionCoachWho =
+    'Claude models, via OpenRouter, with zero data retention. It '
+    'can search the web, with no personal details. Your GPS '
+    'tracks and heart rate recordings stay on your phone.';
+
+const String kCompanionCoachHowLong =
+    'Chats are kept for 30 days. Turn the coach off in Settings, '
+    'Companion, and your chats and coach memory are deleted.';
+
+const String kCompanionMemorySent =
+    'Notes about your goals, your schedule, what you like, key '
+    'runs, and a short summary of your chats. Health notes only '
+    'if you tick the box below.';
+
+const String kCompanionMemoryWho =
+    'Claude models via OpenRouter (hosted by Google Cloud or '
+    'Amazon Web Services), with zero data retention, to reply to '
+    'you. You can see every note by sending /\u2060memory in '
+    'Telegram. Your GPS tracks and heart rate recordings stay on '
+    'your phone.';
+
+const String kCompanionMemoryHowLong =
+    'Until you delete them: any note with /\u2060memory in '
+    'Telegram, or everything with Turn off memory in Settings, '
+    'Companion.';
+
+const String kCompanionWeatherSent =
+    'The rough area where each run started, rounded to '
+    'about 11 km. No place name, street or route.';
+
+const String kCompanionWeatherWho =
+    'Our server, and Open-Meteo, a weather service, '
+    'which gets that area and your time zone to give '
+    'the forecast.';
+
+const String kCompanionWeatherHowLong =
+    'Our server keeps your latest area up to 30 days '
+    'after its run. Turn it off any time and it is '
+    'forgotten as soon as your phone can reach it. '
+    'Backups keep data up to 14 days.';
+
 /// "Show route shape on cards" (on until the runner turns it off). One line
 /// under the switch; same words as privacy section 2b.
 const String kCompanionRouteBlurb =
@@ -353,18 +437,9 @@ class _CompanionConsentViewState extends State<CompanionConsentView> {
         const SizedBox(height: Space.x16),
         _ConsentFacts(
           moreKey: const ValueKey('companion-consent-more'),
-          sent:
-              'A summary of each run: type, time, distance, pace, heart rate '
-              'zones, the name of the area where you started, and a route '
-              'outline with the ends cut off. A distinctive route could '
-              'still be recognised. Never your GPS points or the street.',
-          who:
-              'Our server, a writing service (OpenRouter) that is asked not '
-              'to keep anything, and Telegram, which delivers your notes.',
-          howLong:
-              'Check-in answers 14 days, then deleted. Run data until you '
-              'delete it, or six months after your last run. Delete '
-              'everything wipes it at once.',
+          sent: kCompanionConsentSent,
+          who: kCompanionConsentWho,
+          howLong: kCompanionConsentHowLong,
           more: [
             const _Heading('What leaves your phone'),
             body(kCompanionSent),
@@ -608,23 +683,9 @@ class _CompanionKnowsViewState extends State<CompanionKnowsView> {
                         const SizedBox(height: Space.x8),
                         _ConsentFacts(
                           moreKey: const ValueKey('companion-reconsent-more'),
-                          sent:
-                              'Button answers only, nothing typed: how your '
-                              'body feels the evening before a planned '
-                              'session, going or skipping (with why), what '
-                              'was behind a slow easy run, and how many runs '
-                              'you want next week. Sore and ill are health '
-                              'information, used only to go lighter. If you '
-                              'skip, the session moves to a later day.',
-                          who:
-                              'Our server. With the coach chat on, also '
-                              'Claude models through OpenRouter, which read '
-                              'the last 14 days, with zero data retention. '
-                              'No weather service sees them.',
-                          howLong:
-                              '14 days, then deleted, and left out of '
-                              'backups. Delete everything removes them at '
-                              'once.',
+                          sent: kCompanionReconsentSent,
+                          who: kCompanionReconsentWho,
+                          howLong: kCompanionReconsentHowLong,
                           more: [
                             Text(
                               kCompanionCheckins,
@@ -959,16 +1020,9 @@ class _CompanionCoachOfferState extends State<CompanionCoachOffer> {
           const SizedBox(height: Space.x12),
           _ConsentFacts(
             moreKey: const ValueKey('companion-coach-detail'),
-            sent:
-                'Your run summaries, check-in and background answers, run '
-                'notes, health flags, first name and what you type.',
-            who:
-                'Claude models, via OpenRouter, with zero data retention. It '
-                'can search the web, with no personal details. Your GPS '
-                'tracks and heart rate recordings stay on your phone.',
-            howLong:
-                'Chats are kept for 30 days. Turn the coach off in Settings, '
-                'Companion, and your chats and coach memory are deleted.',
+            sent: kCompanionCoachSent,
+            who: kCompanionCoachWho,
+            howLong: kCompanionCoachHowLong,
             more: [
               Text(
                 kCompanionCoachBody,
@@ -1156,20 +1210,9 @@ class _CompanionMemoryOfferState extends State<CompanionMemoryOffer> {
           const SizedBox(height: Space.x8),
           _ConsentFacts(
             moreKey: const ValueKey('companion-memory-detail'),
-            sent:
-                'Notes about your goals, your schedule, what you like, key '
-                'runs, and a short summary of your chats. Health notes only '
-                'if you tick the box below.',
-            who:
-                'Claude models via OpenRouter (hosted by Google Cloud or '
-                'Amazon Web Services), with zero data retention, to reply to '
-                'you. You can see every note by sending /\u2060memory in '
-                'Telegram. Your GPS tracks and heart rate recordings stay on '
-                'your phone.',
-            howLong:
-                'Until you delete them: any note with /\u2060memory in '
-                'Telegram, or everything with Turn off memory in Settings, '
-                'Companion.',
+            sent: kCompanionMemorySent,
+            who: kCompanionMemoryWho,
+            howLong: kCompanionMemoryHowLong,
             more: [
               Text(
                 kCompanionMemoryBody,
@@ -1355,18 +1398,9 @@ class CompanionWeatherSheet extends StatelessWidget {
                     const SizedBox(height: Space.x16),
                     _ConsentFacts(
                       moreKey: const ValueKey('companion-weather-more'),
-                      sent:
-                          'The rough area where each run started, rounded to '
-                          'about 11 km. No place name, street or route.',
-                      who:
-                          'Our server, and Open-Meteo, a weather service, '
-                          'which gets that area and your time zone to give '
-                          'the forecast.',
-                      howLong:
-                          'Our server keeps your latest area up to 30 days '
-                          'after its run. Turn it off any time and it is '
-                          'forgotten as soon as your phone can reach it. '
-                          'Backups keep data up to 14 days.',
+                      sent: kCompanionWeatherSent,
+                      who: kCompanionWeatherWho,
+                      howLong: kCompanionWeatherHowLong,
                       more: [
                         for (final p in kCompanionWeatherSheet) ...[
                           Text(
