@@ -815,7 +815,7 @@ class CoachPrompterTest {
         assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, goalMs = t2430)))
         assertEquals(PromptKind.behindTarget, q.kind)
-        assertEquals("30 seconds behind 24:30, slipping. Push to win it back, or ease off?", q.text)
+        assertEquals("30 seconds behind 24:30, slipping. Keep chasing or new target?", q.text)
         assertEquals(listOf(PromptChoice.push, PromptChoice.ease), q.options)
     }
 

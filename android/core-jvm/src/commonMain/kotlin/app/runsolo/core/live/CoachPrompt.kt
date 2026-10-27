@@ -310,7 +310,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         ) {
             if (f.goalTimeMs != null) {
                 val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
-                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to win it back, or ease off?", nowMs)
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing or new target?", nowMs)
             }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)

@@ -116,7 +116,7 @@ goal.status.far-behind	7	7 minutes 38 seconds behind 24:30, slipping
 goal.new-target	7	New target: 8 k in 52 minutes.
 prompt.goal.last2k-ahead-shrinking	15	2 k to go, 12 seconds under 24:30, shrinking. Push to bank more, or hold?
 prompt.goal.last2k-behind-slipping	15	2 k to go, 18 seconds over 24:30. Push to get under it, or hold?
-prompt.goal.behind-slipping	13	30 seconds behind 24:30, slipping. Push to win it back, or ease off?
+prompt.goal.behind-slipping	10	30 seconds behind 24:30, slipping. Keep chasing or new target?
 nudge.fast-start	11	Fast start. Ease off a little. Your best 5K started slower.
 nudge.rep-fade	12	That one dropped off a bit. Hold your form on the next.
 nudge.hr-drift	12	Heart rate's up for this pace today. Fine to ease a touch.
