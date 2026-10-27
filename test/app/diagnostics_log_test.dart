@@ -193,12 +193,17 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.byKey(const ValueKey('diagnostics-line')), findsOneWidget);
-      final shared = transfer.nextShare();
       await tester.tap(row);
-      final paths = await tester.runAsync(
-        () => shared.timeout(const Duration(seconds: 5)),
-      );
-      final body = File(paths!.single).readAsStringSync();
+      // File I/O completes on the real event loop; keep pumping the fake one.
+      for (var i = 0; i < 100 && transfer.shared.isEmpty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      expect(transfer.shared, hasLength(1));
+      final paths = transfer.shared.single;
+      final body = File(paths.single).readAsStringSync();
       expect(body, contains('build=abc123'));
       expect(body, contains('earlier'));
     },
