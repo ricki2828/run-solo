@@ -111,7 +111,9 @@ goal.status.level-slipping	4	On 24:30 pace, slipping
 goal.status.first-km	5	20 seconds ahead of 24:30
 goal.status.first-predicted	7	20 seconds ahead of your predicted 24:30
 goal.status.first-predicted-level	5	On your predicted 24:30 pace
-goal.status.longest	8	1 minute 59 ahead of 1:27:59, margin shrinking
+goal.status.longest	9	1 minute 59 seconds ahead of 1:27:59, margin shrinking
+goal.status.far-behind	7	7 minutes 38 seconds behind 24:30, slipping
+goal.new-target	7	New target: 8 k in 52 minutes.
 prompt.goal.last2k-ahead-shrinking	15	2 k to go, 12 seconds under 24:30, shrinking. Push to bank more, or hold?
 prompt.goal.last2k-behind-slipping	15	2 k to go, 18 seconds over 24:30. Push to get under it, or hold?
 prompt.goal.behind-slipping	13	30 seconds behind 24:30, slipping. Push to win it back, or ease off?

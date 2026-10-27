@@ -59,7 +59,7 @@ object GoalMargin {
         }
         val ahead = aheadMs > 0
         val s = abs(aheadMs / 1_000.0).roundToLong()
-        val head = "${CueWords.gap(s)} ${if (ahead) "ahead of" else "behind"} $t"
+        val head = "${CueWords.gapNamed(s)} ${if (ahead) "ahead of" else "behind"} $t"
         val tail = changeMs?.let { c ->
             when (trend(c)) {
                 MarginTrend.steady -> "holding"
@@ -95,7 +95,7 @@ object GoalMargin {
         if (abs(aheadMs) < DEAD_BAND_MS) {
             return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "level with $t, slipping" else "level with $t"
         }
-        val s = CueWords.gap(abs(aheadMs / 1_000.0).roundToLong())
+        val s = CueWords.gapNamed(abs(aheadMs / 1_000.0).roundToLong())
         if (aheadMs < 0) return "$s over $t"
         return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "$s under $t, shrinking" else "$s under $t"
     }

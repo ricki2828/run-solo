@@ -789,7 +789,7 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         assertNull(km(p, facts(4, goal = 7_500.0, behind = -130_000, goalMs = longest)))
         val ahead = assertNotNull(km(p, facts(5, goal = 7_500.0, behind = -119_000, goalMs = longest)))
-        assertEquals("2.5 k to go, 1 minute 59 under 1:27:59, shrinking. Push to bank more, or hold?", ahead.text)
+        assertEquals("2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Push to bank more, or hold?", ahead.text)
         assertTrue(CueComposer.words(ahead.text) <= 16, ahead.text)
         val q = CoachPrompter()
         assertNull(km(q, facts(2, goal = 10_000.0, behind = 10_000, goalMs = longest)))

@@ -3,6 +3,7 @@ package app.runsolo.core.live
 import app.runsolo.core.model.LiveTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class GoalMarginTest {
     private val t = 1_470_000L // 24:30
@@ -12,6 +13,18 @@ class GoalMarginTest {
         val target = LiveTarget(5_000.0, t, predicted = false)
         assertEquals(30_000L, GoalMargin.aheadMs(target, 2_000.0, 558_000))
         assertEquals(-6_000L, GoalMargin.aheadMs(target, 1_000.0, 300_000))
+    }
+
+    @Test
+    fun `a gap past a minute names its seconds so it is never read as a clock`() {
+        assertEquals("7 minutes 38 seconds behind 24:30, slipping", GoalMargin.phrase(-458_000, -8_000, t))
+        assertEquals("1 minute 1 second ahead of 24:30", GoalMargin.phrase(61_000, null, t))
+        assertEquals("2 minutes behind 24:30, holding", GoalMargin.phrase(-120_000, 0, t))
+        assertEquals("1 minute 5 seconds over 24:30", GoalMargin.promptPhrase(-65_000, null, t))
+        for (secs in listOf(59L, 60L, 61L, 118L, 458L)) {
+            val text = GoalMargin.phrase(-secs * 1_000, -8_000, t)
+            assertTrue(CueWordsCount.of(text) <= 9, text)
+        }
     }
 
     @Test
