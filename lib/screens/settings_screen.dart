@@ -1,8 +1,12 @@
+import 'dart:io' show Directory;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import '../app/diagnostics_log.dart';
 import '../app/format.dart';
+
 import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
@@ -240,6 +244,26 @@ class _SettingsScreenState extends State<SettingsScreen>
     } on PlatformException catch (_) {
       // Nothing to share yet; the row stays quiet.
     }
+  }
+
+  /// About → Share diagnostics (Android): the on-phone error log through the
+  /// share sheet. Nothing is sent by the app.
+  Future<void> _shareErrorLog() async {
+    final log = DiagnosticsLog.instance;
+    if (log == null) return;
+    final services = AppServices.of(context);
+    final file = await log.writeBundle(
+      Directory('${log.dir.parent.path}/diagnostics-share'),
+    );
+    if (file == null) {
+      _toast('Could not collect diagnostics.');
+      return;
+    }
+    await services.transfer.shareFiles(
+      [file.path],
+      subject: 'Run Supreme diagnostics',
+      mimeType: 'text/plain',
+    );
   }
 
   Future<void> _moveRuns(BuildContext context) async {
@@ -762,6 +786,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ],
                   ),
                 ),
+              if (!HostCaps.diagnosticsShare &&
+                  DiagnosticsLog.instance != null) ...[
+                const SizedBox(height: Space.x8),
+                SettingsRow(
+                  label: 'Share diagnostics',
+                  value: '',
+                  onTap: _shareErrorLog,
+                ),
+                Text(
+                  'Errors stay on this phone. This opens the share sheet '
+                  'so you choose where the file goes.',
+                  key: const ValueKey('diagnostics-line'),
+                  style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                ),
+              ],
               if (kPerfDiagnostics) ...[
                 const _Section('Diagnostics'),
                 ListenableBuilder(

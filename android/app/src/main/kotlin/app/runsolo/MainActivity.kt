@@ -50,6 +50,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.Priority
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private lateinit var recorder: RecorderApiImpl
@@ -62,6 +63,7 @@ class MainActivity : FlutterActivity() {
         // LaunchTheme for NormalTheme; Flutter's first frame dismisses it.
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        DiagnosticsFiles.installCrashHandler(this, BuildConfig.VERSION_NAME)
     }
 
     /** The pre-start GPS probe never runs in the background (no service, no battery drain). */
@@ -84,6 +86,9 @@ class MainActivity : FlutterActivity() {
         )
         StorageApi.setUp(flutterEngine.dartExecutor.binaryMessenger, StorageApiImpl(applicationContext))
         RecorderEventsStreamHandler.register(flutterEngine.dartExecutor.binaryMessenger, RecorderEventBus)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.runsolo/diagnostics").setMethodCallHandler { call, result ->
+            if (call.method == "exitTail") result.success(DiagnosticsFiles.exitTail(applicationContext)) else result.notImplemented()
+        }
         handleFinish(intent)
         handleDebugIntent(intent)
     }

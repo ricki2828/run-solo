@@ -1,9 +1,15 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart'
     show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show DeviceOrientation, SystemChrome, rootBundle;
 
+import 'package:path_provider/path_provider.dart';
+
+import 'app/diagnostics_log.dart';
 import 'app/routes.dart';
 import 'app/services.dart';
 import 'screens/fix_laps_screen.dart';
@@ -39,7 +45,18 @@ void _registerFontLicences() {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Errors are logged to the phone (never sent) from the first line; the zone
+  // catches what the framework and platform hooks miss.
+  DiagnosticsLog? log;
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    final support = await getApplicationSupportDirectory();
+    log = DiagnosticsLog(Directory('${support.path}/diagnostics'))..install();
+    await _start();
+  }, (error, stack) => log?.record(error, stack, source: 'zone'));
+}
+
+Future<void> _start() async {
   // Portrait only (Ricki 11-Oct): no landscape layouts exist.
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
