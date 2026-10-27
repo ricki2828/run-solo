@@ -474,8 +474,6 @@ class LiveCoach(
         val c = chase ?: return null
         val s = spec ?: return null
         if (!s.isGoal || kind != CueKind.projection || index == null || goalReached || muted || minimalVoice) return null
-        // After a re-aimed target the PB chase is silent: the status line owns the comparison, against the new time.
-        if (goalRebased) return null
         val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
         val key = GoalCoach.boardKey(step)
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key }
@@ -485,14 +483,16 @@ class LiveCoach(
         chaseSpill = distrust
         chaseCueKm = index
         chaseCueMs = stepElapsedMs
-        val gap = board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
+        // After a re-aimed target the PB chase is silent (no gap, no cue): the status line owns the comparison, against
+        // the new time. The prompts still get their km facts, measured against the rebased clock.
+        val gap = board?.takeIf { trust && !goalRebased }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
         val chasing = c.choice == CoachChoice.chase
         val behind = (goalTarget ?: context?.target)?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
         kmFacts = KmFacts(
             index, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true,
             step.value.toDouble(), behind, chasing, goalTarget?.targetMs,
         )
-        return c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
+        return if (goalRebased) null else c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
     }
 
     /**

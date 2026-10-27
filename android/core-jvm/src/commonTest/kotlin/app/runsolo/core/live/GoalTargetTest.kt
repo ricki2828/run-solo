@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Where the goal-time wording is switched on: only a distance goal whose target is for the goal's own distance. */
 class GoalTargetTest {
@@ -66,6 +67,46 @@ class GoalTargetTest {
         c.restoreRebase(1_800_000L)
         assertEquals(1_800_000L, c.goalTarget?.targetMs)
         assertNull(c.chaseAtCue(CueKind.projection, 2, 600_000))
+        // The cue is silent but the prompts still get their km facts, against the re-aimed clock.
+        val f = assertNotNull(c.takeKmFacts())
+        assertEquals(1_800_000L, f.goalTimeMs)
+        assertNull(f.gapMs)
+        assertEquals(600_000L - (1_800_000L * 2 / 5), f.behindTargetMs)
+    }
+
+    @Test
+    fun `ease off then later km then last 2 km prompt and a second re-aim all read the new time`() {
+        val c = LiveCoach(ctx(LiveTarget(10_000.0, 3_000_000, predicted = true)), RunMode.free, SessionSpec.goalDistance(10_000, "10K"))
+        val p = CoachPrompter()
+        // Runs one km: the cue's facts reach the prompter as the session does it. [elapsedMs] = active ms at the km.
+        fun km(k: Int, elapsedMs: Long): Prompt? {
+            c.chaseAtCue(CueKind.projection, k, elapsedMs)
+            val f = assertNotNull(c.takeKmFacts(), "facts at km $k")
+            return p.atKm(f, elapsedMs, k * 1_000.0 + 2)
+        }
+        fun ease(q: Prompt, distanceM: Double, elapsedMs: Long): Long {
+            p.opened(q, distanceM)
+            val a = assertNotNull(p.answer(q.id, 1, PromptSource.tap, q.openedAtMs + 3_000))
+            assertEquals(PromptChoice.ease, a.choice)
+            val re = assertNotNull(c.rebaseGoal(distanceM, elapsedMs))
+            p.retargeted()
+            return re
+        }
+        // 360 s/km against 300: behind and losing ground, so km 2 asks.
+        assertNull(km(1, 360_000))
+        val first = assertNotNull(km(2, 720_000))
+        assertEquals(PromptKind.behindTarget, first.kind)
+        assertEquals(3_600_000L, ease(first, 2_002.0, 720_000)) // 3600 s: 60:00
+        // 420 s/km from here: behind the new clock and growing, so km 4 asks again, naming 60:00.
+        assertNull(km(3, 1_140_000))
+        val second = assertNotNull(km(4, 1_560_000))
+        assertEquals(PromptKind.behindTarget, second.kind)
+        assertTrue(second.text.contains("60:00"), second.text)
+        assertEquals(3_900_000L, ease(second, 4_002.0, 1_560_000)) // 3900 s: 65:00
+        for (k in 5..7) assertNull(km(k, 1_560_000L + (k - 4) * 420_000L))
+        val last = assertNotNull(km(8, 3_240_000))
+        assertEquals(PromptKind.last2k, last.kind)
+        assertTrue(last.text.contains("over 65:00"), last.text)
     }
 
     @Test
