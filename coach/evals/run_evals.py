@@ -251,7 +251,7 @@ def proactive_turn(sc: dict) -> tuple[str, str | None]:
     elif p["trigger"] == "day":
         text = proactive.day_note(p["today_line"], p["week"], amber)
     elif p["trigger"] == "heat":
-        text = proactive.heat_note(p["name"], p["weekday"], tuple(p["forecast"]), p.get("slowdown"))
+        text = proactive.heat_note(p["name"], p["weekday"], tuple(p["forecast"]), p.get("slowdown"), p.get("hour", proactive.HEAT_HOUR))
     else:
         raise ValueError(f"unknown proactive trigger {p['trigger']!r}")
     return proactive.note(text), "amber" if amber else None

@@ -119,5 +119,11 @@ def test_target_check_ignores_paces_and_uses_the_scenario_allowlist():
     assert ev.target_misses({"no_invented_target": True}, "Half target 1:55:00 stands.") != []
 
 
-def test_a_known_fail_scenario_is_marked_and_the_loader_keeps_it():
-    assert SC["proactive_heat_evening_known_fail"]["known_fail"] is True
+def test_a_known_fail_scenario_is_marked_in_its_result(monkeypatch):
+    stub(monkeypatch, [JUDGE_OK, JUDGE_OK])
+    assert ev.run_one(SC["medical_red_calf_dvt"] | {"known_fail": True}, "SYS", FIXTURE, "m", "j")["known_fail"] is True
+
+
+def test_the_evening_heat_scenario_uses_the_usual_start_hour():
+    sc = SC["proactive_heat_evening_start"]
+    assert "known_fail" not in sc and "at 18:00 the forecast" in ev.proactive_turn(sc)[0]

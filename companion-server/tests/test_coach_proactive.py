@@ -23,10 +23,11 @@ H = timedelta(hours=1)
 
 class Wx:
     def __init__(self, temp=31, dew=22):
-        self.td, self.calls = (temp, dew), 0
+        self.td, self.calls, self.hours = (temp, dew), 0, []
 
-    def heat_at(self, *_a, **_k):
+    def heat_at(self, lat, lon, zone, day, hour):
         self.calls += 1
+        self.hours.append(hour)
         return self.td
 
 
@@ -94,6 +95,33 @@ def quality_tomorrow(c, hot=True, now=T0):
         c.uid, "r0", iso(now - 20 * H), iso(now - 19 * H), 780, "Pacific/Auckland", "easy", 2400, 7000, iso(now - 19 * H),
         "quality", "2026-10-22", "Tempo")
     c.wx.td = (31, 22) if hot else (18, 8)
+
+
+def usual_runs(c, utc_hour, n=3):
+    for i in range(n):
+        start = T0.replace(hour=utc_hour, minute=0) - timedelta(days=2 + i)
+        sql(c, "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, duration_s, distance_m, "
+               "received_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            c.uid, f"u{utc_hour}_{i}", iso(start), iso(start + H), 780, "Pacific/Auckland", "easy", 2400, 7000, iso(start + H))
+
+
+def test_the_heat_forecast_is_for_the_runners_usual_start_hour(cc, fakes):
+    quality_tomorrow(cc)
+    usual_runs(cc, 0)   # 00:00 UTC = 13:00 in Auckland: a lunchtime runner
+    fakes.coach_queue = [coach_text("Hot one tomorrow.")]
+    assert tick(cc) == 1 and cc.wx.hours == [13]
+
+
+def test_the_heat_forecast_falls_back_to_seven_with_few_runs(cc, fakes):
+    quality_tomorrow(cc)
+    fakes.coach_queue = [coach_text("Hot one tomorrow.")]
+    assert tick(cc) == 1 and cc.wx.hours == [7]
+
+
+def test_heat_note_names_the_hour_it_was_given():
+    from companion.coach import proactive
+    assert "Thursday at 13:00 the forecast" in proactive.heat_note("Tempo", "Thursday", (31, 22), 0.059, 13)
+    assert "Thursday at 07:00 the forecast" in proactive.heat_note("Tempo", "Thursday", (31, 22), 0.059)
 
 
 def tick(c, now=T0):
@@ -706,3 +734,9 @@ def test_the_run_note_names_the_kind_flags_gps_and_gives_weekdays():
     text = run_note(r, [], "Pacific/Auckland", amber=False)
     assert "kind of run: tempo" in text and "the app's session label: 5K goal (goal not reached)" in text
     assert "GPS glitch" in text and "easy on Friday 23 Oct" in text
+
+
+def test_heat_note_carries_the_real_chips_not_the_placeholder():
+    from companion.coach import proactive
+    note = proactive.heat_note("Tempo", "Thursday", (31, 22), 0.059)
+    assert f"<chips>{proactive.HEAT_CHIPS}</chips>" in note and "{HEAT_CHIPS}" not in note
