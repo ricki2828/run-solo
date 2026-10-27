@@ -6,7 +6,6 @@ import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
 import 'package:run_solo/state/live_context.dart';
-import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
 import 'screens_golden_test.dart' show golden;
