@@ -9,6 +9,7 @@ import app.runsolo.core.live.GoalCoach
 import app.runsolo.core.live.GoalMargin
 import app.runsolo.core.live.KmFacts
 import app.runsolo.core.live.LiveWords
+import app.runsolo.core.live.VoiceCoach
 import app.runsolo.core.model.CueKind
 import app.runsolo.core.model.CueProfile
 import app.runsolo.core.model.LiveBoard
@@ -229,6 +230,14 @@ object VoiceCopyFixture {
         add("goal.status.longest", GoalMargin.phrase(119_000, -8_000, 5_279_000))
         add("goal.status.far-behind", GoalMargin.phrase(-458_000, -8_000, t2430))
         add("goal.new-target", GoalMargin.newTargetLine(8_000.0, 3_120_000))
+        // Zone changes (VoiceCoach): up, then down once held and spaced.
+        val zones = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = listOf(114.0, 133.0, 152.0, 171.0)))
+        val zoneLines = (0..400).mapNotNull { s ->
+            val hr = if (s < 200) 140.0 else 120.0
+            zones.tick(VoiceCoach.Input(s * 1_000L, 0, s * 1_000L, null, hr, null, 0, false))?.text
+        }
+        add("zone.change.up", zoneLines[0])
+        add("zone.change.down", zoneLines[1])
         // Prompts: a km before (to learn the margin), then the km that asks. Facts: km, gap, label, proxy, goal m, behind, chase, goal ms.
         fun goalPrompt(prevBehind: Long, behind: Long, goalM: Double): String? {
             val p = CoachPrompter()

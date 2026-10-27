@@ -419,41 +419,76 @@ class VoiceCoachTest {
         (fromS..toS).mapNotNull { s -> tick(at(s * 1_000L, pace = null, hr = hr(s), busyUntil = busyUntil))?.let { s to it.text } }
 
     @Test
-    fun `zone up says each zone from 3 the first time it is held 20 s`() {
-        val said = free().hrRun(0, 600, hr = { s ->
+    fun `a zone change is said both ways once held 40 s and 150 s after the last zone line`() {
+        val said = free().hrRun(0, 700, hr = { s ->
             when {
-                s < 100 -> 125.0 // zone 2: never said
-                s < 200 -> 140.0 // zone 3
-                s < 300 -> 125.0 // back to 2
-                s < 400 -> 140.0 // zone 3 again: already said
-                else -> 160.0 // zone 4
+                s < 100 -> 125.0 // zone 2: the warm-up, never said
+                s < 200 -> 140.0 // zone 3, held from 100: said at 140
+                s < 400 -> 125.0 // back to 2 from 200, held at 240 but 150 s after the last line: said at 290
+                s < 500 -> 140.0 // zone 3 again from 400: 150 s after 290 is 440, so said at 440
+                else -> 160.0 // zone 4 from 500: held at 540 but 150 s after 440 is 590
             }
         })
-        assertEquals(listOf(120 to "Heart rate up to zone 3.", 420 to "Heart rate up to zone 4."), said)
+        assertEquals(
+            listOf(
+                140 to "Heart rate up to zone 3.",
+                290 to "Heart rate down to zone 2.",
+                440 to "Heart rate up to zone 3.",
+                590 to "Heart rate up to zone 4.",
+            ),
+            said,
+        )
     }
 
     @Test
-    fun `a spike under 20 s is not a new zone`() {
-        val said = free().hrRun(0, 300, hr = { s -> if (s in 100..115) 160.0 else 125.0 })
+    fun `a spike under 40 s is not a new zone`() {
+        val said = free().hrRun(0, 300, hr = { s -> if (s in 100..135) 160.0 else 125.0 })
         assertTrue(said.isEmpty(), "$said")
     }
 
     @Test
     fun `climbing straight through a zone says only the one held`() {
         val said = free().hrRun(0, 300, hr = { s -> if (s < 10) 140.0 else 175.0 })
-        assertEquals(listOf(20 to "Heart rate up to zone 5."), said)
+        assertEquals(listOf(40 to "Heart rate up to zone 5."), said)
         assertTrue(free().hrRun(0, 60, hr = { 175.0 }).size == 1)
     }
 
     @Test
-    fun `zone up waits for a quiet moment and is said once`() {
+    fun `hovering on a zone edge does not flip - going down needs 4 bpm under the zone bottom`() {
+        // Zone 3 starts at 133: 130 is under it but not by 4, so the held zone 3 stands. 128 is 5 under: down.
+        val c = free()
+        assertEquals(listOf(40 to "Heart rate up to zone 3."), c.hrRun(0, 100, hr = { 140.0 }))
+        assertTrue(c.hrRun(101, 400, hr = { s -> if (s % 2 == 0) 134.0 else 130.0 }).isEmpty())
+        assertEquals(listOf(471 to "Heart rate down to zone 2."), c.hrRun(401, 600, hr = { s -> if (s < 431) 134.0 else 128.0 }))
+    }
+
+    @Test
+    fun `a drop to zone 1 is not said and a zone 2 before any zone 3 is not said`() {
+        val c = free()
+        assertTrue(c.hrRun(0, 200, hr = { s -> if (s < 100) 100.0 else 120.0 }).isEmpty())
+        // Warm-up over: the first zone 3 is said, a later fall to zone 2 too.
+        assertEquals(listOf(241 to "Heart rate up to zone 3."), c.hrRun(201, 300, hr = { 140.0 }))
+    }
+
+    @Test
+    fun `zone lines work on a goal run too`() {
+        val c = free()
+        val said = (0..120).mapNotNull { s ->
+            val t = s * 1_000L
+            c.tick(VoiceCoach.Input(t, 0, t, 330.0, 140.0, null, 0, false, VoiceCoach.GoalProgress(goalTarget, s * 3.0, t)))?.takeIf { it.kind == VoiceCoach.Kind.zoneChange }?.let { s to it.text }
+        }
+        assertEquals(listOf(40 to "Heart rate up to zone 3."), said)
+    }
+
+    @Test
+    fun `a zone line waits for a quiet moment`() {
         val c = free()
         assertTrue(c.hrRun(0, 60, hr = { 140.0 }, busyUntil = Long.MAX_VALUE).isEmpty())
         assertEquals(listOf(61 to "Heart rate up to zone 3."), c.hrRun(61, 200, hr = { 140.0 }))
     }
 
     @Test
-    fun `on an easy run drift says the zone above plan and zone up does not`() {
+    fun `on an easy run drift says the zone above plan and zone change does not`() {
         val said = drift().hrRun(0, 120, hr = { 140.0 })
         assertEquals(listOf(60 to "Heart rate in zone 3. Ease back to zone 2."), said)
     }
@@ -462,8 +497,8 @@ class VoiceCoachTest {
     fun `no zone up in a recovery or without zones`() {
         val c = free()
         for (s in 0..60) assertNull(c.say(at(s * 1_000L, pace = null, segment = null, hr = 160.0)))
-        assertNull(c.say(at(80_000, pace = null, hr = 160.0)), "the 20 s starts with the rep")
-        assertEquals("Heart rate up to zone 4.", c.say(at(100_000, pace = null, hr = 160.0)))
+        assertNull(c.say(at(80_000, pace = null, hr = 160.0)), "the 40 s starts with the rep")
+        assertEquals("Heart rate up to zone 4.", c.say(at(120_000, pace = null, hr = 160.0)))
         val off = VoiceCoach(VoiceCoach.Config(true))
         for (s in 0..60) assertNull(off.say(at(s * 1_000L, pace = null, hr = 160.0)))
     }

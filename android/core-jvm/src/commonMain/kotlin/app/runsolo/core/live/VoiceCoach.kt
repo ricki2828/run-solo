@@ -4,21 +4,21 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 /**
- * Voice coaching during a run: target status, heart-rate zone drift and the first time the heart rate
- * reaches each zone from 3 up ([zoneUp]), said as short lines on the
+ * Voice coaching during a run: target status, heart-rate zone drift and the heart rate changing zone
+ * in either direction ([zoneChange]), said as short lines on the
  * recorder's 1 Hz tick so they work with the screen off. The third coaching line, the next step,
  * is the ten-seconds cue itself (`CueWords.nextStep`), so there is only one voice for it.
  *
  * Rules: a line is only returned when no speech is queued ([Input.busyUntil]), so coaching never
  * piles up behind a cue and a status line that could not start within [STALE_MS] of being due is
  * dropped. Priority is next step (the cue, always first: nothing is said within [NEAR_END_MS] of
- * a part ending) > drift > zone up > status. Replays and Minimal detail never construct one that speaks.
+ * a part ending) > drift > zone change > status. Replays and Minimal detail never construct one that speaks.
  */
 class VoiceCoach(private val config: Config) {
     /**
      * [full] false = Minimal (next step only): this class says nothing. [targetPaceSecPerKm] null =
      * no target status. [slowerIsFine]: an easy-run ceiling, slow is on target. [zoneBottomsBpm] =
-     * the bottoms of zones 2..5 (as `HrZones`): it turns the zone-up line on, and with [plannedMaxZone] drift.
+     * the bottoms of zones 2..5 (as `HrZones`): it turns the zone-change line on, and with [plannedMaxZone] drift.
      * [plannedKind] (`easy` or `long`) and [plannedMinutes] turn on [PlannedTimeCues]; null (a
      * config persisted before they existed, or any other run) = no planned-time lines.
      * The start briefing ([app.runsolo.core.record.StartBriefing]): [briefingTemplate] (the coach's) and
@@ -72,7 +72,7 @@ class VoiceCoach(private val config: Config) {
      */
     data class GoalProgress(val target: app.runsolo.core.model.LiveTarget, val distanceM: Double, val elapsedMs: Long)
 
-    enum class Kind { drift, zoneUp, status }
+    enum class Kind { drift, zoneChange, status }
 
     data class Line(val kind: Kind, val text: String)
 
@@ -126,10 +126,13 @@ class VoiceCoach(private val config: Config) {
     private var aboveSinceT: Long? = null
     private var lastDriftT: Long? = null
 
-    // Zone up: the highest zone said (or passed over) this run, and the zone being held and since when.
-    private var topZoneSaid = FIRST_ZONE_UP - 1
-    private var risingZone = 0
-    private var risingSinceT: Long? = null
+    // Zone change: the zone the runner is in as far as the coach is concerned (starts at the warm-up zone 2), the zone
+    // he has moved to and since when, and when a zone line was last said.
+    private var heldZone = FIRST_ZONE_CUE - 1
+    private var movedZone = 0
+    private var movedSinceT: Long? = null
+    private var lastZoneCueT: Long? = null
+    private var reachedZone3 = false
 
     // Goal runs: the margin to the goal clock (ms ahead) at the last two whole km, for the trend.
     private var goalKm = 0
@@ -171,7 +174,7 @@ class VoiceCoach(private val config: Config) {
         }
         if (i.segment == null) {
             aboveSinceT = null
-            risingSinceT = null
+            movedSinceT = null
             return null
         }
         // A between-reps answer lasts one rep: it is gone once the segment after the first one it saw begins.
@@ -189,18 +192,20 @@ class VoiceCoach(private val config: Config) {
         i.goal?.let { goalSnapshot(it) }
         check(i)
         val drift = driftAbove(i)
-        val up = zoneUp(i)
+        val before = heldZone
+        val move = zoneChange(i)
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
         // Drift first: it outranks status, and a status that comes due while it speaks goes stale.
         if (drift != null && quiet && drift.firesAt <= i.t) {
             lastDriftT = i.t
             return Line(Kind.drift, "Heart rate in zone ${drift.zone}. Ease back to zone ${config.plannedMaxZone}.")
         }
-        if (up != null && quiet) {
-            // Said once: a zone skipped on the way up (2 straight to 4) is never said afterwards either.
-            topZoneSaid = up
-            risingSinceT = null
-            return Line(Kind.zoneUp, "Heart rate up to zone $up.")
+        if (move != null && quiet) {
+            // A zone skipped on the way (2 straight to 4) is said as the one he is in.
+            heldZone = move
+            movedSinceT = null
+            lastZoneCueT = i.t
+            return Line(Kind.zoneChange, "Heart rate ${if (move > before) "up" else "down"} to zone $move.")
         }
         return status(i, quiet)
     }
@@ -226,31 +231,43 @@ class VoiceCoach(private val config: Config) {
         return Drift(zone, maxOf(since + DRIFT_AFTER_MS, coolOff))
     }
 
-    /** The zone 3 to 5 that is due its once-a-run line: higher than any said before, held [ZONE_UP_HOLD_MS]. */
-    private fun zoneUp(i: Input): Int? {
+    /**
+     * The zone to say now, or null. The runner has changed zone when his HR is in a higher zone than the held one, or
+     * more than [ZONE_HYSTERESIS_BPM] under the bottom of the held one (no flip-flop on a zone edge). The new zone
+     * must stay the one he is in for [ZONE_HOLD_MS], and at least [ZONE_EVERY_MS] must have passed since the last zone
+     * line (a candidate waits for that, and for a quiet moment). Zone 1 and the warm-up zone 2 are not said until a
+     * zone 3 has been reached; a zone above the plan's top is drift's to say (held silently).
+     */
+    private fun zoneChange(i: Input): Int? {
         val bottoms = config.zoneBottomsBpm
         val hr = i.hr
         if (bottoms == null || hr == null) {
-            risingSinceT = null
+            movedSinceT = null
             return null
         }
         val zone = (5 downTo 2).firstOrNull { hr >= bottoms[it - 2] } ?: 1
-        if (zone <= topZoneSaid) {
-            risingSinceT = null
+        val down = heldZone >= 2 && hr < bottoms[heldZone - 2] - ZONE_HYSTERESIS_BPM
+        if (zone == heldZone || (zone < heldZone && !down)) {
+            movedSinceT = null
             return null
         }
-        // Above the plan's top zone, drift says it (with what to do), so this run's line for that zone is spent.
-        config.plannedMaxZone?.let {
-            if (zone > it) {
-                topZoneSaid = zone
-                risingSinceT = null
-                return null
-            }
+        // A new zone needs holding: a spike that drops back toward the held zone restarts the clock; a further move the
+        // same way keeps it, and a move to the other side of the held zone starts again.
+        val up = zone > heldZone
+        val sameWay = movedSinceT != null && (movedZone > heldZone) == up
+        val backToward = if (up) zone < movedZone else zone > movedZone
+        if (!sameWay || backToward) movedSinceT = i.t
+        movedZone = zone
+        if (i.t - movedSinceT!! < ZONE_HOLD_MS) return null
+        val saidAt = lastZoneCueT
+        val silent = zone < FIRST_ZONE_CUE && !reachedZone3 || zone == 1 || zone > (config.plannedMaxZone ?: 5)
+        if (zone >= 3) reachedZone3 = true
+        if (silent) {
+            heldZone = zone
+            movedSinceT = null
+            return null
         }
-        // A new zone needs holding: a spike that drops back restarts the clock; a further climb keeps it.
-        if (risingSinceT == null || zone < risingZone) risingSinceT = i.t
-        risingZone = zone
-        return if (i.t - risingSinceT!! >= ZONE_UP_HOLD_MS) zone else null
+        return if (saidAt == null || i.t - saidAt >= ZONE_EVERY_MS) zone else null
     }
 
     /**
@@ -392,10 +409,16 @@ class VoiceCoach(private val config: Config) {
         /** At most one drift line per this. */
         const val DRIFT_EVERY_MS = 180_000L
 
-        /** The lowest zone the zone-up line is said for: zone 2 is every warm-up. */
-        const val FIRST_ZONE_UP = 3
+        /** The lowest zone a zone line is said for until a zone 3 is reached: zone 2 is every warm-up. */
+        const val FIRST_ZONE_CUE = 3
 
-        /** In a new zone this long before its zone-up line. */
-        const val ZONE_UP_HOLD_MS = 20_000L
+        /** In a new zone this long before its zone line. */
+        const val ZONE_HOLD_MS = 40_000L
+
+        /** Going down, the HR must be this far under the held zone's bottom (bpm). */
+        const val ZONE_HYSTERESIS_BPM = 4.0
+
+        /** At least this between two zone lines. */
+        const val ZONE_EVERY_MS = 150_000L
     }
 }
