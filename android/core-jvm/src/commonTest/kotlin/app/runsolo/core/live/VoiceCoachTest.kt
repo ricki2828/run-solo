@@ -402,7 +402,7 @@ class VoiceCoachTest {
         val before = said.filter { it.first < 400 }
         val after = said.filter { it.first >= 400 }
         assertTrue(before.all { it.second.contains("24:30") }, "$said")
-        assertTrue(after.isNotEmpty() && after.all { it.second.contains("30:00") && !it.second.contains("24:30") }, "$said")
+        assertTrue(after.isNotEmpty() && after.all { it.second.contains("30 minutes") && !it.second.contains("24:30") }, "$said")
         assertTrue(after.all { it.second.contains("ahead of") || it.second.startsWith("On ") }, "330 s/km beats 360: $said")
     }
 

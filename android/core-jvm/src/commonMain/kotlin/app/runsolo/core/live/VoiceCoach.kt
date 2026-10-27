@@ -253,8 +253,8 @@ class VoiceCoach(private val config: Config) {
         val pendingUp = movedSinceT != null && movedZone > heldZone
         val pendingDown = movedSinceT != null && movedZone < heldZone
         val zone = when {
-            pendingUp && zoneOf(hr + ZONE_HYSTERESIS_BPM) >= movedZone -> movedZone
-            pendingDown && zoneOf(hr - ZONE_HYSTERESIS_BPM) <= movedZone -> movedZone
+            pendingUp && zoneOf(hr + ZONE_HYSTERESIS_BPM) >= movedZone -> maxOf(movedZone, zoneOf(hr))
+            pendingDown && zoneOf(hr - ZONE_HYSTERESIS_BPM) <= movedZone -> minOf(movedZone, zoneOf(hr))
             else -> zoneOf(hr)
         }
         val goingDown = zone < heldZone && ((pendingDown && zone == movedZone) || (heldZone >= 2 && hr < bottoms[heldZone - 2] - ZONE_HYSTERESIS_BPM))
