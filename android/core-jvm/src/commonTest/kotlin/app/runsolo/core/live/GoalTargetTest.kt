@@ -51,7 +51,7 @@ class GoalTargetTest {
     }
 
     @Test
-    fun `no re-aim off a few hundred metres, after the goal or on a run without a goal time`() {
+    fun `no re-aim off a few hundred metres or after the goal or on a run without a goal time`() {
         val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
         assertNull(c.rebaseGoal(300.0, 100_000))
         assertNull(LiveCoach(ctx(), RunMode.free, null).rebaseGoal(2_000.0, 600_000))
