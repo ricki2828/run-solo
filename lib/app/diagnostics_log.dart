@@ -6,7 +6,6 @@
 library;
 
 import 'dart:io';
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -86,8 +85,9 @@ class DiagnosticsLog {
         return;
       }
       final entry = StringBuffer();
-      if (_repeats > 0)
+      if (_repeats > 0) {
         entry.writeln('(previous entry repeated $_repeats times)');
+      }
       _repeats = 0;
       _lastKey = key;
       _lastAt = at;

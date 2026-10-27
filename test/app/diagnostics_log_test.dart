@@ -4,7 +4,6 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/diagnostics_log.dart';
-import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/transfer_gateway.dart';
 import 'package:run_solo/screens/settings_screen.dart';
 
