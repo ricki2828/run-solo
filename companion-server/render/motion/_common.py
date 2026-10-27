@@ -69,16 +69,16 @@ def header(cv: Canvas, th: Theme, label: str, sub: str, a: float = 1.0):
 
 
 def signoff(cv: Canvas, th: Theme, t: float, t0: float, line: str):
-    """Lap Line R lands, the lap line runs through it, wordmark and one dry line follow."""
+    """The brand mark lands (the lap-line wipe only applies to marks that still carry those colours), wordmark and one dry line follow."""
     p_r = out_cubic(seg(t, t0, t0 + 0.55))
     p_line = in_out_cubic(seg(t, t0 + 0.35, t0 + 1.0))
     p_word = out_cubic(seg(t, t0 + 0.75, t0 + 1.3))
     p_text = seg(t, t0 + 1.15, t0 + 1.7)
     mh = 330
-    mw = 330 * 622 / 740
+    mw = mh * brand.svg_aspect(th.mark)
     cv.vector(th.mark, (W - mw) / 2, 430 + (1 - p_r) * 40, mh, alpha=p_r, wipe={LAP_LIGHT: 0.30 + 0.70 * p_line,
                                                                                 brand.ARC: 0.30 + 0.70 * p_line})
     wh = 74
-    ww = wh * 5762 / 756
+    ww = wh * brand.svg_aspect(th.wordmark)
     cv.vector(th.wordmark, (W - ww) / 2, 850 + (1 - p_word) * 24, wh, alpha=p_word)
     cv.text((W / 2, 1010), line, grot(44, 500), th.fade(th.quiet, p_text), anchor="ms")

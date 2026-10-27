@@ -211,3 +211,30 @@ def test_verdict_label_never_comes_from_place_note(which, want):
     spec = samples.spec_from_facts(f)
     assert spec.verdict.context == want
     assert f["place_note"].upper() not in spec.verdict.context
+
+
+def _ink_cols(img, bg, y0, y1):
+    px = img.convert("RGB").load()
+    xs = [x for x in range(img.width) for y in range(y0, y1)
+          if sum(abs(a - b) for a, b in zip(px[x, y], bg)) > 60]
+    return min(xs), max(xs)
+
+
+@pytest.mark.parametrize("flood", [None, 3])
+def test_signoff_mark_and_wordmark_are_centred(flood):
+    from render.motion import _common
+    th = _common.Theme(flood)
+    cv = th.canvas()
+    _common.signoff(cv, th, 10.0, 0.0, "")
+    img = cv.img if cv.img.width == _common.W else cv.img.resize((_common.W, _common.H))
+    bg = img.getpixel((2, 2))
+    for y0, y1 in ((430, 760), (850, 924)):  # mark band, wordmark band
+        lo, hi = _ink_cols(img, bg, y0, y1)
+        assert abs((lo + hi) / 2 - _common.W / 2) <= 2, (y0, lo, hi)
+
+
+def test_mark_svg_is_sized_from_its_own_aspect():
+    from render import brand
+    for v in ("on-light", "on-dark", "mono-black", "mono-white"):
+        s = brand.mark_svg(v, 64)
+        assert 'height="64"' in s and f'width="{round(64 * brand.svg_aspect("mark-" + v))}"' in s
