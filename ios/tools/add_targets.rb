@@ -93,6 +93,11 @@ CORE_XCFRAMEWORK = 'RunCore/RunCore.xcframework'
 CORE_RUNNER_SOURCES = ['CoreFacade.swift', 'RecorderHost.swift', 'RecorderApiHost.swift', 'Diagnostics.swift', 'CuePlayer.swift'].freeze
 CORE_TEST_SOURCES = ['CoreFacadeTests.swift', 'RecorderHostTests.swift', 'CuePlayerTests.swift'].freeze
 
+# Strap (CoreBluetooth heart rate): Runner/Ble and its XCTests. Pure Swift, independent of RunCore.
+BLE_RUNNER_SOURCES = ['HeartRateMeasurement.swift', 'BleReconnectPolicy.swift', 'BleCentral.swift', 'BleHrClient.swift',
+                      'CoreBluetoothCentral.swift', 'BleApiHost.swift'].freeze
+BLE_TEST_SOURCES = ['BleTests.swift'].freeze
+
 def add_sources(project, target, group_name, files, subdir: nil)
   group = project.main_group.find_subpath(group_name, false) or fail!("no #{group_name} group")
   group = (group.children.find { |c| c.display_name == subdir } || group.new_group(subdir, subdir)) if subdir
@@ -132,6 +137,13 @@ def wire_core(project, runner)
   changed
 end
 
+def wire_ble(project, runner)
+  tests = project.targets.find { |t| t.name == 'RunnerTests' } or fail!('no RunnerTests target')
+  changed = add_sources(project, runner, 'Runner', BLE_RUNNER_SOURCES, subdir: 'Ble')
+  changed |= add_sources(project, tests, 'RunnerTests', BLE_TEST_SOURCES)
+  changed
+end
+
 check_only = ARGV.include?('--check')
 project = Xcodeproj::Project.open(PROJECT_PATH)
 runner = check_runner(project)
@@ -146,5 +158,7 @@ missing.each do |spec|
   puts "add_targets: added #{spec[:name]}"
 end
 core_changed = wire_core(project, runner)
+ble_changed = wire_ble(project, runner)
+core_changed ||= ble_changed
 project.save if core_changed || !missing.empty?
 puts "add_targets: Runner ok, #{missing.size} target(s) added, #{EXTRA_TARGETS.size - missing.size} already present, core #{core_changed ? 'wired' : 'already wired'}"
