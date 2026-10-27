@@ -295,6 +295,11 @@ def instruction(kind: str, named: bool, slots: list[str], facts: dict, retry_not
 
 
 # ------------------------------------------------------------------------------------------------- the service
+FRESH_MARGIN_H = 12      # a stored briefing is "unchanged" only while it will still be served this long before its TTL ends (P1-1)
+FAIL_RETRY_H = 6         # a failed (session_ref, facts_hash) is not queued again for this long (P2-1)
+SEEN_DAYS = 7            # the sweep briefs only runners whose app fetched a briefing this recently (P2-2)
+
+
 class Briefings:
     """Facts, generation, storage and serving. `coach` is the CoachChat (gate, request helper, ledger settle)."""
 
@@ -302,6 +307,7 @@ class Briefings:
         self.coach = coach
         self.svc, self.s = coach.svc, coach.s
         self._swept_at: datetime | None = None
+        self._seen: dict[str, datetime] = {}   # uid -> last GET /v1/me/briefing; in memory, so a restart re-learns it from the next fetch
 
     # -------------------------------------------------------------------------------------- safety + session
     def gate(self, c, uid: str) -> str | None:
@@ -409,6 +415,36 @@ class Briefings:
         r = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         return dict(r) if r else None
 
+    def unchanged(self, row: Any, fh: str, now: datetime) -> bool:
+        """True when the stored briefing was made from these facts AND will still be served for at least FRESH_MARGIN_H.
+        Past that it is remade, so a briefing generated days ahead is replaced the day before the session (P1-1)."""
+        if not row or row["facts_hash"] != fh:
+            return False
+        keep = max(self.s.coach_briefing_ttl_h - FRESH_MARGIN_H, 1)
+        return now - parse_iso(row["generated_at"]) < timedelta(hours=keep)
+
+    @staticmethod
+    def recently_failed(c, uid: str, ref: str, fh: str, now: datetime) -> bool:
+        """A job for this exact (session_ref, facts_hash) failed within FAIL_RETRY_H (msg_mac carries both)."""
+        return c.execute("SELECT 1 FROM coach_jobs WHERE user_id=? AND kind='briefing' AND state='failed' AND msg_mac LIKE ? "
+                         "AND COALESCE(claimed_at, created_at) >= ?",
+                         (uid, f"brf:{ref}:{fh}:%", iso(now - timedelta(hours=FAIL_RETRY_H)))).fetchone() is not None
+
+    def cap_reached(self, c, uid: str, zone: str, now: datetime) -> bool:
+        used = c.execute("SELECT COUNT(*) FROM cost_ledger WHERE user_id=? AND purpose='briefing' AND ts>=?",
+                         (uid, budget.day_start(now, zone))).fetchone()[0]
+        return used >= self.s.coach_briefing_daily
+
+    def seen_recently(self, uid: str, now: datetime) -> bool:
+        at = self._seen.get(uid)
+        return at is not None and now - at <= timedelta(days=SEEN_DAYS)
+
+    def mark_seen(self, uid: str, now: datetime) -> bool:
+        """Note that the runner's app fetched its briefing. -> True when this is the first fetch in SEEN_DAYS."""
+        first = not self.seen_recently(uid, now)
+        self._seen[uid] = now
+        return first
+
     # -------------------------------------------------------------------------------------- enqueue (after an upload or a check-in)
     def enqueue(self, uid: str, now: datetime | None = None) -> bool:
         """Queue a briefing job unless a gate says no, the session or facts are unchanged since the stored briefing, or a job
@@ -426,11 +462,16 @@ class Briefings:
                 if spec is None:
                     return False
                 fh = self.facts_hash(self.facts_for(c, user, spec, now), spec)
-                row = c.execute("SELECT facts_hash FROM coach_briefings WHERE user_id=? AND session_ref=?", (uid, spec.ref)).fetchone()
-                if row and row["facts_hash"] == fh:
-                    return False   # coalesced: nothing the briefing depends on has changed
+                row = c.execute("SELECT facts_hash, generated_at FROM coach_briefings WHERE user_id=? AND session_ref=?",
+                                (uid, spec.ref)).fetchone()
+                if self.unchanged(row, fh, now):
+                    return False   # coalesced: nothing the briefing depends on has changed, and it will still be served
+                if self.recently_failed(c, uid, spec.ref, fh, now):
+                    return False   # the model already failed on exactly this; try again after FAIL_RETRY_H
+                if self.cap_reached(c, uid, user["zone_id"] or "UTC", now):
+                    return False   # today's cap is spent: no job row that would only be cancelled
                 c.execute("INSERT INTO coach_jobs (user_id, msg_mac, kind, state, created_at) VALUES (?,?,?,?,?)",
-                          (uid, f"brf:{uuid.uuid4().hex}", "briefing", "pending", iso(now)))
+                          (uid, f"brf:{spec.ref}:{fh}:{uuid.uuid4().hex}", "briefing", "pending", iso(now)))
         except Exception as e:
             log.error("coach briefing enqueue failed: %s", type(e).__name__)
             return False
@@ -441,7 +482,8 @@ class Briefings:
     def sweep(self, now: datetime) -> int:
         """Every `coach_briefing_sweep_s`: `enqueue` for each runner who could have a briefing, so one exists before they
         run even when nothing was uploaded or answered since the session became the next one (a coach-week day, the
-        morning after a rest day). `enqueue` does every gate and coalesces on the facts, so an unchanged session queues
+        morning after a rest day) and whose app has fetched a briefing in the last SEEN_DAYS (a runner who never fetches is
+        not paid for). `enqueue` does every gate and coalesces on the facts, so an unchanged session queues
         nothing and the daily cap still bounds the model calls. Never raises. -> jobs queued."""
         if not self.s.coach_briefing:
             return 0
@@ -452,7 +494,7 @@ class Briefings:
             with db.ro(self.s.db_path) as c:
                 uids = [r["id"] for r in c.execute(
                     "SELECT id FROM users WHERE checkin_consent >= ? AND paused=0 AND COALESCE(ops_paused,0)=0 ORDER BY id",
-                    (self.s.coach_consent_required,))]
+                    (self.s.coach_consent_required,)) if self.seen_recently(r["id"], now)]
         except Exception as e:
             log.error("coach briefing sweep failed: %s", type(e).__name__)
             return 0
@@ -528,8 +570,9 @@ class Briefings:
                 return self._cancel(c, job_id, "no_session")
             facts = self.facts_for(c, user, spec, now)
             fh = self.facts_hash(facts, spec)
-            row = c.execute("SELECT facts_hash FROM coach_briefings WHERE user_id=? AND session_ref=?", (uid, spec.ref)).fetchone()
-            if row and row["facts_hash"] == fh:
+            row = c.execute("SELECT facts_hash, generated_at FROM coach_briefings WHERE user_id=? AND session_ref=?",
+                            (uid, spec.ref)).fetchone()
+            if self.unchanged(row, fh, now):
                 return self._cancel(c, job_id, "coalesced")
             zone = user["zone_id"] or "UTC"
             used = c.execute("SELECT COUNT(*) FROM cost_ledger WHERE user_id=? AND purpose='briefing' AND ts>=?",
@@ -635,6 +678,8 @@ class Briefings:
         A stored briefing is served only while it matches
         the runner's session as it stands now (same ref and fingerprint) and is younger than the TTL."""
         now = now or now_utc()
+        if self.mark_seen(uid, now):
+            self.enqueue(uid, now)   # first fetch since a restart or a week away: start the briefing now, not at the next sweep
         with db.ro(self.s.db_path) as c:
             if self.gate(c, uid) is not None:
                 return 204, None

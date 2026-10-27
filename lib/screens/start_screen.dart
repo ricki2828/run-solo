@@ -557,20 +557,23 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       );
 
   /// Today's session in the coach's own week (no plan in the app), when this
-  /// run is it: a plain Free run on an easy or long day, the same built-in
-  /// session on a quality day. Null for any other run, or with a plan session
-  /// today (the plan is the match then).
+  /// run is it: a Free run on an easy or long day (a Free goal run too: the
+  /// coach's briefing, then the goal line; a reversible product default, since
+  /// the goal run is how the runner usually runs), the same built-in session on
+  /// a quality day. Null for any other run, or with a plan session today (the
+  /// plan is the match then).
   CoachSession? _coachDay(
     AppServices services,
     AppSettings s,
     engine.BlockSession? planned,
   ) {
     final day = planned == null ? services.companion?.coachDayToday : null;
-    if (day == null || s.goalRun || s.eventRun) return null;
+    if (day == null || s.eventRun) return null;
     return switch (day.type) {
-      'easy' || 'long' => s.lastMode == RecordMode.free ? day : null,
+      'easy' || 'long' => s.goalRun || s.lastMode == RecordMode.free ? day : null,
       'quality' =>
-        s.lastMode == RecordMode.intervals &&
+        !s.goalRun &&
+                s.lastMode == RecordMode.intervals &&
                 day.sessionId != null &&
                 coachSlug(services.pickedSession.templateId) == day.sessionId
             ? day

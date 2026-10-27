@@ -73,15 +73,17 @@ void main() {
 
   Future<VoiceCoachConfig> startFree(
     WidgetTester tester,
-    CompanionController ctl,
-  ) async {
+    CompanionController ctl, {
+    bool goal = false,
+  }) async {
     final fake = FakeRecorderGateway(now: now);
     final services = fakeServices(
       recorder: fake,
       companion: ctl,
-      settings: const AppSettings(
+      settings: AppSettings(
         onboardingDone: true,
         lastMode: RecordMode.free,
+        goalRun: goal,
       ),
     );
     await pumpApp(tester, services, pushRoute: Routes.start);
@@ -112,6 +114,37 @@ void main() {
   testWidgets('a briefing for another session is not spoken', (tester) async {
     final ctl = await coach(tester, type: 'easy', briefRef: 'cw0e');
     final c = await startFree(tester, ctl);
+    expect(c.briefingTemplate, isNull);
+  });
+
+  // P1-2 (a reversible product default): the runner mostly runs Free goal
+  // runs, so a goal run on an easy or long coach day takes the coach template;
+  // the recorder then says the goal line after it.
+  testWidgets('a goal run on an easy coach day carries the coach briefing', (
+    tester,
+  ) async {
+    final ctl = await coach(tester, type: 'easy');
+    final c = await startFree(tester, ctl, goal: true);
+    expect(c.briefingTemplate, tpl);
+    expect(c.plannedDistanceM, 6000, reason: '{distance} stays the coach\'s');
+  });
+
+  testWidgets('a goal run on a long coach day carries it too', (tester) async {
+    final ctl = await coach(tester, type: 'long');
+    final c = await startFree(tester, ctl, goal: true);
+    expect(c.briefingTemplate, tpl);
+  });
+
+  testWidgets('a goal run on a quality day does not', (tester) async {
+    final ctl = await coach(tester, type: 'quality');
+    final c = await startFree(tester, ctl, goal: true);
+    expect(c.briefingTemplate, isNull);
+  });
+
+  testWidgets('a goal run with a briefing for another session keeps its own '
+      'start line', (tester) async {
+    final ctl = await coach(tester, type: 'easy', briefRef: 'cw0e');
+    final c = await startFree(tester, ctl, goal: true);
     expect(c.briefingTemplate, isNull);
   });
 }
