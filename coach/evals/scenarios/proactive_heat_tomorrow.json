@@ -1,0 +1,34 @@
+{
+ "id": "proactive_heat_tomorrow",
+ "group": "day",
+ "message": "(proactive heat heads-up)",
+ "fixture_patch": {
+  "today": "2026-10-21 (Wednesday)",
+  "get_runner": {
+   "remembered": [
+    "runs at 7am on weekdays before work",
+    "left calf niggle in July, settled"
+   ]
+  }
+ },
+ "proactive": {
+  "trigger": "heat",
+  "name": "Tempo",
+  "weekday": "Thursday",
+  "forecast": [
+   31,
+   22
+  ],
+  "slowdown": 0.059
+ },
+ "must": [
+  "names tomorrow's tempo",
+  "uses the forecast at 07:00 (31 C, dew point 22 or about 5.9% slower): the one figure that carries the point is enough",
+  "run it by effort not pace, or go earlier/cooler"
+ ],
+ "must_not": [
+  "a temperature, time or percentage not given",
+  "medical talk",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

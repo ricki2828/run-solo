@@ -1,0 +1,200 @@
+{
+ "id": "proactive_run_good",
+ "group": "debrief",
+ "message": "(proactive run debrief)",
+ "fixture_patch": {
+  "today": "2026-10-18 (Sunday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r9",
+    "date": "2026-10-18",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "zone_min": {
+     "z1": 22,
+     "z2": 58,
+     "z3": 5
+    },
+    "climb_m": 85,
+    "feel": "right",
+    "weekday": "Sun"
+   },
+   {
+    "run_id": "r8",
+    "date": "2026-10-16",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "work_pace_s_per_km": 268,
+    "reps_done": 4,
+    "rep_spread_s": 5,
+    "zone_min": {
+     "z2": 18,
+     "z4": 12,
+     "z5": 4
+    },
+    "feel": "hard",
+    "weekday": "Fri"
+   },
+   {
+    "run_id": "r7",
+    "date": "2026-10-14",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2070,
+    "pace_s_per_km": 345,
+    "zone_min": {
+     "z2": 20,
+     "z3": 12,
+     "z4": 2
+    },
+    "feel": "right",
+    "weekday": "Wed"
+   },
+   {
+    "run_id": "r6",
+    "date": "2026-10-11",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 13000,
+    "duration_s": 4745,
+    "pace_s_per_km": 365,
+    "zone_min": {
+     "z1": 15,
+     "z2": 60,
+     "z3": 4
+    },
+    "climb_m": 60,
+    "weekday": "Sun"
+   },
+   {
+    "run_id": "r5",
+    "date": "2026-10-10",
+    "type": "race",
+    "session_name": "parkrun",
+    "distance_m": 5000,
+    "duration_s": 1395,
+    "pace_s_per_km": 279,
+    "pb": "5k",
+    "weekday": "Sat"
+   },
+   {
+    "run_id": "r4",
+    "date": "2026-10-08",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 7900,
+    "duration_s": 2600,
+    "pace_s_per_km": 329,
+    "work_pace_s_per_km": 274,
+    "reps_done": 4,
+    "rep_spread_s": 11,
+    "feel": "hard",
+    "weekday": "Thu"
+   },
+   {
+    "run_id": "r3",
+    "date": "2026-10-06",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6200,
+    "duration_s": 2170,
+    "pace_s_per_km": 350,
+    "zone_min": {
+     "z2": 28,
+     "z3": 8
+    },
+    "weekday": "Tue"
+   }
+  ]
+ },
+ "proactive": {
+  "trigger": "run",
+  "run": {
+   "start_utc": "2026-10-17T18:00:00Z",
+   "type": "long",
+   "session_name": "Long run",
+   "distance_m": 14200,
+   "duration_s": 5112,
+   "pace_s_per_km": 360,
+   "true_pace_s_per_km": null,
+   "zone_min": "{\"z1\": 22, \"z2\": 58, \"z3\": 5}",
+   "feel": "right",
+   "pb": null,
+   "verdict": null,
+   "goal_reached": null,
+   "plan_next_day": "2026-10-20",
+   "plan_next_session_name": "Easy run",
+   "plan_next_type": "easy"
+  },
+  "prior": [
+   {
+    "start_utc": "2026-10-15T18:00:00Z",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "hard",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-13T18:00:00Z",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2070,
+    "pace_s_per_km": 345,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-10T18:00:00Z",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 13000,
+    "duration_s": 4745,
+    "pace_s_per_km": 365,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": null,
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   }
+  ]
+ },
+ "must": [
+  "names it as the long run",
+  "one specific number from the data (e.g. 14.2 km, longest of the block, mostly zone 2)",
+  "one concrete line on Tuesday's easy run (35 min, easy) from the plan"
+ ],
+ "must_not": [
+  "a pace or time not in the data",
+  "gushing or empty praise",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

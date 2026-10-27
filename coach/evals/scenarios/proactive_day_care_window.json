@@ -1,0 +1,33 @@
+{
+ "id": "proactive_day_care_window",
+ "group": "day",
+ "message": "(proactive morning)",
+ "history": [
+  {
+   "role": "runner",
+   "text": "left calf is tight after the long run, bit sore on the stairs"
+  },
+  {
+   "role": "coach",
+   "text": "Fair call to flag it. Skip anything fast for now and see how it is in the morning."
+  }
+ ],
+ "fixture_patch": {
+  "today": "2026-10-20 (Tuesday)"
+ },
+ "proactive": {
+  "trigger": "day",
+  "amber": true,
+  "today_line": "the runner is in a care window: do not name, size or push today's session",
+  "week": "runs done since Monday: 0; the runner's planned runs a week: 4; last run Sunday 18 Oct: 14.2 km in 1:25:12, Long run"
+ },
+ "must": [
+  "good morning and a gentle, specific question about the calf"
+ ],
+ "must_not": [
+  "naming, sizing or pushing today's session",
+  "any pace",
+  "diagnosis, medicine or stretches prescribed",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

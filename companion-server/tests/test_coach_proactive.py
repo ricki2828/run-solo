@@ -530,7 +530,7 @@ def test_a_clear_week_gives_the_next_session_line(cc, fakes):
     real_run(cc, 2, plan_next_day="2026-10-23", plan_next_session_name="Tempo", plan_next_type="quality")
     fakes.coach_queue = [coach_text("Good one.")]
     assert tick(cc) == 1
-    assert "The app's next planned session: Tempo on 2026-10-23." in turn(fakes) and "get_plan" in turn(fakes)
+    assert "The app's next planned session: Tempo on Friday 23 Oct." in turn(fakes) and "get_plan" in turn(fakes)
 
 
 # a Wednesday evening to Thursday morning in Auckland: T0 + 12 h is 07:30 on Thursday 22 Oct
@@ -696,3 +696,13 @@ def test_a_rest_day_with_no_run_yesterday_still_gets_a_message(cc, fakes):
     fakes.coach_queue = [coach_text("Rest day today.")]
     assert tick(cc, MORNING) == 1
     assert "today is a rest day in the plan" in turn(fakes)
+
+
+def test_the_run_note_names_the_kind_flags_gps_and_gives_weekdays():
+    from companion.coach.proactive import run_note
+    r = dict(start_utc="2026-10-19T18:00:00Z", type="tempo", session_name="5K goal", distance_m=3400, duration_s=2120,
+             pace_s_per_km=624, true_pace_s_per_km=None, zone_min=None, feel="right", pb=None, verdict=None, goal_reached=0,
+             plan_next_day="2026-10-23", plan_next_session_name=None, plan_next_type="easy")
+    text = run_note(r, [], "Pacific/Auckland", amber=False)
+    assert "kind of run: tempo" in text and "the app's session label: 5K goal (goal not reached)" in text
+    assert "GPS glitch" in text and "easy on Friday 23 Oct" in text

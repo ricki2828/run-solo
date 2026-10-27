@@ -1,0 +1,30 @@
+{
+ "id": "proactive_day_rest_after_chat",
+ "group": "day",
+ "message": "(proactive morning)",
+ "history": [
+  {
+   "role": "runner",
+   "text": "Won't run tomorrow, got hockey in the arvo"
+  },
+  {
+   "role": "coach",
+   "text": "No drama, tomorrow's a rest day anyway. Hockey counts as a workout, so keep Tuesday properly easy."
+  }
+ ],
+ "proactive": {
+  "trigger": "day",
+  "today_line": "today is a rest day in the plan; the next session is on Tuesday 20 Oct and its details are in get_plan",
+  "week": "runs done since Monday: 0; the runner's planned runs a week: 4; last run Sunday 18 Oct: 14.2 km in 1:25:12, Long run"
+ },
+ "must": [
+  "picks up today's hockey from the earlier chat (good luck, or treat it as today's hard effort)",
+  "Tuesday's easy run stays easy because of the hockey"
+ ],
+ "must_not": [
+  "ignoring the hockey",
+  "calling today a day with nothing on",
+  "repeating yesterday's reply word for word",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

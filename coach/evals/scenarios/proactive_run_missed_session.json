@@ -1,0 +1,176 @@
+{
+ "id": "proactive_run_missed_session",
+ "group": "debrief",
+ "message": "(proactive run debrief)",
+ "fixture_patch": {
+  "today": "2026-10-22 (Thursday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r11",
+    "date": "2026-10-22",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2100,
+    "pace_s_per_km": 350,
+    "zone_min": {
+     "z2": 30,
+     "z3": 5
+    },
+    "feel": "right",
+    "weekday": "Thu"
+   },
+   {
+    "run_id": "r10",
+    "date": "2026-10-20",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6100,
+    "duration_s": 2120,
+    "pace_s_per_km": 348,
+    "zone_min": {
+     "z2": 31,
+     "z3": 4
+    },
+    "feel": "right",
+    "weekday": "Tue"
+   },
+   {
+    "run_id": "r9",
+    "date": "2026-10-18",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "zone_min": {
+     "z1": 22,
+     "z2": 58,
+     "z3": 5
+    },
+    "climb_m": 85,
+    "feel": "right",
+    "weekday": "Sun"
+   },
+   {
+    "run_id": "r8",
+    "date": "2026-10-16",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "work_pace_s_per_km": 268,
+    "reps_done": 4,
+    "rep_spread_s": 5,
+    "zone_min": {
+     "z2": 18,
+     "z4": 12,
+     "z5": 4
+    },
+    "feel": "hard",
+    "weekday": "Fri"
+   },
+   {
+    "run_id": "r7",
+    "date": "2026-10-14",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2070,
+    "pace_s_per_km": 345,
+    "zone_min": {
+     "z2": 20,
+     "z3": 12,
+     "z4": 2
+    },
+    "feel": "right",
+    "weekday": "Wed"
+   }
+  ]
+ },
+ "proactive": {
+  "trigger": "run",
+  "run": {
+   "start_utc": "2026-10-21T18:00:00Z",
+   "type": "easy",
+   "session_name": "Easy run",
+   "distance_m": 6000,
+   "duration_s": 2100,
+   "pace_s_per_km": 350,
+   "true_pace_s_per_km": null,
+   "zone_min": "{\"z2\": 30, \"z3\": 5}",
+   "feel": "right",
+   "pb": null,
+   "verdict": null,
+   "goal_reached": null,
+   "plan_next_day": "2026-10-23",
+   "plan_next_session_name": "Easy run + strides",
+   "plan_next_type": "easy"
+  },
+  "prior": [
+   {
+    "start_utc": "2026-10-19T18:00:00Z",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6100,
+    "duration_s": 2120,
+    "pace_s_per_km": 348,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-17T18:00:00Z",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-15T18:00:00Z",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "true_pace_s_per_km": null,
+    "zone_min": null,
+    "feel": "hard",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": null,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   }
+  ]
+ },
+ "must": [
+  "notices today was planned as the tempo and an easy run was done instead, without guilt",
+  "one clear call on what to do: e.g. run the tempo Friday in place of the easy + strides, or let it go this week",
+  "one specific number from the data"
+ ],
+ "must_not": [
+  "doing the tempo and another run on the same day",
+  "shaming or lecturing",
+  "squeezing two hard days back to back before Sunday's 15 km long run without saying so",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}

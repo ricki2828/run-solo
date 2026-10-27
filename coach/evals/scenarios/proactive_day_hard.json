@@ -1,0 +1,91 @@
+{
+ "id": "proactive_day_hard",
+ "group": "day",
+ "message": "(proactive morning)",
+ "fixture_patch": {
+  "today": "2026-10-22 (Thursday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r10",
+    "date": "2026-10-20",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6100,
+    "duration_s": 2120,
+    "pace_s_per_km": 348,
+    "zone_min": {
+     "z2": 31,
+     "z3": 4
+    },
+    "feel": "right",
+    "weekday": "Tue"
+   },
+   {
+    "run_id": "r9",
+    "date": "2026-10-18",
+    "type": "long",
+    "session_name": "Long run",
+    "distance_m": 14200,
+    "duration_s": 5112,
+    "pace_s_per_km": 360,
+    "zone_min": {
+     "z1": 22,
+     "z2": 58,
+     "z3": 5
+    },
+    "climb_m": 85,
+    "feel": "right",
+    "weekday": "Sun"
+   },
+   {
+    "run_id": "r8",
+    "date": "2026-10-16",
+    "type": "quality",
+    "session_name": "Norwegian 4x4",
+    "distance_m": 8100,
+    "duration_s": 2580,
+    "pace_s_per_km": 318,
+    "work_pace_s_per_km": 268,
+    "reps_done": 4,
+    "rep_spread_s": 5,
+    "zone_min": {
+     "z2": 18,
+     "z4": 12,
+     "z5": 4
+    },
+    "feel": "hard",
+    "weekday": "Fri"
+   },
+   {
+    "run_id": "r7",
+    "date": "2026-10-14",
+    "type": "easy",
+    "session_name": "Easy run",
+    "distance_m": 6000,
+    "duration_s": 2070,
+    "pace_s_per_km": 345,
+    "zone_min": {
+     "z2": 20,
+     "z3": 12,
+     "z4": 2
+    },
+    "feel": "right",
+    "weekday": "Wed"
+   }
+  ]
+ },
+ "proactive": {
+  "trigger": "day",
+  "today_line": "today's session is Tempo, 45 min",
+  "week": "runs done since Monday: 1; the runner's planned runs a week: 4; last run Tuesday 20 Oct: 6.1 km in 35:20, Easy run"
+ },
+ "must": [
+  "names today's tempo and its shape (3 x 10 min tempo with 2 min jogs, 45 min) from the plan",
+  "one line on how to run it (comfortably hard, controlled, even reps)",
+  "one line on the week"
+ ],
+ "must_not": [
+  "a target pace not in the data",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ]
+}
