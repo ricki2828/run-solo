@@ -476,6 +476,27 @@ class VoiceCoachTest {
     }
 
     @Test
+    fun `one spike over the zone edge then hovering under it says nothing`() {
+        // 133 is the zone 3 bottom: one reading at it, then 40 s of 129-132 (inside the hysteresis band, not in zone 3).
+        val said = free().hrRun(0, 300, hr = { s -> if (s == 100) 134.0 else if (s in 101..160) 131.0 else 125.0 })
+        assertTrue(said.isEmpty(), "$said")
+    }
+
+    @Test
+    fun `one dip under the zone edge then hovering over it does not say down`() {
+        val c = free()
+        val said = c.hrRun(0, 400, hr = { s -> if (s < 100) 140.0 else if (s == 200) 125.0 else if (s in 201..260) 134.0 else 140.0 })
+        assertEquals(listOf(40 to "Heart rate up to zone 3."), said)
+    }
+
+    @Test
+    fun `hovering on a zone edge for 10 minutes says at most one line`() {
+        val cycle = listOf(128.0, 133.0, 130.0, 133.0, 129.0, 132.0, 131.0, 133.0)
+        val said = free().hrRun(0, 600, hr = { s -> cycle[s % cycle.size] })
+        assertTrue(said.size <= 1, "$said")
+    }
+
+    @Test
     fun `a rep session says no zone lines`() {
         val c = free()
         val said = (0..200).mapNotNull { s ->

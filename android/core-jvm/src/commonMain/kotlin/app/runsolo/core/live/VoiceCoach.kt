@@ -133,6 +133,10 @@ class VoiceCoach(private val config: Config) {
     private var heldZone = FIRST_ZONE_CUE - 1
     private var movedZone = 0
     private var movedSinceT: Long? = null
+
+    // Over the pending move's hold window: the readings seen, and how many were really in the new zone (not just inside the hysteresis band).
+    private var movedTicks = 0
+    private var movedInZone = 0
     private var lastZoneCueT: Long? = null
     private var reachedZone3 = false
 
@@ -252,10 +256,11 @@ class VoiceCoach(private val config: Config) {
         // jittering strap sitting on a zone bottom still holds the 40 s; a fresh move going down needs the same margin.
         val pendingUp = movedSinceT != null && movedZone > heldZone
         val pendingDown = movedSinceT != null && movedZone < heldZone
+        val raw = zoneOf(hr)
         val zone = when {
             pendingUp && zoneOf(hr + ZONE_HYSTERESIS_BPM) >= movedZone -> maxOf(movedZone, zoneOf(hr))
             pendingDown && zoneOf(hr - ZONE_HYSTERESIS_BPM) <= movedZone -> minOf(movedZone, zoneOf(hr))
-            else -> zoneOf(hr)
+            else -> raw
         }
         val goingDown = zone < heldZone && ((pendingDown && zone == movedZone) || (heldZone >= 2 && hr < bottoms[heldZone - 2] - ZONE_HYSTERESIS_BPM))
         if (zone == heldZone || (zone < heldZone && !goingDown)) {
@@ -267,9 +272,21 @@ class VoiceCoach(private val config: Config) {
         val up = zone > heldZone
         val sameWay = movedSinceT != null && (movedZone > heldZone) == up
         val backToward = if (up) zone < movedZone else zone > movedZone
-        if (!sameWay || backToward) movedSinceT = i.t
+        if (!sameWay || backToward) {
+            movedSinceT = i.t
+            movedTicks = 0
+            movedInZone = 0
+        }
         movedZone = zone
+        movedTicks++
+        if (if (up) raw > heldZone else raw < heldZone) movedInZone++
         if (i.t - movedSinceT!! < ZONE_HOLD_MS) return null
+        // The hysteresis only keeps a pending move alive; it is said only if at least half the window was really in the
+        // new zone, so one spike or a hover on the edge never makes a line.
+        if (movedInZone * 2 < movedTicks) {
+            movedSinceT = null
+            return null
+        }
         val saidAt = lastZoneCueT
         val silent = zone < FIRST_ZONE_CUE && !reachedZone3 || zone == 1 || zone > (config.plannedMaxZone ?: 5)
         if (zone >= 3) reachedZone3 = true
