@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import functools
 import os
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -99,10 +100,14 @@ def font_css() -> str:
 
 @functools.lru_cache(maxsize=None)
 def mark_svg(variant: str = "on-light", height: int = 64) -> str:
-    """The Lap Line R mark as inline SVG at a given height (variant: on-light, on-dark, mono-black, mono-white)."""
+    """The brand mark as inline SVG at a given height (variant: on-light, on-dark, mono-black, mono-white)."""
     svg = (BRAND_SVG_DIR / f"mark-{variant}.svg").read_text()
-    ratio = 622 / 740
-    return svg.replace('width="622" height="740"', f'width="{round(height * ratio)}" height="{height}"', 1)
+    # Size from the file's own aspect, so a brand re-draw with a new viewBox cannot fall back to its intrinsic (huge) size.
+    m = re.search(r'width="([\d.]+)" height="([\d.]+)"', svg)
+    if not m:
+        raise ValueError(f"mark-{variant}.svg has no width/height")
+    w, h = float(m.group(1)), float(m.group(2))
+    return svg.replace(m.group(0), f'width="{round(height * w / h)}" height="{height}"', 1)
 
 
 def flood_for_zone(zone: int) -> str:

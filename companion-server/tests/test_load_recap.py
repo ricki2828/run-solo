@@ -350,10 +350,10 @@ def test_a_partial_load_block_is_refused():
         P.check_request({"v": 1, "op": "card", "kind": "weekly_recap", "facts": f})
 
 
-# What origin/main drew for the two older weekly fixtures (sha256 of the HTML). The no-load card must not move by a
+# What main drew for the two older weekly fixtures (sha256 of the HTML; re-pinned for the Track Bend mark). The no-load card must not move by a
 # byte; change these only with a deliberate change to the card, and regenerate both goldens in the same PR.
-OLD_HTML = {"weekly_recap": "7daad0918b51cac8c9d62bc033f43da5823a48df6e447da8dd15b19fa5b75488",
-            "weekly_recap_big": "f89e39a367d6faab4fe7eb6a42aaf41086336dfb42cf39f977f6ff3e9813e522"}
+OLD_HTML = {"weekly_recap": "c413edbae36baad2e8e3a39546fee5b383daa8c9b74a7748e12d1dedbd68fccd",
+            "weekly_recap_big": "d7a22f9ab43e058c7053f3737cee8e3d53d6e054388fdf69389cc3e423308d3d"}
 
 
 @pytest.mark.parametrize("name", sorted(OLD_HTML))
