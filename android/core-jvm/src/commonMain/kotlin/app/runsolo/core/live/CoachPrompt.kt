@@ -293,7 +293,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
             val ahead = -f.behindTargetMs!!
             val where = GoalMargin.promptPhrase(ahead, prevBehind?.let { ahead + it }, goalTime)
             // Ahead of the clock the push banks time; level or behind it gets him under the goal time.
-            val push = if (ahead >= GoalMargin.DEAD_BAND_MS) "Push to bank more" else "Push to get under it"
+            val push = if (ahead >= GoalMargin.DEAD_BAND_MS) "Push for more" else "Push to get under"
             return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $push, or hold?", nowMs)
         }
         if (toGo != null && !last2kDone) {
