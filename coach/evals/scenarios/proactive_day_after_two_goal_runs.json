@@ -1,0 +1,109 @@
+{
+ "id": "proactive_day_after_two_goal_runs",
+ "group": "day",
+ "message": "(proactive morning)",
+ "fixture_patch": {
+  "today": "2026-10-28 (Wednesday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r27",
+    "date": "2026-10-27",
+    "type": "easy",
+    "session_name": "8.0 km goal",
+    "distance_m": 8008,
+    "duration_s": 2990,
+    "pace_s_per_km": 373.4,
+    "zone_min": {
+     "z1": 8,
+     "z2": 21,
+     "z3": 21
+    },
+    "feel": "right",
+    "weekday": "Tue",
+    "goal_reached": 1
+   },
+   {
+    "run_id": "r26",
+    "date": "2026-10-26",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5012,
+    "duration_s": 1453,
+    "pace_s_per_km": 289.9,
+    "zone_min": {
+     "z1": 1,
+     "z2": 4,
+     "z3": 9,
+     "z4": 10.5
+    },
+    "feel": "hard",
+    "weekday": "Mon",
+    "goal_reached": 1
+   },
+   {
+    "run_id": "r22",
+    "date": "2026-10-22",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5011,
+    "duration_s": 1528,
+    "pace_s_per_km": 304.9,
+    "zone_min": {
+     "z1": 4,
+     "z2": 3,
+     "z3": 4,
+     "z4": 14.5
+    },
+    "feel": "right",
+    "weekday": "Thu",
+    "goal_reached": 1
+   }
+  ],
+  "get_plan": {
+   "goal": "Auckland Half 2026-12-06, target 1:55:00",
+   "week": 6,
+   "of": 11,
+   "this_week": [
+    {
+     "day": "2026-10-28",
+     "type": "quality",
+     "name": "Tempo",
+     "minutes": 45,
+     "detail": "3 \u00d7 10 min tempo / 2 min jog",
+     "weekday": "Wed"
+    },
+    {
+     "day": "2026-10-30",
+     "type": "easy",
+     "name": "Easy run + strides",
+     "minutes": 30,
+     "weekday": "Fri"
+    },
+    {
+     "day": "2026-11-01",
+     "type": "long",
+     "name": "Long run",
+     "distance_m": 15000,
+     "weekday": "Sun"
+    }
+   ]
+  }
+ },
+ "proactive": {
+  "trigger": "day",
+  "today_line": "today's session is Tempo, 45 min",
+  "week": "runs done since Monday: 2; the runner's planned runs a week: 4; last run Tuesday 27 Oct: 8 km in 49:50, 8.0 km goal; the run before: Monday 26 Oct, 5 km in 24:13, 5K goal"
+ },
+ "must": [
+  "names today's tempo and its shape (3 x 10 min tempo with 2 min jogs, 45 min) from the plan",
+  "notes he has already run two goal runs this week (a hard 5K Monday, 8 km Tuesday) and to run today's reps controlled / by effort, not chase a time",
+  "one line on the week, ahead of the 4 planned"
+ ],
+ "must_not": [
+  "a target pace not in the data",
+  "telling him to make up or add distance",
+  "inventing a target time for the goal runs",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ],
+ "no_invented_target": true
+}

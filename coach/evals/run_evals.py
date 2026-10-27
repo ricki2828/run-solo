@@ -348,11 +348,24 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
                                                must_not=sc.get("must_not", [])), judge))
     except Exception as e:
         return out | {"pass": False, "score": 0, "misses": misses + [f"judge failed: {e}"]}
-    misses += j.get("misses", [])
+    invented = target_misses(sc, out.get("reply", ""))
+    misses += j.get("misses", []) + invented
     if j.get("criteria"):
         out["criteria"] = j["criteria"]
-    return out | {"pass": bool(j.get("pass")) and not tool_failed(misses) and not any(m.startswith("validator refused") for m in misses),
+    return out | {"pass": bool(j.get("pass")) and not tool_failed(misses) and not invented and not any(m.startswith("validator refused") for m in misses),
                   "score": j.get("score", 0), "misses": misses}
+
+
+TARGET_CLAIM = re.compile(r"\b(target|goal time|aim(?:ed|ing)? for)\b[^.\n]{0,25}\d{1,2}:\d{2}", re.I)
+
+
+def target_misses(sc: dict, reply: str) -> list[str]:
+    """`no_invented_target` scenarios (goal runs): the app uploads no target time, so a reply that quotes one invented it
+    (#409: the target is the effort as run and lives only on the phone)."""
+    hit = TARGET_CLAIM.search(reply or "")
+    if sc.get("no_invented_target") and hit and "1:55" not in hit.group(0):   # 1:55 is the plan's half-marathon goal
+        return ["quotes a target time; the data holds none"]
+    return []
 
 
 def load_scenarios() -> list[dict]:
