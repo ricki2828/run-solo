@@ -1,0 +1,260 @@
+{
+ "_comment": "Shared 0x2A37 parse vectors. kotlin:true rows mirror android/core-jvm BleTest.kt (tools/check_ble_vectors.py keeps the byte sets equal); rrRaw is Swift-only (1/1024 s).",
+ "vectors": [
+  {
+   "name": "8-bit value",
+   "bytes": [
+    0,
+    150
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 150,
+    "rawBpm": 150,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "16-bit little endian",
+   "bytes": [
+    1,
+    44,
+    1
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 300,
+    "rawBpm": 300,
+    "sixteenBit": true,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "16-bit flag with one value byte",
+   "bytes": [
+    1,
+    44
+   ],
+   "kotlin": true,
+   "parsed": null
+  },
+  {
+   "name": "contact supported and detected",
+   "bytes": [
+    6,
+    72
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 72,
+    "rawBpm": 72,
+    "sixteenBit": false,
+    "contactSupported": true,
+    "contactDetected": true,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "contact supported not detected",
+   "bytes": [
+    4,
+    72
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": null,
+    "rawBpm": 72,
+    "sixteenBit": false,
+    "contactSupported": true,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "contact bit1 without support",
+   "bytes": [
+    2,
+    72
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 72,
+    "rawBpm": 72,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": true,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "zero bpm 8-bit",
+   "bytes": [
+    0,
+    0
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": null,
+    "rawBpm": 0,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "zero bpm 16-bit",
+   "bytes": [
+    1,
+    0,
+    0
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": null,
+    "rawBpm": 0,
+    "sixteenBit": true,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  },
+  {
+   "name": "16-bit contact energy and two RR",
+   "bytes": [
+    31,
+    140,
+    0,
+    16,
+    39,
+    52,
+    3,
+    80,
+    3
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 140,
+    "rawBpm": 140,
+    "sixteenBit": true,
+    "contactSupported": true,
+    "contactDetected": true,
+    "energyKj": 10000,
+    "rrRaw": [
+     820,
+     848
+    ]
+   }
+  },
+  {
+   "name": "RR only, not mistaken for energy",
+   "bytes": [
+    16,
+    140,
+    52,
+    3
+   ],
+   "kotlin": true,
+   "parsed": {
+    "bpm": 140,
+    "rawBpm": 140,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": [
+     820
+    ]
+   }
+  },
+  {
+   "name": "empty packet",
+   "bytes": [],
+   "kotlin": true,
+   "parsed": null
+  },
+  {
+   "name": "flags only",
+   "bytes": [
+    0
+   ],
+   "kotlin": true,
+   "parsed": null
+  },
+  {
+   "name": "swift: 8-bit energy and RR",
+   "bytes": [
+    24,
+    100,
+    5,
+    0,
+    0,
+    4
+   ],
+   "kotlin": false,
+   "parsed": {
+    "bpm": 100,
+    "rawBpm": 100,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": 5,
+    "rrRaw": [
+     1024
+    ]
+   }
+  },
+  {
+   "name": "swift: odd trailing RR byte ignored",
+   "bytes": [
+    16,
+    100,
+    0,
+    4,
+    255
+   ],
+   "kotlin": false,
+   "parsed": {
+    "bpm": 100,
+    "rawBpm": 100,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": [
+     1024
+    ]
+   }
+  },
+  {
+   "name": "swift: energy flag but truncated",
+   "bytes": [
+    8,
+    100,
+    5
+   ],
+   "kotlin": false,
+   "parsed": {
+    "bpm": 100,
+    "rawBpm": 100,
+    "sixteenBit": false,
+    "contactSupported": false,
+    "contactDetected": false,
+    "energyKj": null,
+    "rrRaw": []
+   }
+  }
+ ]
+}

@@ -64,6 +64,10 @@ final class RecorderHost {
   /// Started by [start] (not a replay): the spoken status lines are on.
   private var live = false
   private var gpsWeakStep: Int64?
+  /// Strap link and latest fresh reading for the status and tick `hr` fields (set by the BLE bridge).
+  var hrLink: () -> (connected: Bool, bpm: Int?) = { (false, nil) }
+  /// Called (on the recorder queue) when a run ends, so the strap can be let go.
+  var onRunEnded: (() -> Void)?
 
   init(
     root: URL,
@@ -230,7 +234,7 @@ final class RecorderHost {
     let last = laps.last
     send(TickEvent(
       elapsedMs: elapsed, lapElapsedMs: elapsed - (last?.tMs ?? 0), lapDistanceM: distance - (last?.distanceM ?? 0),
-      totalDistanceM: distance, gpsAccuracyM: lastAccuracy, state: Self.states[s["state"] as? String ?? ""] ?? .recording,
+      totalDistanceM: distance, hr: hrLink().bpm.map(Int64.init), gpsAccuracyM: lastAccuracy, state: Self.states[s["state"] as? String ?? ""] ?? .recording,
       phase: Self.phases[s["phase"] as? String ?? ""] ?? .none, repIndex: Self.int(s["repIndex"]),
       phaseRemainingMs: Self.int(s["phaseRemainingMs"]), stepIndex: s["stepIndex"].flatMap { $0 is NSNull ? nil : Self.int($0) },
       stepRemainingMs: s["stepRemainingMs"].flatMap { $0 is NSNull ? nil : Self.int($0) },
@@ -259,6 +263,7 @@ final class RecorderHost {
     }
     trace("recorder stop run=\(id ?? "-") file=\(path ?? "none")")
     send(StateEvent(state: .idle, runId: id, phase: .none))
+    onRunEnded?()
     return path.map { root.appendingPathComponent($0).path }
   }
 
@@ -277,7 +282,7 @@ final class RecorderHost {
       return RecorderStatus(
         state: state, runId: s["runId"] as? String, mode: state == .idle ? .free : mode, laps: state == .idle ? [] : laps,
         elapsedMs: Self.int(s["elapsedMs"]), lapIndex: Self.int(s["lapIndex"]), gpsFix: s["gpsOk"] as? Bool ?? false,
-        hrConnected: false, phase: Self.phases[s["phase"] as? String ?? ""] ?? .none, repIndex: Self.int(s["repIndex"]),
+        hrConnected: hrLink().connected, phase: Self.phases[s["phase"] as? String ?? ""] ?? .none, repIndex: Self.int(s["repIndex"]),
         phaseRemainingMs: Self.int(s["phaseRemainingMs"]),
         stepIndex: s["stepIndex"].flatMap { $0 is NSNull ? nil : Self.int($0) },
         stepRemainingMs: s["stepRemainingMs"].flatMap { $0 is NSNull ? nil : Self.int($0) },

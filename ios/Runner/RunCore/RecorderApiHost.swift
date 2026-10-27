@@ -10,12 +10,22 @@ final class RecorderApiHost: RecorderApi {
   var probe: GpsProbe?
   private let log: DiagnosticsLog
   private let cues: CuePlayer?
+  /// The paired heart rate strap (nil in tests that do not need one).
+  private let strap: BleHrClient?
+  private let bridge: RecorderStrapBridge?
 
-  init(host: RecorderHost, source: LocationSource, cues: CuePlayer? = nil, log: DiagnosticsLog = .shared) {
+  init(host: RecorderHost, source: LocationSource, cues: CuePlayer? = nil, strap: BleHrClient? = nil, log: DiagnosticsLog = .shared) {
     self.host = host
     self.source = source
     self.cues = cues
+    self.strap = strap
     self.log = log
+    bridge = strap.map { _ in RecorderStrapBridge(host: host) }
+    if let strap, let bridge {
+      host.hrLink = { bridge.snapshot }
+      host.onRunEnded = { DispatchQueue.main.async { strap.disconnect() } }
+      DispatchQueue.main.async { strap.listener = bridge }
+    }
   }
 
   func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult {
@@ -29,6 +39,7 @@ final class RecorderApiHost: RecorderApi {
       return StartResult(runId: nil, error: spec == nil ? .startFailed : .unsupportedSession)
     }
     host.attach(source)
+    DispatchQueue.main.async { self.strap?.connectIfPaired() }
     return StartResult(runId: runId, error: nil)
   }
 
@@ -71,8 +82,19 @@ final class RecorderApiHost: RecorderApi {
   }
 
   func setCues(enabled: Bool) throws { cues?.enabled = enabled }
-  func startGpsProbe() throws { DispatchQueue.main.async { self.probe?.start() } }
-  func stopGpsProbe() throws { DispatchQueue.main.async { self.probe?.stop() } }
+  /// The probe runs while Start/Ready is on screen: that is also when the saved strap is wanted, so GO finds it connected.
+  func startGpsProbe() throws {
+    DispatchQueue.main.async {
+      self.probe?.start()
+      self.strap?.startScreenWants()
+    }
+  }
+  func stopGpsProbe() throws {
+    DispatchQueue.main.async {
+      self.probe?.stop()
+      self.strap?.startScreenReleases()
+    }
+  }
   func setKmSplits(enabled: Bool) throws { host.setKmSplits(enabled) }
   func setSpokenSummary(enabled: Bool) throws {}
   func setVoiceCoach(config: VoiceCoachConfig) throws {}

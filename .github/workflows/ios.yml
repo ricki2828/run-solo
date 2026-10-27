@@ -86,6 +86,8 @@ jobs:
         run: |
           set -o pipefail
           flutter pub get 2>&1 | tee build/ios-logs/1-pub-get.log
+      - name: BLE parse vectors in step with the Kotlin tests
+        run: python3 ios/tools/check_ble_vectors.py
       - name: Shared core XCFramework (Kotlin Multiplatform, iOS plan K3)
         # ios-arm64 + ios-arm64-simulator, static. Copied to ios/RunCore/ (gitignored) and linked
         # into Runner by add_targets.rb.
@@ -148,6 +150,10 @@ jobs:
           # P4: the cue player's words match the voice-copy fixture and interruptions are handled.
           grep -qE "Test case 'CuePlayerTests\.testCueWordsThroughTheSwiftBridgeMatchTheVoiceCopyFixture\(\)' passed" build/ios-logs/4b-xctest.log
           grep -qE "Test case 'CuePlayerTests\.testInterruptionDropsTheQueueAndDoesNotLatchWithoutAnEnd\(\)' passed" build/ios-logs/4b-xctest.log
+          # Strap: shared 0x2A37 vectors, the ported reconnect policy, and the client with a fake central.
+          grep -qE "Test case 'HeartRateMeasurementTests\.testEverySharedVectorParsesAsExpected\(\)' passed" build/ios-logs/4b-xctest.log
+          grep -qE "Test case 'BleReconnectPolicyTests\.testStaleIdentifierIsFoundByNameAndTheSavedOneFollowsIt\(\)' passed" build/ios-logs/4b-xctest.log
+          grep -qE "Test case 'BleHrClientTests\.testStaleSavedIdentifierFallsBackToTheSavedNameAndRepointsTheStore\(\)' passed" build/ios-logs/4b-xctest.log
       - name: dSYMs
         # Debug builds keep DWARF in the object files; dsymutil links them while DerivedData
         # still exists. Release dSYMs come from the T4 archive.

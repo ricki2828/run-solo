@@ -28,6 +28,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Run Supreme connects to your heart rate strap over Bluetooth so your heart rate is recorded with your run. It only looks for heart rate straps.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Run Supreme only uses your location during a run you started, so it can keep recording with the screen off or another app open.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -58,6 +60,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>bluetooth-central</string>
 		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>

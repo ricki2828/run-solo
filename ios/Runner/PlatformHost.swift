@@ -3,7 +3,7 @@ import UIKit
 
 // Swift hosts for the Pigeon contract (iOS plan §2.4). The recorder is RunCore/RecorderApiHost.swift
 // (P3); location + permissions live in LocationSource.swift and PermissionsHost.swift. The rest are
-// Phase 1 stubs answering safe defaults until their tasks (P5 place name, P7 strap).
+// Phase 1 stubs answering safe defaults until their tasks (P5 place name). The strap is Ble/.
 
 /// Where Swift keeps run data. `path_provider.getApplicationSupportDirectory()` resolves to the
 /// same directory on iOS, so Dart's `runs/` and `state/` and Swift's `journals/` share one root.
@@ -45,13 +45,6 @@ final class PlaceApiStub: PlaceApi {
   }
 }
 
-final class BleApiStub: BleApi {
-  func bleScan(completion: @escaping (Result<[BleDevice], Error>) -> Void) { completion(.success([])) }
-  func blePair(address: String) throws {}
-  func bleForget() throws {}
-  func bleStatus() throws -> BleStatus { BleStatus(connected: false, adapterOn: false) }
-}
-
 final class HealthApiStub: HealthApi {
   func status(completion: @escaping (Result<HealthStatus, Error>) -> Void) {
     completion(.success(HealthStatus(availability: .unsupported, coreGranted: false, routeGranted: false)))
@@ -91,13 +84,14 @@ enum PlatformHost {
     let cues = CuePlayer(log: { diagnostics.log("cues", $0) })
     let host = RecorderHost(
       root: StorageDirs.support, cues: cues, trace: { diagnostics.log("recorder", $0) }, send: { RecorderEventBus.shared.send($0) })
-    let recorder = RecorderApiHost(host: host, source: source, cues: cues, log: diagnostics)
+    let strap = BleHrClient(makeCentral: { CoreBluetoothCentral() }, trace: { diagnostics.log("ble", $0) })
+    let recorder = RecorderApiHost(host: host, source: source, cues: cues, strap: strap, log: diagnostics)
     recorder.probe = GpsProbe(source: source) { RecorderEventBus.shared.send($0) }
     RecorderApiSetup.setUp(binaryMessenger: messenger, api: recorder)
     StorageApiSetup.setUp(binaryMessenger: messenger, api: StorageApiStub())
     PermissionsApiSetup.setUp(binaryMessenger: messenger, api: PermissionsHost())
     PlaceApiSetup.setUp(binaryMessenger: messenger, api: PlaceApiStub())
-    BleApiSetup.setUp(binaryMessenger: messenger, api: BleApiStub())
+    BleApiSetup.setUp(binaryMessenger: messenger, api: BleApiHost(client: strap))
     HealthApiSetup.setUp(binaryMessenger: messenger, api: HealthApiStub())
     RecorderEventsStreamHandler.register(with: messenger, streamHandler: RecorderEventBus.shared)
   }
