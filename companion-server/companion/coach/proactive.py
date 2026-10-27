@@ -170,13 +170,11 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
 def usual_start_hour(c, uid: str, zone: str) -> int:
     """The runner's usual start hour in their zone: the median local start of their last HEAT_START_RUNS runs, HEAT_HOUR
     when there are fewer than HEAT_START_MIN_RUNS."""
-    rows = c.execute("SELECT start_utc FROM runs WHERE user_id=? ORDER BY start_utc DESC LIMIT ?", (uid, HEAT_START_RUNS)).fetchall()
+    rows = c.execute("SELECT start_utc FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 ORDER BY start_utc DESC LIMIT ?", (uid, HEAT_START_RUNS)).fetchall()
     mins = sorted(to_local(parse_iso(r["start_utc"]), zone).hour * 60 + to_local(parse_iso(r["start_utc"]), zone).minute for r in rows)
     if len(mins) < HEAT_START_MIN_RUNS:
         return HEAT_HOUR
-    mid = len(mins) // 2
-    med = mins[mid] if len(mins) % 2 else (mins[mid - 1] + mins[mid]) / 2
-    return int(med // 60)
+    return mins[(len(mins) - 1) // 2] // 60   # the lower middle: always a real start, never the empty midpoint of two habits
 
 
 def heat_note(name: str, weekday: str, td: tuple, f: float | None, hour: int = HEAT_HOUR) -> str:

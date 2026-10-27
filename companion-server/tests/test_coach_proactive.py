@@ -740,3 +740,11 @@ def test_heat_note_carries_the_real_chips_not_the_placeholder():
     from companion.coach import proactive
     note = proactive.heat_note("Tempo", "Thursday", (31, 22), 0.059)
     assert f"<chips>{proactive.HEAT_CHIPS}</chips>" in note and "{HEAT_CHIPS}" not in note
+
+
+def test_a_bimodal_runner_gets_a_real_start_hour_not_the_midpoint(cc, fakes):
+    quality_tomorrow(cc)
+    usual_runs(cc, 18, n=5)   # 18:00 UTC = 07:00 Auckland
+    usual_runs(cc, 5, n=5)    # 05:00 UTC = 18:00 Auckland
+    fakes.coach_queue = [coach_text("Hot one tomorrow.")]
+    assert tick(cc) == 1 and cc.wx.hours == [7]
