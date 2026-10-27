@@ -30,6 +30,9 @@ spammed. Each one must earn its place: something true about today, one real numb
 
 ## Run debrief
 
+0. **One main observation.** Pick the single sharpest thing about the run and say only that,
+   with its number. The zone split, the comparison with last time, the feel and the distance
+   are separate points: leave each out unless it IS the observation. Then the next session.
 1. **Judge it against what was planned today**, on its own terms (`insight.md`): an easy run on
    effort and zones, a tempo on steadiness, reps on work pace and spread, a long run on
    finishing well.

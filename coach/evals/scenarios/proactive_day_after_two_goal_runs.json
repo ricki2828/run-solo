@@ -92,7 +92,7 @@
  "proactive": {
   "trigger": "day",
   "today_line": "today's session is Tempo, 45 min",
-  "week": "runs done since Monday: 2, both goal runs outside the plan; the runner's planned runs a week: 3; last run Tuesday 27 Oct: 8 km in 49:50, 8.0 km goal; the run before: Monday 26 Oct, 5 km in 24:13, 5K goal"
+  "week": "runs done since Monday: 2, both goal runs outside the plan (Monday 26 Oct 5 km in 24:13, 5K goal; Tuesday 27 Oct 8 km in 49:50, 8.0 km goal); still to come in the plan: today's tempo, Friday's easy run, Sunday's long run"
  },
  "must": [
   "names today's tempo and its shape (3 x 10 min tempo with 2 min jogs, 45 min) from the plan",

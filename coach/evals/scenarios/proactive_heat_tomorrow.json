@@ -3,7 +3,13 @@
  "group": "day",
  "message": "(proactive heat heads-up)",
  "fixture_patch": {
-  "today": "2026-10-21 (Wednesday)"
+  "today": "2026-10-21 (Wednesday)",
+  "get_runner": {
+   "remembered": [
+    "runs at 7am on weekdays before work",
+    "left calf niggle in July, settled"
+   ]
+  }
  },
  "proactive": {
   "trigger": "heat",
@@ -17,8 +23,8 @@
  },
  "must": [
   "names tomorrow's tempo",
-  "uses the forecast figure(s) given (31 C / dew point 22 / about 5.9% slower)",
-  "run it by effort not pace, or go earlier"
+  "uses the forecast at 07:00 (31 C, dew point 22 or about 5.9% slower): the one figure that carries the point is enough",
+  "run it by effort not pace, or go earlier/cooler"
  ],
  "must_not": [
   "a temperature, time or percentage not given",
