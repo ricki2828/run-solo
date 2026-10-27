@@ -1162,9 +1162,12 @@ def test_the_new_fields_flow_to_the_run_the_export_next_session_and_the_morning_
     n = out["next_session"]
     assert (n["name"], n["session_id"], n["name_source"], n["label"]) == (
         "Norwegian 4x4", "norwegian_4x4", "plan", "Norwegian 4x4, 6 km")
-    assert "w1s1" not in json.dumps(out)
+    # C2b: the ref goes back to the app that sent it only as the briefing match key, nowhere else in the reply
+    assert n["session_ref"] == "w1s1"
+    assert "w1s1" not in json.dumps({**out, "next_session": {k: v for k, v in n.items() if k != "session_ref"}})
     env.step(at(2026, 10, 15, 6, 45))
     assert any("Today: Norwegian 4x4" in b.get("text", "") for b in env.sends())
+    assert not any("w1s1" in json.dumps(b) for b in env.sends()), "never shown to the runner"
 
 
 def test_the_apps_exact_payload_is_accepted_over_http_and_the_name_reaches_next_session(env, client):

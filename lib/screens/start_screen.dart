@@ -11,6 +11,10 @@ import '../platform/gateway.dart';
 import '../platform/host_caps.dart';
 import '../platform/session_codec.dart';
 import '../state/block_plan.dart';
+import '../state/coach_briefing.dart' show BriefingChoice;
+import '../state/companion.dart'
+    show CoachSession, coachSlug, companionSessionRef;
+import '../state/start_briefing.dart';
 import '../state/courses.dart';
 import '../app/format.dart';
 import '../state/history_store.dart';
@@ -552,8 +556,54 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         paces: _paces,
       );
 
+  /// Today's session in the coach's own week (no plan in the app), when this
+  /// run is it: a Free run on an easy or long day, the same built-in session on
+  /// a quality day. A Free goal run on an easy or long day is selected too (a
+  /// reversible product default: it is how the runner usually runs), but that
+  /// is config only: the recorder ignores the template on a goal run until the
+  /// RecordingSession follow-up. Null for any other run, or with a plan session
+  /// today (the plan is the match then).
+  CoachSession? _coachDay(
+    AppServices services,
+    AppSettings s,
+    engine.BlockSession? planned,
+  ) {
+    final day = planned == null ? services.companion?.coachDayToday : null;
+    if (day == null || s.eventRun) return null;
+    return switch (day.type) {
+      'easy' ||
+      'long' => s.goalRun || s.lastMode == RecordMode.free ? day : null,
+      'quality' =>
+        !s.goalRun &&
+                s.lastMode == RecordMode.intervals &&
+                day.sessionId != null &&
+                coachSlug(services.pickedSession.templateId) == day.sessionId
+            ? day
+            : null,
+      _ => null,
+    };
+  }
+
   VoiceCoachConfig _voiceCoach(AppServices services, AppSettings s) {
     final planned = _plannedToday(services, s);
+    // The coach's briefing, from what is already cached in memory (no network, no await at Start). For today's
+    // plan session when its content fingerprint and session ref both match; with no plan, for today's coach-week
+    // session when this run is it and the cached briefing carries the keys next-session gave for it.
+    final companion = services.companion;
+    final day = _coachDay(services, s, planned);
+    final choice = companion == null
+        ? BriefingChoice.none
+        : planned != null
+        ? companion.briefingChoice(
+            sessionRef: companionSessionRef(planned),
+            fingerprint: StartBriefing.fingerprintOf(planned, paces: _paces),
+          )
+        : day != null
+        ? companion.briefingChoice(
+            sessionRef: day.sessionRef,
+            fingerprint: day.fingerprint,
+          )
+        : BriefingChoice.none;
     return VoiceCoachPlan.build(
       settings: s,
       zones: services.hrZones,
@@ -566,6 +616,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       goalPaceSecPerKm: s.goalRun ? _goalAim(s) : null,
       sessionPaceSecPerKm: _presetTarget(services, s)?.trueSecPerKm,
       paces: _paces,
+      briefingTemplate: choice.template,
+      suppressBriefing: choice.suppress,
+      coachDay: day == null
+          ? null
+          : CoachDayBriefing(
+              minutes: day.minutes,
+              distanceM: day.distanceM,
+              reps: day.reps,
+              sessionName: day.type == 'quality' ? day.name : null,
+            ),
     );
   }
 

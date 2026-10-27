@@ -56,6 +56,11 @@ For the app's Home (stream S3). `Cache-Control: no-store`. A server without chec
 }
 ```
 
+`next_session` also carries the briefing's match keys (C2b, additive): `session_ref` (`w3s2` for an app plan session, `cw<yyyymmdd><e|l|q>` for a
+coach-week one), `fingerprint` (the content fingerprint below) and, for a quality session with a rep count, `reps`. They are the
+keys `GET /v1/me/briefing` stores and serves under, so Start can match a cached briefing to today's session from memory. They are
+absent when there is nothing to brief (an app plan whose upload sent no `session_ref`).
+
 `quest` and `care_weeks` are additive keys on the same `v: 1` (the app ignores unknown keys and blanks Home's coach card on any other `v`, so a bump is not allowed):
 - `quest` is the quest the runner has accepted that has not ended (taken in Telegram or sent by the app), or `null`. The app adopts it only
   when the id matches one of its own offer candidates, and only if it has no active quest of its own.
@@ -69,7 +74,7 @@ The server never guesses a name. `plan_next` (the `POST /v1/runs` field) takes t
   else (a custom or typed name, a homoglyph, hidden or control characters, a link or handle, ASCII "x") drops the name.
 - `session_id`: a hint, `^[a-z0-9_]{1,40}$`, the app's template id with hyphens as underscores (e.g. `norwegian_4x4`). It is kept
   only together with an accepted `session_name` and returned as `next_session.session_id`; without a hint the id is the name as a slug.
-- `session_ref`: the app's opaque plan id, `^[a-z0-9_]{1,16}$` (e.g. `w1s1`), stored for dedupe only and never shown or returned.
+- `session_ref`: the app's opaque plan id, `^[a-z0-9_]{1,16}$` (e.g. `w1s1`), never shown to the runner; returned to the app only as `next_session.session_ref`, the briefing match key (below).
 
 An invalid key is dropped on its own and the plan still counts; old payloads without them pass unchanged; any other unknown key
 is still a 422. `name_source` is "plan" when a name was accepted. A session the coach made easy loses the name (it is a different

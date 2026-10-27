@@ -820,6 +820,7 @@ class CheckinMixin:
             name_ = self._ci_session_name(planned, res.type) if res else None
             quest = cv_quest.view_for_app(c, uid, today)
             care_weeks = ci.care_weeks(ans, today) if self._ci_consented(c, uid) else []
+            keys = self.coach.briefing.match_keys(c, user, now) if res is not None and planned is not None else None
             line = c.execute(
                 "SELECT kind, headline, body, sent_at FROM cards WHERE user_id=? AND sent_at IS NOT NULL AND sent_at<=? "
                 f"AND kind IN ({','.join('?' * len(COACH_LINE_KINDS))}) ORDER BY sent_at DESC LIMIT 1",
@@ -837,6 +838,11 @@ class CheckinMixin:
                                                  planned.distance_m if not res.easier else None, name_)}
         if session is not None and planned is not None and planned.derived:
             session["derived"] = True   # the coach's default week, not a plan built in the app
+        if session is not None and keys is not None:
+            # C2b: what the coach's briefing for this session is keyed on, so Start matches it from memory.
+            session["session_ref"], session["fingerprint"] = keys["session_ref"], keys["fingerprint"]
+            if keys["reps"] is not None:
+                session["reps"] = keys["reps"]
         return {"v": 1, "generated_at": iso(now), "next_session": session,
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),

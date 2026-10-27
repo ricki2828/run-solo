@@ -494,6 +494,7 @@ class CoachChat:
                 if self.send_job(j["id"], now):
                     return True
                 break
+        self.briefing.sweep(now)   # at most every coach_briefing_sweep_s; only queues, the step below generates
         return self._claim_and_run(now) or self.briefing.step(now)
 
     def _expire_triage_flags(self, now: datetime) -> None:

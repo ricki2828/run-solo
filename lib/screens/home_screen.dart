@@ -120,7 +120,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // The coach's next session, quietly: nothing shows if it fails.
     final companion = services.companion;
     if (companion != null) {
-      companion.load().then((_) => companion.refreshNext());
+      companion.load().then((_) async {
+        await companion.refreshNext();
+        // The coach's start briefing for the next session, cached for Start (which never fetches).
+        await companion.refreshBriefing();
+      });
     }
   }
 

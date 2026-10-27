@@ -41,6 +41,10 @@ abstract final class VoiceCoachPlan {
   /// recorder says it in the runner's units. [briefingTemplate] is the coach's own template for that session,
   /// already matched to it by the caller (null until the app fetches one): it is spoken first, the app's own
   /// when it does not render. Nothing here waits for the network: both are plain strings already in hand.
+  /// [suppressBriefing] (a fresh suppress marker, see `BriefingCache`) drops both: the plain start line.
+  /// [coachDay]: a run that is not an app plan session but is today's session in the coach's own week (the
+  /// caller matched it): [briefingTemplate] is spoken with these slot values, and with no app fallback (a Free
+  /// run had no briefing before, so a template that does not render leaves its usual start line).
   /// Free, goal, event, Cooper, laps and trail runs carry none and keep their usual start line.
   static VoiceCoachConfig build({
     required AppSettings settings,
@@ -52,6 +56,8 @@ abstract final class VoiceCoachPlan {
     double? sessionPaceSecPerKm,
     engine.TargetPaces? paces,
     String? briefingTemplate,
+    bool suppressBriefing = false,
+    CoachDayBriefing? coachDay,
   }) {
     final on = settings.cues && settings.voiceCoaching;
     final full = settings.coachingDetail == CoachingDetail.full;
@@ -68,8 +74,18 @@ abstract final class VoiceCoachPlan {
     final easy = kind == engine.BlockKind.easy || warnedEasy;
     final minutes = planned?.minutes;
     final timed = _ceiling(kind) && minutes != null && minutes > 0;
-    final briefing = on && full
+    // A suppress marker from the coach (a safety block) means NO briefing at all: not the coach's, not the app's
+    // own. The recorder then says the plain start line.
+    final briefing = on && full && !suppressBriefing
         ? StartBriefing.plan(planned, hasPace: pace != null)
+        : null;
+    final day =
+        planned == null &&
+            on &&
+            full &&
+            !suppressBriefing &&
+            briefingTemplate != null
+        ? coachDay
         : null;
     return VoiceCoachConfig(
       enabled: on,
@@ -84,12 +100,16 @@ abstract final class VoiceCoachPlan {
       plannedKind: on && full && timed ? kind!.name : null,
       // Intervals carry their minutes too, for the briefing's {minutes}: with no plannedKind the recorder
       // has no planned-time lines for them.
-      plannedMinutes: on && full && timed ? minutes : briefing?.minutes,
-      briefingTemplate: briefing == null ? null : briefingTemplate,
+      plannedMinutes: on && full && timed
+          ? minutes
+          : briefing?.minutes ?? day?.minutes,
+      briefingTemplate: briefing != null || day != null
+          ? briefingTemplate
+          : null,
       briefingFallback: briefing?.fallback,
-      plannedDistanceM: briefing?.distanceM,
-      reps: briefing?.reps,
-      sessionName: briefing?.sessionName,
+      plannedDistanceM: briefing?.distanceM ?? day?.distanceM,
+      reps: briefing?.reps ?? day?.reps,
+      sessionName: briefing?.sessionName ?? day?.sessionName,
     );
   }
 
@@ -174,4 +194,23 @@ class CoachTarget {
 
   /// Half-width of the on-target band: the coach's default of 5 s/km.
   final double bandSecPerKm;
+}
+
+/// What a coach-week session's start briefing slots speak (C2b), from
+/// `GET /v1/me/next-session`: the same values the server's briefing was
+/// written for. Null = the session has none (its template does not use it).
+class CoachDayBriefing {
+  const CoachDayBriefing({
+    this.minutes,
+    this.distanceM,
+    this.reps,
+    this.sessionName,
+  });
+
+  final int? minutes;
+  final double? distanceM;
+  final int? reps;
+
+  /// `{session}`: only a quality session's own name.
+  final String? sessionName;
 }
