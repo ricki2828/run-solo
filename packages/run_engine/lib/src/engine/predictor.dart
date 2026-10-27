@@ -334,7 +334,12 @@ class Predictor {
     List<PredictionInput> inputs, {
     required DateTime now,
     Units units = Units.km,
+    bool asRun = false,
   }) {
+    // [asRun]: read each effort at its clock time, not the flat, cool-day
+    // True Pace time. A target raced on the day (the event Start card) is
+    // asRun; the Home estimate is not.
+    int ms(PredictionInput i) => asRun ? i.elapsedMs : i.effectiveMs;
     PredictionInput? best;
     double? bestT;
     // Whole days: a run on day 42 counts all day.
@@ -345,19 +350,14 @@ class Predictor {
       final day = DateTime(i.date.year, i.date.month, i.date.day);
       if (i.distanceM < minInputM || day.isBefore(since)) continue;
       if (i.date.isAfter(now)) continue;
-      final t = riegel(
-        i.effectiveMs / 1000,
-        i.distanceM,
-        target.metres,
-        exponent,
-      );
+      final t = riegel(ms(i) / 1000, i.distanceM, target.metres, exponent);
       if (bestT == null || t < bestT - 1e-9) {
         best = i;
         bestT = t;
       }
     }
     if (best == null) return null;
-    final t1 = best.effectiveMs / 1000;
+    final t1 = ms(best) / 1000;
     final a = riegel(t1, best.distanceM, target.metres, exponentLow);
     final b = riegel(t1, best.distanceM, target.metres, exponentHigh);
     return Prediction(

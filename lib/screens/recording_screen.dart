@@ -75,6 +75,11 @@ class _RecordingScreenState extends State<RecordingScreen>
     final key = s.runId ?? '';
     if (_goalTargetRun != key) {
       _goalTargetRun = key;
+      _goalTargetMs = null;
+    }
+    // A null is not kept: a run restored after process death can open before
+    // the index is prepared, and the target arrives a build later.
+    if (_goalTargetMs == null) {
       final spec = s.spec;
       _goalTargetMs = spec == null
           ? null
@@ -3886,7 +3891,7 @@ class GoalDoneBlock extends StatelessWidget {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    _targetLine(targetMs!, ms),
+                    targetLine(targetMs!, ms),
                     key: const ValueKey('goal-target-result'),
                     softWrap: false,
                     style: RunSoloType.display44.copyWith(color: muted),
@@ -3900,13 +3905,16 @@ class GoalDoneBlock extends StatelessWidget {
   }
 
   /// "TARGET 40:03 · 9:47 OVER": the finish against the target on the
-  /// clock, whole seconds, never a verdict word.
-  static String _targetLine(int targetMs, int finishMs) {
-    final gap = finishMs - targetMs;
+  /// clock, whole seconds each side, so the gap is exactly the difference of
+  /// the two clocks printed (never a verdict word).
+  @visibleForTesting
+  static String targetLine(int targetMs, int finishMs) {
+    final targetS = (targetMs / 1000).round();
+    final gap = finishMs ~/ 1000 - targetS;
     final tail = gap == 0
         ? 'ON IT'
-        : '${Fmt.clock(gap.abs())} ${gap > 0 ? 'OVER' : 'UNDER'}';
-    return 'TARGET ${_targetClock(targetMs)} · $tail';
+        : '${Fmt.clock(gap.abs() * 1000)} ${gap > 0 ? 'OVER' : 'UNDER'}';
+    return 'TARGET ${Fmt.clock(targetS * 1000)} · $tail';
   }
 }
 
