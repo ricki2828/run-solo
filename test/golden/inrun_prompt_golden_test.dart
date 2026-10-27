@@ -54,7 +54,7 @@ void main() {
       tester,
       fake,
       prompt(
-        text: '2 k to go, 12 seconds under 24:30, shrinking. Faster finish, or same pace?',
+        text: '2 k to go, 12 seconds under 24:30, shrinking. Faster, or same pace?',
         options: const ['Faster', 'Same pace'],
       ),
     );

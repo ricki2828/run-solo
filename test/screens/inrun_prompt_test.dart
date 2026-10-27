@@ -475,4 +475,4 @@ void main() {
 
 /// The longest goal-time last-2-km prompt (CoachPrompter, 16 words).
 const goalPromptLongest =
-    '2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Faster finish, or same pace?';
+    '2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Faster, or same pace?';

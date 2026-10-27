@@ -530,7 +530,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         const val MAX_PROMPTS = 3
 
         /** The last-2-km question: the buttons are Faster / Same pace on screen; the choice keys stay push / hold. */
-        const val LAST2K_QUESTION = "Faster finish, or same pace?"
+        const val LAST2K_QUESTION = "Faster, or same pace?"
         val LAST2K_LABELS = listOf("Faster", "Same pace")
 
         /** Of those, at most this many between reps. */

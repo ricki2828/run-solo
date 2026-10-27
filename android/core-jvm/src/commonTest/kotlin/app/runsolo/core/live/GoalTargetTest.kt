@@ -107,7 +107,7 @@ class GoalTargetTest {
         val last = assertNotNull(km(8, 2_580_000))
         assertEquals(PromptKind.last2k, last.kind)
         assertTrue(last.text.contains("over 53 minutes"), last.text)
-        assertTrue(last.text.endsWith("Faster finish, or same pace?"), last.text)
+        assertTrue(last.text.endsWith("Faster, or same pace?"), last.text)
     }
 
     @Test
