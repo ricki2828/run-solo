@@ -33,6 +33,10 @@ protocol BleCentral: AnyObject {
   var poweredOn: Bool { get }
   /// False when the runner denied Bluetooth in Settings (or it is restricted).
   var authorized: Bool { get }
+  /// CoreBluetooth has reported a definite state: the permission prompt (if any) is answered and
+  /// the radio is on, off, unauthorised or unsupported. False right after creation, and while the
+  /// system Bluetooth prompt is on screen.
+  var stateResolved: Bool { get }
   /// A scan for the Heart Rate service. False when it could not start.
   func startScan() -> Bool
   func stopScan()

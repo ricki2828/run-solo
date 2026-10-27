@@ -219,6 +219,8 @@ final class FakeCentral: BleCentral {
   weak var delegate: BleCentralDelegate?
   var poweredOn = true
   var authorized = true
+  /// False while the system Bluetooth prompt is up (first use).
+  var stateResolved = true
   private(set) var scanning = false
   private(set) var scanStarts = 0
   var known: Set<String> = []
@@ -251,6 +253,13 @@ final class FakeCentral: BleCentral {
   func reading(_ id: String, _ bytes: [Int]) { delegate?.central(id: id, didReceive: data(bytes)) }
   func drop(_ id: String) { delegate?.centralDidDisconnect(id: id) }
   func setPower(_ on: Bool) { poweredOn = on; delegate?.centralDidChangeState() }
+  /// The runner answered the permission prompt.
+  func answerPrompt(allow: Bool, on: Bool = true) {
+    stateResolved = true
+    authorized = allow
+    poweredOn = allow && on
+    delegate?.centralDidChangeState()
+  }
 }
 
 final class MemoryStore: BleStrapStore {
@@ -276,14 +285,14 @@ final class BleHrClientTests: XCTestCase {
   private var created = 0
   private var log: [String] = []
 
-  private func makeClient(address: String? = nil, name: String? = nil) -> BleHrClient {
+  private func makeClient(address: String? = nil, name: String? = nil, isBackground: @escaping () -> Bool = { false }) -> BleHrClient {
     central = FakeCentral()
     clock = ManualScheduler()
     store = MemoryStore(address: address, name: name)
     listener = RecordingListener()
     created = 0
     let c = central!
-    let client = BleHrClient(makeCentral: { [unowned self] in created += 1; return c }, scheduler: clock, store: store, trace: { [unowned self] in log.append($0) })
+    let client = BleHrClient(makeCentral: { [unowned self] in created += 1; return c }, scheduler: clock, store: store, trace: { [unowned self] in log.append($0) }, isBackground: isBackground)
     client.listener = listener
     return client
   }
@@ -333,8 +342,106 @@ final class BleHrClientTests: XCTestCase {
     central.poweredOn = false
     var r2: Result<[BleAdvert], BleHrClient.ScanError>?
     client.scan { r2 = $0 }
-    clock.advance(BleHrClient.readyWaitMs)
-    XCTAssertEqual(r2?.failureValue, .bluetoothOff)
+    XCTAssertEqual(r2?.failureValue, .bluetoothOff, "off is reported at once, not after a wait")
+  }
+
+  func testFirstPairingWaitsForThePermissionPromptInsteadOfFailingAsBluetoothOff() {
+    let client = makeClient()
+    central.poweredOn = false
+    central.stateResolved = false  // prompt on screen
+    var result: Result<[BleAdvert], BleHrClient.ScanError>?
+    client.scan { result = $0 }
+    clock.advance(10_000)  // the old 4 s timer would have failed this
+    XCTAssertNil(result, "still waiting on the runner")
+    central.answerPrompt(allow: true)
+    XCTAssertTrue(central.scanning)
+    central.advertise("A1", "WHOOP 4A0934")
+    clock.advance(10_000)
+    XCTAssertEqual(try? result?.get().map(\.id), ["A1"])
+  }
+
+  func testDenyingThePromptReadsAsNotAuthorizedAndBluetoothOffAfterItAsOff() {
+    let client = makeClient()
+    central.poweredOn = false
+    central.stateResolved = false
+    var denied: Result<[BleAdvert], BleHrClient.ScanError>?
+    client.scan { denied = $0 }
+    central.answerPrompt(allow: false)
+    XCTAssertEqual(denied?.failureValue, .notAuthorized)
+
+    let other = makeClient()
+    central.poweredOn = false
+    central.stateResolved = false
+    var off: Result<[BleAdvert], BleHrClient.ScanError>?
+    other.scan { off = $0 }
+    central.answerPrompt(allow: true, on: false)  // allowed, but the radio is off
+    XCTAssertEqual(off?.failureValue, .bluetoothOff)
+  }
+
+  func testManagerThatNeverReportsStopsWaitingAtTheCap() {
+    let client = makeClient()
+    central.poweredOn = false
+    central.stateResolved = false
+    var result: Result<[BleAdvert], BleHrClient.ScanError>?
+    client.scan { result = $0 }
+    clock.advance(BleHrClient.readyWaitMs - 1)
+    XCTAssertNil(result)
+    clock.advance(1)
+    XCTAssertEqual(result?.failureValue, .bluetoothOff)
+  }
+
+  // MARK: background rescan
+
+  private var background = false
+
+  private func makeBackgroundClient(address: String? = "S1", name: String? = "WHOOP 4A0934") -> BleHrClient {
+    let c = makeClient(address: address, name: name, isBackground: { [unowned self] in background })
+    return c
+  }
+
+  func testBackgroundHuntRestartsTheScanEveryTwelveSecondsWhileLookingForANamedStrap() {
+    background = true
+    let client = makeBackgroundClient()
+    client.startScreenWants()
+    clock.advance(0)
+    XCTAssertEqual(central.scanStarts, 1)
+    clock.advance(BleHrClient.backgroundRescanMs - 1_000)
+    XCTAssertEqual(central.scanStarts, 1)
+    clock.advance(1_000)
+    XCTAssertEqual(central.scanStarts, 2, "restarted at 12 s")
+    XCTAssertTrue(central.scanning)
+    clock.advance(BleHrClient.backgroundRescanMs)
+    XCTAssertEqual(central.scanStarts, 3)
+    // A name that now shows up is matched on the fresh discovery.
+    central.advertise("NEW", "WHOOP 4A0934")
+    clock.advance(0)
+    XCTAssertEqual(central.connects.last, "NEW")
+  }
+
+  func testNoBackgroundRescanInTheForegroundWithoutASavedNameOrAfterTheLinkIsUp() {
+    background = false
+    let fg = makeBackgroundClient()
+    fg.startScreenWants()
+    clock.advance(40_000)
+    XCTAssertEqual(central.scanStarts, 1, "foreground keeps one scan")
+
+    background = true
+    let noName = makeBackgroundClient(address: "S1", name: nil)
+    noName.startScreenWants()
+    clock.advance(40_000)
+    XCTAssertEqual(central.scanStarts, 1, "an identifier-only strap comes back via the pending connect")
+
+    let up = makeBackgroundClient()
+    up.startScreenWants()
+    clock.advance(0)
+    central.advertise("S1", "WHOOP 4A0934")
+    clock.advance(0)
+    central.linkUp("S1")
+    central.notifying("S1")
+    central.reading("S1", [0x00, 0x96])
+    let starts = central.scanStarts
+    clock.advance(60_000)
+    XCTAssertEqual(central.scanStarts, starts, "no rescans once connected")
   }
 
   func testPairSavesIdentifierAndNameAndConnectsOnlyAfterTheFirstMeasurement() {

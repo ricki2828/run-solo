@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Heart Rate Profile client, the iOS counterpart of Android's `BleHrClient`: same owners,
 /// linger, hunt, connect window, silent-link watchdog and setup retry, with every connect decision
@@ -31,8 +32,14 @@ final class BleHrClient: BleCentralDelegate {
   static let pairHoldMs: Int64 = 120_000
   static let setupRetryMs: Int64 = 500
   static let maxSeenNames = 32
-  /// Waiting for CoreBluetooth to report its first state (the permission prompt is up).
-  static let readyWaitMs: Int64 = 4_000
+  /// Cap on waiting for CoreBluetooth to report a definite state. The system Bluetooth prompt is
+  /// up meanwhile and a runner can take a while to read it; the wait ends on the state callback,
+  /// this only stops a manager that never reports from hanging the pairing screen.
+  static let readyWaitMs: Int64 = 60_000
+  /// While the app is not active, a hunt restarts its scan this often: iOS coalesces repeat
+  /// discoveries in the background (AllowDuplicates is ignored), so a strap first seen without
+  /// its name would otherwise never be re-reported and the name match never fires.
+  static let backgroundRescanMs: Int64 = 12_000
 
   weak var listener: BleHrListener?
 
@@ -40,6 +47,8 @@ final class BleHrClient: BleCentralDelegate {
   private let scheduler: BleScheduling
   private let store: BleStrapStore
   private let trace: (String) -> Void
+  private let isBackground: () -> Bool
+  private var huntScanAt: Int64 = 0
   private let policy: BleReconnectPolicy
   private var central: BleCentral?
 
@@ -75,8 +84,10 @@ final class BleHrClient: BleCentralDelegate {
 
   init(
     makeCentral: @escaping () -> BleCentral, scheduler: BleScheduling = MainScheduler(),
-    store: BleStrapStore = DefaultsStrapStore(), trace: @escaping (String) -> Void = { _ in }
+    store: BleStrapStore = DefaultsStrapStore(), trace: @escaping (String) -> Void = { _ in },
+    isBackground: @escaping () -> Bool = { UIApplication.shared.applicationState != .active }
   ) {
+    self.isBackground = isBackground
     self.makeCentral = makeCentral
     self.scheduler = scheduler
     self.store = store
@@ -126,11 +137,13 @@ final class BleHrClient: BleCentralDelegate {
     }
   }
 
-  /// Runs `fire(true)` once the manager is powered on; `fire(false)` when Bluetooth is off or
-  /// denied, or nothing was reported within `readyWaitMs`.
+  /// Runs `fire(true)` once the manager is powered on. `fire(false)` at once when Bluetooth is
+  /// denied or off; while the state is not yet resolved (first use, permission prompt up) it
+  /// waits for the state callback, up to `readyWaitMs`. The caller tells denied from off by
+  /// asking `authorized`.
   private func whenReady(_ c: BleCentral, _ fire: @escaping (Bool) -> Void) {
     if c.poweredOn { return fire(true) }
-    if !c.authorized { return fire(false) }
+    if !c.authorized || c.stateResolved { return fire(false) }
     waiterCounter += 1
     let token = waiterCounter
     readyWaiters.append((token, fire))
@@ -311,6 +324,7 @@ final class BleHrClient: BleCentralDelegate {
     huntCounter += 1
     let token = huntCounter
     huntToken = token
+    huntScanAt = now()
     trace("hunt start scanMs=\(scanMs) fast=\(lowLatency) passive=\(id4(passive)) name=\(policy.savedName ?? "-")")
     huntEnd = scheduler.after(scanMs) { [self] in
       huntEnd = nil
@@ -328,8 +342,20 @@ final class BleHrClient: BleCentralDelegate {
     huntTick = scheduler.after(Self.huntTickMs) { [self] in
       guard huntToken == token else { return }
       apply(policy.onHuntTick(nowMs: now()))
+      if huntToken == token { rescanInBackground() }
       if huntToken == token { scheduleHuntTick(token) }
     }
+  }
+
+  /// Hunting a saved strap by name with the app in the background: restart the scan so discovery
+  /// events fire again (see `backgroundRescanMs`). Not while a pairing scan shares the CB scan.
+  private func rescanInBackground() {
+    guard isBackground(), pairScan == nil, let c = central, c.poweredOn,
+      policy.savedName?.isEmpty == false, now() - huntScanAt >= Self.backgroundRescanMs
+    else { return }
+    huntScanAt = now()
+    c.stopScan()
+    _ = c.startScan()
   }
 
   private func stopHunt() {
@@ -395,7 +421,7 @@ final class BleHrClient: BleCentralDelegate {
   func centralDidChangeState() {
     guard let c = central else { return }
     trace("bluetooth state powered=\(c.poweredOn) authorized=\(c.authorized)")
-    if c.poweredOn || !c.authorized {
+    if c.poweredOn || !c.authorized || c.stateResolved {
       let waiting = readyWaiters
       readyWaiters.removeAll()
       for w in waiting { w.fire(c.poweredOn) }
