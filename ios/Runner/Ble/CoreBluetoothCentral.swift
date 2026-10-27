@@ -27,6 +27,13 @@ final class CoreBluetoothCentral: NSObject, BleCentral, CBCentralManagerDelegate
     }
   }
 
+  var stateResolved: Bool {
+    switch manager.state {
+    case .unknown, .resetting: return false
+    default: return CBManager.authorization != .notDetermined
+    }
+  }
+
   func startScan() -> Bool {
     guard poweredOn else { return false }
     // Duplicates on: a strap first seen without its name is reported again once the name arrives.
