@@ -23,7 +23,7 @@ class GoalMarginTest {
         assertEquals("1 minute 5 seconds over 24:30", GoalMargin.promptPhrase(-65_000, null, t))
         for (secs in listOf(59L, 60L, 61L, 118L, 458L)) {
             val text = GoalMargin.phrase(-secs * 1_000, -8_000, t)
-            assertTrue(CueWordsCount.of(text) <= 9, text)
+            assertTrue(CueComposer.words(text) <= 9, text)
         }
     }
 
