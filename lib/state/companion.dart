@@ -626,6 +626,7 @@ class CoachNext {
     this.quest,
     this.supportsQuests = false,
     this.supportsLoad = false,
+    this.supportsGoalTarget = false,
   });
   final CoachSession? session;
   final CoachLine? line;
@@ -647,6 +648,11 @@ class CoachNext {
   /// `accepts_load`. An older server refuses the whole run for either key.
   final bool supportsLoad;
 
+  /// The server takes `goal_target_s` and `goal_target_from` on a run: its
+  /// reply says `accepts_goal_target`. An older server refuses the whole run
+  /// for either key.
+  final bool supportsGoalTarget;
+
   bool get isEmpty => session == null && line == null;
 
   /// Null when the body is not a version-1 reply.
@@ -665,6 +671,7 @@ class CoachNext {
       quest: CoachQuest.fromJson(j['quest']),
       supportsQuests: j.containsKey('quest') || j.containsKey('care_weeks'),
       supportsLoad: j['accepts_load'] == true,
+      supportsGoalTarget: j['accepts_goal_target'] == true,
     );
   }
 }
@@ -1505,6 +1512,11 @@ class CompanionController extends ChangeNotifier {
   /// `load_basis`. False until a reply says so.
   bool get loadSupported =>
       enrolled && consentCurrent && (_coachNext?.supportsLoad ?? false);
+
+  /// The server's last next-session reply says it takes a goal run's target
+  /// (`accepts_goal_target`). False until a reply says so.
+  bool get goalTargetSupported =>
+      enrolled && consentCurrent && (_coachNext?.supportsGoalTarget ?? false);
 
   /// The quest accepted in Telegram, if the last reply said so.
   CoachQuest? get coachQuest =>
@@ -2561,6 +2573,7 @@ Map<String, Object?>? companionSummary(
   Map<String, Object?>? trail,
   Map<String, Object?>? quest,
   Map<String, Object?> load = const {},
+  Map<String, Object?> goal = const {},
 }) {
   final s = d.summary;
   final run = d.run;
@@ -2598,6 +2611,8 @@ Map<String, Object?>? companionSummary(
     'feel': ?(feel ?? d.sidecar.feel)?.name,
     // The session's name and work/rep/recovery paces (interval runs only).
     ...companionIntervalFacts(s),
+    // A goal run's target time and where it came from (companionGoalFacts).
+    ...goal,
     // The 4-week plan's facts (companionPlanFacts), when there is a plan.
     ...plan,
     'trail': ?trail,
@@ -2657,6 +2672,23 @@ Map<String, Object?> companionIntervalFacts(RunSummary s) {
       : facts;
 }
 
+/// A distance goal run's target time as the Start card showed it, with the
+/// effort it was read from ("5K on 26 Oct"): `goal_target_s` and
+/// `goal_target_from`. A training number, the same class as pace. Empty for
+/// any other run, or without a target; an older server never gets them
+/// (the caller only asks a server that takes them).
+Map<String, Object?> companionGoalFacts(engine.StartTarget? t) {
+  final ms = t?.liveTargetMs;
+  if (t == null || ms == null || ms <= 0) return const {};
+  final from = t.sourceText;
+  return {
+    'goal_target_s': (ms / 1000).round(),
+    if (from != null && _goalFrom.hasMatch(from)) 'goal_target_from': from,
+  };
+}
+
+final RegExp _goalFrom = RegExp(r'^[A-Za-z0-9 .]{1,40}$');
+
 /// The goal names the server accepts (`GoalCatalogue.nameFor` and
 /// `Settings.goalName` plus " goal": "10K goal", "12.3 km goal", "1 hour goal").
 final RegExp _goalName = RegExp(
@@ -2701,6 +2733,10 @@ class CompanionTarget extends ExportTarget {
   Future<Map<String, Object?>?> Function(RunDetail run, {required bool names})?
   questFacts;
 
+  /// The goal run's target for a run (`companionGoalFacts`), wired by
+  /// AppServices; null sends none.
+  Future<Map<String, Object?>> Function(RunDetail run)? goalFacts;
+
   /// The load fields for a run (`LoadWire.facts`), wired by AppServices; null
   /// sends none. Gets whether the server takes `load` and `load_basis`.
   Future<Map<String, Object?>> Function(
@@ -2735,6 +2771,18 @@ class CompanionTarget extends ExportTarget {
       return await planFacts?.call(run) ?? const {};
     } catch (e) {
       companionLog('plan read failed (${e.runtimeType})');
+      return const {};
+    }
+  }
+
+  /// A goal-target read that fails sends the run without it, never fails it;
+  /// never sent to a server that has not said it takes it.
+  Future<Map<String, Object?>> _goal(RunDetail run) async {
+    if (!controller.goalTargetSupported) return const {};
+    try {
+      return await goalFacts?.call(run) ?? const {};
+    } catch (e) {
+      companionLog('goal target read failed (${e.runtimeType})');
       return const {};
     }
   }
@@ -2811,6 +2859,7 @@ class CompanionTarget extends ExportTarget {
         trail: await _trail(d),
         quest: await _quest(d),
         load: await _load(d),
+        goal: await _goal(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

@@ -38,7 +38,12 @@ class StartTarget {
     this.liveTargetMs,
     this.predicted = true,
     this.alternative,
+    this.sourceText,
   });
+
+  /// What a goal target is read from, "5K on 26 Oct" (the effort as run);
+  /// null for an event or a PB.
+  final String? sourceText;
 
   /// "Target 24:30 (predicted)", "Target 24:12 (your PB)", "Target about
   /// 1:40:02 (1:38:33 to 1:40:47), estimate", "Target 5.93 km (predicted)".
@@ -120,6 +125,9 @@ class StartTarget {
       if (t == null) return null;
       return StartTarget(
         line: t.line,
+        sourceText: t.sourceName.isEmpty
+            ? null
+            : '${t.sourceName} on ${Prediction.dateOf(t.source.date)}',
         liveDistanceM: t.kind == GoalKind.distance
             ? spec.workSteps.single.value.toDouble()
             : null,
@@ -130,6 +138,31 @@ class StartTarget {
     }
     return null;
   }
+}
+
+/// The target a goal run had at its start, rebuilt later (the companion
+/// upload): from the runs the index held before it began, as of its start,
+/// so the run itself and anything after it never feed it. [start] is the
+/// instant, [startLocal] the same as the wall clock the inputs use. Null for any
+/// session but a goal, or with nothing to go on.
+StartTarget? goalTargetAtStart(
+  SessionSpec? spec, {
+  required Iterable<LiveCandidate> runs,
+  required String runId,
+  required DateTime start,
+  required DateTime startLocal,
+  required EventNames names,
+}) {
+  if (spec == null || !spec.isGoal) return null;
+  return StartTarget.forSession(
+    spec,
+    runs: [
+      for (final c in runs)
+        if (c.input.runId != runId && c.input.date.isBefore(start.toUtc())) c,
+    ],
+    now: startLocal,
+    names: names,
+  );
 }
 
 /// The Home ESTIMATED TIMES card (design A10.4; PD2): rows, the source

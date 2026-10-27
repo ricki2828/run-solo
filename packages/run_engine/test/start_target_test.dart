@@ -296,6 +296,50 @@ void main() {
       );
     });
 
+    test(
+      'a goal run rebuilds its target from the runs before it, with its source',
+      () {
+        final before = run(
+          'a',
+          date: DateTime(2026, 9, 12, 12),
+          efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1500)},
+        );
+        // The run itself and a later, faster run must never feed its target.
+        final itself = run(
+          'self',
+          date: DateTime(2026, 9, 26, 6),
+          efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1300)},
+        );
+        final later = run(
+          'later',
+          date: DateTime(2026, 9, 27, 6),
+          efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1200)},
+        );
+        final spec = SessionSpec.goalDistance(8000, '8 km');
+        final t = goalTargetAtStart(
+          spec,
+          runs: [before, itself, later],
+          runId: 'self',
+          start: DateTime(2026, 9, 26, 6).toUtc(),
+          startLocal: DateTime(2026, 9, 26, 6),
+          names: names,
+        )!;
+        expect(t.liveTargetMs! / 1000, closeTo(1500 * 1.6533, 2));
+        expect(t.sourceText, '5K on 12 Sep');
+        expect(
+          goalTargetAtStart(
+            SessionSpec.norwegian4x4(),
+            runs: [before],
+            runId: 'x',
+            start: DateTime(2026, 9, 26).toUtc(),
+            startLocal: DateTime(2026, 9, 26),
+            names: names,
+          ),
+          isNull,
+        );
+      },
+    );
+
     test('a time goal: a line, no live target', () {
       final t = StartTarget.forSession(
         SessionSpec.goalTime(1800, '30 min'),

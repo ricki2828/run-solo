@@ -145,8 +145,27 @@ class AppServices {
         t.trailFacts ??= trailBlockFor;
         t.questFacts ??= questBlockFor;
         t.loadFacts ??= loadFactsFor;
+        t.goalFacts ??= goalFactsFor;
       }
     }
+  }
+
+  /// A goal run's target time and its source for the companion summary: what
+  /// the Start card showed, rebuilt from the runs that came before this one
+  /// (never the run itself). Empty for any other run or with no history.
+  Future<Map<String, Object?>> goalFactsFor(RunDetail d) async {
+    final source = live;
+    if (source == null) return const {};
+    return companionGoalFacts(
+      engine.goalTargetAtStart(
+        d.summary.spec,
+        runs: source.preparedCandidates,
+        runId: d.run.id,
+        start: d.run.start,
+        startLocal: PlanInputs.wallClock(d.summary),
+        names: kEventNames,
+      ),
+    );
   }
 
   /// `load_state` (and, for a server that takes them, `load` and

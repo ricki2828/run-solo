@@ -22,7 +22,9 @@
     "feel": "hard",
     "weekday": "Mon",
     "goal_reached": 1,
-    "true_pace_s_per_km": 273.6
+    "true_pace_s_per_km": 273.6,
+    "goal_target": "25:28",
+    "goal_target_from": "5K on 22 Oct"
    },
    {
     "run_id": "r22",
@@ -134,7 +136,9 @@
    "goal_reached": 1,
    "plan_next_day": "2026-10-27",
    "plan_next_session_name": "Easy run",
-   "plan_next_type": "easy"
+   "plan_next_type": "easy",
+   "goal_target_s": 1528,
+   "goal_target_from": "5K on 22 Oct"
   },
   "prior": [
    {
@@ -191,19 +195,18 @@
   ]
  },
  "must": [
-  "names it as a hard 5K (tempo effort) and that the goal distance was covered",
-  "one real comparison from the data: 24:13 against 25:28 for the 5K on 22 Oct (about 1:15 faster) or the pace equivalent (4:49 vs 5:04/km), and the zones 3 and 4",
+  "names it as a hard 5K and that the goal distance was covered",
+  "names the target 25:28 with where it came from (the 5K on 22 Oct) and that the finish, 24:13, was 1:15 under it",
   "next: Tuesday's easy run, kept properly easy after a hard day"
  ],
  "must_not": [
-  "inventing a target time or saying he hit or missed one (the app sends none: a goal run's flag only says the distance was covered)",
-  "a pace or time not in the data",
-  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')",
+  "a target time other than 25:28",
   "gushing or empty praise",
-  "calling it a personal best (no flag in the data)"
+  "calling it a personal best (no flag in the data)",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
  ],
- "no_invented_target": true,
  "allowed_target_times": [
   "1:55"
- ]
+ ],
+ "real_target": "25:28"
 }

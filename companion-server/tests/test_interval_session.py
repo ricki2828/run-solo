@@ -318,6 +318,36 @@ def test_endpoint_stores_goal_reached(client):
     assert tuple(row) == ("10K goal", 1)
 
 
+def test_endpoint_stores_a_goal_target_and_an_older_app_sends_none(client):
+    t = enrol(client)
+    r = client.post("/v1/runs", json=run_payload("g3", type="free", session_name="8.0 km goal", goal_reached=True,
+                                                 goal_target_s=2403, goal_target_from="5K on 26 Oct"), headers=auth(t))
+    assert r.status_code == 202
+    r = client.post("/v1/runs", json=run_payload("g4", type="free", session_name="10K goal", goal_reached=True), headers=auth(t))
+    assert r.status_code == 202
+    rows = {x[0]: tuple(x[1:]) for x in sqlite3.connect(client.svc.s.db_path).execute(
+        "SELECT run_id, goal_target_s, goal_target_from FROM runs")}
+    assert rows["g3"] == (2403, "5K on 26 Oct") and rows["g4"] == (None, None)
+
+
+@pytest.mark.parametrize("bad", [{"goal_target_s": 5}, {"goal_target_s": 2403, "goal_target_from": "5K <b>"},
+                                 {"goal_target_s": 200000}])
+def test_a_bad_goal_target_is_refused(client, bad):
+    t = enrol(client)
+    r = client.post("/v1/runs", json=run_payload("g5", type="free", session_name="8.0 km goal", **bad), headers=auth(t))
+    assert r.status_code == 422
+
+
+def test_the_run_note_gives_the_goal_target_and_its_source_only_when_there_is_one():
+    from companion.coach.proactive import run_note
+    r = dict(start_utc="2026-10-27T02:45:00Z", type="easy", session_name="8.0 km goal", distance_m=8008, duration_s=2990,
+             pace_s_per_km=373, true_pace_s_per_km=None, zone_min=None, feel="right", pb=None, verdict=None, goal_reached=1,
+             plan_next_day=None, plan_next_session_name=None, plan_next_type=None)
+    assert "target time" not in run_note(r, [], "Asia/Singapore", amber=False)
+    text = run_note(r | {"goal_target_s": 2403, "goal_target_from": "5K on 26 Oct"}, [], "Asia/Singapore", amber=False)
+    assert "the goal's target time: 40:03" in text and "(5K on 26 Oct)" in text and "not a promise" in text
+
+
 def test_default_week_does_not_count_a_stopped_session_as_a_quality_session():
     from companion.default_week import quality_session, TEMPO
     q = quality_session([run(**STOPPED)])

@@ -120,6 +120,11 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     if r["session_name"]:
         facts.append(f"the app's session label: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
                                                                        " (goal not reached)" if r["goal_reached"] == 0 else ""))
+    target = r.get("goal_target_s")
+    if target:
+        src = r.get("goal_target_from")
+        facts.append(f"the goal's target time: {_hm(target)}, the app's own estimate of this distance from the runner's recent "
+                     f"effort{f' ({src})' if src else ''}, set before the run, not a promise")
     if r["pace_s_per_km"] and not amber:
         facts.append(f"pace {pace(r['pace_s_per_km'])}")
     if r["true_pace_s_per_km"] and not amber:
