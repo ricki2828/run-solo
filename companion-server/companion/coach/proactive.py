@@ -100,7 +100,8 @@ KIND_WORDS = {"easy": "easy run", "long": "long run", "tempo": "tempo", "quality
 def _day_words(day: str) -> str:
     """An ISO plan date as the model should say it ("Friday 23 Oct"): models get weekdays wrong from bare ISO dates."""
     try:
-        return date.fromisoformat(day).strftime("%A %d %b")
+        d = date.fromisoformat(day)
+        return f"{d:%A} {d.day} {d:%b}"
     except (TypeError, ValueError):
         return str(day)
 

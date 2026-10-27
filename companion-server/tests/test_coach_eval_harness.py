@@ -105,7 +105,19 @@ def test_goal_run_scenarios_are_faithful_and_catch_an_invented_target(monkeypatc
     for i in ids:
         note, _ = ev.proactive_turn(SC[i])
         assert "target" not in note.split("Facts from the app:")[-1].split("Write a short")[0].lower()
-    seen = stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "8 k done at 49:50, well off your target of 24:13 pace."}), JUDGE_OK])
+    seen = stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "8 k done at 49:50, well off your target of 24:13."}), JUDGE_OK])
     r = ev.run_one(SC[ids[0]], "SYS", FIXTURE, "m", "j")
     assert not r["pass"] and "quotes a target time; the data holds none" in r["misses"]
     assert ev.target_misses(SC[ids[0]], "Plan half target 1:55 stands.") == []
+
+
+def test_target_check_ignores_paces_and_uses_the_scenario_allowlist():
+    sc = {"no_invented_target": True, "allowed_target_times": ["1:55"]}
+    assert ev.target_misses(sc, "Aim for 5:30 pace on the reps, 5:30/km, 5:30 per km.") == []
+    assert ev.target_misses(sc, "Half target 1:55:00 stands.") == []
+    assert ev.target_misses(sc, "Your target of 37:12 is gone.") != []
+    assert ev.target_misses({"no_invented_target": True}, "Half target 1:55:00 stands.") != []
+
+
+def test_a_known_fail_scenario_is_marked_and_the_loader_keeps_it():
+    assert SC["proactive_heat_evening_known_fail"]["known_fail"] is True

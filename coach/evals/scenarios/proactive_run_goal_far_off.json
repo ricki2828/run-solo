@@ -38,7 +38,8 @@
     },
     "feel": "hard",
     "weekday": "Mon",
-    "goal_reached": 1
+    "goal_reached": 1,
+    "true_pace_s_per_km": 273.6
    },
    {
     "run_id": "r22",
@@ -153,7 +154,7 @@
     "distance_m": 5012,
     "duration_s": 1453,
     "pace_s_per_km": 289.9,
-    "true_pace_s_per_km": null,
+    "true_pace_s_per_km": 273.6,
     "zone_min": "{\"z1\": 1, \"z2\": 4, \"z3\": 9, \"z4\": 10.5}",
     "feel": "hard",
     "pb": null,
@@ -212,5 +213,8 @@
   "shaming or telling him to push harder next time",
   "praise for hitting a time"
  ],
- "no_invented_target": true
+ "no_invented_target": true,
+ "allowed_target_times": [
+  "1:55"
+ ]
 }

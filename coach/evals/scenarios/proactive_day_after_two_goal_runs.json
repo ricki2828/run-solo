@@ -38,7 +38,8 @@
     },
     "feel": "hard",
     "weekday": "Mon",
-    "goal_reached": 1
+    "goal_reached": 1,
+    "true_pace_s_per_km": 273.6
    },
    {
     "run_id": "r22",
@@ -105,5 +106,8 @@
   "inventing a target time for the goal runs",
   "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
  ],
- "no_invented_target": true
+ "no_invented_target": true,
+ "allowed_target_times": [
+  "1:55"
+ ]
 }

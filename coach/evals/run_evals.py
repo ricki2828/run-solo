@@ -267,6 +267,8 @@ def history_block(sc: dict) -> str:
 
 def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict:
     out = {"id": sc["id"], "group": sc.get("group", "chat"), "message": sc["message"]}
+    if sc.get("known_fail"):
+        out["known_fail"] = True   # an open gap kept on record: shown as XFAIL, never counted
     fixture = scenario_fixture(sc, fixture)
     fixture_obj = json.loads(fixture)
     pro = "proactive" in sc
@@ -356,15 +358,20 @@ def run_one(sc: dict, system: str, fixture: str, model: str, judge: str) -> dict
                   "score": j.get("score", 0), "misses": misses}
 
 
-TARGET_CLAIM = re.compile(r"\b(target|goal time|aim(?:ed|ing)? for)\b[^.\n]{0,25}\d{1,2}:\d{2}", re.I)
+# A target TIME is a clock time after "target" / "goal time" / "aim for", not a pace ("aim for 5:30 pace", "5:30/km").
+TARGET_CLAIM = re.compile(r"\b(?:target|goal time|aim(?:ed|ing)? for)\b[^.\n]{0,25}?(\d{1,2}:\d{2}(?::\d{2})?)(?!\s*(?:/|per\b|pace\b|a km\b))", re.I)
 
 
 def target_misses(sc: dict, reply: str) -> list[str]:
     """`no_invented_target` scenarios (goal runs): the app uploads no target time, so a reply that quotes one invented it
-    (#409: the target is the effort as run and lives only on the phone)."""
-    hit = TARGET_CLAIM.search(reply or "")
-    if sc.get("no_invented_target") and hit and "1:55" not in hit.group(0):   # 1:55 is the plan's half-marathon goal
-        return ["quotes a target time; the data holds none"]
+    (#409: the target is the effort as run and lives only on the phone). `allowed_target_times` lists clock times the
+    data does hold (e.g. the plan's race goal)."""
+    if not sc.get("no_invented_target"):
+        return []
+    allowed = tuple(sc.get("allowed_target_times") or ())
+    for m in TARGET_CLAIM.finditer(reply or ""):
+        if not any(m.group(1).startswith(a) for a in allowed):
+            return ["quotes a target time; the data holds none"]
     return []
 
 
@@ -403,6 +410,10 @@ def main() -> int:
     fixture = (HERE / "fixture_runner.json").read_text()
     with ThreadPoolExecutor(a.workers) as ex:
         results = list(ex.map(lambda s: run_one(s, system, fixture, a.model, a.judge), scenarios))
+    xfail = [r for r in results if r.get("known_fail")]
+    results = [r for r in results if not r.get("known_fail")]
+    for r in xfail:
+        print(f"XFAIL {r['score']:>2} {r['id']} (known gap, not counted): {'passed anyway' if r['pass'] else 'fails as expected'}")
     for r in results:
         print(f"{'PASS' if r['pass'] else 'FAIL'} {r['score']:>2} {r['id']}: {r.get('reply', '')[:160]!r}")
         for m in r["misses"]:
