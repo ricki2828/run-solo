@@ -63,7 +63,6 @@ class MainActivity : FlutterActivity() {
         // LaunchTheme for NormalTheme; Flutter's first frame dismisses it.
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        DiagnosticsFiles.installCrashHandler(this, BuildConfig.VERSION_NAME)
     }
 
     /** The pre-start GPS probe never runs in the background (no service, no battery drain). */

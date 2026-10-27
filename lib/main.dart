@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart'
-    show LicenseEntryWithLineBreaks, LicenseRegistry;
+    show LicenseEntryWithLineBreaks, LicenseRegistry, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show DeviceOrientation, SystemChrome, rootBundle;
@@ -48,12 +48,31 @@ Future<void> main() async {
   // Errors are logged to the phone (never sent) from the first line; the zone
   // catches what the framework and platform hooks miss.
   DiagnosticsLog? log;
-  await runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    final support = await getApplicationSupportDirectory();
-    log = DiagnosticsLog(Directory('${support.path}/diagnostics'))..install();
-    await _start();
-  }, (error, stack) => log?.record(error, stack, source: 'zone'));
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      // The log must never stop the app starting: without a files dir it
+      // keeps its entries in memory.
+      Directory dir;
+      try {
+        dir = Directory(
+          '${(await getApplicationSupportDirectory()).path}/diagnostics',
+        );
+      } catch (_) {
+        dir = Directory('${Directory.systemTemp.path}/diagnostics');
+      }
+      log = DiagnosticsLog(dir)..install();
+      await _start();
+    },
+    (error, stack) {
+      log?.record(error, stack, source: 'zone');
+      if (kDebugMode) {
+        FlutterError.presentError(
+          FlutterErrorDetails(exception: error, stack: stack),
+        );
+      }
+    },
+  );
 }
 
 Future<void> _start() async {

@@ -47,4 +47,31 @@ class DiagnosticsFilesTest {
     fun `exit tail is none without verdicts`() {
         assertEquals("(none)", DiagnosticsFiles.exitTail(context))
     }
+
+    @Test
+    fun `an OutOfMemoryError while recording still reaches the previous handler`() {
+        val calls = mutableListOf<String>()
+        val previous = Thread.UncaughtExceptionHandler { _, e -> calls += "prev:${e.message}" }
+        DiagnosticsFiles.Chained(previous) { _, _ -> throw OutOfMemoryError("x") }
+            .uncaughtException(Thread.currentThread(), RuntimeException("y"))
+        assertEquals(listOf("prev:y"), calls)
+    }
+
+    @Test
+    fun `install chains to the existing default handler and a second install is a no-op`() {
+        val original = Thread.getDefaultUncaughtExceptionHandler()
+        try {
+            val calls = mutableListOf<String>()
+            Thread.setDefaultUncaughtExceptionHandler { _, e -> calls += "prev:${e.message}" }
+            DiagnosticsFiles.installCrashHandler(context, "0.1.0")
+            val installed = Thread.getDefaultUncaughtExceptionHandler()
+            assertTrue(installed is DiagnosticsFiles.Chained)
+            DiagnosticsFiles.installCrashHandler(context, "0.1.0")
+            assertTrue(Thread.getDefaultUncaughtExceptionHandler() === installed)
+            installed!!.uncaughtException(Thread.currentThread(), RuntimeException("z"))
+            assertEquals(listOf("prev:z"), calls)
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(original)
+        }
+    }
 }

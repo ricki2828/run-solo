@@ -6,7 +6,6 @@ import 'package:run_engine/run_engine.dart' as engine;
 
 import '../app/diagnostics_log.dart';
 import '../app/format.dart';
-
 import '../app/perf_diagnostics.dart';
 import '../app/routes.dart';
 import '../app/services.dart';
@@ -259,11 +258,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       _toast('Could not collect diagnostics.');
       return;
     }
-    await services.transfer.shareFiles(
-      [file.path],
-      subject: 'Run Supreme diagnostics',
-      mimeType: 'text/plain',
-    );
+    try {
+      await services.transfer.shareFiles(
+        [file.path],
+        subject: 'Run Supreme diagnostics',
+        mimeType: 'text/plain',
+      );
+    } catch (_) {
+      _toast('Could not open the share sheet.');
+    }
   }
 
   Future<void> _moveRuns(BuildContext context) async {

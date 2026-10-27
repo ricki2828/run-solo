@@ -30,7 +30,8 @@ object DiagnosticsFiles {
             }
             val stamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date(wallMs))
             file.appendText("--- $stamp native thread=$thread app=$version\n${error.stackTraceToString()}\n")
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
+            // Incl. OutOfMemoryError: the chain to the platform handler must still run.
         }
     }
 
@@ -49,8 +50,12 @@ object DiagnosticsFiles {
         private val record: (Thread, Throwable) -> Unit,
     ) : Thread.UncaughtExceptionHandler {
         override fun uncaughtException(thread: Thread, error: Throwable) {
-            record(thread, error)
-            next?.uncaughtException(thread, error)
+            try {
+                record(thread, error)
+            } catch (_: Throwable) {
+            } finally {
+                next?.uncaughtException(thread, error)
+            }
         }
     }
 

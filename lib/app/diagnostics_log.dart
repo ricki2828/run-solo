@@ -53,24 +53,75 @@ class DiagnosticsLog {
   File get _current => File('${dir.path}/$currentName');
   File get _previous => File('${dir.path}/$previousName');
 
+  static const _maxErrorChars = 4 * 1024;
+  static const _maxStackChars = 8 * 1024;
+  static const _maxMemory = 20;
+  static const _repeatWindow = Duration(seconds: 60);
+
+  /// Entries a failed file write kept (a dir that cannot be created must not
+  /// lose the error); they go into the bundle too.
+  final List<String> _memory = [];
+
+  String? _lastKey;
+  DateTime? _lastAt;
+  int _repeats = 0;
+
   /// Append one entry. Synchronous and never throws: it runs while the app is
-  /// already failing, and a log must not add a second failure.
+  /// already failing, and a log must not add a second failure. Each entry is
+  /// size-capped, and the same error again within a minute only bumps a
+  /// counter (no file IO), so a per-frame failure cannot flood the log.
   void record(Object error, StackTrace? stack, {String source = 'dart'}) {
     try {
-      dir.createSync(recursive: true);
-      final entry = StringBuffer()
+      final at = _now();
+      final errorText = _cap(redact(error.toString()), _maxErrorChars);
+      final stackText = _cap(
+        redact((stack ?? StackTrace.empty).toString()),
+        _maxStackChars,
+      );
+      final key = '$source|${_firstLine(errorText)}|${_firstLine(stackText)}';
+      if (key == _lastKey &&
+          _lastAt != null &&
+          at.difference(_lastAt!) < _repeatWindow) {
+        _repeats++;
+        return;
+      }
+      final entry = StringBuffer();
+      if (_repeats > 0)
+        entry.writeln('(previous entry repeated $_repeats times)');
+      _repeats = 0;
+      _lastKey = key;
+      _lastAt = at;
+      entry
         ..writeln(
-          '--- ${_now().toUtc().toIso8601String()} $source '
+          '--- ${at.toUtc().toIso8601String()} $source '
           'app=$version build=$buildSha',
         )
-        ..writeln(redact(error.toString()))
-        ..writeln(redact((stack ?? StackTrace.empty).toString()));
+        ..writeln(errorText)
+        ..writeln(stackText);
+      _append(entry.toString());
+    } catch (_) {}
+  }
+
+  void _append(String text) {
+    try {
+      dir.createSync(recursive: true);
       if (_current.existsSync() && _current.lengthSync() >= maxFileBytes) {
         if (_previous.existsSync()) _previous.deleteSync();
         _current.renameSync(_previous.path);
       }
-      _current.writeAsStringSync(entry.toString(), mode: FileMode.append);
-    } catch (_) {}
+      _current.writeAsStringSync(text, mode: FileMode.append);
+    } catch (_) {
+      _memory.add(text);
+      if (_memory.length > _maxMemory) _memory.removeAt(0);
+    }
+  }
+
+  static String _cap(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max)}\n(truncated)';
+
+  static String _firstLine(String s) {
+    final i = s.indexOf('\n');
+    return i < 0 ? s : s.substring(0, i);
   }
 
   /// Strips what must never be shared by accident: coordinates and secrets.
@@ -84,28 +135,34 @@ class DiagnosticsLog {
   }
 
   static final List<(RegExp, String Function(Match))> _rules = [
-    // lat/lon/lng named values: `lat: 51.5074`, `"longitude":-0.1278`.
+    // `LatLng(51.5, -0.12)` however few decimals.
+    (RegExp(r'LatLng\([^)]*\)'), (_) => 'LatLng(<redacted>)'),
+    // lat/lon/lng named values: `lat: 51.5074`, `"longitude":-0.12`, `lat 51.5`.
     (
       RegExp(
-        r'''(lat(?:itude)?|lon(?:gitude)?|lng)(["']?\s*[:=]\s*)-?\d+(?:\.\d+)?''',
+        r'''\b(lat(?:itude)?|lon(?:gitude)?|lng)(["']?\s*[:=]\s*|\s+)-?\d+(?:\.\d+)?''',
         caseSensitive: false,
       ),
       (m) => '${m[1]}${m[2]}<redacted>',
     ),
-    // A bare coordinate pair: `51.50741, -0.12781`.
-    (RegExp(r'-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,}'), (_) => '<coords>'),
+    // A bare coordinate pair: `51.507, -0.127` or `51.507412 -0.127812`.
+    (RegExp(r'-?\d{1,3}\.\d{3,}[\s,]+-?\d{1,3}\.\d{3,}'), (_) => '<coords>'),
+    (RegExp(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+'), (_) => '<email>'),
     (
       RegExp(r'Bearer\s+[A-Za-z0-9._~+/=-]+', caseSensitive: false),
       (_) => 'Bearer <redacted>',
     ),
-    // token=..., api_key: ..., authorization=..., secret, password.
+    // token=..., api_key: ..., authorization=..., secret, password, and the
+    // companion/Telegram ids.
     (
       RegExp(
-        r'''(token|api[_-]?key|authorization|secret|password)(["']?\s*[:=]\s*["']?)[^\s"',;&]+''',
+        r'''(token|api[_-]?key|authorization|secret|password|chat_id|user_id|runner_id)(["']?\s*[:=]\s*["']?)[^\s"',;&]+''',
         caseSensitive: false,
       ),
       (m) => '${m[1]}${m[2]}<redacted>',
     ),
+    // Companion runner ids (`u_abc123`).
+    (RegExp(r'\bu_[A-Za-z0-9]+'), (_) => 'u_<id>'),
     // Long opaque strings (keys, JWTs).
     (RegExp(r'[A-Za-z0-9_\-]{32,}'), (_) => '<redacted>'),
   ];
@@ -121,14 +178,18 @@ class DiagnosticsLog {
         ..writeln('platform=${Platform.operatingSystem}')
         ..writeln();
       out.writeln('== Dart errors ==');
-      out.writeln(await _tail(_previous));
-      out.writeln(await _tail(_current));
+      out.writeln(redact(await _tail(_previous)));
+      out.writeln(redact(await _tail(_current)));
+      for (final m in _memory) {
+        out.writeln(redact(m));
+      }
       out.writeln('== Native crashes ==');
-      out.writeln(await _tail(File('${dir.path}/$nativeCrashName')));
+      out.writeln(redact(await _tail(File('${dir.path}/$nativeCrashName'))));
       out.writeln('== Exit verdicts ==');
       out.writeln(redact(await _nativeExitTail()));
       out.writeln('== Strap trail (tail) ==');
       out.writeln(redact(await _tail(_bleTrail, maxBytes: 16 * 1024)));
+      if (await tempDir.exists()) await tempDir.delete(recursive: true);
       await tempDir.create(recursive: true);
       final file = File('${tempDir.path}/run-supreme-diagnostics.txt');
       await file.writeAsString(out.toString());
@@ -174,7 +235,8 @@ class DiagnosticsLog {
     };
     PlatformDispatcher.instance.onError = (error, stack) {
       record(error, stack, source: 'platform');
-      return true;
+      // false lets the engine print it in debug builds.
+      return !kDebugMode;
     };
     if (calmScreen ?? kReleaseMode) {
       ErrorWidget.builder = (details) => const CalmErrorScreen();
@@ -190,6 +252,31 @@ class CalmErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = RunSoloTokens.light;
+    return LayoutBuilder(
+      builder: (context, box) =>
+          box.maxHeight < 200 || box.maxWidth < 200 ? _compact(t) : _full(t),
+    );
+  }
+
+  Widget _compact(RunSoloTokens t) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: ColoredBox(
+      color: t.bgBase,
+      child: Center(
+        child: Text(
+          'Something broke. The run is safe.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: RunSoloType.label13.copyWith(
+            color: t.inkSecondary,
+            decoration: TextDecoration.none,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _full(RunSoloTokens t) {
     return Directionality(
       textDirection: TextDirection.ltr,
       child: ColoredBox(
@@ -211,8 +298,8 @@ class CalmErrorScreen extends StatelessWidget {
                 const SizedBox(height: Space.x12),
                 Text(
                   'The run is safe. Go back and try again; if it keeps '
-                  'happening, Settings → About → Share diagnostics sends us '
-                  'what happened.',
+                  'happening, Settings → About → Share diagnostics lets you send '
+                  'us what happened.',
                   style: RunSoloType.body17.copyWith(
                     color: t.inkSecondary,
                     decoration: TextDecoration.none,

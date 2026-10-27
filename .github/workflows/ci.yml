@@ -413,7 +413,7 @@ jobs:
           # Live compare ON (founder 28-Sep): LV2's in-app "Mute tips" shipped in #77,
           # the gate live_context.dart waits for. Emulator runs have no history, so
           # compare plans stay empty there.
-          flutter build apk --debug --flavor play $MAPS_DEFINE --dart-define=LIVE_COMPARE=true
+          flutter build apk --debug --flavor play $MAPS_DEFINE --dart-define=LIVE_COMPARE=true --dart-define=BUILD_SHA=${{ github.sha }}
           mkdir -p build/dist && cp build/app/outputs/flutter-apk/app-play-debug.apk build/dist/app-debug.apk
       - name: Android lint NewApi (minSdk 29 API guard)
         working-directory: android
@@ -429,7 +429,7 @@ jobs:
           if [ -z "$RUN_SOLO_MAPS_API_KEY" ]; then echo "::warning::RUN_SOLO_MAPS_API_KEY secret is not set; this build has an empty Maps key"; fi
       - name: Build release AAB (debug-signed here; the Play-signed one is the release-aab job)
         if: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
-        run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols $MAPS_DEFINE
+        run: flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols $MAPS_DEFINE --dart-define=BUILD_SHA=${{ github.sha }}
       - name: 16 KB page-size check (debug APK)
         run: |
           ZIPALIGN="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/zipalign"
@@ -520,7 +520,8 @@ jobs:
           flutter build apk --release --flavor dogfood --split-per-abi \
             --target-platform android-arm64,android-x64 \
             --obfuscate --split-debug-info=build/symbols-dogfood $MAPS_DEFINE \
-            --dart-define=LIVE_COMPARE=true --dart-define=COMPANION=1
+            --dart-define=LIVE_COMPARE=true --dart-define=COMPANION=1 \
+            --dart-define=BUILD_SHA=${{ github.sha }}
           ls -la build/app/outputs/flutter-apk/
       - name: Verify signer, size (< 36 MiB) and 16 KB alignment
         run: |
@@ -682,7 +683,7 @@ jobs:
           RUN_SOLO_UPLOAD_KEY_ALIAS: upload  # not a secret: a secret value here masks the word in logs
           RUN_SOLO_UPLOAD_KEY_PASSWORD: ${{ secrets.RUN_SOLO_UPLOAD_KEY_PASSWORD }}
         run: |
-          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE --dart-define=COMPANION=1
+          flutter build appbundle --release --flavor play --obfuscate --split-debug-info=build/symbols-play $MAPS_DEFINE --dart-define=COMPANION=1 --dart-define=BUILD_SHA=${{ github.sha }}
           ls -la build/app/outputs/bundle/playRelease/
       - name: Split native debug symbols out of the AAB (bundle 155 -> ~41 MiB) and re-sign
         env:
