@@ -88,6 +88,11 @@ void main() {
     );
     await pumpApp(tester, services, pushRoute: Routes.start);
     await pumpTimes(tester, 4);
+    if (goal) {
+      // A goal run needs a GPS fix before START.
+      fake.emitGpsProbe(GpsProbeEvent(fix: true, accuracyM: 5));
+      await pumpTimes(tester, 2);
+    }
     await readyAndGo(tester);
     await pumpTimes(tester, 6);
     return fake.voiceCoach!;
