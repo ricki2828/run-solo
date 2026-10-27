@@ -265,6 +265,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     fun retargeted() {
         behindAsked = false
         easedOff = false
+        prevBehindMs = null // the last margin was against the old clock
     }
 
     private fun gapOk(nowMs: Long, distanceM: Double): Boolean {
@@ -292,13 +293,11 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (toGo != null && !last2kDone && goalTime != null) {
             val ahead = -f.behindTargetMs!!
             val where = GoalMargin.promptPhrase(ahead, prevBehind?.let { ahead + it }, goalTime)
-            // Ahead of the clock the push banks time; level or behind it gets him under the goal time.
-            val push = if (ahead >= GoalMargin.DEAD_BAND_MS) "Push for more" else "Push to get under"
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $push, or hold?", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $LAST2K_QUESTION", nowMs)
         }
         if (toGo != null && !last2kDone) {
             val lead = if (phrase != null) "$toGo to go, $phrase" else "$toGo to go."
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead Push or hold?", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead $LAST2K_QUESTION", nowMs)
         }
         // The last slot of a distance goal is the last 2 km's.
         if (f.goalDistanceM != null && !last2kDone && count >= MAX_PROMPTS - 1) return null
@@ -524,6 +523,9 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
     companion object {
         const val MAX_PROMPTS = 3
+
+        /** The last-2-km question: the buttons are Faster / Same pace on screen; the choice keys stay push / hold. */
+        const val LAST2K_QUESTION = "Faster finish, or same pace?"
 
         /** Of those, at most this many between reps. */
         const val MAX_REP_PROMPTS = 2

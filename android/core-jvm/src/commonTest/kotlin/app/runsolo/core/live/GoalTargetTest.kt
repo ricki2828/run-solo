@@ -76,7 +76,7 @@ class GoalTargetTest {
 
     @Test
     fun `ease off then later km then last 2 km prompt and a second re-aim all read the new time`() {
-        val c = LiveCoach(ctx(LiveTarget(10_000.0, 3_000_000, predicted = true)), RunMode.free, SessionSpec.goalDistance(10_000, "10K"))
+        val c = LiveCoach(ctx(LiveTarget(10_000.0, 2_400_000, predicted = true)), RunMode.free, SessionSpec.goalDistance(10_000, "10K"))
         val p = CoachPrompter()
         // Runs one km: the cue's facts reach the prompter as the session does it. [elapsedMs] = active ms at the km.
         fun km(k: Int, elapsedMs: Long): Prompt? {
@@ -92,21 +92,22 @@ class GoalTargetTest {
             p.retargeted()
             return re
         }
-        // 360 s/km against 300: behind and losing ground, so km 2 asks.
-        assertNull(km(1, 360_000))
-        val first = assertNotNull(km(2, 720_000))
+        // 300 s/km against 240: behind and losing ground, so km 2 asks.
+        assertNull(km(1, 300_000))
+        val first = assertNotNull(km(2, 600_000))
         assertEquals(PromptKind.behindTarget, first.kind)
-        assertEquals(3_600_000L, ease(first, 2_002.0, 720_000)) // 3600 s: 60:00
-        // 420 s/km from here: behind the new clock and growing, so km 4 asks again, naming 60:00.
-        assertNull(km(3, 1_140_000))
-        val second = assertNotNull(km(4, 1_560_000))
+        assertEquals(3_000_000L, ease(first, 2_002.0, 600_000)) // 3000 s: 50 minutes
+        // 330 s/km from here: behind the new clock and growing, so km 4 asks again, naming 50 minutes.
+        assertNull(km(3, 930_000))
+        val second = assertNotNull(km(4, 1_260_000))
         assertEquals(PromptKind.behindTarget, second.kind)
-        assertTrue(second.text.contains("60:00"), second.text)
-        assertEquals(3_900_000L, ease(second, 4_002.0, 1_560_000)) // 3900 s: 65:00
-        for (k in 5..7) assertNull(km(k, 1_560_000L + (k - 4) * 420_000L))
-        val last = assertNotNull(km(8, 3_240_000))
+        assertTrue(second.text.contains("behind 50 minutes"), second.text)
+        assertEquals(3_180_000L, ease(second, 4_002.0, 1_260_000)) // 3150 s rounds up to 53 minutes
+        for (k in 5..7) assertNull(km(k, 1_260_000L + (k - 4) * 330_000))
+        val last = assertNotNull(km(8, 2_580_000))
         assertEquals(PromptKind.last2k, last.kind)
-        assertTrue(last.text.contains("over 65:00"), last.text)
+        assertTrue(last.text.contains("over 53 minutes"), last.text)
+        assertTrue(last.text.endsWith("Faster finish, or same pace?"), last.text)
     }
 
     @Test

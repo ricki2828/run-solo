@@ -47,7 +47,7 @@ object GoalMargin {
         level: Boolean = abs(aheadMs) < DEAD_BAND_MS,
         predicted: Boolean = false,
     ): String {
-        val t = CueWords.clock(targetMs.toDouble()).let { if (predicted) "your predicted $it" else it }
+        val t = clockName(targetMs).let { if (predicted) "your predicted $it" else it }
         if (level) {
             // Level now but not holding: say which way it is going.
             val way = changeMs?.let { trend(it) }
@@ -68,6 +68,16 @@ object GoalMargin {
             }
         }
         return if (tail == null) head else "$head, $tail"
+    }
+
+    /**
+     * The target as it is said. A whole-minute target under an hour (every re-aimed one) is "52 minutes", since TTS
+     * may read "52:00" as a hundred or an o'clock; any other is the clock, "24:30".
+     */
+    fun clockName(targetMs: Long): String {
+        val minutes = targetMs / 60_000
+        if (targetMs % 60_000 != 0L || minutes >= 60) return CueWords.clock(targetMs.toDouble())
+        return if (minutes == 1L) "1 minute" else "$minutes minutes"
     }
 
     /** The one line said when the goal time is re-aimed: "New target: 8 k in 52 minutes." */
@@ -91,7 +101,7 @@ object GoalMargin {
      * "18 seconds over 24:30", "level with 24:30". The trend is only said for a lead that is shrinking.
      */
     fun promptPhrase(aheadMs: Long, changeMs: Long?, targetMs: Long): String {
-        val t = CueWords.clock(targetMs.toDouble())
+        val t = clockName(targetMs)
         if (abs(aheadMs) < DEAD_BAND_MS) {
             return if (changeMs != null && trend(changeMs) == MarginTrend.shrinking) "level with $t, slipping" else "level with $t"
         }

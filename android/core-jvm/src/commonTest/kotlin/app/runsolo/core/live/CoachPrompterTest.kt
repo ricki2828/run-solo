@@ -41,7 +41,7 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         val q = assertNotNull(km(p, facts(3, gapMs = -8_000, goal = 5_000.0)))
         assertEquals(PromptKind.last2k, q.kind)
-        assertEquals("2 k to go, 8 seconds up on your best 5K. Push or hold?", q.text)
+        assertEquals("2 k to go, 8 seconds up on your best 5K. Faster finish, or same pace?", q.text)
         assertEquals(listOf(PromptChoice.push, PromptChoice.hold), q.options)
         assertEquals(3, q.km)
     }
@@ -49,15 +49,15 @@ class CoachPrompterTest {
     @Test
     fun `a proxy board says pace and never best`() {
         val q = assertNotNull(km(CoachPrompter(), facts(6, gapMs = 10_000, goal = 8_000.0, label = "10K", proxy = true)))
-        assertEquals("2 k to go, 10 seconds off your 10K pace. Push or hold?", q.text)
+        assertEquals("2 k to go, 10 seconds off your 10K pace. Faster finish, or same pace?", q.text)
         assertFalse(q.text.contains("best"))
     }
 
     @Test
     fun `last 2 km without a base still asks and a 3 km goal never does`() {
-        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0))!!.text)
+        assertEquals("2 k to go. Faster finish, or same pace?", km(CoachPrompter(), facts(3, goal = 5_000.0))!!.text)
         assertNull(km(CoachPrompter(), facts(2, goal = 3_000.0)))
-        assertEquals("2.5 k to go. Push or hold?", km(CoachPrompter(), facts(5, goal = 7_500.0))!!.text)
+        assertEquals("2.5 k to go. Faster finish, or same pace?", km(CoachPrompter(), facts(5, goal = 7_500.0))!!.text)
     }
 
     @Test
@@ -772,7 +772,7 @@ class CoachPrompterTest {
         assertNull(km(p, facts(2, goal = 5_000.0, behind = -20_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 5_000.0, behind = -12_000, goalMs = t2430)))
         assertEquals(PromptKind.last2k, q.kind)
-        assertEquals("2 k to go, 12 seconds under 24:30, shrinking. Push for more, or hold?", q.text)
+        assertEquals("2 k to go, 12 seconds under 24:30, shrinking. Faster finish, or same pace?", q.text)
         assertEquals(listOf(PromptChoice.push, PromptChoice.hold), q.options)
         assertFalse(q.text.contains("best"), "the reference is the goal time, not the PB")
     }
@@ -782,7 +782,7 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         assertNull(km(p, facts(2, goal = 5_000.0, behind = -10_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 5_000.0, behind = -14_000, goalMs = t2430)))
-        assertEquals("2 k to go, 14 seconds under 24:30. Push for more, or hold?", q.text)
+        assertEquals("2 k to go, 14 seconds under 24:30. Faster finish, or same pace?", q.text)
     }
 
     @Test
@@ -791,7 +791,7 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         assertNull(km(p, facts(4, goal = 7_500.0, behind = -130_000, goalMs = longest)))
         val ahead = assertNotNull(km(p, facts(5, goal = 7_500.0, behind = -119_000, goalMs = longest)))
-        assertEquals("2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Push for more, or hold?", ahead.text)
+        assertEquals("2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Faster finish, or same pace?", ahead.text)
         assertTrue(CueComposer.words(ahead.text) <= 16, ahead.text)
         val q = CoachPrompter()
         assertNull(km(q, facts(2, goal = 10_000.0, behind = 10_000, goalMs = longest)))
@@ -802,11 +802,11 @@ class CoachPrompterTest {
     @Test
     fun `last 2 km of a goal with a time before any trend leaves the trend out and level reads as on pace`() {
         assertEquals(
-            "2 k to go, 8 seconds over 24:30. Push to get under, or hold?",
+            "2 k to go, 8 seconds over 24:30. Faster finish, or same pace?",
             km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, goalMs = t2430))!!.text,
         )
         assertEquals(
-            "2 k to go, level with 24:30. Push to get under, or hold?",
+            "2 k to go, level with 24:30. Faster finish, or same pace?",
             km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 1_000, goalMs = t2430))!!.text,
         )
     }
@@ -823,8 +823,8 @@ class CoachPrompterTest {
 
     @Test
     fun `no goal time or a distrusted km keeps the old wording`() {
-        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000))!!.text)
-        assertEquals("2 k to go. Push or hold?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = null, goalMs = t2430))!!.text)
+        assertEquals("2 k to go. Faster finish, or same pace?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000))!!.text)
+        assertEquals("2 k to go. Faster finish, or same pace?", km(CoachPrompter(), facts(3, goal = 5_000.0, behind = null, goalMs = t2430))!!.text)
     }
 
     @Test
@@ -841,6 +841,6 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         assertNull(km(p, facts(2, goal = 5_000.0, behind = -4_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 5_000.0, behind = 1_000, goalMs = t2430)))
-        assertEquals("2 k to go, level with 24:30, slipping. Push to get under, or hold?", q.text)
+        assertEquals("2 k to go, level with 24:30, slipping. Faster finish, or same pace?", q.text)
     }
 }

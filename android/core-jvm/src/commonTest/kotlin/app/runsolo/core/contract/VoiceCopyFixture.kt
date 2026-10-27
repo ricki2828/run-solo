@@ -229,6 +229,7 @@ object VoiceCopyFixture {
         add("goal.status.first-predicted-level", GoalMargin.phrase(1_000, null, t2430, predicted = true))
         add("goal.status.longest", GoalMargin.phrase(119_000, -8_000, 5_279_000))
         add("goal.status.far-behind", GoalMargin.phrase(-458_000, -8_000, t2430))
+        add("goal.status.rebased", GoalMargin.phrase(-458_000, -8_000, 3_120_000))
         add("goal.new-target", GoalMargin.newTargetLine(8_000.0, 3_120_000))
         // Zone changes (VoiceCoach): up, then down once held and spaced.
         val zones = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = listOf(114.0, 133.0, 152.0, 171.0)))

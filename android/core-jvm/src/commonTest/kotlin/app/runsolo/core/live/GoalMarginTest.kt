@@ -28,6 +28,13 @@ class GoalMarginTest {
     }
 
     @Test
+    fun `a whole-minute target under an hour is said in minutes not as a clock`() {
+        assertEquals("10 seconds behind 52 minutes, holding", GoalMargin.phrase(-10_000, 0, 3_120_000))
+        assertEquals("10 seconds over 1 minute", GoalMargin.promptPhrase(-10_000, null, 60_000))
+        assertEquals("10 seconds behind 1:00:00, holding", GoalMargin.phrase(-10_000, 0, 3_600_000))
+    }
+
+    @Test
     fun `the new target line names the distance and the whole minutes`() {
         assertEquals("New target: 8 k in 52 minutes.", GoalMargin.newTargetLine(8_000.0, 3_120_000))
         assertEquals("New target: 5 k in 1 minute.", GoalMargin.newTargetLine(5_000.0, 60_000))
