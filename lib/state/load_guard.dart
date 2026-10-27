@@ -12,7 +12,12 @@ import 'settings.dart';
 
 abstract final class LoadInputs {
   /// Index-row figures only: moving time, distance, True Pace, average HR.
-  static List<engine.LoadRun> runs(List<RunSummary> all) => [
+  /// With [zones] each run also carries its seconds per zone (for hard minutes
+  /// and the zone-stacked load bars); the check never reads them.
+  static List<engine.LoadRun> runs(
+    List<RunSummary> all, {
+    engine.HrZones? zones,
+  }) => [
     for (final r in all)
       if (!r.missing)
         engine.LoadRun(
@@ -24,6 +29,7 @@ abstract final class LoadInputs {
           isIntervals: r.mode == RecordMode.intervals && r.spec?.isGoal != true,
           avgHr: r.row?.avgHr,
           hrCoverage: r.row?.hrCoverage,
+          zoneSec: zones == null ? null : r.hrHist?.zoneSeconds(zones),
         ),
   ];
 

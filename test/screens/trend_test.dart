@@ -16,7 +16,11 @@ void main() {
 
   testWidgets('under two 4x4s: "Two 4x4s draw the first line"', (tester) async {
     final r1 = fourByFourFile(n: 1, start: base);
-    await pumpApp(tester, fakeServices(files: [r1]), home: const TrendScreen());
+    await pumpApp(
+      tester,
+      fakeServices(files: [r1]),
+      home: const TrendScreen(initial: RecordMode.intervals),
+    );
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
     expect(find.byKey(const ValueKey('trend-chart')), findsNothing);
@@ -24,7 +28,11 @@ void main() {
   });
 
   testWidgets('no runs: designed empty state, no chart', (tester) async {
-    await pumpApp(tester, fakeServices(), home: const TrendScreen());
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: const TrendScreen(initial: RecordMode.intervals),
+    );
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-empty')), findsOneWidget);
     expect(find.byKey(const ValueKey('trend-chart')), findsNothing);
@@ -42,7 +50,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-chart')), findsOneWidget);
@@ -67,7 +75,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     expect(find.byKey(const ValueKey('trend-hero')), findsOneWidget);
@@ -87,7 +95,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Free'));
@@ -108,7 +116,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(files: files),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       await pumpTimes(tester, 6);
       await tester.tap(find.text(tab));
@@ -185,7 +193,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(runs: runs),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       await pumpTimes(tester, 6);
       await tester.tap(find.text(tab));
@@ -305,7 +313,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     final chart = tester.widget<RecentBarsChart>(
@@ -387,7 +395,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(files: files),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('trend-legend')), findsNothing);
@@ -399,7 +407,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(files: files, sidecars: sidecars),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       await pumpTimes(tester, 6);
       expect(find.byKey(const ValueKey('trend-legend')), findsOneWidget);

@@ -920,7 +920,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: [a, b, c]),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Test'));
@@ -1167,7 +1167,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     await golden(tester, 'trend_4x4');
@@ -1188,7 +1188,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: files),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     tester.view.physicalSize = const Size(1080, 1920);
     await pumpTimes(tester, 6);
@@ -1211,7 +1211,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(files: files),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);
@@ -1240,7 +1240,7 @@ void main() {
       await pumpApp(
         tester,
         fakeServices(runs: runs),
-        home: const TrendScreen(),
+        home: const TrendScreen(initial: RecordMode.intervals),
       );
       tester.view.physicalSize = Size(1080, h * 3.0);
       await pumpTimes(tester, 6);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/app/routes.dart';
+import 'package:run_solo/platform/gateway.dart' show RecordMode;
 import 'package:run_solo/screens/cooper_result_screen.dart';
 import 'package:run_solo/screens/trend_screen.dart';
 import 'package:run_solo/widgets/rank_chip.dart';
@@ -169,7 +170,7 @@ void main() {
     await pumpApp(
       tester,
       fakeServices(files: [a, b]),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Test'));
@@ -177,7 +178,11 @@ void main() {
     expect(find.byKey(const ValueKey('cooper-trend-chart')), findsOneWidget);
     expect(find.textContaining('VO2 estimate '), findsNWidgets(2));
 
-    await pumpApp(tester, fakeServices(), home: const TrendScreen());
+    await pumpApp(
+      tester,
+      fakeServices(),
+      home: const TrendScreen(initial: RecordMode.intervals),
+    );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Test'));
     await pumpTimes(tester, 4);
@@ -203,7 +208,7 @@ void main() {
           b.id: engine.RunSidecar(runId: b.id, weather: weather.toJson()),
         },
       ),
-      home: const TrendScreen(),
+      home: const TrendScreen(initial: RecordMode.intervals),
     );
     await pumpTimes(tester, 6);
     await tester.tap(find.text('Test'));
