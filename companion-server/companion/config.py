@@ -7,6 +7,17 @@ from datetime import date
 from dataclasses import dataclass, field
 
 
+def _operators(e) -> frozenset[str] | None:
+    """COMPANION_COACH_OPERATORS as a set; None when unset (is_operator then reads the memory override, with one warning)."""
+    raw = e.get("COMPANION_COACH_OPERATORS")
+    if raw is None or not raw.strip():
+        if _csv(e.get("COMPANION_COACH_MEMORY_OVERRIDE")):
+            logging.getLogger("companion").warning(
+                "COMPANION_COACH_OPERATORS is unset: operators fall back to COMPANION_COACH_MEMORY_OVERRIDE; set OPERATORS before removing it")
+        return None
+    return frozenset() if raw.strip() == "-" else _csv(raw)
+
+
 def _csv(v: str | None) -> frozenset[str]:
     return frozenset(x.strip() for x in (v or "").split(",") if x.strip())
 
@@ -165,6 +176,14 @@ class Settings:
     # until he re-consents in the app; remove it then.
     memory_consent_required: int = 4
     coach_memory_override: frozenset[str] = frozenset()
+    # Operators (COMPANION_COACH_OPERATORS, user ids u_...): exempt from the per-runner monthly cap and the daily message limit,
+    # never from the shared ceiling. Unset = fall back to coach_memory_override (the old meaning), so dropping the memory override
+    # later cannot silently cap Ricki; set it to an empty value ("COMPANION_COACH_OPERATORS=-") for no operators at all.
+    coach_operators: frozenset[str] | None = None
+
+    def is_operator(self, user_id: str) -> bool:
+        ops = self.coach_memory_override if self.coach_operators is None else self.coach_operators
+        return user_id in ops
     coach_model: str = "anthropic/claude-sonnet-5.5"
     # All model spend in a month (cards + chat). Chat stops when it would cross the cap less what the cards still have
     # reserved (coach_card_reserve_usd minus the cards' spend this month), so chat can never starve the cards.
@@ -263,6 +282,7 @@ class Settings:
             coach_allowlist=_csv(e.get("COMPANION_COACH_ALLOWLIST")),
             coach_consent_required=_posint(e.get("COMPANION_COACH_CONSENT_REQUIRED"), 3),
             coach_memory_override=_csv(e.get("COMPANION_COACH_MEMORY_OVERRIDE")),
+            coach_operators=_operators(e),
             memory_consent_required=_posint(e.get("COMPANION_MEMORY_CONSENT_REQUIRED"), 4),
             coach_model=(e.get("COMPANION_COACH_MODEL") or "anthropic/claude-sonnet-5.5").strip(),
             coach_monthly_cap_usd=_posfloat(e.get("COMPANION_COACH_MONTHLY_CAP_USD"), 30.0),

@@ -209,6 +209,10 @@ Enrolment flow (the app drives it; each step is anti-phishing by design):
   memory off since the backup (the privacy page promises deletes are re-applied), or `DELETE FROM coach_memory` if unsure.
 - Coach memory gate: consent v4 only. `COMPANION_COACH_MEMORY_OVERRIDE` (csv user ids, empty default) is Ricki's temporary route at
   consent 3; remove it once he agrees in the app. The coach allowlist never grants memory.
+- Coach operators: `COMPANION_COACH_OPERATORS` (csv user ids, e.g. Ricki) are exempt from the per-runner monthly cap and the daily
+  message limit, never from the shared ceiling. Unset = fall back to `COMPANION_COACH_MEMORY_OVERRIDE` (one warning at start-up), so
+  set OPERATORS BEFORE removing the memory override or Ricki is silently capped. `COMPANION_COACH_OPERATORS=-` = no operators. Once
+  OPERATORS is set the memory override no longer exempts anyone from the caps; it only opens the memory gate.
 - Retention (automatic): message log and cards 30 days, niggle answers 8 weeks, accounts with no run for 6 months are hard-deleted.
 - Logs: journald via `journalctl --user -u companion`. Phone numbers, chat ids and tokens are redacted; request URLs are not logged.
 - Before the first non-Ricki user: run as a dedicated system user with a 700 data dir (eng-review C3), and add the row to

@@ -591,7 +591,7 @@ class CoachChat:
                 c.execute("UPDATE coach_jobs SET triage=? WHERE id=?", (mode, primary))
             over = None
             chars = len(self.prompt.text if self.prompt else "") + sum(len(h["content"]) for h in history) + len(message)
-            if uid not in self.s.coach_memory_override and budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
+            if not self.s.is_operator(uid) and budget.daily_msgs(c, uid, now, u["zone_id"]) > self.s.coach_daily_msgs:
                 over = (DAILY_CAP, "daily_cap")
             else:
                 ledger_id, why = budget.reserve(c, self.s, uid, primary, budget.estimate(self.s, chars, first=True), now,
