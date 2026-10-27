@@ -812,6 +812,19 @@ class CoachPrompterTest {
     }
 
     @Test
+    fun `goal prompts label their buttons like the question and keep the choice keys`() {
+        val p = CoachPrompter()
+        val q = assertNotNull(fallingBehind(p))
+        assertEquals(listOf("Keep chasing", "New target"), q.buttonLabels)
+        assertEquals(listOf(PromptChoice.push, PromptChoice.ease), q.options)
+        val last = assertNotNull(km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, goalMs = t2430)))
+        assertEquals(listOf("Faster", "Same pace"), last.buttonLabels)
+        assertEquals(listOf(PromptChoice.push, PromptChoice.hold), last.options)
+        val free = assertNotNull(km(CoachPrompter(), facts(3, gapMs = -20_000, goal = null)))
+        assertEquals(listOf("Push", "Hold"), free.buttonLabels)
+    }
+
+    @Test
     fun `falling behind a goal time names it and never the target`() {
         val p = CoachPrompter()
         assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, goalMs = t2430)))

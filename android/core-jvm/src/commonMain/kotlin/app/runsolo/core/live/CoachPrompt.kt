@@ -67,7 +67,12 @@ data class Prompt(
     val text: String,
     val openedAtMs: Long,
     val timeoutMs: Long = CoachPrompter.TIMEOUT_MS,
-)
+    /** Button text when it is not the choices' own labels (a goal prompt's buttons match its question); null = those. */
+    val labels: List<String>? = null,
+) {
+    /** What the screen's two buttons say. */
+    val buttonLabels: List<String> get() = labels ?: options.map { it.label }
+}
 
 /** One resolved prompt, for the run record (and the later post-run line). */
 data class PromptAnswer(
@@ -293,11 +298,11 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (toGo != null && !last2kDone && goalTime != null) {
             val ahead = -f.behindTargetMs!!
             val where = GoalMargin.promptPhrase(ahead, prevBehind?.let { ahead + it }, goalTime)
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $LAST2K_QUESTION", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $LAST2K_QUESTION", nowMs, LAST2K_LABELS)
         }
         if (toGo != null && !last2kDone) {
             val lead = if (phrase != null) "$toGo to go, $phrase" else "$toGo to go."
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead $LAST2K_QUESTION", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead $LAST2K_QUESTION", nowMs, LAST2K_LABELS)
         }
         // The last slot of a distance goal is the last 2 km's.
         if (f.goalDistanceM != null && !last2kDone && count >= MAX_PROMPTS - 1) return null
@@ -309,7 +314,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         ) {
             if (f.goalTimeMs != null) {
                 val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
-                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing or new target?", nowMs)
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing or new target?", nowMs, listOf("Keep chasing", "New target"))
             }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)
@@ -328,8 +333,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         return make(PromptKind.betweenReps, rep, listOf(PromptChoice.push, PromptChoice.hold), "Rep $rep done. Push the next one or hold?", nowMs)
     }
 
-    private fun make(kind: PromptKind, km: Int, options: List<PromptChoice>, text: String, nowMs: Long) =
-        Prompt(nextId, kind, km, options, text, nowMs)
+    private fun make(kind: PromptKind, km: Int, options: List<PromptChoice>, text: String, nowMs: Long, labels: List<String>? = null) =
+        Prompt(nextId, kind, km, options, text, nowMs, labels = labels)
 
     /** [p] was decided at run time [nowMs]: it waits [OPEN_DELAY_MS] so the km cue and any moment overlay go first. */
     fun decided(p: Prompt, nowMs: Long) {
@@ -526,6 +531,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
 
         /** The last-2-km question: the buttons are Faster / Same pace on screen; the choice keys stay push / hold. */
         const val LAST2K_QUESTION = "Faster finish, or same pace?"
+        val LAST2K_LABELS = listOf("Faster", "Same pace")
 
         /** Of those, at most this many between reps. */
         const val MAX_REP_PROMPTS = 2

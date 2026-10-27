@@ -210,6 +210,24 @@ void main() {
     expect(fake.promptAnswers.single, (1, 1));
   });
 
+  testWidgets('a goal prompt shows its own button labels', (tester) async {
+    final fake = await openRun(tester);
+    await open(
+      tester,
+      fake,
+      prompt(
+        kind: 'behindTarget',
+        text: '20 seconds behind 24:30, slipping. Keep chasing or new target?',
+        options: const ['Keep chasing', 'New target'],
+      ),
+    );
+    expect(find.text('KEEP CHASING'), findsOneWidget);
+    expect(find.text('NEW TARGET'), findsOneWidget);
+    await tester.tap(button(1));
+    await tester.pump();
+    expect(fake.promptAnswers.single, (1, 1));
+  });
+
   test('every trigger has its own eyebrow', () {
     expect(InrunPromptOverlay.eyebrow('last2k'), 'LAST STRETCH');
     expect(InrunPromptOverlay.eyebrow('behindTarget'), 'BEHIND');
@@ -457,4 +475,4 @@ void main() {
 
 /// The longest goal-time last-2-km prompt (CoachPrompter, 16 words).
 const goalPromptLongest =
-    '2.5 k to go, 1 minute 59 under 1:27:59, shrinking. Push to bank more, or hold?';
+    '2.5 k to go, 1 minute 59 seconds under 1:27:59, shrinking. Faster finish, or same pace?';

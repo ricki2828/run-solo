@@ -1322,7 +1322,7 @@ class RecordingSession(
 
     private fun promptEvent(p: Prompt, now: Long, t: Long) = PromptEvent(
         id = p.id.toLong(), kind = p.kind.key, text = p.text,
-        options = p.options.map { it.label }, timeoutMs = prompter.remainingMs(now) ?: p.timeoutMs, km = p.km.toLong(),
+        options = p.buttonLabels, timeoutMs = prompter.remainingMs(now) ?: p.timeoutMs, km = p.km.toLong(),
         leadMs = if (prompter.windowStarted) 0L else (maxOf(cues.speechBusyUntil, t) - t).coerceAtLeast(0L),
     )
 
