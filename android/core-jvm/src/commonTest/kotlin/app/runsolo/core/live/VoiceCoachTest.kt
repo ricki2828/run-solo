@@ -387,6 +387,26 @@ class VoiceCoachTest {
     }
 
     @Test
+    fun `a re-aimed goal time restarts the status against the new clock and names it`() {
+        val c = goalCoach()
+        val said = ArrayList<Pair<Int, String>>()
+        var d = 0.0
+        val newTarget = app.runsolo.core.model.LiveTarget(5_000.0, 1_800_000, predicted = false) // 30:00, 360 s/km
+        var target = goalTarget
+        for (s in 1..900) {
+            if (s == 400) { c.retarget(); target = newTarget }
+            d += 1_000.0 / 330.0
+            val t = s * 1_000L
+            c.tick(VoiceCoach.Input(t, 0, t, 330.0, null, null, 0, false, VoiceCoach.GoalProgress(target, d, t)))?.let { said.add(s to it.text) }
+        }
+        val before = said.filter { it.first < 400 }
+        val after = said.filter { it.first >= 400 }
+        assertTrue(before.all { it.second.contains("24:30") }, "$said")
+        assertTrue(after.isNotEmpty() && after.all { it.second.contains("30:00") && !it.second.contains("24:30") }, "$said")
+        assertTrue(after.all { it.second.contains("ahead of") || it.second.startsWith("On ") }, "330 s/km beats 360: $said")
+    }
+
+    @Test
     fun `without a goal the same fast pace still says ease off`() {
         // The gate: only a goal run with a target time changes. Everything else is as before.
         assertEquals(listOf(30 to "Ease off, 15 seconds fast"), VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0)).run(0, 30) { 279.0 })

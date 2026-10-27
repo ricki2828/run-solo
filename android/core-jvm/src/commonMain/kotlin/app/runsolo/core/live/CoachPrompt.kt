@@ -80,6 +80,8 @@ data class PromptAnswer(
     val windowStartMs: Long = prompt.openedAtMs,
     /** Closed without a word: the runner stopped the run (a long manual pause), so "No answer. Holding." would be noise. */
     val quiet: Boolean = false,
+    /** An ease off on a goal run re-aimed the goal time to this (ms); null = no re-aim. Set on restore. */
+    val retargetMs: Long? = null,
 ) {
     /** The spoken acknowledgement; null for a [quiet] close. */
     val spoken: String?
@@ -249,15 +251,21 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
             count++
             lastOpenedMs = a.prompt.openedAtMs
             if (a.prompt.kind == PromptKind.last2k) last2kDone = true
-            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = true
+            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = a.retargetMs == null
             if (a.prompt.kind == PromptKind.betweenReps) repPrompts++
             effect = if (a.prompt.kind == PromptKind.betweenReps) PromptEffect.NONE else effect.after(a.choice, a.prompt.kind)
-            if (a.choice == PromptChoice.ease) easedOff = true
+            if (a.choice == PromptChoice.ease) easedOff = a.retargetMs == null
             nextId = maxOf(nextId, a.prompt.id + 1)
         }
     }
 
     val prompts: Int get() = count
+
+    /** The goal time was re-aimed (ease off on a goal run): falling behind the new time may be asked about again. */
+    fun retargeted() {
+        behindAsked = false
+        easedOff = false
+    }
 
     private fun gapOk(nowMs: Long, distanceM: Double): Boolean {
         if (open != null || count >= MAX_PROMPTS) return false
@@ -575,14 +583,15 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
                 PromptSource.parse(l.source) ?: PromptSource.timeout,
                 l.atMs,
                 windowStartMs = l.openedAtMs,
+                retargetMs = l.retargetMs,
             )
         }
 
         /** The journal's `pr` line for [a]. */
-        fun line(a: PromptAnswer, wallMs: Long, t: Long) = JournalLine.PromptResolved(
+        fun line(a: PromptAnswer, wallMs: Long, t: Long, retargetMs: Long? = null) = JournalLine.PromptResolved(
             t = t, w = wallMs, id = a.prompt.id, trigger = a.prompt.kind.key, km = a.prompt.km,
             options = a.prompt.options.map { it.key }, choice = a.choice.key, source = a.source.key,
-            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs,
+            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs, retargetMs = retargetMs,
         )
     }
 }

@@ -738,6 +738,19 @@ class CoachPrompterTest {
     }
 
     @Test
+    fun `a re-aimed goal time lets a later fall behind the new time ask again`() {
+        val p = CoachPrompter()
+        val a = assertNotNull(fallingBehind(p))
+        p.opened(a, 3_002.0)
+        p.answer(a.id, 1, PromptSource.tap, a.openedAtMs + 3_000)
+        p.retargeted()
+        assertNotNull(p.atKm(facts(6, goal = 10_000.0, behind = 50_000, goalMs = 3_000_000), 2_400_000, 6_002.0))
+        // A restore of a re-aimed ease keeps the re-aim: the question is open again, as live.
+        val line = JournalLine.PromptResolved(903_000, 1, a.id, "behindTarget", 3, listOf("push", "ease"), "ease", "tap", 900_000, 903_000, retargetMs = 3_000_000)
+        assertNotNull(CoachPrompter(CoachPrompter.restore(listOf(line))).atKm(facts(6, goal = 10_000.0, behind = 50_000, goalMs = 3_000_000), 2_400_000, 6_002.0))
+    }
+
+    @Test
     fun `a push answer to a behind prompt does not allow a second behind prompt`() {
         val p = CoachPrompter()
         val a = assertNotNull(fallingBehind(p))

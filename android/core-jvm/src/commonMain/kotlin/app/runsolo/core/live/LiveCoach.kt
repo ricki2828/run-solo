@@ -424,8 +424,33 @@ class LiveCoach(
         get() {
             val s = spec?.takeIf { it.isGoal } ?: return null
             val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
-            return context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 }
+            val base = context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 } ?: return null
+            return rebasedTargetMs?.let { base.copy(targetMs = it, predicted = false) } ?: base
         }
+
+    /** The goal time the runner re-aimed at ("New target" after an ease off); null = the Start target still stands. */
+    private var rebasedTargetMs: Long? = null
+
+    /** A re-aimed target is in force: the PB chase compares no longer apply (he let that clock go). */
+    val goalRebased: Boolean get() = rebasedTargetMs != null
+
+    /**
+     * Ease off on a goal run: the goal time becomes the projected finish (even pace from here) rounded UP to the next
+     * whole minute. Returns it, or null when there is no goal time, the goal is reached or there is too little run to
+     * project from. Every later goal compare, prompt and status reads the new target ([goalTarget]).
+     */
+    fun rebaseGoal(distanceM: Double, activeMs: Long): Long? {
+        val t = goalTarget ?: return null
+        if (goalReached || distanceM < REBASE_MIN_M || activeMs <= 0) return null
+        val projectedMs = activeMs / distanceM * t.distanceM
+        val minutes = kotlin.math.ceil(projectedMs / 60_000.0).toLong()
+        return (minutes * 60_000L).also { rebasedTargetMs = it }
+    }
+
+    /** After a restore: the re-aimed target the journal last recorded. */
+    fun restoreRebase(targetMs: Long?) {
+        rebasedTargetMs = targetMs
+    }
 
     /**
      * What [VoiceCoach] needs on a goal run with a target time at [distanceM] / [activeMs]; null on every other run and
@@ -449,6 +474,8 @@ class LiveCoach(
         val c = chase ?: return null
         val s = spec ?: return null
         if (!s.isGoal || kind != CueKind.projection || index == null || goalReached || muted || minimalVoice) return null
+        // After a re-aimed target the PB chase is silent: the status line owns the comparison, against the new time.
+        if (goalRebased) return null
         val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
         val key = GoalCoach.boardKey(step)
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key }
@@ -460,7 +487,7 @@ class LiveCoach(
         chaseCueMs = stepElapsedMs
         val gap = board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
         val chasing = c.choice == CoachChoice.chase
-        val behind = context?.target?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
+        val behind = (goalTarget ?: context?.target)?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
         kmFacts = KmFacts(
             index, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true,
             step.value.toDouble(), behind, chasing, goalTarget?.targetMs,
@@ -523,7 +550,7 @@ class LiveCoach(
      * split, or muted: the cue keeps its own "On pace for …".
      */
     private fun goalKm(kind: CueKind, index: Int?, s: SessionSpec, activeMs: Long): Fire? {
-        if (kind != CueKind.projection || index == null || goalReached) return null
+        if (kind != CueKind.projection || index == null || goalReached || goalRebased) return null
         val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
         val key = GoalCoach.boardKey(step)
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key } ?: return null
@@ -539,6 +566,9 @@ class LiveCoach(
     companion object {
         /** A recovery shorter than this gets the compare in voice only, no overlay card (§3.2). */
         const val SHORT_RECOVERY_MS = 20_000L
+
+        /** A goal time is re-aimed only from this far in: a projection off a few hundred metres is noise. */
+        const val REBASE_MIN_M = 500.0
 
         /** Cooper ranks against past tests only at these minutes (the projection speaks every minute). */
         val COOPER_RANK_MINUTES = setOf(3, 6, 9)

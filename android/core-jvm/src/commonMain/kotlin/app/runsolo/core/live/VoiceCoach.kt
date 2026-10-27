@@ -145,6 +145,18 @@ class VoiceCoach(private val config: Config) {
         kmMargin = GoalMargin.aheadMs(g.target, d, g.elapsedMs)
     }
 
+    /**
+     * The goal time was re-aimed (ease off on a goal run): the margin history was against the old clock, so the trend
+     * and the last line said start again. Silent until the next whole km measures the margin to the new time.
+     */
+    fun retarget() {
+        kmMargin = null
+        prevKmMargin = null
+        lastSaid = null
+        goalLevel = false
+        dueSinceT = null
+    }
+
     fun tick(i: Input): Line? {
         if (!config.full) return null
         if (i.segment != segment) {

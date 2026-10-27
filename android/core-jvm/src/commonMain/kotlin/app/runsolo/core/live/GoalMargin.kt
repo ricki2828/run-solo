@@ -70,6 +70,22 @@ object GoalMargin {
         return if (tail == null) head else "$head, $tail"
     }
 
+    /** The one line said when the goal time is re-aimed: "New target: 8 k in 52 minutes." */
+    fun newTargetLine(distanceM: Double, targetMs: Long): String {
+        val km = distanceM / 1_000
+        val dist = if (km % 1.0 == 0.0) "${km.toInt()}" else "${(km * 10).roundToLong() / 10.0}"
+        val total = targetMs / 60_000
+        val h = total / 60
+        val m = total % 60
+        val minutes = if (m == 1L) "1 minute" else "$m minutes"
+        val time = when {
+            h == 0L -> minutes
+            m == 0L -> if (h == 1L) "1 hour" else "$h hours"
+            else -> "${if (h == 1L) "1 hour" else "$h hours"} $minutes"
+        }
+        return "New target: $dist k in $time."
+    }
+
     /**
      * The last-2-km prompt's version, where "under" is ahead of the goal clock: "12 seconds under 24:30, shrinking",
      * "18 seconds over 24:30", "level with 24:30". The trend is only said for a lead that is shrinking.

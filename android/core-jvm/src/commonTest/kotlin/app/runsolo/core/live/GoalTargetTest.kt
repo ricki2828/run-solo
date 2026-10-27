@@ -32,6 +32,43 @@ class GoalTargetTest {
     }
 
     @Test
+    fun `ease off re-aims the goal time to the projected finish rounded up to the next whole minute`() {
+        val c = LiveCoach(ctx(LiveTarget(8_000.0, 2_220_000, predicted = true)), RunMode.intervals, SessionSpec.goalDistance(8_000, "8K"))
+        // 2 km in 746 s: 8 km projects to 2984 s = 49:44, so 50 minutes.
+        assertEquals(3_000_000L, c.rebaseGoal(2_000.0, 746_000))
+        val t = assertNotNull(c.goalTarget)
+        assertEquals(3_000_000L, t.targetMs)
+        assertEquals(false, t.predicted)
+        assertEquals(3_000_000L, assertNotNull(c.goalProgress(2_100.0, 780_000)).target.targetMs)
+        assertEquals(true, c.goalRebased)
+    }
+
+    @Test
+    fun `a second ease off re-aims again and an exact minute stays put`() {
+        val c = LiveCoach(ctx(LiveTarget(8_000.0, 2_220_000, predicted = true)), RunMode.intervals, SessionSpec.goalDistance(8_000, "8K"))
+        assertEquals(3_000_000L, c.rebaseGoal(2_000.0, 750_000)) // 3000 s exactly
+        assertEquals(3_360_000L, c.rebaseGoal(4_000.0, 1_660_000)) // 3320 s -> 56 min
+    }
+
+    @Test
+    fun `no re-aim off a few hundred metres, after the goal or on a run without a goal time`() {
+        val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
+        assertNull(c.rebaseGoal(300.0, 100_000))
+        assertNull(LiveCoach(ctx(), RunMode.free, null).rebaseGoal(2_000.0, 600_000))
+        c.goalReachedAt(5_000.0, 1_400_000)
+        assertNull(c.rebaseGoal(5_000.0, 1_400_000))
+        assertEquals(false, c.goalRebased)
+    }
+
+    @Test
+    fun `a restore keeps the re-aimed time and the PB chase stays silent after it`() {
+        val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
+        c.restoreRebase(1_800_000L)
+        assertEquals(1_800_000L, c.goalTarget?.targetMs)
+        assertNull(c.chaseAtCue(CueKind.projection, 2, 600_000))
+    }
+
+    @Test
     fun `every other run has none`() {
         assertNull(LiveCoach(ctx(), RunMode.intervals, SessionSpec.goalTime(1_800, "30 min")).goalTarget, "a time goal")
         assertNull(LiveCoach(ctx(), RunMode.intervals, fiveK.copy(templateId = SessionSpec.EVENT_ID)).goalTarget, "the timed 5 km event")
