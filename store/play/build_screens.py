@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO / "assets" / "brand"))
-import build_brand as bb  # noqa: E402  (Lap Line R geometry)
+import build_brand as bb  # noqa: E402  (Track Bend geometry)
 
 GOLD = REPO / "test" / "golden" / "goldens"
 FONTS = REPO / "assets" / "fonts"
@@ -103,16 +103,13 @@ def feature_graphic():
     seg = w // 4
     for i, c in enumerate((AEROBIC, SPEED, MID, LONG)):
         d.rectangle([i * seg, 0, (i + 1) * seg, 12], fill=c)
-    # Lap Line R, left, with its lap line running out to the tagline column.
-    kr = 330 / bb.CAP
-    rx, base = 64, 410
-    bb.paint(img, INK, bb.R_CUT, (kr, 0, 0, -kr, rx, base))
-    _, _, rxmax, _ = bb.bounds(bb.R_CUT)
-    cy = base - bb.CUT_Y * kr
-    # lap line in the Lap Line cyan, as on the icon
-    t = bb.LINE_T * kr
-    leg_l, _ = bb.leg_span(bb.R)
-    d.rounded_rectangle([rx + leg_l * kr, cy - t / 2, rx + (rxmax + bb.MARK_TAIL) * kr, cy + t / 2], t / 2, fill=ARC_LIGHT)
+    # Track Bend mark, left (300 px tall), zone lanes on the light ground.
+    layers = bb.MARK.layers(bb.ZONES_LIGHT)
+    x0, y0, x1, y1 = bb.bounds_all(layers)
+    km = 300 / (y1 - y0)
+    mark = img.convert("RGBA")
+    bb.paint_layers(mark, layers, km, 64 - x0 * km, 120 - y0 * km)
+    img.paste(mark.convert("RGB"))
     # Tagline, two lines, Saira.
     f = head_font(100)
     tx = 410

@@ -142,7 +142,7 @@ class RecorderNotification(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "recording"
         const val NOTIFICATION_ID = 1001
-        /** Arc teal (brand accent) tints the small icon and actions, brief section 2.2. */
-        const val ARC = 0xFF19E6FF.toInt()
+        /** Zone 1 blue (the Track Bend outer lane, `HrZones.distributionLight`) tints the small icon and actions. */
+        const val ARC = 0xFF2F6DB5.toInt()
     }
 }

@@ -1,4 +1,4 @@
-/// Which Lap Draw intro a cold start gets (plan §4, D8; brief A9). Read once
+/// Which Track Bend intro a cold start gets (plan §4, D8; brief A9). Read once
 /// in `main()` before `runApp`, so the decision exists before the first
 /// intro frame.
 library;
@@ -16,7 +16,7 @@ enum IntroKind {
   /// Every other cold start: 0.6 s, the R and its own line, no wordmark.
   short,
 
-  /// First launch and the first launch of each new version: ≤ 1.5 s.
+  /// First launch and the first launch of each new version: about 1.4 s.
   full,
 }
 

@@ -162,7 +162,7 @@ class _OnboardingIntro extends StatelessWidget {
           body: PinnedFooterLayout(
             content: [
               const SizedBox(height: Space.x48),
-              const LapLineDrawMark(height: 96),
+              const TrackBendDrawMark(height: 96),
               const SizedBox(height: Space.x32),
               Text('TRACK PROGRESS.\nGET BETTER.', style: text.displayMedium),
               const SizedBox(height: Space.x16),

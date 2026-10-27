@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Builds the Run Supreme "Lap Line" brand vectors from the bundled Barlow Condensed Bold.
+"""Builds the Run Supreme "Track Bend" brand vectors (direction C, Munich lanes).
 
-Everything is outlined (no live text) and boolean-cut, so each file is plain filled paths
-that work as SVG and as Android VectorDrawable (no masks, no clip paths).
+The mark is five lanes of a 400 m bend seen from above, open to the right
+(straight, bend, straight), Z1 outer to Z5 inner in the zone ramp, separated by
+white lane gaps. The wordmark is RUN SUPREME in Barlow Condensed Bold with five thin
+zone stripes under it. Everything is outlined filled paths (no live text, strokes,
+masks or clip paths), so the same path data works in SVG and Android VectorDrawable.
 
 It writes the SVG masters (assets/brand/svg), the Android resources the app ships
-(android/app/src/main/res), the iOS app icon (ios/Runner/Assets.xcassets) and the Play
-Store graphics (store/play).
+(android/app/src/main/res), the iOS app icon (ios/Runner/Assets.xcassets), the Play
+Store graphics (store/play) and the Flutter paths (lib/brand).
 
     python3 -m venv /tmp/brandvenv && /tmp/brandvenv/bin/pip install -r assets/brand/requirements.txt
     /tmp/brandvenv/bin/python assets/brand/build_brand.py [--hero photo.jpg]
@@ -16,9 +19,8 @@ from pathlib import Path
 
 import pathops
 import uharfbuzz as hb
-from fontTools.pens.svgPathPen import SVGPathPen
-from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.basePen import BasePen
+from fontTools.pens.transformPen import TransformPen
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageOps
 
@@ -29,79 +31,195 @@ STORE = REPO / "store" / "play"
 IOS_ICON = REPO / "ios" / "Runner" / "Assets.xcassets" / "AppIcon.appiconset"
 FONT = HERE.parent / "fonts" / "BarlowCondensed-Bold.ttf"
 
-BONE, ARC, BG = "#EDEAE3", "#19E6FF", "#0A0B0D"
-INK_LIGHT, ARC_LIGHT = "#0F1114", "#0098B2"
+# Zone ramp: HrZones.distributionLight / distributionDark (lib/theme/zones.dart).
+ZONES_LIGHT = ["#2F6DB5", "#2E9E5B", "#D9A21B", "#E86A1C", "#D6283B"]
+ZONES_DARK = ["#4D9BFF", "#2FD07A", "#FFBE2E", "#FF7A2E", "#FF4D5E"]
+GROUND = "#FBFBF9"       # NightSessionLight.bgBase: the splash and feature graphic ground
+TILE = "#FFFFFF"         # launcher tile
+INK_LIGHT = "#121417"    # NightSessionLight.inkPrimary
+BONE = "#EDEAE3"
+DARK = "#0A0B0D"
 
-# Geometry, in font units (cap height 700, y up). The lap line sits at 40% of cap height.
 CAP = 700
-CUT_Y = 0.40 * CAP
-CUT_T = 0.075 * CAP          # gap cut through the letters
-LINE_T = 0.6 * CUT_T         # cyan lap line, centred in the gap
-TRACKING = 20                # +2% of the em, brief section 2.2
-WORD_DASH_GAP = 0.18 * CAP   # space between the word and its dash
-WORD_DASH_LEN = 0.76 * CAP
-MARK_TAIL = 0.25 * CAP       # how far the lap line runs past the R
-ICON_CUT_T = 0.12 * CAP
-ICON_LINE_T = 0.08 * CAP
-ICON_TAIL_LEN = 0.2 * CAP
-NOTE_CUT_T = 0.15 * CAP      # 24 dp notification icon: twice the cut, or it closes up at 1x
+TRACKING = 20                 # +2% of the em, brief section 2.2
+STRIPE_H = 0.055 * CAP        # wordmark zone stripes, font units
+STRIPE_PITCH = 0.0714 * CAP
+STRIPE_OFFSET = 0.137 * CAP   # baseline to the top of the first stripe
+
+# Lane geometry, in mark units (one lane pitch is about 4). Lane k (0 = Z1, outermost)
+# has centre radius r0 + pitch * (n - 1 - k) + pitch / 2, stroke pitch - gap, and its
+# straights end `stagger` earlier per lane towards the inside (the 400 m stagger).
+SPEC_MARK = dict(pitch=4.2, gap=0.9, r0=4.0, straight=28.0, stagger=3.2, zones=(0, 1, 2, 3, 4))
+# Launcher and splash icon: seen at 48 px, so a wider gap and a tighter bend.
+SPEC_ICON = dict(pitch=4.4, gap=1.5, r0=2.6, straight=15.0, stagger=2.6, zones=(0, 1, 2, 3, 4))
+# 24 dp notification icon: three lanes (Z1, Z3, Z5), or five close up.
+SPEC_NOTE = dict(pitch=5.2, gap=2.2, r0=2.0, straight=12.0, stagger=3.0, zones=(0, 2, 4))
+
+KAPPA = 0.5522847498
 
 font = TTFont(FONT)
 glyphs = font.getGlyphSet()
 
 
-def rect(x0, y0, x1, y1):
-    p = pathops.Path()
-    pen = p.getPen()
-    pen.moveTo((x0, y0)); pen.lineTo((x1, y0)); pen.lineTo((x1, y1)); pen.lineTo((x0, y1)); pen.closePath()
-    return p
+# ---- path model: ("M", x, y) ("L", x, y) ("Q", x1, y1, x, y) ("C", x1, y1, x2, y2, x, y) ("Z",) ----
+def fmt(v, places=2):
+    s = f"{v:.{places}f}".rstrip("0").rstrip(".")
+    return "0" if s in ("", "-0") else s
 
 
-def pill(x0, y0, x1, y1, round_left=True):
-    """Horizontal bar with a round right end (and optionally a round left end)."""
-    r = (y1 - y0) / 2
-    k = 0.5523 * r
-    cy = (y0 + y1) / 2
-    p = pathops.Path()
-    pen = p.getPen()
-    if round_left:
-        pen.moveTo((x0 + r, y0))
-    else:
-        pen.moveTo((x0, y0))
-    pen.lineTo((x1 - r, y0))
-    pen.curveTo((x1 - r + k, y0), (x1, cy - k), (x1, cy))
-    pen.curveTo((x1, cy + k), (x1 - r + k, y1), (x1 - r, y1))
-    if round_left:
-        pen.lineTo((x0 + r, y1))
-        pen.curveTo((x0 + r - k, y1), (x0, cy + k), (x0, cy))
-        pen.curveTo((x0, cy - k), (x0 + r - k, y0), (x0 + r, y0))
-    else:
-        pen.lineTo((x0, y1))
-    pen.closePath()
-    return p
+def pts(cmds):
+    for c in cmds:
+        a = c[1:]
+        for i in range(0, len(a), 2):
+            yield a[i], a[i + 1]
 
 
-def glyph_path(name, dx=0):
-    p = pathops.Path()
-    glyphs[name].draw(TransformPen(p.getPen(), (1, 0, 0, 1, dx, 0)))
-    return p
+def bounds(cmds):
+    xs, ys = zip(*pts(cmds))
+    return min(xs), min(ys), max(xs), max(ys)
 
 
-def union(paths):
-    out = pathops.Path()
-    for p in paths:
-        out = pathops.op(out, p, pathops.PathOp.UNION)
+def bounds_all(layers):
+    bs = [bounds(c) for _, c in layers]
+    return min(b[0] for b in bs), min(b[1] for b in bs), max(b[2] for b in bs), max(b[3] for b in bs)
+
+
+def xf(cmds, s=1.0, e=0.0, f=0.0, sy=None):
+    """x' = s x + e, y' = sy y + f (sy defaults to s; pass a negative sy to flip)."""
+    sy = s if sy is None else sy
+    out = []
+    for c in cmds:
+        a = list(c[1:])
+        for i in range(0, len(a), 2):
+            a[i] = s * a[i] + e
+            a[i + 1] = sy * a[i + 1] + f
+        out.append((c[0], *a))
     return out
 
 
-def diff(a, b):
-    return pathops.op(a, b, pathops.PathOp.DIFFERENCE)
+def xf_layers(layers, *args, **kw):
+    return [(col, xf(c, *args, **kw)) for col, c in layers]
 
 
-def bounds(p):
-    return p.bounds  # (xmin, ymin, xmax, ymax)
+def svg_d(cmds, places=2):
+    return "".join(c[0] + " ".join(fmt(v, places) for v in c[1:]) for c in cmds)
 
 
+def dart_lines(cmds, places=3):
+    n = lambda v: fmt(v, places)
+    out = []
+    for c in cmds:
+        a = [n(v) for v in c[1:]]
+        if c[0] == "M":
+            out.append(f"  ..moveTo({a[0]}, {a[1]})")
+        elif c[0] == "L":
+            out.append(f"  ..lineTo({a[0]}, {a[1]})")
+        elif c[0] == "Q":
+            out.append(f"  ..quadraticBezierTo({', '.join(a)})")
+        elif c[0] == "C":
+            out.append(f"  ..cubicTo({', '.join(a)})")
+        else:
+            out.append("  ..close()")
+    return out
+
+
+class RecPen(BasePen):
+    """Records a glyph or pathops outline as path commands."""
+
+    def __init__(self):
+        super().__init__(None)
+        self.cmds = []
+
+    def _moveTo(self, p):
+        self.cmds.append(("M", *p))
+
+    def _lineTo(self, p):
+        self.cmds.append(("L", *p))
+
+    def _curveToOne(self, a, b, c):
+        self.cmds.append(("C", *a, *b, *c))
+
+    def _qCurveToOne(self, a, b):
+        self.cmds.append(("Q", *a, *b))
+
+    def _closePath(self):
+        self.cmds.append(("Z",))
+
+    _endPath = _closePath
+
+
+def record(path):
+    pen = RecPen()
+    path.draw(pen)
+    return pen.cmds
+
+
+def to_pathops(cmds):
+    p = pathops.Path()
+    pen = p.getPen()
+    for c in cmds:
+        if c[0] == "M":
+            pen.moveTo(c[1:3])
+        elif c[0] == "L":
+            pen.lineTo(c[1:3])
+        elif c[0] == "Q":
+            pen.qCurveTo(c[1:3], c[3:5])
+        elif c[0] == "C":
+            pen.curveTo(c[1:3], c[3:5], c[5:7])
+        else:
+            pen.closePath()
+    return p
+
+
+# ---- the mark ----
+def _arc_out(cx, cy, r):
+    """Left half of a circle, top to bottom (anticlockwise on screen)."""
+    k = KAPPA * r
+    return [("C", cx - k, cy - r, cx - r, cy - k, cx - r, cy),
+            ("C", cx - r, cy + k, cx - k, cy + r, cx, cy + r)]
+
+
+def _arc_back(cx, cy, r):
+    """Left half of a circle, bottom to top."""
+    k = KAPPA * r
+    return [("C", cx - k, cy + r, cx - r, cy + k, cx - r, cy),
+            ("C", cx - r, cy - k, cx - k, cy - r, cx, cy - r)]
+
+
+class Mark:
+    """Lanes of one spec, in mark units: centre (0, 0) of the bend, y down."""
+
+    def __init__(self, spec):
+        self.spec = spec
+        self.zones = spec["zones"]
+        n = len(self.zones)
+        pitch, gap = spec["pitch"], spec["gap"]
+        self.stroke = pitch - gap
+        self.lanes = []  # (zone, outline, centreline)
+        for k, z in enumerate(self.zones):
+            rc = spec["r0"] + pitch * (n - 1 - k) + pitch / 2
+            ro, ri = rc + self.stroke / 2, rc - self.stroke / 2
+            xr = spec["straight"] - k * spec["stagger"]
+            outline = ([("M", xr, -ro), ("L", 0, -ro)] + _arc_out(0, 0, ro)
+                       + [("L", xr, ro), ("L", xr, ri), ("L", 0, ri)] + _arc_back(0, 0, ri)
+                       + [("L", xr, -ri), ("Z",)])
+            centre = [("M", xr, -rc), ("L", 0, -rc)] + _arc_out(0, 0, rc) + [("L", xr, rc)]
+            self.lanes.append((z, outline, centre))
+
+    def layers(self, colours):
+        """Outline layers, colours by zone index (a list of 5) or a single colour."""
+        return [(colours if isinstance(colours, str) else colours[z], o) for z, o, _ in self.lanes]
+
+    def bounds(self):
+        return bounds_all([(None, o) for _, o, _ in self.lanes])
+
+
+MARK = Mark(SPEC_MARK)
+ICON = Mark(SPEC_ICON)
+NOTE = Mark(SPEC_NOTE)
+
+
+# ---- the wordmark ----
 def shape_text(text):
     blob = hb.Blob.from_file_path(str(FONT))
     hbfont = hb.Font(hb.Face(blob))
@@ -114,97 +232,65 @@ def shape_text(text):
     for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
         name = order[info.codepoint]
         if name != "space":
-            parts.append(glyph_path(name, x + pos.x_offset))
+            g = pathops.Path()
+            glyphs[name].draw(TransformPen(g.getPen(), (1, 0, 0, 1, x + pos.x_offset, 0)))
+            parts.append(g)
         x += pos.x_advance + TRACKING
-    return union(parts)
+    out = pathops.Path()
+    for p in parts:
+        out = pathops.op(out, p, pathops.PathOp.UNION)
+    return out
 
 
-def cut(p):
-    xmin, _, xmax, _ = bounds(p)
-    return diff(p, rect(xmin - 10, CUT_Y - CUT_T / 2, xmax + 10, CUT_Y + CUT_T / 2))
+WORD = shape_text("RUN SUPREME")
+W_X0, _, W_X1, _ = WORD.bounds
+WORD_TEXT = record(WORD)  # font units, y up
+# Wordmark in design units, y down, baseline at y = 0.
+WORD_TEXT_DOWN = xf(WORD_TEXT, 1, 0, 0, sy=-1)
 
 
-def leg_span(r_path):
-    """Left and right edge of the R's leg at the cut height."""
-    probe = pathops.op(r_path, rect(-1000, CUT_Y - 1, 2000, CUT_Y + 1), pathops.PathOp.INTERSECTION)
-    spans = sorted(bounds(c) for c in probe.contours)
-    return spans[-1][0], spans[-1][2]
+def stripe_cmds(i):
+    y0 = STRIPE_OFFSET + i * STRIPE_PITCH
+    return [("M", W_X0, y0), ("L", W_X1, y0), ("L", W_X1, y0 + STRIPE_H), ("L", W_X0, y0 + STRIPE_H), ("Z",)]
 
 
-# ---- shapes (font units) ----
-R = glyph_path("R")
-_, _, r_xmax, _ = bounds(R)
-
-
-def make_mark(cut_t, line_t, tail):
-    """R with the lap-line cut. Returns (cut R, colour lap line, monochrome tail)."""
-    r_cut = diff(R, rect(0, CUT_Y - cut_t / 2, 1000, CUT_Y + cut_t / 2))
-    leg_l, _ = leg_span(R)
-    y0, y1 = CUT_Y - line_t / 2, CUT_Y + line_t / 2
-    # Colour: the lap line enters at the leg and leaves to the right, through the cut.
-    line = pill(leg_l, y0, r_xmax + tail, y1, round_left=False)
-    # Monochrome: only the part that has left the letter, so the cut stays readable in one colour.
-    mono = pill(r_xmax + 0.06 * CAP, y0, r_xmax + tail, y1)
-    return r_cut, line, mono
-
-
-R_CUT, MARK_LINE, MONO_TAIL = make_mark(CUT_T, LINE_T, MARK_TAIL)
-# Launcher and splash icons are seen at 48 px: a heavier cut and line, a shorter tail.
-ICON_R, ICON_LINE, ICON_TAIL = make_mark(ICON_CUT_T, ICON_LINE_T, ICON_TAIL_LEN)
-line_y0, line_y1 = CUT_Y - LINE_T / 2, CUT_Y + LINE_T / 2
-
-WORD = cut(shape_text("RUN SUPREME"))
-_, _, w_xmax, _ = bounds(WORD)
-WORD_DASH = pill(w_xmax + WORD_DASH_GAP, line_y0, w_xmax + WORD_DASH_GAP + WORD_DASH_LEN, line_y1)
+def wordmark_layers(ink, zones):
+    return [(ink, WORD_TEXT_DOWN)] + [(zones if isinstance(zones, str) else zones[i], stripe_cmds(i)) for i in range(5)]
 
 
 # ---- output helpers ----
-def to_d(p, a, b, c, d, e, f):
-    pen = SVGPathPen(None, ntos=lambda v: f"{v:.2f}".rstrip("0").rstrip("."))
-    p.draw(TransformPen(pen, (a, b, c, d, e, f)))
-    return pen.getCommands()
+def box(layers, pad, scale=1.0):
+    """Layers translated so the art starts at (pad, pad); returns (layers, w, h)."""
+    x0, y0, x1, y1 = bounds_all(layers)
+    out = xf_layers(layers, scale, pad - x0 * scale, pad - y0 * scale)
+    return out, (x1 - x0) * scale + 2 * pad, (y1 - y0) * scale + 2 * pad
 
 
-def points(p):
-    for _, pts in p.segments:
-        yield from pts
-
-
-def fit_circle(parts, canvas, radius):
-    """Scale + offset (font units, y up) so every point sits within `radius` of the canvas centre."""
-    allp = union(parts)
-    xmin, ymin, xmax, ymax = bounds(allp)
-    cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
-    far = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in points(allp))
+def fit_circle(layers, canvas, radius):
+    """Scale + offset so every point sits within `radius` of the canvas centre."""
+    x0, y0, x1, y1 = bounds_all(layers)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    far = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for _, c in layers for x, y in pts(c))
     s = radius / far
-    c = canvas / 2
-    return (s, 0, 0, -s, c - s * cx, c + s * cy)
+    return s, canvas / 2 - s * cx, canvas / 2 - s * cy
 
 
-def fit_box(parts, canvas, pad):
-    allp = union(parts)
-    xmin, ymin, xmax, ymax = bounds(allp)
-    s = (canvas - 2 * pad) / max(xmax - xmin, ymax - ymin)
-    return (s, 0, 0, -s, canvas / 2 - s * (xmin + xmax) / 2, canvas / 2 + s * (ymin + ymax) / 2)
-
-
-def box_xform(parts, pad):
-    allp = union(parts)
-    xmin, ymin, xmax, ymax = bounds(allp)
-    w, h = xmax - xmin + 2 * pad, ymax - ymin + 2 * pad
-    return (1, 0, 0, -1, pad - xmin, pad + ymax), w, h
+def fit_box(layers, canvas, pad):
+    x0, y0, x1, y1 = bounds_all(layers)
+    s = (canvas - 2 * pad) / max(x1 - x0, y1 - y0)
+    return s, canvas / 2 - s * (x0 + x1) / 2, canvas / 2 - s * (y0 + y1) / 2
 
 
 def svg(w, h, layers, bg=None, extra=""):
-    body = "".join(f'<path fill="{col}" d="{d}"/>' for col, d in layers)
+    body = "".join(f'<path fill="{col}" d="{svg_d(c)}"/>' for col, c in layers)
     back = f'<rect width="{w:g}" height="{h:g}" fill="{bg}"/>' if bg else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w:g} {h:g}" '
             f'width="{w:g}" height="{h:g}">{back}{body}{extra}</svg>\n')
 
 
 def vector(size_dp, viewport, layers):
-    paths = "\n".join(f'    <path\n        android:fillColor="{col}"\n        android:pathData="{d}" />'
-                      for col, d in layers)
+    paths = "\n".join(f'    <path\n        android:fillColor="{col}"\n        android:pathData="{svg_d(c)}" />'
+                      for col, c in layers)
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             '<!-- Generated by assets/brand/build_brand.py. Do not edit by hand. -->\n'
             '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
@@ -213,72 +299,44 @@ def vector(size_dp, viewport, layers):
             f'{paths}\n</vector>\n')
 
 
-class DartPathPen(BasePen):
-    """Emits Flutter `Path` calls in font units flipped to y-down (baseline at y = CAP)."""
-
-    def __init__(self):
-        super().__init__(None)
-        self.lines = []
-
-    @staticmethod
-    def _n(v):
-        return f"{v:.2f}".rstrip("0").rstrip(".") or "0"
-
-    def _pt(self, pt):
-        x, y = pt
-        return f"{self._n(x)}, {self._n(CAP - y)}"
-
-    def _moveTo(self, pt):
-        self.lines.append(f"  ..moveTo({self._pt(pt)})")
-
-    def _lineTo(self, pt):
-        self.lines.append(f"  ..lineTo({self._pt(pt)})")
-
-    def _curveToOne(self, a, b, c):
-        self.lines.append(f"  ..cubicTo({self._pt(a)}, {self._pt(b)}, {self._pt(c)})")
-
-    def _qCurveToOne(self, a, b):
-        self.lines.append(f"  ..quadraticBezierTo({self._pt(a)}, {self._pt(b)})")
-
-    def _closePath(self):
-        self.lines.append("  ..close()")
-
-
-def dart_path(name, doc, p):
-    pen = DartPathPen()
-    p.draw(pen)
-    body = "\n".join(pen.lines)
+def dart_path(name, doc, cmds):
+    body = "\n".join(dart_lines(cmds))
     return f"/// {doc}\nPath {name}() => Path()\n{body};\n"
 
 
 def dart_paths():
-    """lib/brand/lap_line_paths.dart for the Lap Draw intro (brief A9): the exact production
-    outlines as Flutter paths, so the app needs no SVG package. Font units, y down."""
-    leg_l, _ = leg_span(R)
-    rx0, ry0, rx1, ry1 = bounds(R)
-    wx0, wy0, wx1, wy1 = bounds(union([WORD, WORD_DASH]))
-    n = DartPathPen._n
+    """lib/brand/track_bend_paths.dart for the Track Bend intro and in-app marks: the
+    lane centrelines (stroke them with `laneStroke`, butt caps) and the wordmark outline."""
+    x0, y0, x1, y1 = MARK.bounds()
+    centres = [xf(c, 1, -x0, -y0) for _, _, c in MARK.lanes]
+    n = lambda v: fmt(v, 3)
+    wb_x0, wb_x1 = W_X0, W_X1
     consts = {
+        "markWidth": x1 - x0,
+        "markHeight": y1 - y0,
+        "laneStroke": MARK.stroke,
         "cap": CAP,
-        "cutY": CAP - CUT_Y,
-        "cutThickness": CUT_T,
-        "lineThickness": LINE_T,
-        "legEntryX": leg_l,
-        "markTailEndX": r_xmax + MARK_TAIL,
-        "rLeft": rx0, "rTop": CAP - ry1, "rRight": rx1, "rBottom": CAP - ry0,
-        "wordLeft": wx0, "wordTop": CAP - wy1, "wordRight": wx1, "wordBottom": CAP - wy0,
+        "wordLeft": wb_x0,
+        "wordRight": wb_x1,
+        "wordTop": 0,
+        "wordBottom": CAP,
+        "stripeTop": CAP + STRIPE_OFFSET,
+        "stripeHeight": STRIPE_H,
+        "stripePitch": STRIPE_PITCH,
     }
     head = ("// Generated by assets/brand/build_brand.py. Do not edit by hand.\n"
-            "// Lap Line outlines for the Lap Draw intro (brief A9), font units, y down,\n"
-            "// baseline at y = cap. The R is uncut: the intro opens the cut itself.\n\n"
+            "// Track Bend: five lane centrelines of a 400 m bend (Z1 outer .. Z5 inner),\n"
+            "// in mark units, y down, origin at the mark's top left. Stroke each with\n"
+            "// `laneStroke`, butt caps. The wordmark is in font units, y down, baseline at\n"
+            "// y = cap; the five zone stripes sit under it from `stripeTop`.\n\n"
             "import 'dart:ui';\n\n"
-            "abstract final class LapLineGeometry {\n"
+            "abstract final class TrackBendGeometry {\n"
             + "".join(f"  static const double {k} = {n(v)};\n" for k, v in consts.items())
-            + "}\n\n")
-    return (head
-            + dart_path("lapLineR", "The R mark, uncut.", R) + "\n"
-            + dart_path("lapLineWordmark", "RUN SUPREME with its cut (no dash).", WORD) + "\n"
-            + dart_path("lapLineWordDash", "The wordmark's Arc dash.", WORD_DASH))
+            + "  static const int laneCount = 5;\n}\n\n")
+    lanes = "".join(dart_path(f"trackBendLane{i + 1}", f"Lane Z{i + 1} centreline, drawn from the top straight round the bend.", c) + "\n"
+                    for i, c in enumerate(centres))
+    word = xf(WORD_TEXT, 1, 0, CAP, sy=-1)
+    return head + lanes + dart_path("trackBendWordmark", "RUN SUPREME, outlined (no stripes).", word)
 
 
 def write(rel, text, root=HERE):
@@ -335,10 +393,10 @@ SS = 4  # supersampling factor
 
 
 def paint(img, colour, path, xform):
-    """Fills `path` (font units) onto `img`. Contours after pathops never overlap, so XOR = nonzero."""
+    """Fills `path` onto `img`. Contours never overlap, so XOR = nonzero."""
     w, h = img.size
     mask = Image.new("1", (w * SS, h * SS), 0)
-    pen = _Flatten(tuple(v * SS for v in xform[:4]) + (xform[4] * SS, xform[5] * SS))
+    pen = _Flatten(tuple(v * SS for v in xform))
     path.draw(pen)
     for poly in pen.polys:
         m = Image.new("1", mask.size, 0)
@@ -348,88 +406,84 @@ def paint(img, colour, path, xform):
     img.paste(Image.new("RGBA", (w, h), colour), (0, 0), alpha)
 
 
-def scaled(xform, k, dx=0, dy=0):
-    a, b, c, d, e, f = xform
-    return (a * k, b * k, c * k, d * k, e * k + dx, f * k + dy)
+def paint_layers(img, layers, s, dx, dy):
+    """Paints y-down layers placed with scale `s` and offset (dx, dy)."""
+    for col, c in layers:
+        paint(img, col, to_pathops(c), (s, 0, 0, s, dx, dy))
 
 
-def play_icon(t):
-    """512 x 512 Play icon: the launcher's 108 dp artwork, cropped to the central 80 dp (Play masks the corners)."""
-    size, crop = 512, 80
+def icon_layers(colours=ZONES_LIGHT):
+    return ICON.layers(colours)
+
+
+def tile_icon(size, crop=80):
+    """The launcher artwork on the white tile, cropped to the central `crop` dp of the 108 dp canvas."""
+    s, ex, ey = fit_circle(icon_layers(), 108, 32)
     k = size / crop
-    img = Image.new("RGBA", (size, size), BG)
-    x = scaled(t, k, -(108 - crop) / 2 * k, -(108 - crop) / 2 * k)
-    paint(img, BONE, ICON_R, x)
-    paint(img, ARC, ICON_LINE, x)
+    off = -(108 - crop) / 2 * k
+    img = Image.new("RGBA", (size, size), TILE)
+    paint_layers(img, icon_layers(), s * k, ex * k + off, ey * k + off)
     return img
 
 
-def ios_icon(t):
-    """1024 x 1024 iOS app icon, same crop as the Play icon (iOS masks the corners itself).
+def play_icon():
+    return tile_icon(512)
 
-    RGB, no alpha: App Store upload rejects an icon with transparency."""
-    size, crop = 1024, 80
-    k = size / crop
-    img = Image.new("RGBA", (size, size), BG)
-    x = scaled(t, k, -(108 - crop) / 2 * k, -(108 - crop) / 2 * k)
-    paint(img, BONE, ICON_R, x)
-    paint(img, ARC, ICON_LINE, x)
-    return img.convert("RGB")
+
+def ios_icon():
+    """1024 x 1024, RGB with no alpha: App Store upload rejects an icon with transparency."""
+    return tile_icon(1024).convert("RGB")
 
 
 def feature_graphic(hero=None):
-    """1024 x 500: wordmark left, a large R right, one lap line running through both (brief section 6)."""
+    """1024 x 500 on the light ground: wordmark with its stripes left, the large mark right."""
     w, h = 1024, 500
-    img = Image.new("RGB", (w, h), BG)
+    img = Image.new("RGB", (w, h), GROUND)
     if hero:
         photo = ImageOps.fit(Image.open(hero).convert("RGB"), (w, h), Image.LANCZOS)
         photo = ImageEnhance.Color(photo).enhance(0.25)
-        img = Image.blend(img, photo, 0.38)
-    lanes = ImageDraw.Draw(img, "RGBA")
-    for y in range(0, h, 8):  # lane lines: 1 px at 8 px, 6%
-        lanes.line([(0, y), (w, y)], fill=(255, 255, 255, 15))
-    line_px = 280  # the lap line height on the graphic
-    # Wordmark: 470 px wide, cut height on the line.
-    _, _, wx, _ = bounds(WORD)
-    k = 470 / wx
-    tw = (k, 0, 0, -k, 64, line_px + CUT_Y * k)
-    paint(img, BONE, WORD, tw)
-    # Big R on the right, bleeding off the bottom, its cut on the same line.
-    kr = 420 / CAP
-    tr = (kr, 0, 0, -kr, 660, line_px + CUT_Y * kr)
-    paint(img, BONE, R_CUT, tr)
-    # One lap line from the end of the wordmark through the R to the right edge.
-    y0, y1 = (line_px - LINE_T / 2 * k), (line_px + LINE_T / 2 * k)
-    ImageDraw.Draw(img).rectangle([64 + wx * k + 24, y0, w, y1], fill=ARC)
-    return img
+        img = Image.blend(img, photo, 0.12)
+    img = img.convert("RGBA")
+    # Wordmark: 470 px wide.
+    wl = wordmark_layers(INK_LIGHT, ZONES_LIGHT)
+    wx0, wy0, wx1, wy1 = bounds_all(wl)
+    k = 470 / (wx1 - wx0)
+    paint_layers(img, wl, k, 64 - wx0 * k, (h - (wy1 - wy0) * k) / 2 - wy0 * k)
+    # Mark: 320 px tall, right.
+    ml = MARK.layers(ZONES_LIGHT)
+    mx0, my0, mx1, my1 = bounds_all(ml)
+    km = 320 / (my1 - my0)
+    paint_layers(img, ml, km, 940 - (mx1 - mx0) * km - mx0 * km, (h - 320) / 2 - my0 * km)
+    return img.convert("RGB")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hero", help="licensed hero photo for the feature graphic (see store/art/LICENSES.md)")
     args = ap.parse_args()
-    # Mark and wordmark, cropped to their bounds with a small pad (font units).
-    for name, main_path, accent_path, mono_accent in (
-        ("mark", R_CUT, MARK_LINE, MONO_TAIL),
-        ("wordmark", WORD, WORD_DASH, WORD_DASH),
-    ):
-        t, w, h = box_xform([main_path, accent_path], pad=20)
-        d_main, d_acc, d_mono = (to_d(p, *t) for p in (main_path, accent_path, mono_accent))
-        write(f"svg/{name}-on-dark.svg", svg(w, h, [(BONE, d_main), (ARC, d_acc)]))
-        write(f"svg/{name}-on-light.svg", svg(w, h, [(INK_LIGHT, d_main), (ARC_LIGHT, d_acc)]))
-        write(f"svg/{name}-mono-black.svg", svg(w, h, [("#000000", d_main), ("#000000", d_mono)]))
-        write(f"svg/{name}-mono-white.svg", svg(w, h, [("#FFFFFF", d_main), ("#FFFFFF", d_mono)]))
+
+    # Mark and wordmark masters, with a small pad.
+    variants = {
+        "on-dark": (ZONES_DARK, BONE),
+        "on-light": (ZONES_LIGHT, INK_LIGHT),
+        "mono-black": ("#000000", "#000000"),
+        "mono-white": ("#FFFFFF", "#FFFFFF"),
+    }
+    for suffix, (zones, ink) in variants.items():
+        layers, w, h = box(MARK.layers(zones), pad=3, scale=10)
+        write(f"svg/mark-{suffix}.svg", svg(w, h, layers))
+        layers, w, h = box(wordmark_layers(ink, zones), pad=20)
+        write(f"svg/wordmark-{suffix}.svg", svg(w, h, layers))
 
     # Adaptive launcher icon: 108 dp canvas, mark inside the 66 dp safe zone (radius 33, 1 dp margin).
-    # Founder kept the approved #20 size (32 dp), 26-Sep.
-    t = fit_circle([ICON_R, ICON_LINE], 108, 32)
-    fg = [(BONE, to_d(ICON_R, *t)), (ARC, to_d(ICON_LINE, *t))]
+    il = icon_layers()
+    s, ex, ey = fit_circle(il, 108, 32)
+    fg = xf_layers(il, s, ex, ey)
     # Same transform as the colour layer, so the themed icon sits exactly where the colour one does.
-    mono = [("#FFFFFFFF", to_d(ICON_R, *t)), ("#FFFFFFFF", to_d(ICON_TAIL, *t))]
-    bg_rect = "M0 0H108V108H0Z"
+    mono = [("#FFFFFFFF", c) for _, c in fg]
     write("drawable/ic_launcher_foreground.xml", vector(108, 108, fg), RES)
     write("drawable/ic_launcher_monochrome.xml", vector(108, 108, mono), RES)
-    write("drawable/ic_launcher_background.xml", vector(108, 108, [(BG, bg_rect)]), RES)
+    write("drawable/ic_launcher_background.xml", vector(108, 108, [(TILE, [("M", 0, 0), ("L", 108, 0), ("L", 108, 108), ("L", 0, 108), ("Z",)])]), RES)
     write("mipmap-anydpi-v26/ic_launcher.xml",
           '<?xml version="1.0" encoding="utf-8"?>\n'
           '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
@@ -438,34 +492,33 @@ def main():
           '    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n'
           '</adaptive-icon>\n', RES)
     write("svg/icon/ic_launcher_foreground.svg", svg(108, 108, fg))
-    write("svg/icon/ic_launcher_monochrome.svg", svg(108, 108, [("#FFFFFF", d) for _, d in mono]))
-    write("svg/icon/ic_launcher_background.svg", svg(108, 108, [], bg=BG))
-    write("svg/icon/ic_launcher_full.svg", svg(108, 108, fg, bg=BG))
-    guides = ('<rect x=".5" y=".5" width="107" height="107" fill="none" stroke="#5F646D" stroke-width=".5" stroke-dasharray="2 2"/>'
-              '<circle cx="54" cy="54" r="36" fill="none" stroke="#A5A9B1" stroke-width=".5" stroke-dasharray="1 2"/>'
-              '<circle cx="54" cy="54" r="33" fill="none" stroke="#19E6FF" stroke-width=".5" stroke-dasharray="3 2"/>')
-    write("svg/icon/ic_launcher_safe-zone-guide.svg", svg(108, 108, fg, bg=BG, extra=guides))
+    write("svg/icon/ic_launcher_monochrome.svg", svg(108, 108, [("#FFFFFF", c) for _, c in fg]))
+    write("svg/icon/ic_launcher_background.svg", svg(108, 108, [], bg=TILE))
+    write("svg/icon/ic_launcher_full.svg", svg(108, 108, fg, bg=TILE))
+    guides = ('<rect x=".5" y=".5" width="107" height="107" fill="none" stroke="#9AA0A8" stroke-width=".5" stroke-dasharray="2 2"/>'
+              '<circle cx="54" cy="54" r="36" fill="none" stroke="#5F646D" stroke-width=".5" stroke-dasharray="1 2"/>'
+              '<circle cx="54" cy="54" r="33" fill="none" stroke="#C41230" stroke-width=".5" stroke-dasharray="3 2"/>')
+    write("svg/icon/ic_launcher_safe-zone-guide.svg", svg(108, 108, fg, bg=TILE, extra=guides))
 
     # Android 12 splash icon (no icon background): 288 dp canvas, keep inside the 192 dp circle.
-    ts = fit_circle([ICON_R, ICON_LINE], 288, 84)
-    splash = [(BONE, to_d(ICON_R, *ts)), (ARC, to_d(ICON_LINE, *ts))]
+    ss, sx, sy = fit_circle(il, 288, 84)
+    splash = xf_layers(il, ss, sx, sy)
     write("drawable/splash_icon.xml", vector(288, 288, splash), RES)
     write("svg/icon/splash_icon.svg", svg(288, 288, splash))
 
-    # Notification small icon: 24 dp, white on transparent, 2 dp padding (system icon grid), heavier cut.
-    heavy = diff(R, rect(0, CUT_Y - NOTE_CUT_T / 2, 1000, CUT_Y + NOTE_CUT_T / 2))
-    tail = pill(r_xmax + 0.08 * CAP, CUT_Y - 0.055 * CAP, r_xmax + 0.36 * CAP, CUT_Y + 0.055 * CAP)
-    tn = fit_box([heavy, tail], 24, 2)
-    note = [("#FFFFFFFF", to_d(heavy, *tn)), ("#FFFFFFFF", to_d(tail, *tn))]
+    # Notification small icon: 24 dp, white on transparent, 2 dp padding (system icon grid), three lanes.
+    nl = NOTE.layers("#FFFFFFFF")
+    ns, nx, ny = fit_box(nl, 24, 2)
+    note = xf_layers(nl, ns, nx, ny)
     write("drawable/ic_stat_runsupreme.xml", vector(24, 24, note), RES)
-    write("svg/icon/ic_stat_runsupreme.svg", svg(24, 24, [("#FFFFFF", d) for _, d in note]))
+    write("svg/icon/ic_stat_runsupreme.svg", svg(24, 24, [("#FFFFFF", c) for _, c in note]))
 
     STORE.mkdir(parents=True, exist_ok=True)
-    play_icon(t).save(STORE / "icon-512.png", optimize=True)
+    play_icon().convert("RGB").save(STORE / "icon-512.png", optimize=True)
     feature_graphic(args.hero).save(STORE / "feature-graphic-wordmark-1024x500.png", optimize=True)
     # iOS: one 1024 px universal icon; Xcode 14+ derives every other size from it.
     IOS_ICON.mkdir(parents=True, exist_ok=True)
-    ios_icon(t).save(IOS_ICON / "Icon-App-1024x1024@1x.png", optimize=True)
+    ios_icon().save(IOS_ICON / "Icon-App-1024x1024@1x.png", optimize=True)
     write("Contents.json",
           '{\n'
           '  "images" : [\n'
@@ -481,8 +534,8 @@ def main():
           '    "version" : 1\n'
           '  }\n'
           '}\n', IOS_ICON)
-    # Flutter paths for the Lap Draw intro (B3, brief A9).
-    write("brand/lap_line_paths.dart", dart_paths(), REPO / "lib")
+    # Flutter paths for the Track Bend intro and in-app marks.
+    write("brand/track_bend_paths.dart", dart_paths(), REPO / "lib")
     print("brand assets written to", HERE, RES, IOS_ICON, STORE, REPO / "lib" / "brand")
 
 

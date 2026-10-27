@@ -84,7 +84,7 @@ class RunSoloApp extends StatelessWidget {
   /// Tests can mount a single screen inside the app chrome.
   final Widget? home;
 
-  /// The Lap Draw intro for this cold start; tests default to none.
+  /// The Track Bend intro for this cold start; tests default to none.
   final IntroKind intro;
 
   /// Open on onboarding instead of Home (first launch); tests default to Home.

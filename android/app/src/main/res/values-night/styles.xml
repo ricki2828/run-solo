@@ -2,9 +2,9 @@
 <resources>
     <!-- System splash (plan §4, B3): Android 12+ SplashScreen API, and androidx
          core-splashscreen on API 29-30 so every supported version looks the same.
-         Night ground #0A0B0D and the Lap Line R; installSplashScreen() in MainActivity
-         swaps to NormalTheme, then the Flutter Lap Draw intro takes over. The same in
-         light and dark mode: the app pins ThemeMode.dark, so nothing ever flashes white. -->
+         Light ground #FBFBF9 and the Track Bend mark; installSplashScreen() in MainActivity
+         swaps to NormalTheme, then the Flutter Track Bend intro takes over. The same in
+         light and dark mode: the app pins ThemeMode.light, so nothing ever flashes dark. -->
     <style name="LaunchTheme" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/window_ground</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>

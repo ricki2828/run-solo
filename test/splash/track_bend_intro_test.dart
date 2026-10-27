@@ -2,17 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/version.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
+import 'package:run_solo/brand/track_bend_paths.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/splash/intro_gate.dart';
-import 'package:run_solo/splash/lap_draw_intro.dart';
+import 'package:run_solo/splash/track_bend_intro.dart';
 import 'package:run_solo/state/settings.dart';
 
 import '../helpers.dart';
 
-Finder intro() => find.byKey(const ValueKey('lap-draw-intro'));
+Finder intro() => find.byKey(const ValueKey('track-bend-intro'));
 
 void main() {
-  group('IntroGate.decide (plan §4, D8)', () {
+  group('IntroGate decide plan section 4 D8', () {
     test('first launch and a new version get the full intro', () {
       expect(
         IntroGate.decide(
@@ -33,7 +34,7 @@ void main() {
       );
     });
 
-    test('an ordinary cold start gets the 0.6 s intro', () {
+    test('an ordinary cold start gets the short intro', () {
       expect(
         IntroGate.decide(
           recordingLive: false,
@@ -66,7 +67,7 @@ void main() {
     });
   });
 
-  group('IntroGate.read asks the recorder before the first frame', () {
+  group('IntroGate read asks the recorder before the first frame', () {
     test('a live run means no intro', () async {
       final fake = FakeRecorderGateway(now: now);
       final services = fakeServices(recorder: fake);
@@ -97,7 +98,7 @@ void main() {
       );
     });
 
-    test('idle: full until this version has played it, then short', () async {
+    test('idle full until this version has played it then short', () async {
       expect(await IntroGate.read(fakeServices()), IntroKind.full);
       expect(
         await IntroGate.read(
@@ -113,8 +114,8 @@ void main() {
     });
   });
 
-  group('IntroGate.read: slow or failing platform means no intro', () {
-    test('both calls hang: no intro, within the one budget', () async {
+  group('IntroGate read slow or failing platform means no intro', () {
+    test('both calls hang no intro within the one budget', () async {
       final fake = _SlowGateway(
         statusDelay: const Duration(days: 1),
         recoverDelay: const Duration(days: 1),
@@ -128,7 +129,7 @@ void main() {
       expect(sw.elapsedMilliseconds, lessThan(390), reason: 'one budget');
     });
 
-    test('status() and recover() run concurrently under the budget', () async {
+    test('status and recover run concurrently under the budget', () async {
       // 250 ms each: serial would be 500 ms and blow a 400 ms budget.
       final fake = _SlowGateway(
         statusDelay: const Duration(milliseconds: 250),
@@ -156,94 +157,72 @@ void main() {
     });
   });
 
-  group('beats (brief A9)', () {
-    final l = LapDrawLayout(const Size(360, 780));
-
-    test('full: fade in, draw across, retract to the mark, wordmark, exit', () {
-      final f0 = lapDrawFrameAt(IntroKind.full, 0, l);
+  group('beats Track Bend', () {
+    test('full lanes draw outer first wordmark sets stripes draw exit', () {
+      final f0 = trackBendFrameAt(IntroKind.full, 0);
       expect(f0.opacity, 0);
-      final f150 = lapDrawFrameAt(IntroKind.full, 150, l);
-      expect(f150.opacity, closeTo(1, 1e-9));
-      expect(f150.lineEnd - f150.lineStart, 0, reason: 'nothing drawn yet');
-      expect(f150.markScale, 1.04);
+      expect(f0.lanes, everyElement(0));
 
-      final f650 = lapDrawFrameAt(IntroKind.full, 650, l);
-      expect(f650.lineStart, 0);
-      expect(f650.lineEnd, closeTo(360, 1e-6), reason: 'edge to edge');
-      expect(f650.lineThickness, 3);
-      expect(f650.cutThickness, closeTo(l.markCut, 1e-9), reason: 'cut open');
+      final f200 = trackBendFrameAt(IntroKind.full, 200);
+      expect(f200.opacity, closeTo(1, 1e-9));
+      expect(f200.lanes[0], greaterThan(f200.lanes[1]), reason: 'Z1 leads');
+      for (var k = 1; k < 5; k++) {
+        expect(f200.lanes[k - 1], greaterThanOrEqualTo(f200.lanes[k]));
+      }
+      expect(f200.lanes[4], 0, reason: 'Z5 starts last');
+      expect(f200.wordOpacity, 0);
 
-      final f850 = lapDrawFrameAt(IntroKind.full, 850, l);
-      expect(f850.lineStart, closeTo(l.legEntry, 1e-6));
-      expect(f850.lineEnd, closeTo(l.tailEnd, 1e-6));
-      expect(f850.lineThickness, closeTo(l.markLine, 1e-9));
-      expect(f850.wordOpacity, 0);
+      final f600 = trackBendFrameAt(IntroKind.full, 600);
+      expect(f600.lanes, everyElement(closeTo(1, 1e-9)));
+      expect(f600.wordOpacity, greaterThan(0));
+      expect(f600.stripes, everyElement(0));
 
-      expect(lapDrawFrameAt(IntroKind.full, 1050, l).markScale, 1.0);
-      final f1100 = lapDrawFrameAt(IntroKind.full, 1100, l);
-      expect(f1100.wordOpacity, closeTo(1, 1e-9));
-      expect(f1100.wordDy, closeTo(0, 1e-9));
-      expect(lapDrawFrameAt(IntroKind.full, 1150, l).opacity, 1);
+      final f800 = trackBendFrameAt(IntroKind.full, 800);
+      expect(f800.wordOpacity, closeTo(1, 1e-9));
+      expect(f800.wordDy, closeTo(0, 1e-9));
+      expect(f800.stripes[0], greaterThan(f800.stripes[4]));
 
-      final f1500 = lapDrawFrameAt(IntroKind.full, 1500, l);
-      expect(f1500.opacity, 0);
-      expect(f1500.scale, closeTo(0.96, 1e-9));
+      final f1100 = trackBendFrameAt(IntroKind.full, 1100);
+      expect(f1100.stripes, everyElement(closeTo(1, 1e-9)));
+      expect(f1100.opacity, 1);
+
+      final f1400 = trackBendFrameAt(IntroKind.full, 1400);
+      expect(f1400.opacity, 0);
+      expect(f1400.scale, closeTo(0.96, 1e-9));
     });
 
-    test('the cut opens only once the line reaches the R', () {
-      final early = lapDrawFrameAt(IntroKind.full, 160, l);
-      expect(early.lineEnd, lessThan(l.rLeft));
-      expect(early.cutThickness, 0);
+    test('short lanes only no wordmark', () {
+      final f200 = trackBendFrameAt(IntroKind.short, 200);
+      expect(f200.lanes[0], greaterThan(0));
+      expect(f200.wordOpacity, 0);
+      final f400 = trackBendFrameAt(IntroKind.short, 400);
+      expect(f400.lanes, everyElement(closeTo(1, 1e-9)));
+      expect(f400.stripes, everyElement(0));
+      expect(trackBendFrameAt(IntroKind.short, 600).opacity, 0);
     });
 
-    test('0.6 s: R already cut, its own line draws, no wordmark', () {
-      final f150 = lapDrawFrameAt(IntroKind.short, 150, l);
-      expect(f150.cutThickness, closeTo(l.markCut, 1e-9));
-      expect(f150.lineEnd, closeTo(l.legEntry, 1e-9));
-      final f400 = lapDrawFrameAt(IntroKind.short, 400, l);
-      expect(f400.lineEnd, closeTo(l.tailEnd, 1e-6));
-      expect(f400.wordOpacity, 0);
-      expect(lapDrawFrameAt(IntroKind.short, 600, l).opacity, 0);
+    test('staging mark 56 % of the width wide at 40 % height', () {
+      final l = TrackBendLayout(const Size(360, 780));
+      expect(l.s * TrackBendGeometry.markWidth, closeTo(0.56 * 360, 1e-9));
+      expect(l.markCentre.dy, closeTo(0.40 * 780, 1e-9));
+      expect(l.markCentre.dx, closeTo(180, 1e-9));
     });
-
-    test(
-      'staging: R 40 % of the width tall at 42 % height, word 64 % wide',
-      () {
-        final rHeight = l.s * 700;
-        expect(rHeight, closeTo(0.40 * 360, 1e-9));
-        expect(l.rCentre.dy, closeTo(0.42 * 780, 1e-9));
-      },
-    );
   });
 
   group('intro over the app', () {
-    testWidgets('full intro plays over Home and leaves at 1.5 s', (
+    testWidgets('full intro plays over Home and leaves at 1400 ms', (
       tester,
     ) async {
       await pumpApp(tester, fakeServices(), intro: IntroKind.full);
       expect(intro(), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 1400));
+      await tester.pump(const Duration(milliseconds: 1300));
       expect(intro(), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pump();
       expect(intro(), findsNothing);
     });
 
-    testWidgets('the bundled runner photo loads and paints (28-Sep)', (
-      tester,
-    ) async {
-      await pumpApp(tester, fakeServices(), intro: IntroKind.full);
-      // The photo decode is real async: let it land, then the next frame
-      // shows the RawImage layer under the scrim and the mark.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 300)),
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(RawImage), findsOneWidget);
-      await tester.pump(const Duration(seconds: 2));
-    });
-
-    testWidgets('0.6 s intro leaves at 600 ms', (tester) async {
+    testWidgets('short intro leaves at 600 ms', (tester) async {
       await pumpApp(tester, fakeServices(), intro: IntroKind.short);
       await tester.pump(const Duration(milliseconds: 500));
       expect(intro(), findsOneWidget);
@@ -261,10 +240,10 @@ void main() {
       expect(intro(), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 80));
       await tester.pump();
-      expect(intro(), findsNothing, reason: 'gone well before 1.5 s');
+      expect(intro(), findsNothing, reason: 'gone well before 1.4 s');
     });
 
-    testWidgets('reduced motion: final frame for 300 ms, then a cut', (
+    testWidgets('reduced motion final frame for 300 ms then a cut', (
       tester,
     ) async {
       await pumpApp(
@@ -288,7 +267,7 @@ void main() {
                     ),
                   )
                   .painter!
-              as LapDrawPainter;
+              as TrackBendPainter;
       expect(painter.frame.wordOpacity, 1, reason: 'static final frame');
       expect(painter.frame.opacity, 1);
       await tester.pump(const Duration(milliseconds: 60));
@@ -296,7 +275,7 @@ void main() {
       expect(intro(), findsNothing);
     });
 
-    testWidgets('no intro: nothing over the app', (tester) async {
+    testWidgets('no intro nothing over the app', (tester) async {
       await pumpApp(tester, fakeServices());
       expect(intro(), findsNothing);
     });
@@ -306,10 +285,10 @@ void main() {
       await pumpApp(tester, services, intro: IntroKind.full);
       await tester.pump();
       expect(services.settings.settings.introSeenVersion, kAppVersion);
-      await tester.pump(const Duration(milliseconds: 1600));
+      await tester.pump(const Duration(milliseconds: 1500));
     });
 
-    testWidgets('the 0.6 s intro leaves the seen version alone', (
+    testWidgets('the short intro leaves the seen version alone', (
       tester,
     ) async {
       final services = fakeServices();
