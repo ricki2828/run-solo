@@ -243,7 +243,14 @@ class Prediction {
   String get targetLine => 'Target ${clock(seconds)} (predicted)';
 
   /// "5K", "10K", the event name, "half", "8.2 km run".
-  String get sourceName => switch (source.kind) {
+  String get sourceName => sourceNameOf(source, names, units);
+
+  /// [sourceName] for any input.
+  static String sourceNameOf(
+    PredictionInput source,
+    EventNames names,
+    Units units,
+  ) => switch (source.kind) {
     PredictionSourceKind.bestEffort5k => '5K',
     PredictionSourceKind.bestEffort10k => '10K',
     PredictionSourceKind.bestEffortHalf => 'half',
@@ -270,7 +277,10 @@ class Prediction {
     'Dec',
   ];
 
-  String _date() => '${source.date.day} ${_months[source.date.month - 1]}';
+  String _date() => dateOf(source.date);
+
+  /// "26 Oct".
+  static String dateOf(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
   /// "24:30", or "1:02:05" past the hour.
   static String clock(double seconds) {
@@ -431,6 +441,7 @@ class GoalTarget {
     required this.high,
     required this.long,
     required this.source,
+    this.sourceName = '',
   });
 
   final GoalKind kind;
@@ -444,6 +455,16 @@ class GoalTarget {
   final bool long;
   final PredictionInput source;
 
+  /// "5K", "10K": what the target is read from (empty when unknown).
+  final String sourceName;
+
+  /// ", from your 5K on 26 Oct": the effort the target comes from, so the
+  /// runner can judge it (founder 27-Oct: "couldn't tell what he was aiming
+  /// for"). Empty without a [sourceName].
+  String get sourceSuffix => sourceName.isEmpty
+      ? ''
+      : ', from your $sourceName on ${Prediction.dateOf(source.date)}';
+
   String _num(double v) => kind == GoalKind.distance
       ? Prediction.clock(v)
       : (v / 1000).toStringAsFixed(long ? 1 : 2);
@@ -452,10 +473,11 @@ class GoalTarget {
 
   /// "Target about 1:52:10 (1:50:40 to 1:55:30), estimate",
   /// "Target about 13.1 km (13.1 to 13.2 km), estimate",
-  /// "Target 49:30 (predicted)", "Target 5.93 km (predicted)".
+  /// "Target 49:30 (predicted), from your 5K on 26 Oct", "Target 5.93 km
+  /// (predicted), from your 5K on 26 Oct".
   String get line => long
-      ? 'Target about ${_num(value)}$_unit (${_num(low)} to ${_num(high)}$_unit), estimate'
-      : 'Target ${_num(value)}$_unit (predicted)';
+      ? 'Target about ${_num(value)}$_unit (${_num(low)} to ${_num(high)}$_unit), estimate$sourceSuffix'
+      : 'Target ${_num(value)}$_unit (predicted)$sourceSuffix';
 
   /// Long efforts only use inputs at least this long.
   static const double minLongInputM = 10000;
@@ -489,7 +511,16 @@ extension GoalTargets on Predictor {
     SessionSpec spec,
     List<PredictionInput> inputs, {
     required DateTime now,
+    Units units = Units.km,
   }) {
+    // The target is what the runner races on the day, in the day's
+    // conditions, so it reads each effort AS RUN ([PredictionInput.elapsedMs]),
+    // not the flat, cool-day True Pace time the Home estimate uses. A hot 5K
+    // taken to a cool day shaved ~7% off the 8 km target (27-Oct: 37:12 from
+    // a 24:13 5K, finished 49:50) and the runner chased a time that only a
+    // cool day could give.
+    String nameOf(PredictionInput i) =>
+        Prediction.sourceNameOf(i, names, units);
     if (!spec.isGoal || spec.workSteps.length != 1) return null;
     final w = spec.workSteps.single;
     final today = DateTime(now.year, now.month, now.day);
@@ -519,13 +550,13 @@ extension GoalTargets on Predictor {
       PredictionInput? best;
       double? bestT;
       for (final i in pool) {
-        final t = Predictor.riegel(i.effectiveMs / 1000, i.distanceM, d2, e);
+        final t = Predictor.riegel(i.elapsedMs / 1000, i.distanceM, d2, e);
         if (bestT == null || t < bestT - 1e-9) {
           best = i;
           bestT = t;
         }
       }
-      final t1 = best!.effectiveMs / 1000;
+      final t1 = best!.elapsedMs / 1000;
       final a = Predictor.riegel(t1, best.distanceM, d2, lo);
       final b = Predictor.riegel(t1, best.distanceM, d2, hi);
       return GoalTarget(
@@ -535,12 +566,13 @@ extension GoalTargets on Predictor {
         high: math.max(a, b),
         long: long,
         source: best,
+        sourceName: nameOf(best),
       );
     }
     // Time goal: invert Riegel, D2 = D1 × (T2/T1)^(1/e); the farthest wins.
     final t2 = w.value.toDouble();
     double dist(PredictionInput i, double e) =>
-        i.distanceM * math.pow(t2 / (i.effectiveMs / 1000), 1 / e);
+        i.distanceM * math.pow(t2 / (i.elapsedMs / 1000), 1 / e);
     PredictionInput? best;
     double? bestD;
     for (final i in recent) {
@@ -576,6 +608,7 @@ extension GoalTargets on Predictor {
       high: math.max(a, b),
       long: long,
       source: best,
+      sourceName: nameOf(best),
     );
   }
 }
