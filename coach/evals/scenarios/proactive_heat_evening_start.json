@@ -14,11 +14,11 @@
    22
   ],
   "slowdown": 0.059,
-  "hour": 18
+  "hour": 19
  },
  "must": [
   "names tomorrow's tempo",
-  "uses the forecast at 18:00, the runner's usual start (31 C, dew point 22 or about 5.9% slower), not 07:00: the one figure that carries the point is enough",
+  "uses the forecast at 19:00, the runner's usual start (31 C, dew point 22 or about 5.9% slower), not 07:00: the one figure that carries the point is enough",
   "run it by effort not pace, or go earlier/cooler"
  ],
  "must_not": [
@@ -26,5 +26,5 @@
   "medical talk",
   "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
  ],
- "note": "Evening runner: the server forecasts at the usual start hour (proactive.usual_start_hour), so the note says 18:00. Was a known fail while the hour was fixed at 07:00."
+ "note": "Evening runner: the server forecasts at the usual start hour (proactive.usual_start_hour), so the note says 19:00, matching the fixture runner (runs after 7pm on Tue/Thu). Was a known fail while the hour was fixed at 07:00."
 }

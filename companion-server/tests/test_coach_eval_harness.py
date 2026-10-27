@@ -126,4 +126,4 @@ def test_a_known_fail_scenario_is_marked_in_its_result(monkeypatch):
 
 def test_the_evening_heat_scenario_uses_the_usual_start_hour():
     sc = SC["proactive_heat_evening_start"]
-    assert "known_fail" not in sc and "at 18:00 the forecast" in ev.proactive_turn(sc)[0]
+    assert "known_fail" not in sc and "at 19:00 the forecast" in ev.proactive_turn(sc)[0]
