@@ -84,6 +84,7 @@ void main() {
         onboardingDone: true,
         lastMode: RecordMode.free,
         goalRun: goal,
+        goalId: 'd5000',
       ),
     );
     await pumpApp(tester, services, pushRoute: Routes.start);
