@@ -99,15 +99,33 @@ def font_css() -> str:
 
 
 @functools.lru_cache(maxsize=None)
+def svg_size(name: str) -> tuple[float, float]:
+    """(width, height) of assets/brand/svg/<name>.svg from its root tag, falling back to the viewBox."""
+    root = re.search(r"<svg\b[^>]*>", (BRAND_SVG_DIR / f"{name}.svg").read_text())
+    tag = root.group(0) if root else ""
+    wh = re.search(r'\bwidth="([\d.]+)"[^>]*\bheight="([\d.]+)"', tag)
+    vb = re.search(r'\bviewBox="[\d.]+ [\d.]+ ([\d.]+) ([\d.]+)"', tag)
+    m = wh or vb
+    if not m:
+        raise ValueError(f"{name}.svg has neither width/height nor viewBox on its root tag")
+    return float(m.group(1)), float(m.group(2))
+
+
+def svg_aspect(name: str) -> float:
+    w, h = svg_size(name)
+    return w / h
+
+
+@functools.lru_cache(maxsize=None)
 def mark_svg(variant: str = "on-light", height: int = 64) -> str:
     """The brand mark as inline SVG at a given height (variant: on-light, on-dark, mono-black, mono-white)."""
-    svg = (BRAND_SVG_DIR / f"mark-{variant}.svg").read_text()
+    name = f"mark-{variant}"
+    svg = (BRAND_SVG_DIR / f"{name}.svg").read_text()
     # Size from the file's own aspect, so a brand re-draw with a new viewBox cannot fall back to its intrinsic (huge) size.
-    m = re.search(r'width="([\d.]+)" height="([\d.]+)"', svg)
-    if not m:
-        raise ValueError(f"mark-{variant}.svg has no width/height")
-    w, h = float(m.group(1)), float(m.group(2))
-    return svg.replace(m.group(0), f'width="{round(height * w / h)}" height="{height}"', 1)
+    w, h = svg_size(name)
+    root = re.search(r"<svg\b[^>]*>", svg).group(0)
+    sized = re.sub(r'\bwidth="[\d.]+"( [^>]*?)?\bheight="[\d.]+"', f'width="{round(height * w / h)}" height="{height}"', root, count=1)
+    return svg.replace(root, sized, 1)
 
 
 def flood_for_zone(zone: int) -> str:
