@@ -200,6 +200,34 @@ void main() {
       expect(t.alternativeLine, isNull);
     });
 
+    test('the event target is the as-run effort, not a cool-day time', () {
+      // A hot 24:30 5K (7% heat) is 22:47 on a cool day; the event is raced
+      // in the day's conditions, so its target stays 24:30. Home's estimate
+      // keeps the cool-day figure.
+      final hot = run(
+        'a',
+        efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1470)},
+        heat: 0.07,
+      );
+      final t = StartTarget.forSession(
+        event,
+        runs: [hot],
+        now: now,
+        names: names,
+      )!;
+      expect(t.line, 'Target 24:30 (predicted)');
+      expect(t.liveTargetMs, 1470000);
+      expect(
+        HomeEstimates.of(
+          [hot],
+          now: now,
+          names: names,
+          includeEvent: true,
+        ).rows.last.time,
+        '22:47',
+      );
+    });
+
     test('a half goal: the wide-band estimate, a live target', () {
       final t = StartTarget.forSession(
         SessionSpec.goalDistance(21098, 'Half'),

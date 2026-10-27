@@ -72,6 +72,8 @@ class StartTarget {
         PredictionTarget.parkrun,
         inputs,
         now: now,
+        // Raced on the day, in the day's conditions (as the goal target).
+        asRun: true,
       );
       BoardRun? pb;
       if (courseKey != null) {
