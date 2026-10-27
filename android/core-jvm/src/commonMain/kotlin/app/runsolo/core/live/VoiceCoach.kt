@@ -63,6 +63,8 @@ class VoiceCoach(private val config: Config) {
         val busyUntil: Long,
         val wideBand: Boolean = false,
         val goal: GoalProgress? = null,
+        /** False on a rep session (several steps): the zone moves are part of the reps, not news. */
+        val zoneCues: Boolean = true,
     )
 
     /**
@@ -193,7 +195,7 @@ class VoiceCoach(private val config: Config) {
         check(i)
         val drift = driftAbove(i)
         val before = heldZone
-        val move = zoneChange(i)
+        val move = if (i.zoneCues) zoneChange(i) else null.also { movedSinceT = null }
         val quiet = i.busyUntil <= i.t && (i.msToPhaseEnd == null || i.msToPhaseEnd > NEAR_END_MS)
         // Drift first: it outranks status, and a status that comes due while it speaks goes stale.
         if (drift != null && quiet && drift.firesAt <= i.t) {
@@ -245,9 +247,18 @@ class VoiceCoach(private val config: Config) {
             movedSinceT = null
             return null
         }
-        val zone = (5 downTo 2).firstOrNull { hr >= bottoms[it - 2] } ?: 1
-        val down = heldZone >= 2 && hr < bottoms[heldZone - 2] - ZONE_HYSTERESIS_BPM
-        if (zone == heldZone || (zone < heldZone && !down)) {
+        fun zoneOf(bpm: Double) = (5 downTo 2).firstOrNull { bpm >= bottoms[it - 2] } ?: 1
+        // The same hysteresis both ways: a pending move survives readings within ZONE_HYSTERESIS_BPM of its edge, so a
+        // jittering strap sitting on a zone bottom still holds the 40 s; a fresh move going down needs the same margin.
+        val pendingUp = movedSinceT != null && movedZone > heldZone
+        val pendingDown = movedSinceT != null && movedZone < heldZone
+        val zone = when {
+            pendingUp && zoneOf(hr + ZONE_HYSTERESIS_BPM) >= movedZone -> movedZone
+            pendingDown && zoneOf(hr - ZONE_HYSTERESIS_BPM) <= movedZone -> movedZone
+            else -> zoneOf(hr)
+        }
+        val goingDown = zone < heldZone && ((pendingDown && zone == movedZone) || (heldZone >= 2 && hr < bottoms[heldZone - 2] - ZONE_HYSTERESIS_BPM))
+        if (zone == heldZone || (zone < heldZone && !goingDown)) {
             movedSinceT = null
             return null
         }
@@ -415,7 +426,7 @@ class VoiceCoach(private val config: Config) {
         /** In a new zone this long before its zone line. */
         const val ZONE_HOLD_MS = 40_000L
 
-        /** Going down, the HR must be this far under the held zone's bottom (bpm). */
+        /** Hysteresis at a zone edge (bpm): going down needs this far under the bottom, and a pending move survives a dip this size. */
         const val ZONE_HYSTERESIS_BPM = 4.0
 
         /** At least this between two zone lines. */

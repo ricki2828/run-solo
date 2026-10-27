@@ -463,6 +463,29 @@ class VoiceCoachTest {
     }
 
     @Test
+    fun `a strap jittering across a zone bottom still holds the 40 s - the 27-Oct Z2 Z3 edge`() {
+        // Zone 3 starts at 133: 131 / 134 alternating every second never leaves the 4 bpm band.
+        val said = free().hrRun(0, 90, hr = { s -> if (s % 2 == 0) 131.0 else 134.0 })
+        assertEquals(listOf(41 to "Heart rate up to zone 3."), said)
+        // A longer jitter series with a wider swing (+-3) around the edge says it once and then nothing.
+        val c = free()
+        val rng = listOf(130.0, 136.0, 132.0, 135.0, 131.0, 134.0, 130.0, 133.0)
+        val long = c.hrRun(0, 400, hr = { s -> rng[s % rng.size] })
+        assertEquals(1, long.size, "$long")
+        assertEquals("Heart rate up to zone 3.", long.single().second)
+    }
+
+    @Test
+    fun `a rep session says no zone lines`() {
+        val c = free()
+        val said = (0..200).mapNotNull { s ->
+            val t = s * 1_000L
+            c.tick(VoiceCoach.Input(t, 0, t, null, 160.0, null, 0, false, zoneCues = false))?.text
+        }
+        assertTrue(said.isEmpty(), "$said")
+    }
+
+    @Test
     fun `a drop to zone 1 is not said and a zone 2 before any zone 3 is not said`() {
         val c = free()
         assertTrue(c.hrRun(0, 200, hr = { s -> if (s < 100) 100.0 else 120.0 }).isEmpty())

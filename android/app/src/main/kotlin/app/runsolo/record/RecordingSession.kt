@@ -368,7 +368,7 @@ class RecordingSession(
         // unclean.
         // Prompts already answered count toward the cap and spacing; the last push or ease keeps its effect.
         prompter = CoachPrompter(CoachPrompter.restore(replayed.prompts), distanceGate = mode != RunMode.intervals)
-        promptEffectDirty = prompter.effect != PromptEffect.NONE
+        promptEffectDirty = prompter.effect != PromptEffect.NONE && replayed.prompts.none { it.retargetMs != null }
         coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
             it.restoreRebase(replayed.prompts.lastOrNull { p -> p.retargetMs != null }?.retargetMs)
             it.kmSplits = kmSplits
@@ -1248,6 +1248,8 @@ class RecordingSession(
                 wideBand = mode == RunMode.trail || (grade != null && abs(grade) > COACH_STEEP_GRADE),
                 // A goal run with a target time: the status describes the margin to that clock instead of ordering pace.
                 goal = coach.goalProgress(ticker.distanceM, st.activeMs),
+                // Zone lines are for a run of one stretch (Free, Trail, easy, long, a goal); a rep session moves zones by design.
+                zoneCues = steps.size <= 1,
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")
@@ -1347,7 +1349,8 @@ class RecordingSession(
         writer.append(CoachPrompter.line(a, System.currentTimeMillis(), t, retarget))
         // The effect reaches the voice coach now; what it actually applies (a push for a runner already far off the
         // target is dropped; no target, none) is what the screen's band follows.
-        val applied = if (a.choice == PromptChoice.hold) null else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
+        // A re-aim replaces the ease effect: the goal time is the new anchor, so no loosened pace band or slower cadence.
+        val applied = if (a.choice == PromptChoice.hold) null else if (retarget != null) PromptEffect.NONE.also { coachLines?.applyEffect(it) } else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
         val spoken = if (retarget != null && goalDistanceM != null) GoalMargin.newTargetLine(goalDistanceM, retarget) else a.spoken
         spoken?.let {
             cues.announce(it, CueSlot.structure)
