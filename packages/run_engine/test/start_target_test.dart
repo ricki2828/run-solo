@@ -212,7 +212,11 @@ void main() {
         now: now,
         names: names,
       )!;
-      expect(t.line, 'Target about 1:40:02 (1:38:33 to 1:40:47), estimate');
+      expect(
+        t.line,
+        'Target about 1:40:02 (1:38:33 to 1:40:47), estimate, '
+        'from your 10K on 12 Sep',
+      );
       expect(t.liveDistanceM, 21098);
       expect(t.liveTargetMs, closeTo(6002082, 1000));
     });
@@ -235,6 +239,35 @@ void main() {
       }
     });
 
+    test('27-Oct: an 8 km goal is not raced at a flat, cool-day time', () {
+      // His 5K of 24:13 on a hot day (heat fraction 7%; the exact figure for
+      // 26-Oct is inferred, not read) is 22:31 taken to a cool day, which
+      // Riegel stretched to the 37:12 target he chased and missed by 12
+      // minutes. The target must read the effort as run: 40:03.
+      final hot = run(
+        'k',
+        mode: RunMode.free,
+        efforts: {BestEffortDistance.k5: be(BestEffortDistance.k5, 1453)},
+        heat: 0.07,
+      );
+      final spec = SessionSpec.goalDistance(8000, '8 km');
+      final home = HomeEstimates.of([hot], now: now, names: names);
+      expect(home.rows.first.time, '22:31'); // the cool-day estimate stays
+      final t = StartTarget.forSession(
+        spec,
+        runs: [hot],
+        now: now,
+        names: names,
+      )!;
+      expect(t.line, 'Target 40:03 (predicted), from your 5K on 12 Sep');
+      expect(t.liveTargetMs! / 1000, closeTo(2403, 1));
+      // And never faster than Riegel of the fastest as-run effort.
+      expect(
+        t.liveTargetMs! / 1000,
+        greaterThanOrEqualTo(1453 * 1.6536 * 0.999),
+      );
+    });
+
     test('a time goal: a line, no live target', () {
       final t = StartTarget.forSession(
         SessionSpec.goalTime(1800, '30 min'),
@@ -247,7 +280,7 @@ void main() {
         now: now,
         names: names,
       )!;
-      expect(t.line, 'Target 5.93 km (predicted)');
+      expect(t.line, 'Target 5.93 km (predicted), from your 5K on 12 Sep');
       expect(t.liveDistanceM, isNull);
       expect(t.liveTargetMs, isNull);
     });

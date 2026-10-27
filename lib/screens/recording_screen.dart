@@ -65,6 +65,24 @@ class _RecordingScreenState extends State<RecordingScreen>
   String? _stopError;
   bool _wakelock = false;
 
+  /// The distance goal's target time as the Start card showed it, read once
+  /// per run (it never moves mid-run: the run screen names what the runner
+  /// signed up for, 27-Oct "couldn't tell what he was aiming for").
+  int? _goalTargetMs;
+  String? _goalTargetRun;
+
+  int? _goalTargetFor(RecordingSnapshot s) {
+    final key = s.runId ?? '';
+    if (_goalTargetRun != key) {
+      _goalTargetRun = key;
+      final spec = s.spec;
+      _goalTargetMs = spec == null
+          ? null
+          : _services?.live?.targetFor(spec)?.liveTargetMs;
+    }
+    return _goalTargetMs;
+  }
+
   /// LV2: ties the card (drawn on top of the screen) to the secondary
   /// number of whichever layout is showing.
   final LayerLink _cardLink = LayerLink();
@@ -719,6 +737,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   compact: compact,
                   reduced: reduced,
                   card: _cardLink,
+                  targetMs: s.isGoal ? _goalTargetFor(s) : null,
                 ),
               ),
               // 29-Sep field test: the run's own numbers under
@@ -742,6 +761,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   ctl: ctl,
                   units: settings.units,
                   compact: compact,
+                  targetMs: _goalTargetFor(s),
                 ),
               ),
               const Spacer(),
@@ -1260,6 +1280,10 @@ double? runAverageSecPerKm(RecordingSnapshot s, RecordingController ctl) {
       Phase.cooldown => (ctl.displayLapElapsedMs, kCooperCooldownCaption),
       _ => (ctl.displayElapsedMs, 'warm up, then tap BEGIN TEST'),
     };
+
+/// A target time on the clock, rounded to the second like the Start card's
+/// line ([Prediction.clock]), so the two never disagree by one.
+String _targetClock(int ms) => Fmt.clock((ms / 1000).round() * 1000);
 
 /// The event / goal "to go" figure (distance, or time for a time goal).
 String eventToGoText(
@@ -3635,12 +3659,18 @@ class EventBlock extends StatelessWidget {
     this.compact = false,
     this.reduced = false,
     this.card,
+    this.targetMs,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final bool compact;
   final bool reduced;
+
+  /// A distance goal's target time (ms): the finish line then reads
+  /// "TARGET 40:03 · ON PACE FOR 49:50" in one fixed row. Null for events,
+  /// time goals and goals with no history to predict from.
+  final int? targetMs;
 
   /// The live compare card, over the projected finish (secondary) before
   /// the last 400 m; none in it (A10.1). The slot's link.
@@ -3661,11 +3691,12 @@ class EventBlock extends StatelessWidget {
       bool odo = false,
       bool accent = false,
       String? reference,
+      TextStyle? base,
     }) {
       final dashed = text == '--';
       // The last stretch changes emphasis only (accent colour); the size and
       // the digit block's width never move.
-      final style = primaryStyle(compact, secondary: !big).copyWith(
+      final style = (base ?? primaryStyle(compact, secondary: !big)).copyWith(
         color: accent && !dashed
             ? lastStretchAccent(t, s.zone)
             : big && !dashed
@@ -3719,17 +3750,50 @@ class EventBlock extends StatelessWidget {
       accent: last,
       reference: eventStartText(s, units),
     );
+    final target = targetMs;
     final finish = CompareSlot(
       link: last ? null : card,
       child: SizedBox(
         width: double.infinity,
-        child: number(
-          'event-finish',
-          finishText,
-          eventFinishLabel(s),
-          big: false,
-          reference: eventFinishWidest(s, units),
-        ),
+        child: target != null && toGoIsDistance
+            // One fixed row from the first metre to the last: TARGET (muted)
+            // beside ON PACE FOR (full ink), both well over the 36 sp floor.
+            // Nothing in it changes size or place in the last stretch.
+            ? Row(
+                key: const ValueKey('goal-target-row'),
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: number(
+                      'goal-target',
+                      _targetClock(target),
+                      'TARGET',
+                      big: false,
+                      reference: eventFinishWidest(s, units),
+                      base: RunSoloType.display44,
+                    ),
+                  ),
+                  Expanded(
+                    child: number(
+                      'event-finish',
+                      finishText,
+                      'ON PACE FOR',
+                      big: true,
+                      reference: eventFinishWidest(s, units),
+                      base: compact
+                          ? RunSoloType.display44
+                          : RunSoloType.display64,
+                    ),
+                  ),
+                ],
+              )
+            : number(
+                'event-finish',
+                finishText,
+                eventFinishLabel(s),
+                big: false,
+                reference: eventFinishWidest(s, units),
+              ),
       ),
     );
     return Column(
@@ -3753,11 +3817,16 @@ class GoalDoneBlock extends StatelessWidget {
     required this.ctl,
     required this.units,
     this.compact = false,
+    this.targetMs,
   });
   final RecordingSnapshot s;
   final RecordingController ctl;
   final Units units;
   final bool compact;
+
+  /// A distance goal's target time (ms), shown with the result locked below
+  /// the cool-down: what he aimed for, and how far off the finish landed.
+  final int? targetMs;
 
   @override
   Widget build(BuildContext context) {
@@ -3813,11 +3882,31 @@ class GoalDoneBlock extends StatelessWidget {
                   ).copyWith(color: muted),
                 ),
               ),
+              if (!byTime && targetMs != null && ms != null)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _targetLine(targetMs!, ms),
+                    key: const ValueKey('goal-target-result'),
+                    softWrap: false,
+                    style: RunSoloType.display44.copyWith(color: muted),
+                  ),
+                ),
             ],
           ),
         ),
       ],
     );
+  }
+
+  /// "TARGET 40:03 · 9:47 OVER": the finish against the target on the
+  /// clock, whole seconds, never a verdict word.
+  static String _targetLine(int targetMs, int finishMs) {
+    final gap = finishMs - targetMs;
+    final tail = gap == 0
+        ? 'ON IT'
+        : '${Fmt.clock(gap.abs())} ${gap > 0 ? 'OVER' : 'UNDER'}';
+    return 'TARGET ${_targetClock(targetMs)} · $tail';
   }
 }
 
