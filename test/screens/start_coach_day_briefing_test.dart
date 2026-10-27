@@ -118,8 +118,9 @@ void main() {
   });
 
   // P1-2 (a reversible product default): the runner mostly runs Free goal
-  // runs, so a goal run on an easy or long coach day takes the coach template;
-  // the recorder then says the goal line after it.
+  // runs, so a goal run on an easy or long coach day selects the coach
+  // template. Config only: the recorder does not speak it on a goal run until
+  // the RecordingSession follow-up (then the goal line after it).
   testWidgets('a goal run on an easy coach day carries the coach briefing', (
     tester,
   ) async {
