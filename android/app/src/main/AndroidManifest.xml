@@ -42,7 +42,7 @@
          (29-30) and 31+ reads dataExtractionRules. -->
     <application
         android:label="Run Supreme"
-        android:name="${applicationName}"
+        android:name=".RunSoloApplication"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"

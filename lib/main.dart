@@ -1,9 +1,15 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart'
-    show LicenseEntryWithLineBreaks, LicenseRegistry;
+    show LicenseEntryWithLineBreaks, LicenseRegistry, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show DeviceOrientation, SystemChrome, rootBundle;
 
+import 'package:path_provider/path_provider.dart';
+
+import 'app/diagnostics_log.dart';
 import 'app/routes.dart';
 import 'app/services.dart';
 import 'screens/fix_laps_screen.dart';
@@ -39,7 +45,37 @@ void _registerFontLicences() {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // Errors are logged to the phone (never sent) from the first line; the zone
+  // catches what the framework and platform hooks miss.
+  DiagnosticsLog? log;
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      // The log must never stop the app starting: without a files dir it
+      // keeps its entries in memory.
+      Directory dir;
+      try {
+        dir = Directory(
+          '${(await getApplicationSupportDirectory()).path}/diagnostics',
+        );
+      } catch (_) {
+        dir = Directory('${Directory.systemTemp.path}/diagnostics');
+      }
+      log = DiagnosticsLog(dir)..install();
+      await _start();
+    },
+    (error, stack) {
+      log?.record(error, stack, source: 'zone');
+      if (kDebugMode) {
+        FlutterError.presentError(
+          FlutterErrorDetails(exception: error, stack: stack),
+        );
+      }
+    },
+  );
+}
+
+Future<void> _start() async {
   // Portrait only (Ricki 11-Oct): no landscape layouts exist.
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
