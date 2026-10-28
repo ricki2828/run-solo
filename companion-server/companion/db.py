@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS runs (
   pace_s_per_km REAL, true_pace_s_per_km REAL,
   verdict TEXT, scores_delta TEXT, zone_min TEXT,
   climb_m INTEGER, locality TEXT, route_id TEXT,
-  load_state TEXT, pb TEXT,
+  load_state TEXT, pb TEXT, pb_s INTEGER,
   load REAL, load_basis TEXT,  -- the app's own LoadGuard.load for this run (minutes x how hard, 1-5) and what weighed it: hr | pace | assumed
   plan_kind TEXT, plan_target_m INTEGER, plan_weeks_to_race INTEGER,
   plan_week INTEGER, plan_weeks INTEGER,  -- the app's 4-week block: this run's week, of how many
@@ -549,7 +549,7 @@ def init(path: str) -> None:
                          ("session_name", "TEXT"), ("work_pace_s_per_km", "REAL"), ("reps_done", "INTEGER"),
                          ("rep_spread_s", "REAL"), ("recovery_pace_s_per_km", "REAL"), ("goal_reached", "INTEGER"),
                          ("goal_target_s", "INTEGER"), ("goal_target_from", "TEXT"), ("goal_retarget_s", "INTEGER"),
-                         ("load", "REAL"), ("load_basis", "TEXT")):
+                         ("load", "REAL"), ("load_basis", "TEXT"), ("pb_s", "INTEGER")):
             if col not in run_cols:  # databases created before these columns
                 try:
                     c.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")

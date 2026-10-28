@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .convo.touches import _zone_minutes
-from .facts import GOAL_PURPOSE, known_session
+from .facts import GOAL_PURPOSE, known_session, pb_effort_figures, pb_inside_longer_run
 from render import protocol as P
 
 from .render_client import RenderClient
@@ -74,6 +74,21 @@ TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "
 VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
 
 
+def _pb_effort_facts(run: Mapping[str, Any], facts: dict[str, Any]) -> bool:
+    """A best effort is drawn as the effort: its time, distance and pace, never the run's time beside a 5 km label. Set inside a
+    longer run, the whole run's zones and climb go and True when its route and splits no longer apply either."""
+    eff = pb_effort_figures(run.get("pb"), run.get("pb_s"))
+    if not eff:
+        return False
+    facts["duration_s"], facts["distance_km"], facts["pace_s_per_km"] = run["pb_s"], eff[0] / 1000, round(eff[1], 1)
+    facts.pop("true_pace_s_per_km", None)
+    if not pb_inside_longer_run(run["pb"], run["pb_s"], run["distance_m"]):
+        return False
+    for k in ("zone_s", "climb_m"):
+        facts.pop(k, None)
+    return True
+
+
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     """Image facts for one run, from its stored row only. The run_shape row, when the caller joined it as `_shape`,
     adds `route_xy` (the unit-box outline), `splits` and, for an interval run, `reps`."""
@@ -96,10 +111,12 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["place_note"] = run["locality"]
     if run.get("verdict") in VERDICTS:
         facts["verdict"] = run["verdict"]
+    effort = False
     if run.get("pb") in PB_LABEL:
+        effort = _pb_effort_facts(run, facts)
         facts["pb"] = run["pb"]
         facts["pb_detail"] = {"label": PB_LABEL[run["pb"]]}
-    shape = run.get("_shape") or {}
+    shape = {} if effort else run.get("_shape") or {}
     if shape.get("route"):
         facts["route_xy"] = shape["route"]
     if shape.get("splits"):

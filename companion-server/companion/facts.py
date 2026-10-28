@@ -243,6 +243,23 @@ VERDICT_TEXT = {  # app wire name (VerdictHeadline.name) -> the verdict copy; no
     "faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "no real change",
     "baselineSet": "baseline set", "indoorRun": "indoor run",
 }
+# A 5k/10k/half pb is a best EFFORT, which can be a stretch inside a longer run. The run is "that distance" within this band;
+# past it the effort's own time and distance are spoken of, never the run's (the app's `pb_s`).
+PB_EFFORT_M = {"5k": 5000.0, "10k": 10000.0, "half": 21097.5}
+PB_BAND = 1.03
+
+
+def pb_inside_longer_run(pb: str | None, pb_s: int | None, distance_m: float) -> bool:
+    return bool(pb_s) and pb in PB_EFFORT_M and (distance_m or 0) > PB_EFFORT_M[pb] * PB_BAND
+
+
+def pb_effort_figures(pb: str | None, pb_s: int | None) -> tuple[float, float] | None:
+    """(the effort's distance in metres, its pace in s/km) when the app sent the effort's own time."""
+    if not pb_s or pb not in PB_EFFORT_M:
+        return None
+    return PB_EFFORT_M[pb], pb_s / (PB_EFFORT_M[pb] / 1000)
+
+
 PB_LABEL = {
     "5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
     "longest": "longest run", "fastest_km": "fastest km",

@@ -627,6 +627,7 @@ class CoachNext {
     this.supportsQuests = false,
     this.supportsLoad = false,
     this.supportsGoalTarget = false,
+    this.supportsPbTime = false,
   });
   final CoachSession? session;
   final CoachLine? line;
@@ -653,6 +654,11 @@ class CoachNext {
   /// for either key.
   final bool supportsGoalTarget;
 
+  /// The server takes `pb_s`, a pb effort's own time, and speaks of the
+  /// effort rather than the run: its reply says `accepts_pb_time`. Without
+  /// it a pb is only sent for a run that is that distance.
+  final bool supportsPbTime;
+
   bool get isEmpty => session == null && line == null;
 
   /// Null when the body is not a version-1 reply.
@@ -672,6 +678,7 @@ class CoachNext {
       supportsQuests: j.containsKey('quest') || j.containsKey('care_weeks'),
       supportsLoad: j['accepts_load'] == true,
       supportsGoalTarget: j['accepts_goal_target'] == true,
+      supportsPbTime: j['accepts_pb_time'] == true,
     );
   }
 }
@@ -1517,6 +1524,11 @@ class CompanionController extends ChangeNotifier {
   /// (`accepts_goal_target`). False until a reply says so.
   bool get goalTargetSupported =>
       enrolled && consentCurrent && (_coachNext?.supportsGoalTarget ?? false);
+
+  /// The server's last next-session reply says it takes `pb_s`
+  /// (`accepts_pb_time`). False until a reply says so.
+  bool get pbTimeSupported =>
+      enrolled && consentCurrent && (_coachNext?.supportsPbTime ?? false);
 
   /// The quest accepted in Telegram, if the last reply said so.
   CoachQuest? get coachQuest =>
@@ -2574,6 +2586,8 @@ Map<String, Object?>? companionSummary(
   Map<String, Object?>? quest,
   Map<String, Object?> load = const {},
   Map<String, Object?> goal = const {},
+  String? pb,
+  int? pbS,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -2592,7 +2606,9 @@ Map<String, Object?>? companionSummary(
   }
   final pace = s.avgSecPerKm;
   final tp = s.truePaceSecPerKm;
-  final climb = s.row?.climbM;
+  // The index row is null on an upload (the run is read from its file), so
+  // fall back to the file's own elevation, as the spoken summary does.
+  final climb = s.row?.climbM ?? engine.RunElevation.of(run)?.ascentM;
   return {
     'run_id': run.id,
     'type': s.uploadMode.name,
@@ -2608,6 +2624,9 @@ Map<String, Object?>? companionSummary(
     'climb_m': ?(climb == null ? null : r1(climb)),
     // The area name only (locality), never the street.
     'locality': ?s.place,
+    // 5k, 10k or half: a strict personal best (Boards.companionPb).
+    'pb': ?pb,
+    'pb_s': ?(pb == null ? null : pbS),
     'feel': ?(feel ?? d.sidecar.feel)?.name,
     // The session's name and work/rep/recovery paces (interval runs only).
     ...companionIntervalFacts(s),
@@ -2758,6 +2777,10 @@ class CompanionTarget extends ExportTarget {
   })?
   loadFacts;
 
+  /// The `pb` for a run (`Boards.companionPb`), wired by AppServices; null
+  /// sends none.
+  Future<({String wire, int seconds})?> Function(RunDetail run)? pbFacts;
+
   /// When the server last answered 422 (older than this app). For
   /// [outdatedWait] no run is sent and no automatic try is spent; a new app
   /// start clears it, so it is also retried on the next open.
@@ -2808,6 +2831,30 @@ class CompanionTarget extends ExportTarget {
     } catch (e) {
       companionLog('load read failed (${e.runtimeType})');
       return const {};
+    }
+  }
+
+  /// A pb read that fails sends the run without a pb, never fails it.
+  Future<({String wire, int? seconds})?> _pb(RunDetail run) async {
+    try {
+      final pb = await pbFacts?.call(run);
+      if (pb == null) return null;
+      if (controller.pbTimeSupported) {
+        return (wire: pb.wire, seconds: pb.seconds);
+      }
+      // An older server speaks of the run, not the effort: only a run that
+      // is that distance (within 3%) is its own PB.
+      final whole = switch (pb.wire) {
+        '5k' => 5000.0,
+        '10k' => 10000.0,
+        _ => 21097.5,
+      };
+      return run.summary.distanceM <= whole * 1.03
+          ? (wire: pb.wire, seconds: null)
+          : null;
+    } catch (e) {
+      companionLog('pb read failed (${e.runtimeType})');
+      return null;
     }
   }
 
@@ -2862,6 +2909,7 @@ class CompanionTarget extends ExportTarget {
           ? await controller.privacyZonesFor(d.run)
           : const <engine.PrivacyZone>[];
       final routeOk = controller.routeShapeOn && hide != null;
+      final pbRead = await _pb(d);
       final summary = companionSummary(
         d,
         zones: zones?.call(),
@@ -2873,6 +2921,8 @@ class CompanionTarget extends ExportTarget {
         quest: await _quest(d),
         load: await _load(d),
         goal: await _goal(d),
+        pb: pbRead?.wire,
+        pbS: pbRead?.seconds,
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

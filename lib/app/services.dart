@@ -147,6 +147,7 @@ class AppServices {
         t.questFacts ??= questBlockFor;
         t.loadFacts ??= loadFactsFor;
         t.goalFacts ??= goalFactsFor;
+        t.pbFacts ??= pbFor;
       }
     }
   }
@@ -172,6 +173,43 @@ class AppServices {
       ),
     );
   }
+
+  /// The `pb` for a run's companion summary (`Boards.companionPb`). A run is
+  /// only sent once, so when best efforts are still being built (the run just
+  /// ended) wait for the background batch, at most [pbWait], rather than lose
+  /// the pb for good. Only waits while this run's own efforts are unbuilt: an
+  /// index entry with no run file is never built and must not hold every
+  /// upload for the full wait.
+  Future<({String wire, int seconds})?> pbFor(RunDetail d) async {
+    var boards = await history.boards();
+    final end = DateTime.now().add(pbWait);
+    while (boards.pendingFor(d.run.id)) {
+      final left = end.difference(DateTime.now());
+      if (left <= Duration.zero) {
+        companionLog('pb: boards still building, sent without');
+        break;
+      }
+      final landed = Completer<void>();
+      void ping() {
+        if (!landed.isCompleted) landed.complete();
+      }
+
+      history.derivedChanged.addListener(ping);
+      try {
+        await landed.future.timeout(left);
+      } on TimeoutException {
+        companionLog('pb: boards still building, sent without');
+        break;
+      } finally {
+        history.derivedChanged.removeListener(ping);
+      }
+      boards = await history.boards();
+    }
+    return boards.companionPb(d.run.id);
+  }
+
+  /// Longest an upload waits for best efforts to be built, for its pb.
+  static const Duration pbWait = Duration(seconds: 12);
 
   /// `load_state` (and, for a server that takes them, `load` and
   /// `load_basis`) for a run's companion summary, from History's index rows

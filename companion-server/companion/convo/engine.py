@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from ..facts import (FLOOD_SHARE, comparable, fmt_km, fmt_pace, is_hard_run, is_session_run, is_steady_road, is_steady_trail, pace_basis, pace_pair,
+from ..facts import (pb_effort_figures, pb_inside_longer_run, FLOOD_SHARE, comparable, fmt_km, fmt_pace, is_hard_run, is_session_run, is_steady_road, is_steady_trail, pace_basis, pace_pair,
                      session_label, verdict_delta)
 from ..timeutil import parse_iso
 from . import touches as T
@@ -63,6 +63,9 @@ class RunVoice:
     allowed: str            # every number source this card may use besides the fact texts
     style: list[str]        # exemplars for the LLM writer
     used_variants: list[str]
+
+
+PB_EFFORT_NAME = {"5k": "5 km", "10k": "10 km", "half": "21.1 km"}
 
 
 def fmt_duration(seconds: float) -> str:
@@ -129,7 +132,15 @@ def situation_for(run: Mapping[str, Any], hist: Sequence[Mapping[str, Any]],
         slots["pb"] = {"5k": "5 km best", "10k": "10 km best", "half": "half marathon best",
                        "longest": "longest run", "fastest_km": "fastest km"}[run["pb"]]
         if run["pb"] in ("5k", "10k", "half"):
-            slots["time"] = fmt_duration(dur)  # a race PB leads with the time, not the pace
+            # A race PB leads with the time, not the pace. The effort's own time when the app sent it: the PB can be a
+            # stretch inside a longer run, and then it is the effort that is spoken of, never the run's time or distance.
+            slots["time"] = fmt_duration(run.get("pb_s") or dur)
+            if pb_inside_longer_run(run["pb"], run.get("pb_s"), dist):
+                slots["pb_dist"] = PB_EFFORT_NAME[run["pb"]]
+                return "pb_effort", slots
+            eff = pb_effort_figures(run["pb"], run.get("pb_s"))
+            if eff:   # within the band: the effort's time, distance and pace all agree
+                slots["km"], slots["pace"] = fmt_km(eff[0]), fmt_pace(eff[1])
             return "pb", slots
         return "pb_other", slots
     if gap is not None and gap >= BREAK_DAYS:

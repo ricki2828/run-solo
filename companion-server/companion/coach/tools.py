@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 from .. import db
+from ..facts import PB_EFFORT_M, pb_effort_figures, pb_inside_longer_run
 from ..timeutil import iso, parse_iso, to_local
 
 MAX_RESULT_CHARS = 12000
@@ -95,6 +96,24 @@ def check_args(schema: dict, args: Any) -> tuple[dict | None, str | None]:
     return out, None
 
 
+def _pb_row(r) -> dict:
+    """On a run row: the best effort's own time next to the flag, and that it was set inside a longer run, so the run's own
+    duration is never read as the PB time."""
+    if not r["pb_s"]:
+        return {}
+    return {"pb_time": mmss(r["pb_s"]), "pb_set_inside_longer_run": pb_inside_longer_run(r["pb"], r["pb_s"], r["distance_m"])}
+
+
+def _pb_fields(r) -> dict:
+    """A pb row's figures. With the effort's own time (pb_s) they are the effort's, 5 km in 24:10, and a run it was set inside
+    is named as such; the whole run's time is never given as the PB time."""
+    if pb_inside_longer_run(r["pb"], r["pb_s"], r["distance_m"]):
+        return {"distance_km": PB_EFFORT_M[r["pb"]] / 1000, "duration": mmss(r["pb_s"]), "set_inside_a_run_of_km": km(r["distance_m"])}
+    if pb_effort_figures(r["pb"], r["pb_s"]):
+        return {"distance_km": PB_EFFORT_M[r["pb"]] / 1000, "duration": mmss(r["pb_s"])}
+    return {"distance_km": km(r["distance_m"]), "duration": mmss(r["duration_s"])}
+
+
 class ReadTools:
     """Bound to one runner for one job. `svc` is the Service (for the next-session resolver and memory)."""
 
@@ -156,7 +175,7 @@ class ReadTools:
             "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": r["goal_reached"],
             "goal_target": mmss(r["goal_target_s"]), "goal_target_from": r["goal_target_from"],
             "goal_retarget": mmss(r["goal_retarget_s"]),
-            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"],
+            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"], **_pb_row(r),
             "load_state": self._fresh_load(r),
         }
         try:
@@ -250,7 +269,7 @@ class ReadTools:
             rows = c.execute("SELECT start_utc, zone_id, distance_m, duration_s, pb, load_state, run_id FROM runs "
                              "WHERE user_id=? AND start_utc>=? ORDER BY start_utc",
                              (self.uid, iso(self.now - timedelta(weeks=weeks, days=7)))).fetchall()
-            pbs = c.execute("SELECT pb, run_id, start_utc, zone_id, distance_m, duration_s FROM runs WHERE user_id=? AND pb IS NOT NULL "
+            pbs = c.execute("SELECT pb, pb_s, run_id, start_utc, zone_id, distance_m, duration_s FROM runs WHERE user_id=? AND pb IS NOT NULL "
                             "ORDER BY start_utc DESC LIMIT 20", (self.uid,)).fetchall()
             longest = c.execute("SELECT run_id, start_utc, zone_id, distance_m, duration_s FROM runs WHERE user_id=? "
                                 "ORDER BY distance_m DESC LIMIT 1", (self.uid,)).fetchone()
@@ -268,7 +287,7 @@ class ReadTools:
                 continue
             seen.add(r["pb"])
             best.append({"pb": r["pb"], "run_id": r["run_id"], **day_of(self._local_day(r["start_utc"], r["zone_id"] or u["zone_id"])),
-                         "distance_km": km(r["distance_m"]), "duration": mmss(r["duration_s"])})
+                         **_pb_fields(r)})
         out: dict[str, Any] = {"weekly_km": weekly, "pbs": best,
                                "load_state": self._fresh_load(rows[-1]) if rows else None}   # the newest run's own state, null stays null
         if longest:

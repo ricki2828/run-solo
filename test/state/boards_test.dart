@@ -252,4 +252,148 @@ void main() {
       expect(chips(boards, fresh).any((c) => c.pb), isFalse);
     });
   });
+
+  group('companionPb (the upload\'s pb)', () {
+    test('the fastest of 12 5Ks is a 5K pb', () async {
+      final runs = [
+        for (var i = 0; i < 11; i++) steady(10 + i, day(i), 330 - i, 2000),
+        steady(30, day(20), 280, 2000),
+      ];
+      final b = await fold(runs);
+      expect(b.updating, isFalse);
+      expect(b.companionPb(runs.last.id)?.wire, '5k');
+      // The result screen's own chip says the same.
+      expect(
+        chips(b, runs.last).any((c) => c.pb && c.boardKey == 'be:5000'),
+        isTrue,
+      );
+      // The one before it only beat the runs before it, still a pb then.
+      expect(b.companionPb(runs[10].id)?.wire, '5k');
+    });
+
+    test('a slower run than an earlier best is no pb', () async {
+      final runs = [
+        steady(40, day(0), 300, 2000),
+        steady(41, day(2), 330, 2000),
+      ];
+      final b = await fold(runs);
+      expect(b.companionPb(runs.last.id), isNull);
+    });
+
+    test('a tie is not a pb', () async {
+      final runs = [
+        steady(42, day(0), 300, 2000),
+        steady(43, day(2), 300, 2000),
+      ];
+      final b = await fold(runs);
+      expect(b.companionPb(runs.last.id), isNull);
+    });
+
+    test('the first 5K ever is no pb', () async {
+      final only = steady(44, day(0), 300, 2000);
+      final b = await fold([only]);
+      expect(b.companionPb(only.id), isNull);
+    });
+
+    test('a first 10K slower over its 5K than the 5K best is no pb', () async {
+      final fives = [
+        steady(45, day(0), 300, 2000),
+        steady(46, day(2), 305, 2000),
+      ];
+      final ten = steady(47, day(4), 340, 3800);
+      final b = await fold([...fives, ten]);
+      expect(b.companionPb(ten.id), isNull);
+    });
+
+    test('a first 10K that is also the best 5K reports 5k only', () async {
+      final five = steady(48, day(0), 330, 2000);
+      final ten = steady(49, day(4), 290, 3300);
+      final b = await fold([five, ten]);
+      final pb = b.companionPb(ten.id)!;
+      expect(pb.wire, '5k');
+      // The effort's own time, not the 3300 s run.
+      expect(pb.seconds, lessThan(1500));
+      expect(pb.seconds, closeTo(5000 * 290 / 1000, 20));
+    });
+
+    test('a trail run never carries a pb', () async {
+      final road = steady(50, day(0), 300, 2000);
+      final trail = steady(
+        51,
+        day(2),
+        330,
+        2000,
+      ).copyWith(mode: engine.RunMode.trail);
+      final b = await fold([road, trail]);
+      expect(b.companionPb(trail.id), isNull);
+      final fast = steady(
+        53,
+        day(4),
+        250,
+        2000,
+      ).copyWith(mode: engine.RunMode.trail);
+      final c = await fold([road, trail, fast]);
+      expect(c.companionPb(fast.id), isNull);
+    });
+
+    // BoardInputs straight, to set heat and pauses exactly.
+    engine.BoardInput input(
+      String id,
+      int day, {
+      required int ms,
+      double heat = 0,
+      int pausedMs = 0,
+    }) => engine.BoardInput(
+      runId: id,
+      date: d1.add(Duration(days: day)),
+      mode: engine.RunMode.free,
+      heatFraction: heat,
+      efforts: {
+        engine.BestEffortDistance.k5: engine.BestEffort(
+          distance: engine.BestEffortDistance.k5,
+          elapsedMs: ms,
+          startMs: 0,
+          startOffsetM: 0,
+          splitsMs: const [],
+          pausedMs: pausedMs,
+        ),
+      },
+    );
+
+    String? pbOf(engine.BoardInput run, List<engine.BoardInput> all) =>
+        Boards.pbOf(run, all, waiting: false)?.wire;
+
+    test('a pause of 14.9 s inside the effort still counts, 15 s does not', () {
+      final old = input('a', 0, ms: 1500000);
+      final ok = input('b', 2, ms: 1400000, pausedMs: 14900);
+      final no = input('c', 2, ms: 1400000, pausedMs: 15000);
+      expect(pbOf(ok, [old, ok]), '5k');
+      expect(pbOf(no, [old, no]), isNull);
+    });
+
+    test('raw-fastest but True Pace #2 is no pb (the chip says #2)', () {
+      // The old run was hot: its True Pace time is far better than its clock.
+      final old = input('a', 0, ms: 1300000, heat: 0.10);
+      final mine = input('b', 2, ms: 1280000);
+      expect(pbOf(mine, [old, mine]), isNull);
+    });
+
+    test('True Pace #1 but slower on the clock is no pb', () {
+      final old = input('a', 0, ms: 1300000);
+      final mine = input('b', 2, ms: 1320000, heat: 0.10);
+      expect(pbOf(mine, [old, mine]), isNull);
+    });
+
+    test('cool, flat and fastest on both counts is a pb', () {
+      final old = input('a', 0, ms: 1300000);
+      final mine = input('b', 2, ms: 1280000);
+      expect(Boards.pbOf(mine, [old, mine], waiting: false)?.seconds, 1280);
+      expect(Boards.pbOf(mine, [old, mine], waiting: true), isNull);
+    });
+
+    test('unknown run id is null', () async {
+      final b = await fold([steady(52, day(0), 300, 2000)]);
+      expect(b.companionPb('nope'), isNull);
+    });
+  });
 }

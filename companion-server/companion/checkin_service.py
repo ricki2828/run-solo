@@ -31,6 +31,7 @@ from . import heat
 from . import quest as cv_quest
 from .channels import ChannelError
 from .coach.ext import actions as coach_actions
+from .facts import pb_effort_figures
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
@@ -601,6 +602,9 @@ class CheckinMixin:
         pace = run.get("pace_s_per_km") or run.get("true_pace_s_per_km")
         if pace:
             facts["result_pace_s"] = float(pace)
+        eff = pb_effort_figures(run.get("pb"), run.get("pb_s"))
+        if eff:   # a pb is the best effort: its distance and pace, never the whole run's beside a PB badge
+            facts["distance_km"], facts["result_pace_s"] = round(eff[0] / 1000, 2), round(eff[1], 1)
         verdict = "pb" if run.get("pb") else {"faster": "faster", "slower": "slower", "holding": "in_range",
                                                "noRealChange": "in_range"}.get(run.get("verdict") or "")
         if verdict:
@@ -881,9 +885,9 @@ class CheckinMixin:
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),
                 "quest": quest, "care_weeks": [d.isoformat() for d in care_weeks],
-                # this server stores a run's `load` and `load_basis`, and a goal run's `goal_target_s` and `goal_target_from`:
+                # this server stores a run's `load` and `load_basis`, a goal run's `goal_target_s` and `goal_target_from`, and a pb effort's `pb_s`:
                 # the app sends them only when it sees these
-                "accepts_load": True, "accepts_goal_target": True}
+                "accepts_load": True, "accepts_goal_target": True, "accepts_pb_time": True}
 
     # ------------------------------------------------------------------ export and retention (P1)
     def _ci_export(self, c, uid: str, now: datetime) -> list[dict]:
