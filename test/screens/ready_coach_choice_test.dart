@@ -5,13 +5,14 @@ import 'package:run_solo/app/routes.dart';
 import 'package:run_solo/app/services.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
+import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/live_context.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/coach_choice_row.dart';
 
 import '../helpers.dart';
 
-/// The pre-run choice on Start: two big buttons for a Free or distance-goal
+/// The pre-run choice on the Ready screen (moved off Start, 28-Oct): two big buttons for a Free or distance-goal
 /// run, kept between runs, and handed to the recorder in the LiveContext.
 void main() {
   late AppServices services;
@@ -26,8 +27,14 @@ void main() {
       live: LiveContextSource.prepared(const [], now: now),
       settings: settings,
     );
-    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpApp(
+      tester,
+      services,
+      pushRoute: Routes.start,
+      pushArguments: const StartArgs(readyFirst: true),
+    );
     await pumpTimes(tester, 6);
+    await settleAnimations(tester);
     return fake;
   }
 
@@ -63,6 +70,26 @@ void main() {
     expect(selected(tester, steadyKey), isTrue);
     expect(selected(tester, chaseKey), isFalse);
     expect(services.settings.settings.coachChoice, engine.CoachChoice.steady);
+  });
+
+  testWidgets('a change made on Ready reaches the started run', (tester) async {
+    // Saved choice is chase (default); the runner flips it on Ready, then GO.
+    final fake = await open(tester, free);
+    await tapVisible(tester, find.byKey(steadyKey));
+    await pumpTimes(tester, 4);
+    await goFromReady(tester);
+    await pumpTimes(tester, 6);
+    expect(fake.startCalls, hasLength(1));
+    expect(fake.startCalls.single.liveContext?.coachChoice, 'steady');
+  });
+
+  testWidgets('the picker no longer carries the choice', (tester) async {
+    final fake = FakeRecorderGateway(now: now);
+    services = fakeServices(recorder: fake, settings: free);
+    await pumpApp(tester, services, pushRoute: Routes.start);
+    await pumpTimes(tester, 6);
+    expect(find.byKey(chaseKey), findsNothing);
+    expect(find.text('HOW DO YOU WANT TO RUN?'), findsNothing);
   });
 
   testWidgets('the buttons are big: at least 96 px tall and half the width', (
@@ -134,7 +161,7 @@ void main() {
       tester,
       free.copyWith(coachChoice: engine.CoachChoice.steady),
     );
-    await readyAndGo(tester);
+    await goFromReady(tester);
     await pumpTimes(tester, 6);
     final ctx = fake.startCalls.single.liveContext;
     expect(ctx, isNotNull, reason: 'a choice alone is a context');
@@ -148,7 +175,7 @@ void main() {
       tester,
       const AppSettings(onboardingDone: true, lastMode: RecordMode.laps),
     );
-    await readyAndGo(tester);
+    await goFromReady(tester);
     await pumpTimes(tester, 6);
     expect(fake.startCalls.single.liveContext?.coachChoice, isNull);
   });

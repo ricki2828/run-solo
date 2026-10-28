@@ -18,7 +18,13 @@ class CoachChoiceRow extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onSelect,
+    this.onGround,
   });
+
+  /// Set on the Ready screen, whose ground is flooded with the run type's
+  /// colour: the buttons draw in this ink (selected = filled, the rest
+  /// outlined) instead of the raised-card look of the setup screens.
+  final ({Color ink, Color onInk})? onGround;
 
   final engine.CoachChoice selected;
   final ValueChanged<engine.CoachChoice> onSelect;
@@ -34,7 +40,10 @@ class CoachChoiceRow extends StatelessWidget {
       children: [
         Text(
           'HOW DO YOU WANT TO RUN?',
-          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          style: RunSoloType.label13.copyWith(
+            color: onGround?.ink ?? t.inkSecondary,
+            fontWeight: onGround == null ? null : FontWeight.w700,
+          ),
         ),
         const SizedBox(height: Space.x8),
         IntrinsicHeight(
@@ -46,6 +55,7 @@ class CoachChoiceRow extends StatelessWidget {
                   key: chaseKey,
                   title: 'Chase best',
                   subtitle: 'Vs your best, live',
+                  onGround: onGround,
                   selected: selected == engine.CoachChoice.chase,
                   onTap: () => onSelect(engine.CoachChoice.chase),
                 ),
@@ -56,6 +66,7 @@ class CoachChoiceRow extends StatelessWidget {
                   key: steadyKey,
                   title: 'Steady',
                   subtitle: 'No comparisons',
+                  onGround: onGround,
                   selected: selected == engine.CoachChoice.steady,
                   onTap: () => onSelect(engine.CoachChoice.steady),
                 ),
@@ -75,8 +86,10 @@ class _ChoiceButton extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.onGround,
   });
 
+  final ({Color ink, Color onInk})? onGround;
   final String title;
   final String subtitle;
   final bool selected;
@@ -85,6 +98,17 @@ class _ChoiceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final g = onGround;
+    final fill = g == null ? t.bgRaised : (selected ? g.ink : Colors.transparent);
+    final edge = g == null
+        ? (selected ? t.inkPrimary : t.lineHair)
+        : g.ink;
+    final titleInk = g == null
+        ? (selected ? t.inkPrimary : t.inkSecondary)
+        : (selected ? g.onInk : g.ink);
+    final subInk = g == null
+        ? t.inkSecondary
+        : (selected ? g.onInk : g.ink);
     return Semantics(
       button: true,
       selected: selected,
@@ -97,10 +121,10 @@ class _ChoiceButton extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 96),
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
-            color: t.bgRaised,
+            color: fill,
             borderRadius: BorderRadius.circular(Radii.card),
             border: Border.all(
-              color: selected ? t.inkPrimary : t.lineHair,
+              color: edge,
               width: 2,
             ),
           ),
@@ -117,7 +141,7 @@ class _ChoiceButton extends StatelessWidget {
                   softWrap: false,
                   style: RunSoloType.title28.copyWith(
                     fontSize: 20,
-                    color: selected ? t.inkPrimary : t.inkSecondary,
+                    color: titleInk,
                   ),
                 ),
               ),
@@ -126,7 +150,7 @@ class _ChoiceButton extends StatelessWidget {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+                style: RunSoloType.label13.copyWith(color: subInk),
               ),
             ],
           ),

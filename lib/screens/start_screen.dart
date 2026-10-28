@@ -31,7 +31,6 @@ import '../state/voice_coach_plan.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
-import '../widgets/coach_choice_row.dart';
 import '../widgets/goal_picker.dart';
 import '../widgets/mode_chip.dart';
 import '../widgets/start_load_line.dart';
@@ -844,6 +843,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           lastRun: summary.lastRun,
           probe: _probeLive,
           requiresGps: s.goalRun,
+          // Free and distance-goal runs: the voice follows the pick, made
+          // on Ready (28-Oct: too easy to miss on the busy setup screen).
+          // `_start` reads the saved choice at GO, as before.
+          asksCoachChoice: testMode == null && s.coachChoiceAsked,
           // Only from Home: the picker is one step back otherwise.
           onChange: widget.readyFirst
               ? () {
@@ -1348,16 +1351,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           ).then((_) => _syncProbe()),
                         ),
                         const SizedBox(height: Space.x24),
-                        // Free and distance-goal runs only: the voice follows the pick. Right under the run
-                        // types so a short phone sees it without scrolling.
-                        if (s.coachChoiceAsked) ...[
-                          CoachChoiceRow(
-                            selected: s.coachChoice,
-                            onSelect: (c) =>
-                                set((x) => x.copyWith(coachChoice: c)),
-                          ),
-                          const SizedBox(height: Space.x24),
-                        ],
                         // 29-Sep field test: the first time a run type is
                         // picked, say exactly how it runs. Gone once History
                         // has a run of the type.

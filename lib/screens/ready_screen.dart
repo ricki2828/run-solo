@@ -12,6 +12,7 @@ import '../platform/host_caps.dart';
 import '../state/settings.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
+import '../widgets/coach_choice_row.dart';
 import '../widgets/structure_glyph.dart';
 
 /// The Ready screen: the start line. The one place a run says START.
@@ -44,6 +45,7 @@ class ReadyScreen extends StatefulWidget {
     this.structureLine,
     this.lastRun,
     this.requiresGps = false,
+    this.asksCoachChoice = false,
     this.onChange,
   });
 
@@ -84,6 +86,10 @@ class ReadyScreen extends StatefulWidget {
   /// The timed 5 km and goal runs measure from the first fix, so START
   /// waits for a good one. Every other run may start without.
   final bool requiresGps;
+
+  /// Free and distance-goal runs: show "HOW DO YOU WANT TO RUN?" above START.
+  /// A tap saves to settings at once; the Start screen reads it at GO.
+  final bool asksCoachChoice;
 
   /// Back to the picker to change the run. Null hides the link.
   final VoidCallback? onChange;
@@ -372,6 +378,16 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: Space.x8),
+            if (widget.asksCoachChoice) ...[
+              CoachChoiceRow(
+                selected: s.coachChoice,
+                onGround: (ink: _ink, onInk: _chipInk),
+                onSelect: (c) => AppServices.of(context).settings.update(
+                  (x) => x.copyWith(coachChoice: c),
+                ),
+              ),
+              const SizedBox(height: Space.x12),
+            ],
             Wrap(
               spacing: Space.x8,
               runSpacing: Space.x8,
