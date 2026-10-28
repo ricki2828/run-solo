@@ -65,7 +65,9 @@ DAY_SILENT_DAYS = 3
 DAY_CHIPS = "Sounds good|Need to change it"
 DAY_ASK_CHIPS = "Going well|Tough week"
 HEAT_FROM_MIN = 17 * 60   # the heads-up goes out from 5 pm local, until the runner's quiet hours start
-HEAT_HOUR = 7             # the forecast hour for the session (the usual start time is not used)
+HEAT_HOUR = 7             # the forecast hour when the runner has too few runs to show a usual start
+HEAT_START_RUNS = 10      # the usual start hour is the median local start of up to this many recent runs
+HEAT_START_MIN_RUNS = 3
 OPEN_CHAT_STATES = ("pending", "running", "merged", "replied", "sending")
 IN_CONVERSATION_H = 2     # the runner wrote this recently: the conversation is theirs
 TRIAGE_HOURS = 72
@@ -84,9 +86,9 @@ def _hm(seconds: int) -> str:
 class NeedForecast(Exception):
     """decide() wants a forecast it was not given: the caller fetches it outside any transaction and decides again."""
 
-    def __init__(self, key: tuple, lat: float, lon: float, zone: str, day: Any):
+    def __init__(self, key: tuple, lat: float, lon: float, zone: str, day: Any, hour: int = HEAT_HOUR):
         super().__init__("forecast")
-        self.key, self.lat, self.lon, self.zone, self.day = key, lat, lon, zone, day
+        self.key, self.lat, self.lon, self.zone, self.day, self.hour = key, lat, lon, zone, day, hour
 
 
 def note(text: str) -> str:
@@ -165,15 +167,26 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
             f"Finish with the quick replies <chips>{RUN_CHIPS}</chips>.")
 
 
-def heat_note(name: str, weekday: str, td: tuple, f: float | None) -> str:
-    """The heat heads-up's host note: tomorrow's session name, its weekday, the forecast (temp C, dew point C) and the
-    slowdown fraction (None = too hot to compare)."""
-    facts = (f"{weekday} at {HEAT_HOUR:02d}:00 the forecast is {td[0]} C with a dew point of {td[1]} C"
+def usual_start_hour(c, uid: str, zone: str) -> int:
+    """The runner's usual start hour in their zone: the median local start of their last HEAT_START_RUNS runs, HEAT_HOUR
+    when there are fewer than HEAT_START_MIN_RUNS."""
+    rows = c.execute("SELECT start_utc FROM runs WHERE user_id=? AND COALESCE(real_upload,1)=1 ORDER BY start_utc DESC LIMIT ?", (uid, HEAT_START_RUNS)).fetchall()
+    mins = sorted(to_local(parse_iso(r["start_utc"]), zone).hour * 60 + to_local(parse_iso(r["start_utc"]), zone).minute for r in rows)
+    if len(mins) < HEAT_START_MIN_RUNS:
+        return HEAT_HOUR
+    return mins[(len(mins) - 1) // 2] // 60   # the lower middle: always a real start, never the empty midpoint of two habits
+
+
+def heat_note(name: str, weekday: str, td: tuple, f: float | None, hour: int = HEAT_HOUR) -> str:
+    """The heat heads-up's host note: tomorrow's session name, its weekday and usual start hour, the forecast (temp C,
+    dew point C) and the slowdown fraction (None = too hot to compare)."""
+    facts = (f"{weekday} at {hour:02d}:00 the forecast is {td[0]} C with a dew point of {td[1]} C"
              + (", too hot to compare paces" if f is None else f", about {round(f * 100, 1):g}% slower than in the cool"))
     return (f"PROACTIVE, started by the server: tomorrow's session is {name}. The forecast: {facts}. Give a short heads-up the "
             "evening before, in your own words (the skill's proactive reference): name the session, the one figure that matters, "
             "and the call: run it by effort, not pace, or move it to a cooler hour if what you remember about their schedule "
-            "allows. Use only these figures. One to three lines, not a weather report, no medical talk. Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
+            "allows. Use only these figures. One to three lines, not a weather report, no medical talk. "
+            f"Finish with the quick replies <chips>{HEAT_CHIPS}</chips>.")
 
 
 def day_note(today_line: str, week: str, amber: bool) -> str:
@@ -302,7 +315,7 @@ class Proactive:
                 except NeedForecast as need:
                     plan = need
             if isinstance(plan, NeedForecast):
-                wx[plan.key] = self._wx().heat_at(plan.lat, plan.lon, plan.zone, plan.day, HEAT_HOUR)
+                wx[plan.key] = self._wx().heat_at(plan.lat, plan.lon, plan.zone, plan.day, plan.hour)
                 continue
             break
         else:
@@ -486,9 +499,10 @@ class Proactive:
         if not area:
             return None
         lat, lon = cell(area["lat"], area["lon"])
-        fkey = (lat, lon, zone, tomorrow)
+        hour = usual_start_hour(c, user["id"], zone)
+        fkey = (lat, lon, zone, tomorrow, hour)
         if fkey not in wx:
-            raise NeedForecast(fkey, lat, lon, zone, tomorrow)
+            raise NeedForecast(fkey, lat, lon, zone, tomorrow, hour)
         td = wx[fkey]
         if td is None:
             return None
@@ -496,7 +510,7 @@ class Proactive:
         if f is not None and f < heat.LINE_MIN_FRACTION:
             return None
         name = (planned.session_name if planned is not None and planned.session_name else "quality session")
-        text = heat_note(name, tomorrow.strftime('%A'), td, f)
+        text = heat_note(name, tomorrow.strftime('%A'), td, f, hour)
         return f"proactive:heat:{tomorrow.isoformat()}", note(text), None
 
     def _day(self, c, user: dict, zone: str, now: datetime, window: str, wx: dict):

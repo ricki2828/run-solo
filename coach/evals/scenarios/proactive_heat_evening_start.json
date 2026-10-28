@@ -1,5 +1,5 @@
 {
- "id": "proactive_heat_evening_known_fail",
+ "id": "proactive_heat_evening_start",
  "group": "day",
  "message": "(proactive heat heads-up)",
  "fixture_patch": {
@@ -13,11 +13,12 @@
    31,
    22
   ],
-  "slowdown": 0.059
+  "slowdown": 0.059,
+  "hour": 19
  },
  "must": [
   "names tomorrow's tempo",
-  "uses the forecast at 07:00 (31 C, dew point 22 or about 5.9% slower): the one figure that carries the point is enough",
+  "uses the forecast at 19:00, the runner's usual start (31 C, dew point 22 or about 5.9% slower), not 07:00: the one figure that carries the point is enough",
   "run it by effort not pace, or go earlier/cooler"
  ],
  "must_not": [
@@ -25,6 +26,5 @@
   "medical talk",
   "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
  ],
- "known_fail": true,
- "note": "Known fail: the server quotes the 07:00 forecast (proactive.HEAT_HOUR) whatever hour the runner usually starts, so for an evening or midday runner the heads-up states the wrong hour's heat. Follow-up: forecast at the usual start hour (derivable from runs.start_utc)."
+ "note": "Evening runner: the server forecasts at the usual start hour (proactive.usual_start_hour), so the note says 19:00, matching the fixture runner (runs after 7pm on Tue/Thu). Was a known fail while the hour was fixed at 07:00."
 }

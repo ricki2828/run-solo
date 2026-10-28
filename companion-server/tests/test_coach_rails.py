@@ -119,6 +119,7 @@ def test_validator_passes(reply):
     ("Read runsupreme.com tips.", "link"),
     ("Call me on 021 555 1234.", "phone_like"),
     ("That was about 4 miles.", "foreign_unit"),
+    ("That hill was 5 ft high.", "foreign_unit"), ("About 20 feet of climb.", "foreign_unit"),
     ("", "empty"),
 ])
 def test_validator_rejects(reply, why):
@@ -127,6 +128,11 @@ def test_validator_rejects(reply, why):
         assert got is None
     else:
         assert got and got.startswith(why), got
+
+
+@pytest.mark.parametrize("reply", ["Keep your feet up tonight.", "Stay on your feet less today.", "Feet up, easy day."])
+def test_feet_without_a_number_is_not_a_unit(reply):
+    assert validator.check(reply, [TOOLS]) is None
 
 
 def test_runner_numbers_count_as_grounded():

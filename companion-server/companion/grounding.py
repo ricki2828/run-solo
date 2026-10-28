@@ -25,9 +25,10 @@ UNIT_CANON = {
     "kcal": "kcal", "cal": "kcal",
 }
 # Distance and mass words are checked even without a number ("fewer miles"); time words are not
-# ("second half", "in recent days" are ordinary English).
+# ("second half", "in recent days" are ordinary English), and neither is "feet" ("keep your feet up", "on your feet"):
+# feet counts only after a number ("5 ft", "5 feet").
 LONG_UNITS = {"kilometre", "kilometres", "kilometer", "kilometers", "mile", "miles", "metre", "metres", "meter",
-              "meters", "feet", "kcal"}
+              "meters", "kcal"}
 UNIT_AFTER_NUM = re.compile(r"\d[\d:.]*\s*(/?[A-Za-z%]+(?:/[A-Za-z]+)?)")
 
 
