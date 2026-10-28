@@ -2264,6 +2264,14 @@ class Service(CheckinMixin, MeasureMixin):
             else:
                 runs = [dict(r) for r in c.execute("SELECT * FROM runs WHERE user_id=? AND run_id=?",
                                                     (user["id"], card.get("run_id")))]
+                for r in runs:  # the week so far (this run's week and the four before it) rides beside the row, for the renderer only
+                    try:
+                        end = parse_iso(r["start_utc"])
+                    except (KeyError, TypeError, ValueError):
+                        break
+                    r["_history"] = [dict(h) for h in c.execute(
+                        "SELECT start_utc, zone_id, distance_m FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<=?",
+                        (user["id"], iso(end - timedelta(days=36)), iso(end)))]
                 for r in runs:  # the shape rides beside the row, for the renderer only (never into a prompt)
                     sh = c.execute("SELECT route_json, splits_json, reps_json, trail_json FROM run_shape WHERE user_id=? AND run_id=?",
                                    (user["id"], r["run_id"])).fetchone()

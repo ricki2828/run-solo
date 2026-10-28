@@ -89,6 +89,55 @@ def _pb_effort_facts(run: Mapping[str, Any], facts: dict[str, Any]) -> bool:
     return True
 
 
+USUAL_WEEKS = 4   # the usual week is the mean km of up to this many weeks before the run's own
+
+
+def week_track(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The runner's week so far, as of this run, from stored rows only (`history` holds this run's row and any others; a
+    row needs start_utc, zone_id and distance_m). The week is the ISO week of the run's local date in the run's zone, Monday
+    first; runs after this one are left out, so a late retry still says "so far". `usual_km` is the mean km of the up to four
+    whole weeks before it, counted back no further than the runner's first stored run (a quiet week inside that span counts as
+    zero); None when there is no earlier run. None when the run has no start or distance."""
+    try:
+        zone = run["zone_id"]
+        start = parse_iso(run["start_utc"])
+        today = to_local(start, zone).date()
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not run.get("distance_m"):
+        return None
+    monday = today - timedelta(days=today.weekday())
+    days = [0.0] * 7
+    runs, earlier = 0, [0.0] * USUAL_WEEKS
+    first = None
+    for r in history:
+        try:
+            if not r.get("distance_m"):
+                continue
+            t = parse_iso(r["start_utc"])
+            d = to_local(t, r.get("zone_id") or zone).date()
+        except (KeyError, TypeError, ValueError):
+            continue
+        if d >= monday:
+            if t <= start and d <= today:
+                days[d.weekday()] += r["distance_m"] / 1000
+                runs += 1
+        else:
+            first = d if first is None or d < first else first
+            back = (monday - d).days // 7   # 0 = the week before this one
+            if back < USUAL_WEEKS:
+                earlier[back] += r["distance_m"] / 1000
+    if not runs:
+        return None
+    out: dict[str, Any] = {"days": [round(x, 1) for x in days], "today_idx": today.weekday(), "runs": runs,
+                           "km": round(sum(days), 1)}
+    out["km"] = round(sum(out["days"]), 1)
+    if first is not None:
+        weeks = min(USUAL_WEEKS, (monday - first).days // 7 + 1)   # whole weeks the runner has history for
+        out["usual_km"] = round(sum(earlier[:weeks]) / weeks, 1)
+    return out
+
+
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     """Image facts for one run, from its stored row only. The run_shape row, when the caller joined it as `_shape`,
     adds `route_xy` (the unit-box outline), `splits` and, for an interval run, `reps`."""
@@ -125,6 +174,9 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["reps"] = shape["reps"]
     if run.get("work_pace_s_per_km") and run["type"] == "interval":
         facts["work_pace_s_per_km"] = run["work_pace_s_per_km"]
+    wt = week_track(run, run["_history"]) if run.get("_history") else None   # the rows ride beside the run, for the renderer only
+    if wt:
+        facts["week_track"] = wt
     return facts
 
 
