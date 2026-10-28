@@ -1340,7 +1340,7 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.source,
     this.paceFactor = 1.0,
     this.oneRep = false,
-    this.retargetMs,
+    this.eased = false,
   });
   int id;
   String choice;
@@ -1354,9 +1354,10 @@ class PromptResolvedEvent extends RecorderEvent {
   /// The effect lasts one rep only (a between-reps answer).
   bool oneRep;
 
-  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
-  /// run's journal carries the same value). Null for every other answer.
-  int? retargetMs;
+  /// A goal run's ease off: the runner let the goal go, so the rest of the run
+  /// (and its debrief) never judges the finish against the target. False for
+  /// every other answer.
+  bool eased;
 }
 
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"

@@ -85,8 +85,6 @@ data class PromptAnswer(
     val windowStartMs: Long = prompt.openedAtMs,
     /** Closed without a word: the runner stopped the run (a long manual pause), so "No answer. Holding." would be noise. */
     val quiet: Boolean = false,
-    /** An ease off on a goal run re-aimed the goal time to this (ms); null = no re-aim. Set on restore. */
-    val retargetMs: Long? = null,
 ) {
     /** The spoken acknowledgement; null for a [quiet] close. */
     val spoken: String?
@@ -256,22 +254,15 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
             count++
             lastOpenedMs = a.prompt.openedAtMs
             if (a.prompt.kind == PromptKind.last2k) last2kDone = true
-            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = a.retargetMs == null
+            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = true
             if (a.prompt.kind == PromptKind.betweenReps) repPrompts++
             effect = if (a.prompt.kind == PromptKind.betweenReps) PromptEffect.NONE else effect.after(a.choice, a.prompt.kind)
-            if (a.choice == PromptChoice.ease) easedOff = a.retargetMs == null
+            if (a.choice == PromptChoice.ease) easedOff = true
             nextId = maxOf(nextId, a.prompt.id + 1)
         }
     }
 
     val prompts: Int get() = count
-
-    /** The goal time was re-aimed (ease off on a goal run): falling behind the new time may be asked about again. */
-    fun retargeted() {
-        behindAsked = false
-        easedOff = false
-        prevBehindMs = null // the last margin was against the old clock
-    }
 
     private fun gapOk(nowMs: Long, distanceM: Double): Boolean {
         if (open != null || count >= MAX_PROMPTS) return false
@@ -314,7 +305,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         ) {
             if (f.goalTimeMs != null) {
                 val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
-                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing or new target?", nowMs, listOf("Keep chasing", "New target"))
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing, or ease off?", nowMs, listOf("Keep chasing", "Ease off"))
             }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)
@@ -591,15 +582,21 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
                 PromptSource.parse(l.source) ?: PromptSource.timeout,
                 l.atMs,
                 windowStartMs = l.openedAtMs,
-                retargetMs = l.retargetMs,
             )
         }
 
+        /**
+         * Ease off on a goal run is a mode for the rest of the run (no target talk at all, [LiveCoach.easeMode]): true
+         * when the earlier part of the run, from the journal's `pr` lines, held an ease off to the falling-behind question.
+         */
+        fun easedOffGoal(lines: List<JournalLine.PromptResolved>): Boolean =
+            lines.any { it.trigger == PromptKind.behindTarget.key && it.choice == PromptChoice.ease.key }
+
         /** The journal's `pr` line for [a]. */
-        fun line(a: PromptAnswer, wallMs: Long, t: Long, retargetMs: Long? = null) = JournalLine.PromptResolved(
+        fun line(a: PromptAnswer, wallMs: Long, t: Long) = JournalLine.PromptResolved(
             t = t, w = wallMs, id = a.prompt.id, trigger = a.prompt.kind.key, km = a.prompt.km,
             options = a.prompt.options.map { it.key }, choice = a.choice.key, source = a.source.key,
-            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs, retargetMs = retargetMs,
+            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs,
         )
     }
 }

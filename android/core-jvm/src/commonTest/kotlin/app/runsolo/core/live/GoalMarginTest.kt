@@ -35,14 +35,6 @@ class GoalMarginTest {
     }
 
     @Test
-    fun `the new target line names the distance and the whole minutes`() {
-        assertEquals("New target: 8 k in 52 minutes.", GoalMargin.newTargetLine(8_000.0, 3_120_000))
-        assertEquals("New target: 5 k in 1 minute.", GoalMargin.newTargetLine(5_000.0, 60_000))
-        assertEquals("New target: 21.1 k in 2 hours.", GoalMargin.newTargetLine(21_097.0, 7_200_000))
-        assertEquals("New target: 10 k in 1 hour 5 minutes.", GoalMargin.newTargetLine(10_000.0, 3_900_000))
-    }
-
-    @Test
     fun `the trend has a dead band of 3 s`() {
         assertEquals(MarginTrend.steady, GoalMargin.trend(2_999))
         assertEquals(MarginTrend.steady, GoalMargin.trend(-2_999))

@@ -2898,7 +2898,7 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.source,
     this.paceFactor = 1.0,
     this.oneRep = false,
-    this.retargetMs,
+    this.eased = false,
   });
 
   int id;
@@ -2915,9 +2915,10 @@ class PromptResolvedEvent extends RecorderEvent {
   /// The effect lasts one rep only (a between-reps answer).
   bool oneRep;
 
-  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
-  /// run's journal carries the same value). Null for every other answer.
-  int? retargetMs;
+  /// A goal run's ease off: the runner let the goal go, so the rest of the run
+  /// (and its debrief) never judges the finish against the target. False for
+  /// every other answer.
+  bool eased;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -2926,7 +2927,7 @@ class PromptResolvedEvent extends RecorderEvent {
       source,
       paceFactor,
       oneRep,
-      retargetMs,
+      eased,
     ];
   }
 
@@ -2941,7 +2942,7 @@ class PromptResolvedEvent extends RecorderEvent {
       source: result[2]! as String,
       paceFactor: result[3]! as double,
       oneRep: result[4]! as bool,
-      retargetMs: result[5] as int?,
+      eased: result[5]! as bool,
     );
   }
 
@@ -2954,7 +2955,7 @@ class PromptResolvedEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep) && _deepEquals(retargetMs, other.retargetMs);
+    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep) && _deepEquals(eased, other.eased);
   }
 
   @override

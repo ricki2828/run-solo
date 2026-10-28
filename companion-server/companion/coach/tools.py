@@ -175,6 +175,7 @@ class ReadTools:
             "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": r["goal_reached"],
             "goal_target": mmss(r["goal_target_s"]), "goal_target_from": r["goal_target_from"],
             "goal_retarget": mmss(r["goal_retarget_s"]),
+            "goal_eased": True if r["goal_eased"] else None,
             "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"], **_pb_row(r),
             "load_state": self._fresh_load(r),
         }

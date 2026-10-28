@@ -153,7 +153,7 @@ class AppServices {
   }
 
   /// A goal run's target time and its source for the companion summary: the
-  /// target the run raced, kept with it at Start (with any ease-off re-aim).
+  /// target the run raced, kept with it at Start (with whether an ease off let it go).
   /// A run recorded before that was kept falls back to a rebuild from the
   /// runs that came before it (never the run itself); empty for any other run
   /// or with no history.
@@ -428,7 +428,7 @@ class AppServices {
       final id = s.runId!;
       unawaited(
         _sendPass(() async {
-          // Before the send reads it: a goal run's target and re-aim go in the
+          // Before the send reads it: a goal run's target and ease off go in the
           // sidecar first.
           await _keepGoalTarget(id);
           await sender.sendAuto(id);

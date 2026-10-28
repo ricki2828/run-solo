@@ -627,6 +627,7 @@ class CoachNext {
     this.supportsQuests = false,
     this.supportsLoad = false,
     this.supportsGoalTarget = false,
+    this.supportsGoalEased = false,
     this.supportsPbTime = false,
   });
   final CoachSession? session;
@@ -654,6 +655,12 @@ class CoachNext {
   /// for either key.
   final bool supportsGoalTarget;
 
+  /// The server takes `goal_eased` on a run (the runner chose ease off on a
+  /// goal run, so the finish is not judged against the target): its reply
+  /// says `accepts_goal_eased`. An older server refuses the whole run for the
+  /// key.
+  final bool supportsGoalEased;
+
   /// The server takes `pb_s`, a pb effort's own time, and speaks of the
   /// effort rather than the run: its reply says `accepts_pb_time`. Without
   /// it a pb is only sent for a run that is that distance.
@@ -678,6 +685,7 @@ class CoachNext {
       supportsQuests: j.containsKey('quest') || j.containsKey('care_weeks'),
       supportsLoad: j['accepts_load'] == true,
       supportsGoalTarget: j['accepts_goal_target'] == true,
+      supportsGoalEased: j['accepts_goal_eased'] == true,
       supportsPbTime: j['accepts_pb_time'] == true,
     );
   }
@@ -1524,6 +1532,11 @@ class CompanionController extends ChangeNotifier {
   /// (`accepts_goal_target`). False until a reply says so.
   bool get goalTargetSupported =>
       enrolled && consentCurrent && (_coachNext?.supportsGoalTarget ?? false);
+
+  /// The server's last next-session reply says it takes `goal_eased`
+  /// (`accepts_goal_eased`). False until a reply says so.
+  bool get goalEasedSupported =>
+      goalTargetSupported && (_coachNext?.supportsGoalEased ?? false);
 
   /// The server's last next-session reply says it takes `pb_s`
   /// (`accepts_pb_time`). False until a reply says so.
@@ -2706,8 +2719,9 @@ Map<String, Object?> companionGoalFacts(engine.StartTarget? t) {
 }
 
 /// The same facts from the target the run kept (what Start showed, as raced),
-/// plus `goal_retarget_s` when an ease off re-aimed the run: the debrief
-/// judges the finish against that time, not the one the runner let go.
+/// plus `goal_eased` when the runner chose ease off on purpose (the debrief
+/// never judges the finish against the target), and `goal_retarget_s` for a
+/// run an older build re-aimed (retired; kept for old sidecars).
 Map<String, Object?> companionGoalFactsOf(engine.GoalTargetRecord? g) {
   if (g == null || g.targetMs <= 0) return const {};
   final from = g.source;
@@ -2716,6 +2730,7 @@ Map<String, Object?> companionGoalFactsOf(engine.GoalTargetRecord? g) {
     'goal_target_s': (g.targetMs / 1000).round(),
     if (from != null && _goalFrom.hasMatch(from)) 'goal_target_from': from,
     if (re != null && re > 0) 'goal_retarget_s': (re / 1000).round(),
+    if (g.eased) 'goal_eased': true,
   };
 }
 
@@ -2816,7 +2831,12 @@ class CompanionTarget extends ExportTarget {
   Future<Map<String, Object?>> _goal(RunDetail run) async {
     if (!controller.goalTargetSupported) return const {};
     try {
-      return await goalFacts?.call(run) ?? const {};
+      final facts = await goalFacts?.call(run) ?? const {};
+      // goal_eased is newer than the goal target: its own capability.
+      if (controller.goalEasedSupported || !facts.containsKey('goal_eased')) {
+        return facts;
+      }
+      return {...facts}..remove('goal_eased');
     } catch (e) {
       companionLog('goal target read failed (${e.runtimeType})');
       return const {};

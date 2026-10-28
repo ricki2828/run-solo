@@ -515,13 +515,18 @@ class RunSidecar {
 
 /// The target a goal run raced, kept with the run so the companion upload
 /// sends the number the runner saw, not a rebuild of it. [targetMs] and
-/// [source] are Start's; [retargetMs] is the last time an ease off re-aimed
-/// the run to (null when it never was). Lenient on read.
+/// [source] are Start's; [eased] is set when the runner chose ease off on the
+/// run: they let the goal go on purpose, so nothing judges the finish against
+/// [targetMs]. [retargetMs] is retired (the 27-Oct re-aim, replaced by the
+/// ease mode): read from older sidecars and uploaded as `goal_retarget_s` so an
+/// older run's debrief keeps its time, never set by a current build. Lenient
+/// on read.
 class GoalTargetRecord {
   const GoalTargetRecord({
     required this.targetMs,
     this.source,
     this.retargetMs,
+    this.eased = false,
   });
 
   final int targetMs;
@@ -529,19 +534,33 @@ class GoalTargetRecord {
   /// "5K on 26 Oct": the effort the target was read from.
   final String? source;
 
-  /// The re-aimed goal time, ms; null if the run was never re-aimed.
+  /// The re-aimed goal time, ms (retired, see above); null if never re-aimed.
   final int? retargetMs;
+
+  /// The runner chose ease off on this goal run: the finish is never judged
+  /// against [targetMs].
+  final bool eased;
 
   GoalTargetRecord withRetarget(int? ms) => GoalTargetRecord(
     targetMs: targetMs,
     source: source,
     retargetMs: ms ?? retargetMs,
+    eased: eased,
+  );
+
+  /// This record once an ease off was chosen (it never clears).
+  GoalTargetRecord withEased() => GoalTargetRecord(
+    targetMs: targetMs,
+    source: source,
+    retargetMs: retargetMs,
+    eased: true,
   );
 
   Map<String, Object?> toJson() => {
     'target_ms': targetMs,
     'source': ?source,
     'retarget_ms': ?retargetMs,
+    if (eased) 'eased': true,
   };
 
   static GoalTargetRecord? fromJson(Object? j) {
@@ -554,6 +573,7 @@ class GoalTargetRecord {
       targetMs: t,
       source: s is String && s.isNotEmpty ? s : null,
       retargetMs: r is int && r > 0 ? r : null,
+      eased: j['eased'] == true,
     );
   }
 
@@ -562,10 +582,11 @@ class GoalTargetRecord {
       other is GoalTargetRecord &&
       other.targetMs == targetMs &&
       other.source == source &&
-      other.retargetMs == retargetMs;
+      other.retargetMs == retargetMs &&
+      other.eased == eased;
 
   @override
-  int get hashCode => Object.hash(targetMs, source, retargetMs);
+  int get hashCode => Object.hash(targetMs, source, retargetMs, eased);
 }
 
 /// One run's last send to one target (Send runs). Lenient on read: a

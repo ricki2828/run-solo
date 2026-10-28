@@ -281,6 +281,9 @@ class RunIn(BaseModel):
     # The time an ease off re-aimed that goal run to mid-run, when it did (the app said "New target ..." in the runner's ear).
     # The finish is judged against this, not goal_target_s. Optional: an older app sends none.
     goal_retarget_s: int | None = Field(default=None, ge=60, le=100000)
+    # The runner chose ease off on this goal run (the 28-Oct ease mode replaced the re-aim): they let the goal go on purpose, so
+    # the finish is never judged against goal_target_s. True or absent; optional: an older app sends none.
+    goal_eased: bool | None = None
     consent_version: StrictInt | None = Field(default=None, ge=0, le=1000)  # the consent version the runner agreed to; an older app sends none
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
@@ -324,9 +327,11 @@ class RunIn(BaseModel):
         if self.pb not in ("5k", "10k", "half") or (self.pb_s is not None and self.pb_s > self.duration_s):
             self.pb_s = None   # a time says nothing without a distance PB, and an effort cannot outlast its run
         if not is_goal_name(self.session_name):
-            self.goal_target_s = self.goal_target_from = self.goal_retarget_s = None   # only the app's own goal run has one
+            self.goal_target_s = self.goal_target_from = self.goal_retarget_s = self.goal_eased = None   # only the app's own goal run has one
         elif self.goal_target_s is None:
             self.goal_target_from = self.goal_retarget_s = None   # a source or a re-aim alone says nothing
+        if self.goal_eased is not True:
+            self.goal_eased = None   # stored as 1 or NULL: only a yes is a fact
         return self
 
     @field_validator("session_name", "work_pace_s_per_km", "reps_done", "rep_spread_s", "recovery_pace_s_per_km",
@@ -1074,7 +1079,7 @@ class Service(CheckinMixin, MeasureMixin):
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
                 "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, plan_next_pace_lo, plan_next_pace_hi, plan_next_pace_method, feel, session_name, work_pace_s_per_km, reps_done, "
-                "rep_spread_s, recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "rep_spread_s, recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, goal_eased, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -1322,7 +1327,7 @@ class Service(CheckinMixin, MeasureMixin):
                      nx.week if nx else None, nx.minutes if nx else None, nx.distance_m if nx else None)
         session_cols = (run.session_name, run.work_pace_s_per_km, run.reps_done, run.rep_spread_s,
                         run.recovery_pace_s_per_km, None if run.goal_reached is None else int(run.goal_reached))
-        goal_cols = (run.goal_target_s, run.goal_target_from, run.goal_retarget_s)
+        goal_cols = (run.goal_target_s, run.goal_target_from, run.goal_retarget_s, None if run.goal_eased is None else 1)
         with db.tx(self.s.db_path) as c:
             if run.consent_version is not None:
                 self.set_checkin_consent(uid, run.consent_version, c)
@@ -1347,13 +1352,15 @@ class Service(CheckinMixin, MeasureMixin):
                         "rep_spread_s=?, recovery_pace_s_per_km=?, goal_reached=?, "
                         # a re-send without a target (the app has not seen accepts_goal_target yet) keeps the one stored
                         "goal_target_s=COALESCE(?, goal_target_s), goal_target_from=CASE WHEN ? IS NULL THEN goal_target_from ELSE ? END, "
-                        "goal_retarget_s=CASE WHEN ? IS NULL THEN goal_retarget_s ELSE ? END WHERE user_id=? AND run_id=?",
+                        "goal_retarget_s=CASE WHEN ? IS NULL THEN goal_retarget_s ELSE ? END, "
+                        "goal_eased=COALESCE(?, goal_eased) WHERE user_id=? AND run_id=?",
                         (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.load, run.load_basis, run.pb, run.pb_s, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                          run.goal_target_s, run.goal_target_s, run.goal_target_from, run.goal_target_s, run.goal_retarget_s,
+                         None if run.goal_eased is None else 1,
                          uid, run.run_id))
                     self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
@@ -1369,8 +1376,8 @@ class Service(CheckinMixin, MeasureMixin):
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
                 "locality, route_id, load_state, load, load_basis, pb, pb_s, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
                 "plan_next_week, plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, "
-                "recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, received_at, "
-                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, goal_eased, received_at, "
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,

@@ -46,6 +46,8 @@ object CueWords {
         stepIndex: Int?,
         index: Int? = null,
         coach: Boolean = false,
+        /** Ease off on a goal run: the projection is the plain "On track for about 31 minutes", no clock and no target. */
+        easeProjection: Boolean = false,
     ): String? {
         val step = stepIndex?.let { spec?.steps?.getOrNull(it) }
         val cooper = spec?.cueProfile == CueProfile.cooper
@@ -84,13 +86,13 @@ object CueWords {
             }
             CueKind.stop -> "Run saved"
             // A goal's merges the pace line: "100 metres to go, on pace for 1:28:00" (§G).
-            CueKind.distanceToGo -> if (value != null && spec?.isGoal == true) "100 metres to go, on pace for ${clock(value)}" else "100 metres to go"
+            CueKind.distanceToGo -> if (value != null && spec?.isGoal == true) "100 metres to go, " + (if (easeProjection) "on track for ${aboutMinutes(value)}" else "on pace for ${clock(value)}") else "100 metres to go"
             CueKind.lastRep -> null
             CueKind.minuteMark -> value?.let { m -> val n = m.roundToInt(); if (n == 1) "1 minute" else "$n minutes" }
             CueKind.countdown -> null // three tones, no words
             // Cooper: "5 minutes. Heading for about 2.74km. VO2 about 50." (index = the minute); the
             // rank against past tests is LiveCoach's, at 3, 6 and 9 minutes.
-            CueKind.projection -> value?.let { v -> if (cooper && index != null) CooperProjection.cue(index, v) else if (cooper) null else "On pace for ${clock(v)}" }
+            CueKind.projection -> value?.let { v -> if (cooper && index != null) CooperProjection.cue(index, v) else if (cooper) null else if (easeProjection) "On track for ${aboutMinutes(v)}" else "On pace for ${clock(v)}" }
         }
     }
 
@@ -161,6 +163,22 @@ object CueWords {
 
     /** The recorder's `lastRep` rule: the last work step of a session with more than one rep. */
     private fun lastRep(spec: SessionSpec, repIndex: Int): Boolean = spec.reps > 1 && repIndex == spec.reps
+
+    /**
+     * A finish time as a plain, rounded projection for the ease mode: "about 31 minutes" (nearest minute), "about 1 hour
+     * 28 minutes". No clock, so TTS cannot read it as a time of day; never a comparison.
+     */
+    fun aboutMinutes(ms: Double): String {
+        val total = ((ms / 60_000).roundToLong()).coerceAtLeast(1)
+        val h = total / 60
+        val m = total % 60
+        val minutes = if (m == 1L) "1 minute" else "$m minutes"
+        return when {
+            h == 0L -> "about $minutes"
+            m == 0L -> "about ${if (h == 1L) "1 hour" else "$h hours"}"
+            else -> "about ${if (h == 1L) "1 hour" else "$h hours"} $minutes"
+        }
+    }
 
     /** mm:ss (h:mm:ss past an hour) of a duration in ms. */
     fun clock(ms: Double): String {

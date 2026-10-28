@@ -85,6 +85,10 @@ class _RecordingScreenState extends State<RecordingScreen>
           ? null
           : _services?.live?.targetFor(spec)?.liveTargetMs;
     }
+    // Ease off on a goal run: the runner let the target go on purpose, so the
+    // screen stops naming it or any gap to it (28-Oct); the run's own
+    // projected finish stays. Read every build: the choice comes mid-run.
+    if (_ctl?.goalTargetOf(key)?.eased ?? false) return null;
     return _goalTargetMs;
   }
 

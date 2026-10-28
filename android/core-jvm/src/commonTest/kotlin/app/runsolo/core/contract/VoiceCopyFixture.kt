@@ -229,8 +229,6 @@ object VoiceCopyFixture {
         add("goal.status.first-predicted-level", GoalMargin.phrase(1_000, null, t2430, predicted = true))
         add("goal.status.longest", GoalMargin.phrase(119_000, -8_000, 5_279_000))
         add("goal.status.far-behind", GoalMargin.phrase(-458_000, -8_000, t2430))
-        add("goal.status.rebased", GoalMargin.phrase(-458_000, -8_000, 3_120_000))
-        add("goal.new-target", GoalMargin.newTargetLine(8_000.0, 3_120_000))
         // Zone changes (VoiceCoach): up, then down once held and spaced.
         val zones = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = listOf(114.0, 133.0, 152.0, 171.0)))
         val zoneLines = (0..400).mapNotNull { s ->
@@ -239,6 +237,12 @@ object VoiceCopyFixture {
         }
         add("zone.change.up", zoneLines[0])
         add("zone.change.down", zoneLines[1])
+        // Ease off on a goal run: the projected finish as a plain projection, and a clear pace change. No target in any of it.
+        add("ease.projection", CueWords.text(CueKind.projection, 1_854_000.0, SessionSpec.goalDistance(5_000, "5K"), Phase.work, 1, 0, 3, easeProjection = true))
+        add("ease.projection-hours", CueWords.text(CueKind.projection, 5_279_000.0, SessionSpec.goalDistance(21_098, "Half"), Phase.work, 1, 0, 18, easeProjection = true))
+        add("ease.distance-to-go", CueWords.text(CueKind.distanceToGo, 5_279_000.0, SessionSpec.goalDistance(21_098, "Half"), Phase.work, 1, 0, null, easeProjection = true))
+        add("ease.pace-slower", VoiceCoach.paceChangeLine(slower = true, secs = 20))
+        add("ease.pace-faster", VoiceCoach.paceChangeLine(slower = false, secs = 20))
         // Prompts: a km before (to learn the margin), then the km that asks. Facts: km, gap, label, proxy, goal m, behind, chase, goal ms.
         fun goalPrompt(prevBehind: Long, behind: Long, goalM: Double): String? {
             val p = CoachPrompter()

@@ -1546,7 +1546,7 @@ void main() {
       expect(companionGoalFacts(timeGoal), isEmpty);
     });
 
-    test('companionGoalFactsOf: the kept target, plus the re-aim when there was one', () {
+    test('companionGoalFactsOf: the kept target, plus goal_eased and an old re-aim', () {
       expect(companionGoalFactsOf(null), isEmpty);
       const kept = engine.GoalTargetRecord(
         targetMs: 2402600,
@@ -1556,6 +1556,12 @@ void main() {
         'goal_target_s': 2403,
         'goal_target_from': '5K on 26 Oct',
       });
+      expect(companionGoalFactsOf(kept.withEased()), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+        'goal_eased': true,
+      });
+      // A run an older build re-aimed keeps its retarget.
       expect(companionGoalFactsOf(kept.withRetarget(3000000)), {
         'goal_target_s': 2403,
         'goal_target_from': '5K on 26 Oct',
@@ -1563,6 +1569,17 @@ void main() {
       });
       // A later answer without a re-aim never clears one already made.
       expect(kept.withRetarget(3000000).withRetarget(null).retargetMs, 3000000);
+      // Easing off survives a re-aim read after it.
+      expect(kept.withEased().withRetarget(3000000).eased, isTrue);
+    });
+
+    test('accepts_goal_eased in the reply is what turns goal_eased on', () {
+      expect(CoachNext.parse({'v': 1})!.supportsGoalEased, isFalse);
+      expect(
+        CoachNext.parse({'v': 1, 'accepts_goal_eased': true})!
+            .supportsGoalEased,
+        isTrue,
+      );
     });
 
     test('accepts_load in the reply is what turns load and load_basis on', () {
