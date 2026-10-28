@@ -104,12 +104,54 @@ def test_with_no_loop_the_morning_edit_is_unchanged(env):
 
 
 # ---- B3
-def test_the_morning_card_leads_from_the_earliest_recent_start_not_the_median():
-    hist = [{"start_utc": iso(at(2026, 10, d, h, m)), "zone_id": "Europe/Rome"} for d, h, m in
-            [(20, 12, 30), (13, 12, 25), (6, 10, 45), (29, 12, 0)]]
-    now, weekday = at(2026, 10, 28, 8, 0), at(2026, 10, 27).weekday()
-    assert ci.usual_start_min(hist, weekday, "Europe/Rome", now) > 12 * 60
-    assert ci.earliest_start_min(hist, weekday, "Europe/Rome", now) == 10 * 60 + 45
+def quiet_until_six(env):
+    with db.tx(env.path) as c:
+        c.execute("UPDATE users SET quiet_start=?, quiet_end=?", (21 * 60 + 30, 6 * 60))
+
+
+def starts(*hm, weekday_dates=(27, 20, 13, 6, 29, 22)):
+    return [{"start_utc": iso(at(2026, 10, d, h, m)), "zone_id": "Europe/Rome"} for d, (h, m) in zip(weekday_dates, hm)]
+
+
+NOW, TUE = at(2026, 10, 28, 8, 0), at(2026, 10, 27).weekday()
+
+
+def test_the_morning_lead_uses_the_early_end_of_the_starts_not_the_median():
+    hist = starts((12, 30), (12, 25), (10, 45), (12, 0), weekday_dates=(20, 13, 6, 29))   # Tuesdays, 4 samples
+    assert ci.usual_start_min(hist, TUE, "Europe/Rome", NOW) > 12 * 60
+    assert ci.earliest_start_min(hist, TUE, "Europe/Rome", NOW) == 12 * 60      # 25th percentile of 10:45, 12:00, 12:25, 12:30
+
+
+def test_one_early_outlier_among_12_to_13h_starts_does_not_drag_the_card_hours_early():
+    hist = starts((12, 0), (12, 30), (13, 0), (12, 15), (6, 30), (12, 45), weekday_dates=(20, 13, 6, 29, 22, 15))
+    got = ci.earliest_start_min(hist, TUE, "Europe/Rome", NOW)
+    assert 11 * 60 + 45 <= got <= 12 * 60 + 15
+    # with fewer than four samples the earliest is still used
+    assert ci.earliest_start_min(starts((12, 0), (6, 30), weekday_dates=(20, 13)), TUE, "Europe/Rome", NOW) == 6 * 60 + 30
+
+
+def test_a_spread_across_the_wrap_point_stays_in_order():
+    hist = starts((6, 0), (20, 36), (20, 40), (20, 30), weekday_dates=(20, 13, 6, 29))
+    assert ci.earliest_start_min(hist, TUE, "Europe/Rome", NOW) == 20 * 60 + 35     # 25th percentile; 06:00 is the late tail of the night, not the early end
+
+
+def test_a_quiet_hours_outlier_does_not_stop_the_morning_card_with_four_samples(env):
+    quiet_until_six(env)
+    env.run("t-outlier", at(2026, 10, 8, 5, 30))
+    env.run("t-sep24", at(2026, 9, 24, 7, 0))             # Thursdays: 05:30, 07:00 x3 -> 25th percentile 07:00
+    env.step(at(2026, 10, 15, 6, 50))
+    assert env.q("SELECT * FROM checkin_slots WHERE slot='today'")
+
+
+def test_a_quiet_hours_outlier_with_few_samples_plans_nothing_and_says_so(env, caplog):
+    quiet_until_six(env)
+    env.run("t-outlier", at(2026, 10, 8, 5, 30))          # Thursdays: 05:30, 07:00, 07:00 -> three samples, the earliest wins
+    with caplog.at_level(logging.INFO):
+        env.step(at(2026, 10, 15, 6, 50))
+        env.step(at(2026, 10, 15, 6, 51))
+    assert env.q("SELECT * FROM checkin_slots WHERE slot='today'") == []
+    lines = [r.getMessage() for r in caplog.records if "morning card not planned" in r.getMessage()]
+    assert len(lines) == 1                                  # once a day, not every tick
 
 
 def test_no_morning_card_once_a_run_for_that_day_has_arrived(env):
@@ -117,3 +159,25 @@ def test_no_morning_card_once_a_run_for_that_day_has_arrived(env):
     env.run("today", start, now=start + timedelta(minutes=40))
     env.step(at(2026, 10, 15, 6, 50))
     assert env.q("SELECT * FROM checkin_slots WHERE slot='today'") == []
+
+
+# ---- review fixes
+def test_a_tap_on_the_old_morning_buttons_after_the_result_is_handled_gracefully(env):
+    env.step(at(2026, 10, 15, 6, 45))
+    slot = env.slot()
+    land(env, "thu", at(2026, 10, 15, 7, 0), type="tempo", verdict="faster")
+    assert env.slot()["state"] == "consumed"
+    after = env.tap("t.skip", at(2026, 10, 15, 8, 0), slot=slot, message_id=slot["message_id"], card_id=slot["card_id"])
+    assert [m for m, _ in after].count("answerCallbackQuery") == 1                 # answered, no crash
+
+
+def test_the_edited_morning_card_says_result_below_and_a_slot_bookkeeping_failure_never_resends(env, monkeypatch):
+    env.svc.s = dataclasses.replace(env.svc.s, media_enabled=True)
+    env.step(at(2026, 10, 15, 6, 45))
+    monkeypatch.setattr(env.svc, "_render_media", lambda user, card, now: loop_media() if card["kind"] == "run" else None)
+    monkeypatch.setattr(env.svc, "_ci_consume", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db")))
+    land(env, "thu", at(2026, 10, 15, 7, 0), type="tempo", verdict="faster")
+    [(_, edit)] = [c for c in env.fakes.tg if c[0] in ("editMessageText", "editMessageCaption")]
+    assert "Result below" in (edit.get("text") or edit.get("caption"))
+    assert [m for m, _ in env.fakes.tg].count("sendAnimation") == 1
+    assert env.q("SELECT state FROM outbox WHERE kind='run_card'")[0]["state"] == "done"

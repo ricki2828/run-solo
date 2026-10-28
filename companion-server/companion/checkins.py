@@ -290,9 +290,9 @@ def usual_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id:
 
 
 def earliest_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id: str, now: datetime) -> int | None:
-    """The earliest start among the runs `usual_start_min` looks at, in minutes after local midnight, rounded down to 5.
-    The morning card leads from this, not from the median: a runner who starts anywhere between 10:45 and 12:30 must get
-    it before the early day, not midway (B3)."""
+    """The early end of the runner's recent starts, in minutes after local midnight, rounded down to 5: the 25th
+    percentile with four or more samples (one early outlier must not drag the morning card hours early), else the
+    earliest. Same pool as `usual_start_min`. The morning card leads from this, not from the median (B3)."""
     def minute(h: Mapping[str, Any]) -> tuple[int, int]:
         loc = to_local(parse_iso(h["start_utc"]), h.get("zone_id") or zone_id)
         return loc.weekday(), loc.hour * 60 + loc.minute
@@ -302,9 +302,13 @@ def earliest_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_
     pool = same if len(same) >= 2 else [minute(h)[1] for h in history[:8]]
     if not pool:
         return None
-    ref = pool[0]
-    off = [((m - ref + 720) % 1440) - 720 for m in pool]
-    return int(((min(off) + ref) % 1440) // 5 * 5) % 1440
+    # unwrap the clock circle at its widest empty stretch, so a spread across midnight stays in order
+    vals = sorted(pool)
+    gaps = [((vals[(i + 1) % len(vals)] - v) % 1440, i) for i, v in enumerate(vals)]
+    origin = vals[(max(gaps)[1] + 1) % len(vals)]
+    off = sorted((m - origin) % 1440 for m in pool)
+    pick = off[len(off) // 4] if len(off) >= 4 else off[0]
+    return int((origin + pick) % 1440 // 5 * 5) % 1440
 
 
 def send_deadline(slot: str, due: datetime, latest: datetime | None = None) -> datetime:

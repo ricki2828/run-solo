@@ -15,6 +15,7 @@ Mixed into `service.Service`. Rules it enforces (eng-review 13-Oct):
 """
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import logging
 import re
@@ -34,6 +35,9 @@ from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
 
+# why the outbox item being processed was skipped (B4); per thread, so a replay and the live worker never cross
+SKIP_WHY: contextvars.ContextVar[str | None] = contextvars.ContextVar("skip_why", default=None)
+
 CI_KINDS = ("ci", "ci_edit")
 LINE_LOOKBACK_DAYS = 3
 COACH_LINE_KINDS = ("run", "evening", "recap", "monthly")
@@ -50,6 +54,7 @@ def _sep(*parts: object) -> str:
 
 
 class CheckinMixin:
+    _ci_no_window: set = set()   # (user, day) already logged as having no room for the morning card
     s: Any
     channels: dict[str, Any]
     media: Any
@@ -328,6 +333,12 @@ class CheckinMixin:
             if in_quiet(due, u["zone_id"], qs, qe):
                 due = quiet_end_utc(due, u["zone_id"], qe)
             latest = ci.at_local(today, max(start_m - ci.TODAY_MIN_LEAD_MIN, 0), u["zone_id"])   # C4: never after start - 5 min
+            if due > latest and now >= latest:
+                key = (u["id"], today)
+                if key not in self._ci_no_window:   # once a day, not on every planning tick
+                    self._ci_no_window.add(key)
+                    log.info("morning card not planned for %s: quiet hours leave no room before the usual start (%s)", today,
+                             f"{start_m // 60}:{start_m % 60:02d}")
             if due <= latest and due <= now and self._ci_wanted(c, u, "today", today, now):
                 n += self._ci_enqueue(c, u, "today", today, due, now, latest)
         # after an easy run that came out slower and harder than it should: ask once
@@ -364,14 +375,14 @@ class CheckinMixin:
         for_date = date.fromisoformat(d_s)
         ch = self.channels.get("telegram")
         if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
-            self._skip_why = "check-ins off, not telegram, or past its deadline"
+            SKIP_WHY.set("check-ins off, not telegram, or past its deadline")
             return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
         with db.ro(self.s.db_path) as c:   # cheap gates first, so a card that will not go out never costs a weather request
             if (c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                           (uid, slot, d_s)).fetchone() or not self._ci_wanted(c, user, slot, for_date, now)
                     or self._ci_cap_taken(c, uid, now)):
-                self._skip_why = f"check-in {slot}: slot already used, no longer wanted, or question cap taken"
+                SKIP_WHY.set(f"check-in {slot}: slot already used, no longer wanted, or question cap taken")
                 return "skipped", None
         hot = self._ci_heat(user, slot, for_date, now)   # before the write transaction: it may call the weather service
         with db.tx(self.s.db_path) as c:
@@ -759,7 +770,7 @@ class CheckinMixin:
         card is edited to a one-line result with no keyboard. The loop is out before the edit, so nothing after it may
         raise and make the whole card retry as a second loop."""
         mid = ch.send_card(user["chat_ref"], out, **kw)
-        done = dataclasses.replace(out, body="", buttons=[], links=(), media=None, short_caption=False)
+        done = dataclasses.replace(out, headline="Result below \u2193", body="", buttons=[], links=(), media=None, short_caption=False)
         try:
             ch.edit_card_body(user["chat_ref"], slot["message_id"], done, bool(slot["is_photo"]))
         except ChannelError as e:
@@ -768,7 +779,10 @@ class CheckinMixin:
                 ch.clear_keyboard(user["chat_ref"], slot["message_id"])
             except ChannelError:
                 pass
-        self._ci_consume(user, slot, mid, True)
+        try:
+            self._ci_consume(user, slot, mid, True)
+        except Exception as e:   # the loop is out: a bookkeeping failure must not make the item retry and send it again
+            log.error("morning slot not marked consumed after the loop was sent: %s", type(e).__name__)
         return mid
 
     # ------------------------------------------------------------------ lines that use an answer (templated, A2)

@@ -557,8 +557,6 @@ def build_facts(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]],
 
     # a reached goal or a named session is always worth a card, whatever else went out today (B1)
     named_goal = run.get("goal_reached") == 1 or session_run or named_run(run)
-    if run.get("goal_reached") == 1 and not session_run and not named_run(run):
-        worthy.append(Fact("goal", "Goal reached"))   # base says so itself for a named goal run or a session
     if not worthy and not named_goal and last_card_age_h is not None and last_card_age_h < QUIET_CARD_GAP_H:
         return FactsResult((), None, tone, True, "nothing_new")
 
