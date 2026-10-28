@@ -12,6 +12,7 @@ import '../platform/host_caps.dart';
 import '../state/settings.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
+import '../widgets/coach_choice_row.dart';
 import '../widgets/structure_glyph.dart';
 
 /// The Ready screen: the start line. The one place a run says START.
@@ -44,6 +45,7 @@ class ReadyScreen extends StatefulWidget {
     this.structureLine,
     this.lastRun,
     this.requiresGps = false,
+    this.asksCoachChoice = false,
     this.onChange,
   });
 
@@ -84,6 +86,10 @@ class ReadyScreen extends StatefulWidget {
   /// The timed 5 km and goal runs measure from the first fix, so START
   /// waits for a good one. Every other run may start without.
   final bool requiresGps;
+
+  /// Free and distance-goal runs: show "HOW DO YOU WANT TO RUN?" above START.
+  /// A tap saves to settings at once; the Start screen reads it at GO.
+  final bool asksCoachChoice;
 
   /// Back to the picker to change the run. Null hides the link.
   final VoidCallback? onChange;
@@ -276,6 +282,14 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
   // ---- Ready ----
 
   Widget _ready(AppSettings s) {
+    // At large text nothing fits one screen: the whole page scrolls (START
+    // included) rather than clip. Otherwise the run's words scroll alone.
+    final big = MediaQuery.textScalerOf(context).scale(10) > 12;
+    final compact = widget.asksCoachChoice;
+    final page = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _readyChildren(s, big: big, compact: compact),
+    );
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
@@ -284,186 +298,203 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           Space.screenGutter,
           Space.x24,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  key: const ValueKey('ready-back'),
-                  tooltip: 'Back',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
-                  ),
-                  icon: const Icon(Icons.arrow_back, color: _ink),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-                const Spacer(),
-                if (widget.onChange != null)
-                  TextButton(
-                    key: const ValueKey('ready-change'),
-                    onPressed: widget.onChange,
-                    style: TextButton.styleFrom(foregroundColor: _ink),
-                    child: Text(
-                      'CHANGE',
-                      style: RunSoloType.heading19.copyWith(color: _ink),
-                    ),
-                  ),
-              ],
-            ),
-            // The run's words scroll if a small phone cannot fit them; the
-            // checks and START below never move.
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: Space.x8),
-                    Text(
-                      'READY?',
-                      style: RunSoloType.heading26.copyWith(
-                        color: _ink.withValues(alpha: 0.7),
-                        letterSpacing: 4,
-                      ),
-                    ),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        widget.runType,
-                        key: const ValueKey('ready-run-type'),
-                        maxLines: 1,
-                        style: RunSoloType.display96.copyWith(color: _ink),
-                      ),
-                    ),
-                    const SizedBox(height: Space.x12),
-                    Text(
-                      widget.plan,
-                      key: const ValueKey('ready-plan'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: RunSoloType.body17.copyWith(
-                        color: _ink,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (widget.target != null) ...[
-                      const SizedBox(height: Space.x4),
-                      Text(
-                        widget.target!,
-                        key: const ValueKey('ready-target'),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: RunSoloType.body15.copyWith(color: _ink),
-                      ),
-                    ],
-                    const SizedBox(height: Space.x12),
-                    if (widget.structure != null) _structureBlock(),
-                    if (widget.lastRun != null)
-                      Text(
-                        widget.lastRun!,
-                        key: const ValueKey('ready-last-run'),
-                        style: RunSoloType.body15.copyWith(color: _ink),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: Space.x8),
-            Wrap(
-              spacing: Space.x8,
-              runSpacing: Space.x8,
-              children: [
-                _OnChip(
-                  key: const ValueKey('ready-on-voice'),
-                  label: 'VOICE CUES ${s.cues ? 'ON' : 'OFF'}',
-                  onTap: _openSettings,
-                ),
-                _OnChip(
-                  key: const ValueKey('ready-on-countdown'),
-                  label:
-                      'COUNTDOWN ${s.countdownSeconds == 0 ? 'OFF' : '${s.countdownSeconds} S'}',
-                  onTap: _openSettings,
-                ),
-                _OnChip(
-                  key: const ValueKey('ready-on-autopause'),
-                  label: 'AUTO-PAUSE ${s.autoPause ? 'ON' : 'OFF'}',
-                  onTap: _openSettings,
-                ),
-              ],
-            ),
-            const SizedBox(height: Space.x12),
-            ValueListenableBuilder<GpsProbeEvent?>(
-              valueListenable: widget.probe,
-              builder: (context, probe, _) {
-                final gps = _gpsOf(probe);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Chip(
-                      key: const ValueKey('ready-gps'),
-                      label: 'GPS',
-                      value: switch (gps) {
-                        _Gps.searching =>
-                          widget.requiresGps ? 'WAITING' : 'SEARCHING',
-                        _Gps.good => 'GOOD',
-                        _Gps.weak => 'WEAK',
-                      },
-                      dot: gps == _Gps.good
-                          ? NightSession.semImproving
-                          : NightSession.semWarn,
-                    ),
-                    if (HostCaps.strapPairing) ...[
-                      const SizedBox(height: Space.x8),
-                      _strapChip(s),
-                    ],
-                    const SizedBox(height: Space.x12),
-                    SizedBox(
-                      height: 20,
-                      child: gps == _Gps.good
-                          ? null
-                          : Text(
-                              widget.requiresGps
-                                  ? 'Waiting for a good GPS fix'
-                                  : 'Starting without a good GPS fix',
-                              key: const ValueKey('ready-gps-warning'),
-                              style: RunSoloType.body15.copyWith(
-                                color: _ink,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: Space.x8),
-                    FilledButton(
-                      key: const ValueKey('ready-start'),
-                      onPressed: widget.requiresGps && gps != _Gps.good
-                          ? null
-                          : _tapStart,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _ink,
-                        foregroundColor: _chipInk,
-                        disabledBackgroundColor: _ink.withValues(alpha: 0.4),
-                        disabledForegroundColor: _chipInk.withValues(
-                          alpha: 0.6,
-                        ),
-                        minimumSize: const Size.fromHeight(104),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(Radii.card),
-                        ),
-                        textStyle: RunSoloType.display96,
-                      ),
-                      child: const CapsText('START'),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
+        child: big ? SingleChildScrollView(child: page) : page,
       ),
     );
+  }
+
+  List<Widget> _readyChildren(
+    AppSettings s, {
+    required bool big,
+    required bool compact,
+  }) {
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: Space.x8),
+        Text(
+          'READY?',
+          style: RunSoloType.heading26.copyWith(
+            color: _ink.withValues(alpha: 0.7),
+            letterSpacing: 4,
+          ),
+        ),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            widget.runType,
+            key: const ValueKey('ready-run-type'),
+            maxLines: 1,
+            style: RunSoloType.display96.copyWith(color: _ink),
+          ),
+        ),
+        const SizedBox(height: Space.x12),
+        Text(
+          widget.plan,
+          key: const ValueKey('ready-plan'),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: RunSoloType.body17.copyWith(
+            color: _ink,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (widget.target != null) ...[
+          const SizedBox(height: Space.x4),
+          Text(
+            widget.target!,
+            key: const ValueKey('ready-target'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: RunSoloType.body15.copyWith(color: _ink),
+          ),
+        ],
+        const SizedBox(height: Space.x12),
+        if (widget.structure != null) _structureBlock(),
+        if (widget.lastRun != null)
+          Text(
+            widget.lastRun!,
+            key: const ValueKey('ready-last-run'),
+            style: RunSoloType.body15.copyWith(color: _ink),
+          ),
+      ],
+    );
+    final onChips = [
+      _OnChip(
+        key: const ValueKey('ready-on-voice'),
+        label: 'VOICE CUES ${s.cues ? 'ON' : 'OFF'}',
+        onTap: _openSettings,
+        shrink: compact,
+      ),
+      _OnChip(
+        key: const ValueKey('ready-on-countdown'),
+        label:
+            'COUNTDOWN ${s.countdownSeconds == 0 ? 'OFF' : '${s.countdownSeconds} S'}',
+        onTap: _openSettings,
+        shrink: compact,
+      ),
+      _OnChip(
+        key: const ValueKey('ready-on-autopause'),
+        label: 'AUTO-PAUSE ${s.autoPause ? 'ON' : 'OFF'}',
+        onTap: _openSettings,
+        shrink: compact,
+      ),
+    ];
+    return [
+      Row(
+        children: [
+          IconButton(
+            key: const ValueKey('ready-back'),
+            tooltip: 'Back',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+            icon: const Icon(Icons.arrow_back, color: _ink),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          const Spacer(),
+          if (widget.onChange != null)
+            TextButton(
+              key: const ValueKey('ready-change'),
+              onPressed: widget.onChange,
+              style: TextButton.styleFrom(foregroundColor: _ink),
+              child: Text(
+                'CHANGE',
+                style: RunSoloType.heading19.copyWith(color: _ink),
+              ),
+            ),
+        ],
+      ),
+      big ? words : Expanded(child: SingleChildScrollView(child: words)),
+      const SizedBox(height: Space.x8),
+      if (widget.asksCoachChoice) ...[
+        CoachChoiceRow(
+          selected: s.coachChoice,
+          onGround: (ink: _ink, onInk: _chipInk),
+          onSelect: _pickChoice,
+        ),
+        const SizedBox(height: Space.x12),
+      ],
+      if (compact)
+        Row(
+          children: [
+            for (final (i, c) in onChips.indexed) ...[
+              if (i > 0) const SizedBox(width: Space.x8),
+              Expanded(child: c),
+            ],
+          ],
+        )
+      else
+        Wrap(spacing: Space.x8, runSpacing: Space.x8, children: onChips),
+      const SizedBox(height: Space.x12),
+      ValueListenableBuilder<GpsProbeEvent?>(
+        valueListenable: widget.probe,
+        builder: (context, probe, _) {
+          final gps = _gpsOf(probe);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Chip(
+                key: const ValueKey('ready-gps'),
+                label: 'GPS',
+                value: switch (gps) {
+                  _Gps.searching =>
+                    widget.requiresGps ? 'WAITING' : 'SEARCHING',
+                  _Gps.good => 'GOOD',
+                  _Gps.weak => 'WEAK',
+                },
+                dot: gps == _Gps.good
+                    ? NightSession.semImproving
+                    : NightSession.semWarn,
+              ),
+              if (HostCaps.strapPairing) ...[
+                const SizedBox(height: Space.x8),
+                _strapChip(s),
+              ],
+              const SizedBox(height: Space.x12),
+              SizedBox(
+                height: 20,
+                child: gps == _Gps.good
+                    ? null
+                    : Text(
+                        widget.requiresGps
+                            ? 'Waiting for a good GPS fix'
+                            : 'Starting without a good GPS fix',
+                        key: const ValueKey('ready-gps-warning'),
+                        style: RunSoloType.body15.copyWith(
+                          color: _ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: Space.x8),
+              FilledButton(
+                key: const ValueKey('ready-start'),
+                onPressed: widget.requiresGps && gps != _Gps.good
+                    ? null
+                    : _tapStart,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _ink,
+                  foregroundColor: _chipInk,
+                  disabledBackgroundColor: _ink.withValues(alpha: 0.4),
+                  disabledForegroundColor: _chipInk.withValues(alpha: 0.6),
+                  minimumSize: Size.fromHeight(compact ? 88 : 104),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.card),
+                  ),
+                  textStyle: RunSoloType.display96,
+                ),
+                child: const CapsText('START'),
+              ),
+            ],
+          );
+        },
+      ),
+    ];
+  }
+
+  void _pickChoice(engine.CoachChoice c) {
+    AppServices.of(context).settings.update((x) => x.copyWith(coachChoice: c));
   }
 
   void _openSettings() => Navigator.of(context).pushNamed(Routes.settings);
@@ -650,13 +681,28 @@ class _Chip extends StatelessWidget {
 
 /// One thing that is on for this run; tap to change it in Settings.
 class _OnChip extends StatelessWidget {
-  const _OnChip({super.key, required this.label, required this.onTap});
+  const _OnChip({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.shrink = false,
+  });
 
+  final bool shrink;
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final text = Text(
+      label,
+      maxLines: 1,
+      style: RunSoloType.label13.copyWith(
+        fontSize: 13,
+        color: ReadyScreen.ink,
+        fontWeight: FontWeight.w700,
+      ),
+    );
     return Semantics(
       button: true,
       label: '$label. Opens Settings.',
@@ -667,8 +713,9 @@ class _OnChip extends StatelessWidget {
         child: Container(
           // Sized by its words (a Container with an alignment would fill
           // the row); 13 sp text plus this padding is a 44 dp target.
-          padding: const EdgeInsets.symmetric(
-            horizontal: Space.x12,
+          alignment: shrink ? Alignment.center : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: shrink ? Space.x8 : Space.x12,
             vertical: 12,
           ),
           decoration: BoxDecoration(
@@ -677,15 +724,7 @@ class _OnChip extends StatelessWidget {
           ),
           // 12 sp at least, never scaled down: a chip that does not fit
           // wraps to a second row instead.
-          child: Text(
-            label,
-            maxLines: 1,
-            style: RunSoloType.label13.copyWith(
-              fontSize: 13,
-              color: ReadyScreen.ink,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          child: shrink ? FittedBox(fit: BoxFit.scaleDown, child: text) : text,
         ),
       ),
     );
