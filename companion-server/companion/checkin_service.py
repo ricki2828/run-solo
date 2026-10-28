@@ -54,7 +54,6 @@ def _sep(*parts: object) -> str:
 
 
 class CheckinMixin:
-    _ci_no_window: set = set()   # (user, day) already logged as having no room for the morning card
     s: Any
     channels: dict[str, Any]
     media: Any
@@ -334,11 +333,11 @@ class CheckinMixin:
                 due = quiet_end_utc(due, u["zone_id"], qe)
             latest = ci.at_local(today, max(start_m - ci.TODAY_MIN_LEAD_MIN, 0), u["zone_id"])   # C4: never after start - 5 min
             if due > latest and now >= latest:
-                key = (u["id"], today)
-                if key not in self._ci_no_window:   # once a day, not on every planning tick
-                    self._ci_no_window.add(key)
-                    log.info("morning card not planned for %s: quiet hours leave no room before the usual start (%s)", today,
-                             f"{start_m // 60}:{start_m % 60:02d}")
+                logged = self.__dict__.setdefault("_ci_no_window", {})   # per instance, one day per user: nothing to prune
+                if logged.get(u["id"]) != today:   # once a day, not on every planning tick
+                    logged[u["id"]] = today
+                    log.info("morning card not planned for user=%s %s: quiet hours leave no room before the usual start (%s)",
+                             u["id"], today, f"{start_m // 60}:{start_m % 60:02d}")
             if due <= latest and due <= now and self._ci_wanted(c, u, "today", today, now):
                 n += self._ci_enqueue(c, u, "today", today, due, now, latest)
         # after an easy run that came out slower and harder than it should: ask once
