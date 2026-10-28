@@ -382,9 +382,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               CoachChoiceRow(
                 selected: s.coachChoice,
                 onGround: (ink: _ink, onInk: _chipInk),
-                onSelect: (c) => AppServices.of(context).settings.update(
-                  (x) => x.copyWith(coachChoice: c),
-                ),
+                onSelect: _pickChoice,
               ),
               const SizedBox(height: Space.x12),
             ],
@@ -480,6 +478,10 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  void _pickChoice(engine.CoachChoice c) {
+    AppServices.of(context).settings.update((x) => x.copyWith(coachChoice: c));
   }
 
   void _openSettings() => Navigator.of(context).pushNamed(Routes.settings);
