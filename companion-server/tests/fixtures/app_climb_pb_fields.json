@@ -1,0 +1,13 @@
+{
+ "run_id": "00000000-0000-4000-8000-000000000002",
+ "type": "free",
+ "start_utc": "2026-10-26T22:30:00.000Z",
+ "utc_offset_min": 480,
+ "zone_id": "Etc/GMT-8",
+ "duration_s": 1500,
+ "distance_m": 5120.4,
+ "pace_s_per_km": 292.9,
+ "true_pace_s_per_km": 290.1,
+ "climb_m": 41.6,
+ "pb": "5k"
+}

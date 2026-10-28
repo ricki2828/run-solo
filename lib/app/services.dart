@@ -147,6 +147,8 @@ class AppServices {
         t.questFacts ??= questBlockFor;
         t.loadFacts ??= loadFactsFor;
         t.goalFacts ??= goalFactsFor;
+        t.pbFacts ??= (d) async =>
+            (await history.boards()).companionPb(d.run.id);
       }
     }
   }

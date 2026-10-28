@@ -127,6 +127,53 @@ class Boards {
 
   bool get isEmpty => byKey.isEmpty;
 
+  /// The companion's `pb`: `half`, `10k` or `5k` (the longest that applies)
+  /// when [runId]'s best effort at that distance is strictly faster than the
+  /// same distance in every earlier run of the same kind. Null otherwise:
+  /// - never for a distance with no earlier effort (a first 10K is not a PB);
+  /// - like for like: a Trail run only against Trail runs, others only
+  ///   against non-Trail; interval sessions (a goal run apart) and Cooper
+  ///   tests do not count either way;
+  /// - never while any best efforts are still being built: an unbuilt run
+  ///   could hold a faster time, so a PB cannot be told yet.
+  String? companionPb(String runId) {
+    final run = _inputs[runId];
+    if (run == null || !_pbKind(run) || updating) return null;
+    final trail = run.mode == engine.RunMode.trail;
+    final before = [
+      for (final i in _inputs.values)
+        if (i.runId != runId &&
+            i.date.isBefore(run.date) &&
+            _pbKind(i) &&
+            (i.mode == engine.RunMode.trail) == trail)
+          i,
+    ];
+    for (final (d, wire) in [
+      (engine.BestEffortDistance.half, 'half'),
+      (engine.BestEffortDistance.k10, '10k'),
+      (engine.BestEffortDistance.k5, '5k'),
+    ]) {
+      final mine = run.efforts[d];
+      if (mine == null) continue;
+      final prior = [
+        for (final i in before)
+          if (i.efforts[d] case final e?) e.elapsedMs,
+      ];
+      if (prior.isEmpty) continue;
+      if (prior.every((ms) => mine.elapsedMs < ms)) return wire;
+    }
+    return null;
+  }
+
+  static bool _pbKind(engine.BoardInput i) =>
+      switch (i.mode) {
+        engine.RunMode.cooper => false,
+        engine.RunMode.intervals =>
+          i.comparisonKey != null &&
+              engine.ComparisonKey.isGoal(i.comparisonKey!),
+        _ => true,
+      };
+
   /// A10.3 chips for [runId], ranked as each board stood that day (runs up
   /// to and including it), so an old best stays a best:
   /// - PB chips first, longest distance first, at most two;

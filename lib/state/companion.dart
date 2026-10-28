@@ -2574,6 +2574,7 @@ Map<String, Object?>? companionSummary(
   Map<String, Object?>? quest,
   Map<String, Object?> load = const {},
   Map<String, Object?> goal = const {},
+  String? pb,
 }) {
   final s = d.summary;
   final run = d.run;
@@ -2592,7 +2593,9 @@ Map<String, Object?>? companionSummary(
   }
   final pace = s.avgSecPerKm;
   final tp = s.truePaceSecPerKm;
-  final climb = s.row?.climbM;
+  // The index row is null on an upload (the run is read from its file), so
+  // fall back to the file's own elevation, as the spoken summary does.
+  final climb = s.row?.climbM ?? engine.RunElevation.of(run)?.ascentM;
   return {
     'run_id': run.id,
     'type': s.uploadMode.name,
@@ -2608,6 +2611,8 @@ Map<String, Object?>? companionSummary(
     'climb_m': ?(climb == null ? null : r1(climb)),
     // The area name only (locality), never the street.
     'locality': ?s.place,
+    // 5k, 10k or half: a strict personal best (Boards.companionPb).
+    'pb': ?pb,
     'feel': ?(feel ?? d.sidecar.feel)?.name,
     // The session's name and work/rep/recovery paces (interval runs only).
     ...companionIntervalFacts(s),
@@ -2758,6 +2763,10 @@ class CompanionTarget extends ExportTarget {
   })?
   loadFacts;
 
+  /// The `pb` for a run (`Boards.companionPb`), wired by AppServices; null
+  /// sends none.
+  Future<String?> Function(RunDetail run)? pbFacts;
+
   /// When the server last answered 422 (older than this app). For
   /// [outdatedWait] no run is sent and no automatic try is spent; a new app
   /// start clears it, so it is also retried on the next open.
@@ -2808,6 +2817,16 @@ class CompanionTarget extends ExportTarget {
     } catch (e) {
       companionLog('load read failed (${e.runtimeType})');
       return const {};
+    }
+  }
+
+  /// A pb read that fails sends the run without a pb, never fails it.
+  Future<String?> _pb(RunDetail run) async {
+    try {
+      return await pbFacts?.call(run);
+    } catch (e) {
+      companionLog('pb read failed (${e.runtimeType})');
+      return null;
     }
   }
 
@@ -2873,6 +2892,7 @@ class CompanionTarget extends ExportTarget {
         quest: await _quest(d),
         load: await _load(d),
         goal: await _goal(d),
+        pb: await _pb(d),
       );
       if (summary == null) {
         return const SendResult.failed('Run has no time zone yet');

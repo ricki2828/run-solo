@@ -295,7 +295,9 @@ class RunIn(BaseModel):
     def _trail_is_optional_extra(cls, v, handler):
         try:
             return handler(v)
-        except ValidationError:
+        except ValidationError as e:
+            # The run is kept without its trail; say so, with where it failed and never the value.
+            log.warning("trail block dropped as malformed: %s", sorted({".".join(map(str, x["loc"])) + ":" + x["type"] for x in e.errors()})[:5])
             return None
 
     @model_validator(mode="after")

@@ -351,6 +351,29 @@ void main() {
       return companionSummary(d, zones: engine.HrZones.percentMax(190))!;
     }
 
+    test('climb comes from the run file when the index row is null', () async {
+      final f = withElevation(freeRunFile(n: 61, start: start, seconds: 1800));
+      final s = MemoryRunStore(files: [f], now: now);
+      await s.setUtcOffset(f.id, 480);
+      final d = (await s.load(f.id))!;
+      expect(d.summary.row, isNull);
+      final j = companionSummary(d, zones: engine.HrZones.percentMax(190))!;
+      expect(j['climb_m'], isNotNull);
+      expect(
+        j['climb_m'] as double,
+        closeTo(engine.RunElevation.of(f)!.ascentM, 0.1),
+      );
+    });
+
+    test('no elevation, no climb_m; pb rides only when given', () async {
+      final j = await summaryOf();
+      expect(j.containsKey('climb_m'), isFalse);
+      expect(j.containsKey('pb'), isFalse);
+      final d = (await store.load(run.id))!;
+      final k = companionSummary(d, pb: '10k')!;
+      expect(k['pb'], '10k');
+    });
+
     test('a goal run stopped short is told as a free run', () async {
       final free = freeRunFile(n: 2, start: start, seconds: 1200);
       final goal = free.copyWith(

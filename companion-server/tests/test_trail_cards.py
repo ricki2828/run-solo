@@ -345,3 +345,15 @@ def test_a_zero_distance_run_and_a_gone_block_do_not_break_the_card():
     facts = T.card_facts({"duration_s": 60, "distance_m": 0, "pace_s_per_km": None, "climb_m": None}, t)
     assert "distance_km" not in facts
     P.check_request({"v": 1, "op": "card", "kind": "trail_record", "facts": facts})
+
+
+def test_a_dropped_trail_block_is_logged_without_its_values(caplog):
+    p = {"run_id": "r1", "type": "trail", "start_utc": "2026-10-13T08:00:00Z", "utc_offset_min": 0, "zone_id": "UTC",
+         "duration_s": 3600, "distance_m": 9600}
+    with caplog.at_level("WARNING", logger="companion"):
+        assert RunIn.model_validate(p | {"trail": {"n": 3, "board": []}}).trail is None
+    assert any("trail block dropped" in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="companion"):
+        assert RunIn.model_validate(p | {"trail": trail_block([(1, 4000), (2, 3900)], 2)}).trail is not None
+    assert not caplog.records

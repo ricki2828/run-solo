@@ -584,3 +584,24 @@ def test_a_failing_care_week_lookup_gives_the_km_recap_not_a_missing_recap(tmp_p
         assert cid
         body = con.execute("SELECT body FROM cards WHERE card_id=?", (cid,)).fetchone()[0]
         assert "load" not in body.lower()
+
+
+# --- climb_m and pb as the app sends them --------------------------------------------------------
+
+def test_the_apps_climb_and_pb_fixture_validates_and_is_stored(client, fakes):
+    import json
+    from pathlib import Path
+    body = json.loads((Path(__file__).parent / "fixtures" / "app_climb_pb_fields.json").read_text())
+    m = RunIn.model_validate(body)
+    assert (m.climb_m, m.pb) == (42, "5k")  # the app sends metres with a decimal; the server stores whole metres
+    t = enrol(client)
+    body = {**body, "start_utc": (datetime.now(U) - timedelta(hours=3)).isoformat()}
+    assert client.post("/v1/runs", json=body, headers=auth(t)).status_code == 202
+    c = sqlite3.connect(client.svc.s.db_path)
+    assert c.execute("SELECT climb_m, pb FROM runs").fetchone() == (42, "5k")
+
+
+@pytest.mark.parametrize("bad", ["marathon", "5K", "1k", ""])
+def test_a_pb_outside_the_enum_is_refused(bad):
+    with pytest.raises(Exception):
+        RunIn.model_validate({**run_payload("a1"), "pb": bad})
