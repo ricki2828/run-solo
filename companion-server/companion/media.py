@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .convo.touches import _zone_minutes
-from .facts import GOAL_PURPOSE, known_session
+from .facts import GOAL_PURPOSE, known_session, pb_effort_figures, pb_inside_longer_run
 from render import protocol as P
 
 from .render_client import RenderClient
@@ -74,22 +74,17 @@ TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "
 VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
 
 
-PB_EFFORT_KM = {"5k": 5.0, "10k": 10.0, "half": 21.0975}
-
-
 def _pb_effort_facts(run: Mapping[str, Any], facts: dict[str, Any]) -> bool:
-    """A best effort set inside a longer run is drawn as the effort (its distance, time and pace), not as the run: no route or
-    splits of the whole run beside a 5 km time. True when the whole run's picture no longer applies."""
-    km = PB_EFFORT_KM.get(run.get("pb"))
-    s = run.get("pb_s")
-    if not km or not s:
+    """A best effort is drawn as the effort: its time, distance and pace, never the run's time beside a 5 km label. Set inside a
+    longer run, the whole run's zones and climb go and True when its route and splits no longer apply either."""
+    eff = pb_effort_figures(run.get("pb"), run.get("pb_s"))
+    if not eff:
         return False
-    facts["duration_s"] = s
-    if run["distance_m"] <= km * 1030:
+    facts["duration_s"], facts["distance_km"], facts["pace_s_per_km"] = run["pb_s"], eff[0] / 1000, round(eff[1], 1)
+    facts.pop("true_pace_s_per_km", None)
+    if not pb_inside_longer_run(run["pb"], run["pb_s"], run["distance_m"]):
         return False
-    facts["distance_km"] = km
-    facts["pace_s_per_km"] = round(s / km, 1)
-    for k in ("zone_s", "climb_m", "true_pace_s_per_km"):
+    for k in ("zone_s", "climb_m"):
         facts.pop(k, None)
     return True
 

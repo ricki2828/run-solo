@@ -31,6 +31,7 @@ from . import heat
 from . import quest as cv_quest
 from .channels import ChannelError
 from .coach.ext import actions as coach_actions
+from .facts import pb_effort_figures
 from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
@@ -601,6 +602,9 @@ class CheckinMixin:
         pace = run.get("pace_s_per_km") or run.get("true_pace_s_per_km")
         if pace:
             facts["result_pace_s"] = float(pace)
+        eff = pb_effort_figures(run.get("pb"), run.get("pb_s"))
+        if eff:   # a pb is the best effort: its distance and pace, never the whole run's beside a PB badge
+            facts["distance_km"], facts["result_pace_s"] = round(eff[0] / 1000, 2), round(eff[1], 1)
         verdict = "pb" if run.get("pb") else {"faster": "faster", "slower": "slower", "holding": "in_range",
                                                "noRealChange": "in_range"}.get(run.get("verdict") or "")
         if verdict:

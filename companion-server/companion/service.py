@@ -42,7 +42,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, GOAL_PURPOSE, FactsResult, build_facts, next_line, known_session, is_goal_name, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import pb_inside_longer_run, APP_TYPES, GOAL_PURPOSE, FactsResult, build_facts, next_line, known_session, is_goal_name, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
@@ -231,14 +231,9 @@ class PlanNextIn(BaseModel):
 CUSTOM_SESSION_RE = re.compile(r"^custom:[0-9a-f]{16}$")
 
 
-PB_EFFORT_M = {"5k": 5000, "10k": 10000, "half": 21097.5}
-
-
 def whole_run_pb(pb: str | None, pb_s: int | None, distance_m: float) -> str | None:
     """The pb as far as the run's type goes: a best effort set inside a much longer run does not make it a race."""
-    if pb in PB_EFFORT_M and pb_s and distance_m > PB_EFFORT_M[pb] * 1.03:
-        return None
-    return pb
+    return None if pb_inside_longer_run(pb, pb_s, distance_m) else pb
 
 
 class RunIn(BaseModel):

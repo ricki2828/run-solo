@@ -140,22 +140,38 @@ class Boards {
   ///   run apart) and Cooper tests do not count, either way;
   /// - the effort ran without a stop of [maxPbPauseMs] or more inside it (a
   ///   goal run bridged over a long pause is not a continuous time);
-  /// - no best efforts are still being built: an unbuilt run could hold a
-  ///   faster time, so a PB cannot be told yet.
+  /// - no run on or before this one still has its best efforts being built:
+  ///   an unbuilt run could hold a faster time, so a PB cannot be told yet.
   ({String wire, int seconds})? companionPb(String runId) {
     final run = _inputs[runId];
-    if (run == null ||
-        !_pbKind(run) ||
-        run.mode == engine.RunMode.trail ||
-        updating) {
+    if (run == null) return null;
+    // Only runs on or before this one can change how it stood that day: an
+    // unbuilt later run, or an index entry that never gets built, must not
+    // silence it.
+    final waiting = pendingIds.any((id) {
+      final d = _inputs[id]?.date;
+      return d == null || !d.isAfter(run.date);
+    });
+    return pbOf(run, _inputs.values, waiting: waiting);
+  }
+
+  /// [companionPb] over plain inputs; [waiting] = some run on or before
+  /// [run] has no best efforts yet.
+  @visibleForTesting
+  static ({String wire, int seconds})? pbOf(
+    engine.BoardInput run,
+    Iterable<engine.BoardInput> all, {
+    required bool waiting,
+  }) {
+    if (!_pbKind(run) || run.mode == engine.RunMode.trail || waiting) {
       return null;
     }
     final before = [
-      for (final i in _inputs.values)
-        if (i.runId != runId && i.date.isBefore(run.date) && _pbKind(i)) i,
+      for (final i in all)
+        if (i.runId != run.runId && i.date.isBefore(run.date) && _pbKind(i)) i,
     ];
     final then = engine.Leaderboards.fold(
-      _inputs.values.where((i) => !i.date.isAfter(run.date)),
+      all.where((i) => !i.date.isAfter(run.date)),
     );
     for (final (d, wire) in [
       (engine.BestEffortDistance.half, 'half'),
@@ -170,7 +186,7 @@ class Boards {
       ];
       if (prior.isEmpty || !prior.every((ms) => mine.elapsedMs < ms)) continue;
       final board = then[d.key];
-      if (board == null || board.length < 2 || board.rankOf(runId) != 1) {
+      if (board == null || board.length < 2 || board.rankOf(run.runId) != 1) {
         continue;
       }
       return (wire: wire, seconds: (mine.elapsedMs / 1000).round());

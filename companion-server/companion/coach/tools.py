@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 from .. import db
+from ..facts import PB_EFFORT_M, pb_effort_figures, pb_inside_longer_run
 from ..timeutil import iso, parse_iso, to_local
 
 MAX_RESULT_CHARS = 12000
@@ -95,15 +96,22 @@ def check_args(schema: dict, args: Any) -> tuple[dict | None, str | None]:
     return out, None
 
 
-PB_EFFORT_KM = {"5k": 5.0, "10k": 10.0, "half": 21.1}
+def _pb_row(r) -> dict:
+    """On a run row: the best effort's own time next to the flag, and that it was set inside a longer run, so the run's own
+    duration is never read as the PB time."""
+    if not r["pb_s"]:
+        return {}
+    return {"pb_time": mmss(r["pb_s"]), "pb_set_inside_longer_run": pb_inside_longer_run(r["pb"], r["pb_s"], r["distance_m"])}
 
 
 def _pb_fields(r) -> dict:
-    """A pb row's figures. With the effort's own time (pb_s) it is the effort's, 5 km in 24:10, and the run it came from is
-    named as such; the whole run's time is never given as the PB time."""
-    if r["pb_s"] and r["pb"] in PB_EFFORT_KM and (r["distance_m"] or 0) > PB_EFFORT_KM[r["pb"]] * 1030:
-        return {"distance_km": PB_EFFORT_KM[r["pb"]], "duration": mmss(r["pb_s"]), "set_inside_a_run_of_km": km(r["distance_m"])}
-    return {"distance_km": km(r["distance_m"]), "duration": mmss(r["pb_s"] or r["duration_s"])}
+    """A pb row's figures. With the effort's own time (pb_s) they are the effort's, 5 km in 24:10, and a run it was set inside
+    is named as such; the whole run's time is never given as the PB time."""
+    if pb_inside_longer_run(r["pb"], r["pb_s"], r["distance_m"]):
+        return {"distance_km": PB_EFFORT_M[r["pb"]] / 1000, "duration": mmss(r["pb_s"]), "set_inside_a_run_of_km": km(r["distance_m"])}
+    if pb_effort_figures(r["pb"], r["pb_s"]):
+        return {"distance_km": PB_EFFORT_M[r["pb"]] / 1000, "duration": mmss(r["pb_s"])}
+    return {"distance_km": km(r["distance_m"]), "duration": mmss(r["duration_s"])}
 
 
 class ReadTools:
@@ -167,7 +175,7 @@ class ReadTools:
             "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": r["goal_reached"],
             "goal_target": mmss(r["goal_target_s"]), "goal_target_from": r["goal_target_from"],
             "goal_retarget": mmss(r["goal_retarget_s"]),
-            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"],
+            "climb_m": r["climb_m"], "verdict": r["verdict"], "feel": r["feel"], "pb": r["pb"], **_pb_row(r),
             "load_state": self._fresh_load(r),
         }
         try:

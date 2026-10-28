@@ -44,6 +44,7 @@ from typing import Any
 
 from .. import db, heat
 from ..convo.weather import OpenMeteo, cell
+from ..facts import PB_EFFORT_M, pb_inside_longer_run
 from ..rails import tag
 from ..timeutil import in_quiet, iso, parse_iso, to_local
 from . import budget, validator
@@ -139,8 +140,12 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     if r["feel"]:
         facts.append(f"how it felt, as the runner tapped it: {r['feel']}")
     if r["pb"]:
-        eff = (f", the time of that best effort alone: {_hm(r['pb_s'])}; it was set inside a {r['distance_m'] / 1000:.1f} km run, "
-               f"so the run's own time is not the best time" if r.get("pb_s") and r["pb"] in ("5k", "10k", "half") else "")
+        eff = ""
+        if pb_inside_longer_run(r["pb"], r.get("pb_s"), r["distance_m"]):
+            eff = (f", the time of that best effort alone: {_hm(r['pb_s'])}; it was set inside a {r['distance_m'] / 1000:.1f} km run, "
+                   f"so the run's own time is not the best time")
+        elif r.get("pb_s") and r["pb"] in PB_EFFORT_M:
+            eff = f", the best effort's time: {_hm(r['pb_s'])}"
         facts.append(f"personal best flag: {r['pb']}{eff}")
     if r["verdict"]:
         facts.append(f"the app's verdict: {r['verdict']}")

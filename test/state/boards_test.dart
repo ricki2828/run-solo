@@ -336,6 +336,61 @@ void main() {
       expect(c.companionPb(fast.id), isNull);
     });
 
+    // BoardInputs straight, to set heat and pauses exactly.
+    engine.BoardInput input(
+      String id,
+      int day, {
+      required int ms,
+      double heat = 0,
+      int pausedMs = 0,
+    }) => engine.BoardInput(
+      runId: id,
+      date: d1.add(Duration(days: day)),
+      mode: engine.RunMode.free,
+      heatFraction: heat,
+      efforts: {
+        engine.BestEffortDistance.k5: engine.BestEffort(
+          distance: engine.BestEffortDistance.k5,
+          elapsedMs: ms,
+          startMs: 0,
+          startOffsetM: 0,
+          splitsMs: const [],
+          pausedMs: pausedMs,
+        ),
+      },
+    );
+
+    String? pbOf(engine.BoardInput run, List<engine.BoardInput> all) =>
+        Boards.pbOf(run, all, waiting: false)?.wire;
+
+    test('a pause of 14.9 s inside the effort still counts, 15 s does not', () {
+      final old = input('a', 0, ms: 1500000);
+      final ok = input('b', 2, ms: 1400000, pausedMs: 14900);
+      final no = input('c', 2, ms: 1400000, pausedMs: 15000);
+      expect(pbOf(ok, [old, ok]), '5k');
+      expect(pbOf(no, [old, no]), isNull);
+    });
+
+    test('raw-fastest but True Pace #2 is no pb (the chip says #2)', () {
+      // The old run was hot: its True Pace time is far better than its clock.
+      final old = input('a', 0, ms: 1300000, heat: 0.10);
+      final mine = input('b', 2, ms: 1280000);
+      expect(pbOf(mine, [old, mine]), isNull);
+    });
+
+    test('True Pace #1 but slower on the clock is no pb', () {
+      final old = input('a', 0, ms: 1300000);
+      final mine = input('b', 2, ms: 1320000, heat: 0.10);
+      expect(pbOf(mine, [old, mine]), isNull);
+    });
+
+    test('cool, flat and fastest on both counts is a pb', () {
+      final old = input('a', 0, ms: 1300000);
+      final mine = input('b', 2, ms: 1280000);
+      expect(Boards.pbOf(mine, [old, mine], waiting: false)?.seconds, 1280);
+      expect(Boards.pbOf(mine, [old, mine], waiting: true), isNull);
+    });
+
     test('unknown run id is null', () async {
       final b = await fold([steady(52, day(0), 300, 2000)]);
       expect(b.companionPb('nope'), isNull);
