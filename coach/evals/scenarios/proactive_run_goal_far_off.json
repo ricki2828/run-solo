@@ -20,7 +20,9 @@
     },
     "feel": "right",
     "weekday": "Tue",
-    "goal_reached": 1
+    "goal_reached": 1,
+    "goal_target": "40:03",
+    "goal_target_from": "5K on 26 Oct"
    },
    {
     "run_id": "r26",
@@ -144,7 +146,9 @@
    "goal_reached": 1,
    "plan_next_day": "2026-10-28",
    "plan_next_session_name": "Tempo",
-   "plan_next_type": "quality"
+   "plan_next_type": "quality",
+   "goal_target_s": 2403,
+   "goal_target_from": "5K on 26 Oct"
   },
   "prior": [
    {
@@ -201,20 +205,19 @@
   ]
  },
  "must": [
-  "names it as the easy/steady 8 km (mostly zone 2 and 3), not as a missed goal: the goal distance was covered",
-  "one real number, e.g. 8 km in 49:50, or 6:13/km against Monday's 5K at about 4:50/km (a day after a hard 5K, slower is right)",
-  "says nothing about a target time he did or did not reach (none is in the data), or asks what he was aiming for",
-  "next: Wednesday's tempo from the plan, one line, entered fresh"
+  "names it as the easy/steady 8 km (mostly zone 2 and 3), the goal distance covered",
+  "names the target 40:03 with where it came from (the 5K on 26 Oct) and how the finish compared: 49:50 is 9:47 over, whole seconds, said without shaming",
+  "treats the target as the app's estimate and the slower finish a day after a hard 5K as right, not a miss",
+  "next: Wednesday's tempo from the plan, one line"
  ],
  "must_not": [
-  "inventing a target time or saying he hit or missed one (the app sends none: a goal run's flag only says the distance was covered)",
+  "a target time other than 40:03",
   "a pace or time not in the data",
-  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')",
   "shaming or telling him to push harder next time",
-  "praise for hitting a time"
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
  ],
- "no_invented_target": true,
  "allowed_target_times": [
   "1:55"
- ]
+ ],
+ "real_target": "40:03"
 }

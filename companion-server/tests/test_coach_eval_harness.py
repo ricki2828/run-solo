@@ -98,17 +98,31 @@ def test_every_proactive_scenario_builds_its_note():
         assert note.startswith("<host_note>PROACTIVE") and "<chips>" in note
 
 
-def test_goal_run_scenarios_are_faithful_and_catch_an_invented_target(monkeypatch):
-    """The app uploads no goal target (a distance goal's flag only says the distance was covered), so the goal-run
-    scenarios send no target either and a reply that quotes one is a miss."""
-    ids = ["proactive_run_goal_far_off", "proactive_run_goal_hit", "proactive_day_after_two_goal_runs"]
-    for i in ids:
+def test_goal_run_scenarios_send_what_production_sends_and_check_the_target(monkeypatch):
+    """An older app uploads no goal target, so that variant (and the morning scenario) must not quote one; an app that
+    uploads one gives the note the target and its source, and the reply must name exactly that."""
+    for i in ["proactive_run_goal_no_target", "proactive_day_after_two_goal_runs"]:
         note, _ = ev.proactive_turn(SC[i])
         assert "target" not in note.split("Facts from the app:")[-1].split("Write a short")[0].lower()
-    seen = stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "8 k done at 49:50, well off your target of 24:13."}), JUDGE_OK])
-    r = ev.run_one(SC[ids[0]], "SYS", FIXTURE, "m", "j")
+    note, _ = ev.proactive_turn(SC["proactive_run_goal_far_off"])
+    assert "the goal's target time: 40:03" in note and "(5K on 26 Oct)" in note
+    stub(monkeypatch, [json.dumps({"tool_calls": [], "reply": "8 k done at 49:50, well off your target of 24:13."}), JUDGE_OK])
+    r = ev.run_one(SC["proactive_run_goal_no_target"], "SYS", FIXTURE, "m", "j")
     assert not r["pass"] and "quotes a target time; the data holds none" in r["misses"]
-    assert ev.target_misses(SC[ids[0]], "Plan half target 1:55 stands.") == []
+    assert ev.target_misses(SC["proactive_run_goal_far_off"], "Target 40:03 from your 5K, 9:47 over.") == []
+    assert ev.target_misses(SC["proactive_run_goal_far_off"], "Your target 37:12 is gone, 40:03.") != []
+    assert "does not name the target 40:03" in ev.target_misses(SC["proactive_run_goal_far_off"], "Easy 8 k, fine.")
+
+
+def test_a_re_aimed_goal_run_judges_the_finish_against_the_new_target():
+    """An ease off re-aims the run mid-way and the app uploads that time: the note tells the coach to judge the finish
+    against it, and a reply that scores the finish against the abandoned target is a miss."""
+    sc = SC["proactive_run_goal_reaimed"]
+    note, _ = ev.proactive_turn(sc)
+    assert "the goal's target time: 40:03" in note and "re-aimed them to 50:00" in note and "judge the finish against 50:00" in note
+    assert ev.target_misses(sc, "49:50, 10 seconds under the 50:00 you were re-aimed to; you let the 40:03 go at 4 km.") == []
+    assert ev.target_misses(sc, "Target 40:03 from your 5K, 9:47 over.") != []
+    assert "does not name the target 50:00" in ev.target_misses(sc, "Easy 8 k, fine.")
 
 
 def test_target_check_ignores_paces_and_uses_the_scenario_allowlist():

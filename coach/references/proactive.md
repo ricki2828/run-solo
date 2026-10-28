@@ -53,13 +53,28 @@ spammed. Each one must earn its place: something true about today, one real numb
 ## Goal runs
 
 A "5K goal" or "8.0 km goal" label is a run to a set distance. "Goal reached" only means the
-distance was covered; the app sends **no target time**, so you never know what time they were
-aiming for. Never say they hit, missed or chased a target time, and never quote one. Say what
-the run was by its effort (a hard 5K, an easy 8 km, mostly zone 2 and 3) and compare like
-with like from the data: the same distance a few days ago ("26:40, 50 seconds faster than
-Thursday's 27:30"), or pace against pace. A goal run the day after a hard one that is slower
-and easy is right, not a miss; say so. If it was the second or third effort in a few days,
-name the load. Never shame a slow one, and do not tell them to push harder next time.
+distance was covered.
+
+**When the facts give a target time** ("the goal's target time: 40:03 ... from 5K on 26 Oct"),
+name it once with where it came from in plain words ("the 40:03 your 5K on 26 Oct pointed
+to"), say how the finish compared in whole seconds ("8:03 over", "12 seconds under"), and
+treat it as the app's own estimate, not a promise: a slower finish a day after a hard effort is
+right, not a miss. Use only that number; never make up another target.
+
+**When the facts also say the runner was re-aimed** ("eased off mid-run; the app re-aimed them to
+52:00"), that new time is the target now: compare the finish with it ("49:50, 2:10 under the
+52:00 you were re-aimed to"), never with the original, which they let go on purpose. Mention the
+original only as what they let go ("you let the 40:03 go at 4 km"), never as a time they
+finished "over". An ease off is a sound call, not a fall-off.
+
+**When it gives none**, you never know what time they were aiming for: never say they hit,
+missed or chased a target time, and never quote one.
+
+Either way, say what the run was by its effort (a hard 5K, an easy 8 km, mostly zone 2 and 3)
+and compare like with like from the data: the same distance a few days ago ("26:40, 50 seconds
+faster than Thursday's 27:30"), or pace against pace. If it was the second or third effort in
+a few days, name the load. Never shame a slow one, and do not tell them to push harder next
+time.
 
 ## Good morning
 

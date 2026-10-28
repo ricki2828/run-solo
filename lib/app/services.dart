@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
+import 'event_names.dart';
 import '../map/google_map_surface.dart';
 import '../map/map_surface.dart';
 import '../map/topo_map_surface.dart';
@@ -145,8 +146,31 @@ class AppServices {
         t.trailFacts ??= trailBlockFor;
         t.questFacts ??= questBlockFor;
         t.loadFacts ??= loadFactsFor;
+        t.goalFacts ??= goalFactsFor;
       }
     }
+  }
+
+  /// A goal run's target time and its source for the companion summary: the
+  /// target the run raced, kept with it at Start (with any ease-off re-aim).
+  /// A run recorded before that was kept falls back to a rebuild from the
+  /// runs that came before it (never the run itself); empty for any other run
+  /// or with no history.
+  Future<Map<String, Object?>> goalFactsFor(RunDetail d) async {
+    final kept = d.sidecar.goalTarget;
+    if (kept != null) return companionGoalFactsOf(kept);
+    final source = live;
+    if (source == null) return const {};
+    return companionGoalFacts(
+      engine.goalTargetAtStart(
+        d.summary.spec,
+        runs: source.preparedCandidates,
+        runId: d.run.id,
+        start: d.run.start,
+        startLocal: PlanInputs.wallClock(d.summary),
+        names: kEventNames,
+      ),
+    );
   }
 
   /// `load_state` (and, for a server that takes them, `load` and
@@ -364,8 +388,25 @@ class AppServices {
       if (s.runId == _lastSentRunId) return;
       _lastSentRunId = s.runId;
       final id = s.runId!;
-      unawaited(_sendPass(() => sender.sendAuto(id)));
+      unawaited(
+        _sendPass(() async {
+          // Before the send reads it: a goal run's target and re-aim go in the
+          // sidecar first.
+          await _keepGoalTarget(id);
+          await sender.sendAuto(id);
+        }),
+      );
     });
+  }
+
+  Future<void> _keepGoalTarget(String id) async {
+    final goal = recording.goalTargetOf(id);
+    if (goal == null) return;
+    try {
+      await history.setGoalTarget(id, goal);
+    } catch (e) {
+      debugPrint('goal target: could not keep it for $id ($e)');
+    }
   }
 
   Future<void> _sendPass(Future<void> Function() pass) async {

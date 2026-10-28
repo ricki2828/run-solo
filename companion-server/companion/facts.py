@@ -157,6 +157,11 @@ GENERIC_SESSION = "interval session"
 REP_BAND_S = 10  # the app's rep band: reps this close count as "within"
 
 
+def is_goal_name(name: str | None) -> bool:
+    """True for the app's own goal-run label ("10K goal"): the only run a goal target belongs to."""
+    return bool(name) and bool(_GOAL_RE.match(name))
+
+
 def known_session(name: str | None) -> tuple[str, str] | None:
     """(name, purpose) for a built-in session name, else None."""
     if not name:

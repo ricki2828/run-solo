@@ -1468,6 +1468,78 @@ void main() {
       expect(sent.containsKey('load_state'), isFalse);
     });
 
+    test(
+      'a goal target rides only to a server that said accepts_goal_target',
+      () async {
+        await enrol();
+        var asked = false;
+        target.goalFacts = (_) async {
+          asked = true;
+          return {'goal_target_s': 2403, 'goal_target_from': '5K on 26 Oct'};
+        };
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        // No next-session reply has said accepts_goal_target: nothing is read or sent.
+        expect(sent.containsKey('goal_target_s'), isFalse);
+        expect(asked, isFalse);
+      },
+    );
+
+    test(
+      'accepts_goal_target in the reply is what turns the goal target on',
+      () {
+        expect(CoachNext.parse({'v': 1})!.supportsGoalTarget, isFalse);
+        expect(
+          CoachNext.parse({'v': 1, 'accepts_goal_target': true})!
+              .supportsGoalTarget,
+          isTrue,
+        );
+      },
+    );
+
+    test('companionGoalFacts: seconds and a clean source, nothing without a target', () {
+      expect(companionGoalFacts(null), isEmpty);
+      const t = engine.StartTarget(
+        line: 'x',
+        liveDistanceM: 8000,
+        liveTargetMs: 2402600,
+        sourceText: '5K on 26 Oct',
+      );
+      expect(companionGoalFacts(t), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+      });
+      const odd = engine.StartTarget(
+        line: 'x',
+        liveDistanceM: 8000,
+        liveTargetMs: 2402600,
+        sourceText: '5K <b> on 26 Oct',
+      );
+      expect(companionGoalFacts(odd), {'goal_target_s': 2403});
+      // A time goal has no time-for-distance target.
+      const timeGoal = engine.StartTarget(line: 'x');
+      expect(companionGoalFacts(timeGoal), isEmpty);
+    });
+
+    test('companionGoalFactsOf: the kept target, plus the re-aim when there was one', () {
+      expect(companionGoalFactsOf(null), isEmpty);
+      const kept = engine.GoalTargetRecord(
+        targetMs: 2402600,
+        source: '5K on 26 Oct',
+      );
+      expect(companionGoalFactsOf(kept), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+      });
+      expect(companionGoalFactsOf(kept.withRetarget(3000000)), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+        'goal_retarget_s': 3000,
+      });
+      // A later answer without a re-aim never clears one already made.
+      expect(kept.withRetarget(3000000).withRetarget(null).retargetMs, 3000000);
+    });
+
     test('accepts_load in the reply is what turns load and load_basis on', () {
       expect(CoachNext.parse({'v': 1})!.supportsLoad, isFalse);
       expect(

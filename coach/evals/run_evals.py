@@ -363,16 +363,21 @@ TARGET_CLAIM = re.compile(r"\b(?:target|goal time|aim(?:ed|ing)? for)\b[^.\n]{0,
 
 
 def target_misses(sc: dict, reply: str) -> list[str]:
-    """`no_invented_target` scenarios (goal runs): the app uploads no target time, so a reply that quotes one invented it
-    (#409: the target is the effort as run and lives only on the phone). `allowed_target_times` lists clock times the
-    data does hold (e.g. the plan's race goal)."""
-    if not sc.get("no_invented_target"):
+    """Goal-run target checks. `no_invented_target` (an older app uploads no target): any quoted target time is invented.
+    `real_target` (the app uploaded one): the reply must name that clock time, and no other target time. `allowed_target_times`
+    lists clock times the data does hold (e.g. the plan's race goal)."""
+    real, allowed = sc.get("real_target"), tuple(sc.get("allowed_target_times") or ())
+    if not (real or sc.get("no_invented_target")):
         return []
-    allowed = tuple(sc.get("allowed_target_times") or ())
+    out = []
     for m in TARGET_CLAIM.finditer(reply or ""):
-        if not any(m.group(1).startswith(a) for a in allowed):
-            return ["quotes a target time; the data holds none"]
-    return []
+        t = m.group(1)
+        if t != real and not any(t.startswith(a) for a in allowed):
+            out.append("quotes a target time; the data holds none" if not real else f"quotes a target time other than {real}")
+            break
+    if real and real not in (reply or ""):
+        out.append(f"does not name the target {real}")
+    return out
 
 
 def load_scenarios() -> list[dict]:

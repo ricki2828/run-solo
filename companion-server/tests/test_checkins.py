@@ -823,9 +823,9 @@ def test_next_session_returns_the_plan_then_the_moved_session_with_the_latest_co
     r = client.get("/v1/me/next-session", headers=auth(env.token))
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     body = r.json()
-    assert body["v"] == 1 and set(body) == {"v", "generated_at", "next_session", "coach_line", "quest", "care_weeks", "accepts_load"}
+    assert body["v"] == 1 and set(body) == {"v", "generated_at", "next_session", "coach_line", "quest", "care_weeks", "accepts_load", "accepts_goal_target"}
     assert body["coach_line"] is None and body["quest"] is None and body["care_weeks"] == []
-    assert body["accepts_load"] is True
+    assert body["accepts_load"] is True and body["accepts_goal_target"] is True
     # the endpoint reads the real clock for "today": pin it through the service for the dated assertions below
     n = env.svc.next_session(env.uid, at(2026, 10, 14, 9, 0))["next_session"]
     assert n == {"date": "2026-10-15", "type": "quality", "kind": "quality", "name": "Quality session",

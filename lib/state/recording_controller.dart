@@ -779,6 +779,18 @@ class RecordingController extends ChangeNotifier {
       liveContext: liveContext,
       route: route,
     );
+    if (result.error == null) {
+      // A goal run's target as Start showed it, kept to go with the run (the
+      // companion debrief judges the finish against it).
+      final shown = liveContext?.target;
+      _goal = shown != null && spec != null && spec.toEngine().isGoal
+          ? engine.GoalTargetRecord(
+              targetMs: shown.targetMs,
+              source: shown.source,
+            )
+          : null;
+      _goalRunId = result.runId;
+    }
     if (result.error == null || result.error == StartError.alreadyRunning) {
       _reset(mode, spec);
       // The planned line for the map: native streams only what the runner has run.
@@ -787,6 +799,15 @@ class RecordingController extends ChangeNotifier {
     }
     return result;
   }
+
+  engine.GoalTargetRecord? _goal;
+  String? _goalRunId;
+
+  /// The goal target run [runId] raced: Start's number and source, and the
+  /// time an ease off re-aimed it to (see [PromptResolvedEvent.retargetMs]).
+  /// Null for any other run, a run this process did not start, or none.
+  engine.GoalTargetRecord? goalTargetOf(String runId) =>
+      runId == _goalRunId ? _goal : null;
 
   /// The route this run follows, for the map to draw under the runner's
   /// track: what Start sent, or read back from native after a restore
@@ -968,6 +989,10 @@ class RecordingController extends ChangeNotifier {
         _openPrompt(e);
       case PromptResolvedEvent():
         _closePrompt(e.id);
+        final retarget = e.retargetMs;
+        if (retarget != null && retarget > 0) {
+          _goal = _goal?.withRetarget(retarget);
+        }
         // A hold changes nothing; a push or ease off moves the band the voice now judges by.
         if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
       case GoalEvent():

@@ -283,12 +283,17 @@ class LiveTarget {
     required this.distanceM,
     required this.targetMs,
     required this.predicted,
+    this.source,
   });
   double distanceM;
   int targetMs;
 
   /// True = "predicted" (an estimate), false = "your PB".
   bool predicted;
+
+  /// What a goal target was read from, "5K on 26 Oct"; null for the event or
+  /// a PB. Native ignores it: the app keeps it with the run for the debrief.
+  String? source;
 }
 
 /// In-run coaching nudges (Phase 4 §3.5, CR1): the engine's thresholds
@@ -1335,6 +1340,7 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.source,
     this.paceFactor = 1.0,
     this.oneRep = false,
+    this.retargetMs,
   });
   int id;
   String choice;
@@ -1347,6 +1353,10 @@ class PromptResolvedEvent extends RecorderEvent {
 
   /// The effect lasts one rep only (a between-reps answer).
   bool oneRep;
+
+  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
+  /// run's journal carries the same value). Null for every other answer.
+  int? retargetMs;
 }
 
 /// Pre-start GPS readiness, about 1 Hz while the probe runs. The "ready"

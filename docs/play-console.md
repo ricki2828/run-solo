@@ -178,7 +178,7 @@ For every type below: **Encrypted in transit: Yes. Deletion: Yes.**
      health notes opt-in: coach/ext/memory.py:68-96, service.py:1165-1170; coach reads check-ins + notes: coach/tools.py:288-296; health_flags to the model: coach/tools.py:192 -->
 
 **Fitness info** (coach only)
-- Per-run summary: type, start time and time zone, duration, distance, pace, True Pace, verdict, minutes per heart rate zone, climb, the Easy/Right/Hard tap, pace per km with its zone, rep times, an interval session's name (a custom session goes as a short code), plan facts (session type, plan week and length, next session).
+- Per-run summary: type, start time and time zone, duration, distance, pace, True Pace, verdict, minutes per heart rate zone, climb, the Easy/Right/Hard tap, pace per km with its zone, rep times, an interval session's name (a custom session goes as a short code), a goal run's name, whether it was reached and its target time with the effort it came from, plan facts (session type, plan week and length, next session).
 - Coach memory (consent v4, "Share training numbers" on by default): estimated race times, best efforts, weekly load and plan. The switch is stored today; the app does not send a training-numbers payload yet (no such field in the run upload). Declared now so the form does not change mid-test.
 - Purposes include Analytics: pseudonymous per-tester counts (runs per week) to judge the coach and its cost. No advertising.
 - Shared: Yes, the run facts go to the AI provider to write cards, chat replies and spoken briefings.

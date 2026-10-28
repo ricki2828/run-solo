@@ -500,4 +500,75 @@ void main() {
       expect(warm.metresToGo, isNull);
     },
   );
+
+  group('a goal run keeps the target it raced', () {
+    LiveContext withTarget() => LiveContext(
+      boards: const [],
+      coachingMuted: false,
+      builtAtMs: 0,
+      engineVersion: 1,
+      target: LiveTarget(
+        distanceM: 8000,
+        targetMs: 2402600,
+        predicted: true,
+        source: '5K on 26 Oct',
+      ),
+    );
+
+    test('Start\'s number and source, then the ease-off re-aim', () async {
+      final spec = engine.SessionSpec.goalDistance(8000, '8.0 km').toPigeon();
+      final r = await ctl.start(
+        RecordMode.free,
+        spec,
+        Units.km,
+        liveContext: withTarget(),
+      );
+      await settle();
+      final id = r.runId!;
+      var kept = ctl.goalTargetOf(id)!;
+      expect(
+        (kept.targetMs, kept.source, kept.retargetMs),
+        (2402600, '5K on 26 Oct', null),
+      );
+      // A push or a hold carries no re-aim: nothing moves.
+      fake.emitPromptResolved(
+        PromptResolvedEvent(id: 1, choice: 'push', source: 'tap'),
+      );
+      await settle();
+      expect(ctl.goalTargetOf(id)!.retargetMs, isNull);
+      // An ease off re-aimed the run to 50 minutes; a second one moves it again.
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 2,
+          choice: 'ease',
+          source: 'tap',
+          retargetMs: 3000000,
+        ),
+      );
+      await settle();
+      kept = ctl.goalTargetOf(id)!;
+      expect((kept.targetMs, kept.retargetMs), (2402600, 3000000));
+      fake.emitPromptResolved(
+        PromptResolvedEvent(
+          id: 3,
+          choice: 'ease',
+          source: 'tap',
+          retargetMs: 3180000,
+        ),
+      );
+      await settle();
+      expect(ctl.goalTargetOf(id)!.retargetMs, 3180000);
+      expect(ctl.goalTargetOf('another-run'), isNull);
+    });
+
+    test('a run that is not a goal run keeps none', () async {
+      final r = await ctl.start(
+        RecordMode.free,
+        null,
+        Units.km,
+        liveContext: withTarget(),
+      );
+      expect(ctl.goalTargetOf(r.runId!), isNull);
+    });
+  });
 }
