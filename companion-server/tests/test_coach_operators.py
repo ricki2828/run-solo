@@ -11,7 +11,7 @@ from companion.config import Settings
 from companion.coach import chat as coach_chat
 
 from conftest import coach_text
-from test_coach_chat import rows, run_worker, say, uid_of
+from test_coach_chat import run_worker, say, uid_of
 from test_coach_open import client, consent, sent, start, _now_iso
 
 P = {"COMPANION_PEPPER": "p" * 20}
@@ -56,8 +56,9 @@ def _arm(c, ops, override=frozenset()):
 
 def _over_user_cap(c, uid):
     with db.tx(c.svc.s.db_path) as con:
-        con.execute("INSERT INTO cost_ledger (ts, user_id, model, purpose, state, cost_usd) VALUES (?,?,?,?,?,?)",
-                    (datetime.now(timezone.utc).strftime("%Y-%m-01T00:00:00Z"), uid, "m", "chat", "settled", 3.5))
+        # llm_calls counts toward the runner's month but not the Auckland-day USD cap, so this is safe on the 1st before 11:00 UTC
+        con.execute("INSERT INTO llm_calls (ts, user_id, model, cost_usd, outcome) VALUES (?,?,?,?,?)",
+                    (datetime.now(timezone.utc).strftime("%Y-%m-01T00:00:00Z"), uid, "m", 3.5, "ok"))
 
 
 def _two_messages(c, fakes):
@@ -105,9 +106,13 @@ def test_a_non_operator_is_capped_on_both(tmp_path, fakes):
         _over_user_cap(c, uid)
         assert c.svc.writer._blocked(uid) == "user_cap"
         fakes.coach_queue = [coach_text("never")]
-        say(c, "hello", now=datetime.now(timezone.utc))
-        run_worker(c, now=datetime.now(timezone.utc) + timedelta(seconds=10))
-        assert sent(fakes)[-1] != "never" and fakes.coach_calls == []
+        t = datetime.now(timezone.utc)
+        say(c, "hello", now=t)
+        run_worker(c, now=t + timedelta(seconds=10))
+        assert sent(fakes)[-1] == coach_chat.USER_MONTH
+        say(c, "hello again", now=t + timedelta(minutes=1))
+        run_worker(c, now=t + timedelta(minutes=1, seconds=10))
+        assert sent(fakes)[-1] == coach_chat.DAILY_CAP and fakes.coach_calls == []
 
 
 def test_the_fallback_path_exempts_the_memory_override_when_operators_are_unset(tmp_path, fakes):
@@ -132,3 +137,10 @@ def test_a_memory_override_alone_stops_exempting_once_operators_are_set(tmp_path
         _arm(c, {"u_ricki"}, {uid})
         _over_user_cap(c, uid)
         assert c.svc.writer._blocked(uid) == "user_cap"
+
+
+def test_operator_entries_that_are_not_user_ids_warn(caplog):
+    with caplog.at_level(logging.WARNING, logger="companion"):
+        s = env(COMPANION_COACH_OPERATORS="u_ricki, telegram:123")
+    assert s.is_operator("u_ricki")
+    assert sum("telegram:123" in r.message and "not user ids" in r.message for r in caplog.records) == 1

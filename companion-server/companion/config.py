@@ -15,7 +15,14 @@ def _operators(e) -> frozenset[str] | None:
             logging.getLogger("companion").warning(
                 "COMPANION_COACH_OPERATORS is unset: operators fall back to COMPANION_COACH_MEMORY_OVERRIDE; set OPERATORS before removing it")
         return None
-    return frozenset() if raw.strip() == "-" else _csv(raw)
+    if raw.strip() == "-":
+        return frozenset()
+    ops = _csv(raw)
+    bad = sorted(o for o in ops if not o.startswith("u_"))
+    if bad:
+        logging.getLogger("companion").warning(
+            "COMPANION_COACH_OPERATORS entries %s are not user ids (u_...): they exempt nobody", ", ".join(bad))
+    return ops
 
 
 def _csv(v: str | None) -> frozenset[str]:
@@ -181,9 +188,6 @@ class Settings:
     # later cannot silently cap Ricki; set it to an empty value ("COMPANION_COACH_OPERATORS=-") for no operators at all.
     coach_operators: frozenset[str] | None = None
 
-    def is_operator(self, user_id: str) -> bool:
-        ops = self.coach_memory_override if self.coach_operators is None else self.coach_operators
-        return user_id in ops
     coach_model: str = "anthropic/claude-sonnet-5.5"
     # All model spend in a month (cards + chat). Chat stops when it would cross the cap less what the cards still have
     # reserved (coach_card_reserve_usd minus the cards' spend this month), so chat can never starve the cards.
@@ -220,6 +224,10 @@ class Settings:
     sends_paused: bool = False
     stale_card_hours: float = 6.0
     default_quiet: tuple[int, int] = (21 * 60 + 30, 7 * 60)  # minutes after local midnight
+
+    def is_operator(self, user_id: str) -> bool:
+        ops = self.coach_memory_override if self.coach_operators is None else self.coach_operators
+        return user_id in ops
 
     @property
     def telegram_enabled(self) -> bool:

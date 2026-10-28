@@ -17,7 +17,7 @@ from companion.coach import chat as coach_chat
 from companion.service import RunIn
 
 from conftest import OWNER, auth, coach_text, enrol, make_settings
-from test_coach_chat import rows, run_worker, say, uid_of
+from test_coach_chat import run_worker, say, uid_of
 
 T0 = datetime(2026, 10, 28, 6, 30, tzinfo=timezone.utc)   # Wednesday 19:30 in Auckland
 SESSION = "Easy run today. Keep it relaxed and chatty, and finish feeling like you could go again."
@@ -58,6 +58,7 @@ def test_a_fresh_tester_from_consent_to_delete_everything(tmp_path, fakes):
         # 1 consent v2 -> chat is the canned reply; v3 (the coach sheet) -> chat works
         put(c, "/v1/me/consent", {"consent_version": 2})
         say(c, "hello", now=T0)
+        run_worker(c, T0 + timedelta(seconds=10))
         assert fakes.coach_calls == []
         put(c, "/v1/me/consent", {"consent_version": 3})
         fakes.coach_queue = [coach_text("Good to hear from you.")]
@@ -88,8 +89,8 @@ def test_a_fresh_tester_from_consent_to_delete_everything(tmp_path, fakes):
         run_worker(c, T0 + timedelta(minutes=5, seconds=10))
         assert len(fakes.coach_calls) == calls, "no model call past the runner's cap"
         assert len(fakes.tg_texts()) > sent_before, "the runner is told, not left on read"
-        assert "should not be said" not in fakes.tg_texts()[-1]
-        # 5 Delete everything: nothing with their id is left in any table
+        assert fakes.tg_texts()[-1] == coach_chat.USER_MONTH
+        # 5 Delete everything: no row with their id is left in any table that has a user_id column
         assert c.delete("/v1/me", headers=auth(c.token)).status_code == 200
         con = sqlite3.connect(c.svc.s.db_path)
         try:
