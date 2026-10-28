@@ -73,4 +73,27 @@ void main() {
     await settleAnimations(tester);
     await golden(tester, 'ready_coach_choice_scale13_360x640');
   });
+
+  testWidgets(
+    'ready: distance goal, plan visible with the choice row, 360x640',
+    (tester) async {
+      await pumpApp(
+        tester,
+        fakeServices(
+          settings: const AppSettings(
+            onboardingDone: true,
+            goalRun: true,
+            goalId: 'd10000',
+          ),
+        ),
+        pushRoute: Routes.start,
+        pushArguments: const StartArgs(readyFirst: true),
+      );
+      tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3;
+      await pumpTimes(tester, 8);
+      await settleAnimations(tester);
+      await golden(tester, 'ready_coach_choice_goal_360x640');
+    },
+  );
 }

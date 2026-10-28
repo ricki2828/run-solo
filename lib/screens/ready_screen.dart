@@ -308,6 +308,32 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
     required bool big,
     required bool compact,
   }) {
+    // Compact (the choice row is shown): the plan and target lines stay
+    // outside the scroll area so they are never pushed off a 640 dp screen.
+    final pinned = compact && !big;
+    final planLines = <Widget>[
+      const SizedBox(height: Space.x12),
+      Text(
+        widget.plan,
+        key: const ValueKey('ready-plan'),
+        maxLines: pinned ? 1 : 2,
+        overflow: TextOverflow.ellipsis,
+        style: RunSoloType.body17.copyWith(
+          color: _ink,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      if (widget.target != null) ...[
+        const SizedBox(height: Space.x4),
+        Text(
+          widget.target!,
+          key: const ValueKey('ready-target'),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: RunSoloType.body15.copyWith(color: _ink),
+        ),
+      ],
+    ];
     final words = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -319,37 +345,22 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
             letterSpacing: 4,
           ),
         ),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            widget.runType,
-            key: const ValueKey('ready-run-type'),
-            maxLines: 1,
-            style: RunSoloType.display96.copyWith(color: _ink),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: compact ? 60 : double.infinity,
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              widget.runType,
+              key: const ValueKey('ready-run-type'),
+              maxLines: 1,
+              style: RunSoloType.display96.copyWith(color: _ink),
+            ),
           ),
         ),
-        const SizedBox(height: Space.x12),
-        Text(
-          widget.plan,
-          key: const ValueKey('ready-plan'),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: RunSoloType.body17.copyWith(
-            color: _ink,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        if (widget.target != null) ...[
-          const SizedBox(height: Space.x4),
-          Text(
-            widget.target!,
-            key: const ValueKey('ready-target'),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: RunSoloType.body15.copyWith(color: _ink),
-          ),
-        ],
+        if (!pinned) ...planLines,
         const SizedBox(height: Space.x12),
         if (widget.structure != null) _structureBlock(),
         if (widget.lastRun != null)
@@ -406,6 +417,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
         ],
       ),
       big ? words : Expanded(child: SingleChildScrollView(child: words)),
+      if (pinned) ...[const SizedBox(height: Space.x8), ...planLines],
       const SizedBox(height: Space.x8),
       if (widget.asksCoachChoice) ...[
         CoachChoiceRow(
@@ -415,7 +427,11 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
         ),
         const SizedBox(height: Space.x12),
       ],
-      if (compact)
+      // At large text on a small phone the chips give way so START stays on
+      // the first screen; the same settings sit one tap away in Settings.
+      if (big && compact)
+        const SizedBox.shrink()
+      else if (compact)
         Row(
           children: [
             for (final (i, c) in onChips.indexed) ...[
@@ -452,8 +468,8 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                 _strapChip(s),
               ],
               const SizedBox(height: Space.x12),
-              SizedBox(
-                height: 20,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 20),
                 child: gps == _Gps.good
                     ? null
                     : Text(
@@ -478,7 +494,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
                   foregroundColor: _chipInk,
                   disabledBackgroundColor: _ink.withValues(alpha: 0.4),
                   disabledForegroundColor: _chipInk.withValues(alpha: 0.6),
-                  minimumSize: Size.fromHeight(compact ? 88 : 104),
+                  minimumSize: Size.fromHeight(compact ? (big ? 72 : 88) : 104),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(Radii.card),
                   ),
