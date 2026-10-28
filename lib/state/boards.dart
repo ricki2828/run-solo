@@ -165,14 +165,12 @@ class Boards {
     return null;
   }
 
-  static bool _pbKind(engine.BoardInput i) =>
-      switch (i.mode) {
-        engine.RunMode.cooper => false,
-        engine.RunMode.intervals =>
-          i.comparisonKey != null &&
-              engine.ComparisonKey.isGoal(i.comparisonKey!),
-        _ => true,
-      };
+  static bool _pbKind(engine.BoardInput i) => switch (i.mode) {
+    engine.RunMode.cooper => false,
+    engine.RunMode.intervals =>
+      i.comparisonKey != null && engine.ComparisonKey.isGoal(i.comparisonKey!),
+    _ => true,
+  };
 
   /// A10.3 chips for [runId], ranked as each board stood that day (runs up
   /// to and including it), so an old best stays a best:

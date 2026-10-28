@@ -290,7 +290,7 @@ void main() {
       expect(b.companionPb(only.id), isNull);
     });
 
-    test('a first 10K, slower over its 5K than the 5K best, is no pb', () async {
+    test('a first 10K slower over its 5K than the 5K best is no pb', () async {
       final fives = [
         steady(45, day(0), 300, 2000),
         steady(46, day(2), 305, 2000),
