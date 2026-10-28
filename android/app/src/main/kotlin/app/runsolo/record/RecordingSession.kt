@@ -1340,7 +1340,7 @@ class RecordingSession(
     }
 
     /** The prompt was answered or timed out: journal it, say it, hand the effect to the voice coach, tell the screen. */
-    private fun resolvePrompt(a: PromptAnswer, t: Long) {
+    internal fun resolvePrompt(a: PromptAnswer, t: Long) {
         lapInput.holdForPrompt(false) // the window closes; a press in the next 0.7 s is still ignored, not a lap
         questionAsked = false
         // Ease off at the falling-behind question of a goal run: the rest of the run says no target, goal or PB gap (the
@@ -1559,7 +1559,7 @@ class RecordingSession(
     fun status(): RecorderStatus = snapshot ?: statusNow()
 
     @Synchronized
-    private fun statusNow(): RecorderStatus {
+    internal fun statusNow(): RecorderStatus {
         val t = clock()
         val st = core.status(t)
         return RecorderStatus(
@@ -1596,6 +1596,8 @@ class RecordingSession(
             trail = trailProgress(),
             questDoneId = questDoneId,
             prompt = promptStatus(t),
+            goalEased = if (spec?.isGoal == true) coach.easeMode else null,
+            goalTargetMs = coach.goalTargetAtStart?.targetMs,
         )
     }
 
