@@ -54,10 +54,28 @@ void main() {
       tester,
       fake,
       prompt(
-        text: '2 k to go, 12 seconds under 24:30, shrinking. Push to bank more, or hold?',
+        text: '2 k to go, 12 seconds under 24:30, shrinking. Faster, or same pace?',
+        options: const ['Faster', 'Same pace'],
       ),
     );
     await shot(tester, 'inrun_prompt_goal_last2k_360x640', height: 640);
+  });
+
+  testWidgets('prompt: goal behind names the target, keep chasing or new', (
+    tester,
+  ) async {
+    final fake = await openRun(tester);
+    await step(tester, fake, 900);
+    await open(
+      tester,
+      fake,
+      prompt(
+        kind: 'behindTarget',
+        text: '20 seconds behind 24:30, slipping. Keep chasing or new target?',
+        options: const ['Keep chasing', 'New target'],
+      ),
+    );
+    await shot(tester, 'inrun_prompt_goal_behind_360x800');
   });
 
   testWidgets('prompt: falling behind, push or ease off', (tester) async {

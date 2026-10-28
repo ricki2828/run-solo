@@ -83,6 +83,7 @@ object JournalCodec {
                 m["k"] = "pr"; m["t"] = line.t; m["w"] = line.w
                 m["id"] = line.id; m["trig"] = line.trigger; m["km"] = line.km; m["opts"] = line.options
                 m["choice"] = line.choice; m["src"] = line.source; m["open"] = line.openedAtMs; m["at"] = line.atMs
+                line.retargetMs?.let { m["tg"] = it }
             }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.QuestDone -> { m["k"] = "qd"; m["t"] = line.t; m["w"] = line.w; m["id"] = line.questId }
@@ -175,6 +176,7 @@ object JournalCodec {
                 t, w, m.int("id"), m.string("trig"), m.int("km"),
                 m.list("opts").map { it as? String ?: throw IllegalArgumentException("pr.opts") },
                 m.string("choice"), m.string("src"), m.long("open"), m.long("at"),
+                (m["tg"] as? Number)?.toLong(),
             )
             "tm" -> JournalLine.TipsMuted(t, w)
             "qd" -> JournalLine.QuestDone(t, w, m.string("id"))

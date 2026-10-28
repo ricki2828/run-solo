@@ -40,6 +40,15 @@ class JournalCodecTest {
     }
 
     @Test
+    fun `a prompt answer that re-aimed the goal time carries it and one that did not omits it`() {
+        val re = JournalLine.PromptResolved(9, 9, 1, "behindTarget", 3, listOf("push", "ease"), "ease", "tap", 5, 8, retargetMs = 3_120_000)
+        assertEquals(re, JournalCodec.decode(JournalCodec.encode(re)))
+        val plain = re.copy(retargetMs = null)
+        assertFalse(JournalCodec.encode(plain).contains("\"tg\""))
+        assertEquals(plain, JournalCodec.decode(JournalCodec.encode(plain)))
+    }
+
+    @Test
     fun `nulls are omitted not written`() {
         val text = JournalCodec.encode(JournalLine.Sample(1, 1, 0.0, 0.0, null, 5.0, null, null))
         assertFalse(text.contains("hr"))

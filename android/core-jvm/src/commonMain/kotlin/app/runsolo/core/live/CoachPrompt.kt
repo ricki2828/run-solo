@@ -67,7 +67,12 @@ data class Prompt(
     val text: String,
     val openedAtMs: Long,
     val timeoutMs: Long = CoachPrompter.TIMEOUT_MS,
-)
+    /** Button text when it is not the choices' own labels (a goal prompt's buttons match its question); null = those. */
+    val labels: List<String>? = null,
+) {
+    /** What the screen's two buttons say. */
+    val buttonLabels: List<String> get() = labels ?: options.map { it.label }
+}
 
 /** One resolved prompt, for the run record (and the later post-run line). */
 data class PromptAnswer(
@@ -80,6 +85,8 @@ data class PromptAnswer(
     val windowStartMs: Long = prompt.openedAtMs,
     /** Closed without a word: the runner stopped the run (a long manual pause), so "No answer. Holding." would be noise. */
     val quiet: Boolean = false,
+    /** An ease off on a goal run re-aimed the goal time to this (ms); null = no re-aim. Set on restore. */
+    val retargetMs: Long? = null,
 ) {
     /** The spoken acknowledgement; null for a [quiet] close. */
     val spoken: String?
@@ -249,15 +256,22 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
             count++
             lastOpenedMs = a.prompt.openedAtMs
             if (a.prompt.kind == PromptKind.last2k) last2kDone = true
-            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = true
+            if (a.prompt.kind == PromptKind.behindTarget) behindAsked = a.retargetMs == null
             if (a.prompt.kind == PromptKind.betweenReps) repPrompts++
             effect = if (a.prompt.kind == PromptKind.betweenReps) PromptEffect.NONE else effect.after(a.choice, a.prompt.kind)
-            if (a.choice == PromptChoice.ease) easedOff = true
+            if (a.choice == PromptChoice.ease) easedOff = a.retargetMs == null
             nextId = maxOf(nextId, a.prompt.id + 1)
         }
     }
 
     val prompts: Int get() = count
+
+    /** The goal time was re-aimed (ease off on a goal run): falling behind the new time may be asked about again. */
+    fun retargeted() {
+        behindAsked = false
+        easedOff = false
+        prevBehindMs = null // the last margin was against the old clock
+    }
 
     private fun gapOk(nowMs: Long, distanceM: Double): Boolean {
         if (open != null || count >= MAX_PROMPTS) return false
@@ -284,13 +298,11 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         if (toGo != null && !last2kDone && goalTime != null) {
             val ahead = -f.behindTargetMs!!
             val where = GoalMargin.promptPhrase(ahead, prevBehind?.let { ahead + it }, goalTime)
-            // Ahead of the clock the push banks time; level or behind it gets him under the goal time.
-            val push = if (ahead >= GoalMargin.DEAD_BAND_MS) "Push to bank more" else "Push to get under it"
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $push, or hold?", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$toGo to go, $where. $LAST2K_QUESTION", nowMs, LAST2K_LABELS)
         }
         if (toGo != null && !last2kDone) {
             val lead = if (phrase != null) "$toGo to go, $phrase" else "$toGo to go."
-            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead Push or hold?", nowMs)
+            return make(PromptKind.last2k, f.km, listOf(PromptChoice.push, PromptChoice.hold), "$lead $LAST2K_QUESTION", nowMs, LAST2K_LABELS)
         }
         // The last slot of a distance goal is the last 2 km's.
         if (f.goalDistanceM != null && !last2kDone && count >= MAX_PROMPTS - 1) return null
@@ -302,7 +314,7 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         ) {
             if (f.goalTimeMs != null) {
                 val where = GoalMargin.phrase(-behind, -(behind - prevBehind), f.goalTimeMs)
-                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Push to win it back, or ease off?", nowMs)
+                return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "$where. Keep chasing or new target?", nowMs, listOf("Keep chasing", "New target"))
             }
             val s = behind / 1_000
             return make(PromptKind.behindTarget, f.km, listOf(PromptChoice.push, PromptChoice.ease), "${CueWords.gap(s)} behind the target. Push or ease off?", nowMs)
@@ -321,8 +333,8 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
         return make(PromptKind.betweenReps, rep, listOf(PromptChoice.push, PromptChoice.hold), "Rep $rep done. Push the next one or hold?", nowMs)
     }
 
-    private fun make(kind: PromptKind, km: Int, options: List<PromptChoice>, text: String, nowMs: Long) =
-        Prompt(nextId, kind, km, options, text, nowMs)
+    private fun make(kind: PromptKind, km: Int, options: List<PromptChoice>, text: String, nowMs: Long, labels: List<String>? = null) =
+        Prompt(nextId, kind, km, options, text, nowMs, labels = labels)
 
     /** [p] was decided at run time [nowMs]: it waits [OPEN_DELAY_MS] so the km cue and any moment overlay go first. */
     fun decided(p: Prompt, nowMs: Long) {
@@ -517,6 +529,10 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
     companion object {
         const val MAX_PROMPTS = 3
 
+        /** The last-2-km question: the buttons are Faster / Same pace on screen; the choice keys stay push / hold. */
+        const val LAST2K_QUESTION = "Faster, or same pace?"
+        val LAST2K_LABELS = listOf("Faster", "Same pace")
+
         /** Of those, at most this many between reps. */
         const val MAX_REP_PROMPTS = 2
         const val TIMEOUT_MS = 8_000L
@@ -575,14 +591,15 @@ class CoachPrompter(restored: List<PromptAnswer> = emptyList(), private val dist
                 PromptSource.parse(l.source) ?: PromptSource.timeout,
                 l.atMs,
                 windowStartMs = l.openedAtMs,
+                retargetMs = l.retargetMs,
             )
         }
 
         /** The journal's `pr` line for [a]. */
-        fun line(a: PromptAnswer, wallMs: Long, t: Long) = JournalLine.PromptResolved(
+        fun line(a: PromptAnswer, wallMs: Long, t: Long, retargetMs: Long? = null) = JournalLine.PromptResolved(
             t = t, w = wallMs, id = a.prompt.id, trigger = a.prompt.kind.key, km = a.prompt.km,
             options = a.prompt.options.map { it.key }, choice = a.choice.key, source = a.source.key,
-            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs,
+            openedAtMs = a.prompt.openedAtMs, atMs = a.atMs, retargetMs = retargetMs,
         )
     }
 }

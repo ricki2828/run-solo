@@ -147,6 +147,18 @@ object CueWords {
         return if (rest == 0L) mins else "$mins $rest"
     }
 
+    /**
+     * [gap] with the seconds named after minutes, for lines where a bare number would read as something else (a goal
+     * clock): "2 minutes 17 seconds", "1 minute 1 second", "1 minute". Under a minute it is [gap]. Goal compares use
+     * it; [gap] stays as the shared fixture pins it.
+     */
+    fun gapNamed(seconds: Long): String {
+        val s = abs(seconds)
+        val rest = s % 60
+        if (s < 60 || rest == 0L) return gap(s)
+        return "${gap(s - rest)} $rest ${if (rest == 1L) "second" else "seconds"}"
+    }
+
     /** The recorder's `lastRep` rule: the last work step of a session with more than one rep. */
     private fun lastRep(spec: SessionSpec, repIndex: Int): Boolean = spec.reps > 1 && repIndex == spec.reps
 

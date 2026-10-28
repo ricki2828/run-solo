@@ -128,6 +128,8 @@ sealed class JournalLine {
         val source: String,
         val openedAtMs: Long,
         val atMs: Long,
+        /** An ease off on a goal run re-aimed the goal time to this (ms); null = no re-aim. Restore keeps it. */
+        val retargetMs: Long? = null,
     ) : JournalLine()
 
     /**
