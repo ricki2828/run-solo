@@ -15,6 +15,7 @@ Mixed into `service.Service`. Rules it enforces (eng-review 13-Oct):
 """
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import logging
 import re
@@ -34,6 +35,9 @@ from .timeutil import in_quiet, iso, now_utc, parse_iso, quiet_end_utc, to_local
 
 log = logging.getLogger("companion")
 
+# why the outbox item being processed was skipped (B4); per thread, so a replay and the live worker never cross
+SKIP_WHY: contextvars.ContextVar[str | None] = contextvars.ContextVar("skip_why", default=None)
+
 CI_KINDS = ("ci", "ci_edit")
 LINE_LOOKBACK_DAYS = 3
 COACH_LINE_KINDS = ("run", "evening", "recap", "monthly")
@@ -50,6 +54,7 @@ def _sep(*parts: object) -> str:
 
 
 class CheckinMixin:
+    _ci_no_window: set = set()   # (user, day) already logged as having no room for the morning card
     s: Any
     channels: dict[str, Any]
     media: Any
@@ -322,12 +327,18 @@ class CheckinMixin:
         # quiet, but never closer to the start than TODAY_MIN_LEAD_MIN, and is dropped rather than sent after the run
         hist = [dict(r) for r in c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? ORDER BY start_utc DESC "
                                            "LIMIT 80", (u["id"],))]
-        start_m = ci.usual_start_min(hist, today.weekday(), u["zone_id"], now)
+        start_m = ci.earliest_start_min(hist, today.weekday(), u["zone_id"], now)   # B3: lead from the earliest recent start
         if start_m is not None:
             due = ci.at_local(today, max(start_m - ci.TODAY_LEAD_MIN, 0), u["zone_id"])
             if in_quiet(due, u["zone_id"], qs, qe):
                 due = quiet_end_utc(due, u["zone_id"], qe)
             latest = ci.at_local(today, max(start_m - ci.TODAY_MIN_LEAD_MIN, 0), u["zone_id"])   # C4: never after start - 5 min
+            if due > latest and now >= latest:
+                key = (u["id"], today)
+                if key not in self._ci_no_window:   # once a day, not on every planning tick
+                    self._ci_no_window.add(key)
+                    log.info("morning card not planned for %s: quiet hours leave no room before the usual start (%s)", today,
+                             f"{start_m // 60}:{start_m % 60:02d}")
             if due <= latest and due <= now and self._ci_wanted(c, u, "today", today, now):
                 n += self._ci_enqueue(c, u, "today", today, due, now, latest)
         # after an easy run that came out slower and harder than it should: ask once
@@ -364,12 +375,14 @@ class CheckinMixin:
         for_date = date.fromisoformat(d_s)
         ch = self.channels.get("telegram")
         if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
+            SKIP_WHY.set("check-ins off, not telegram, or past its deadline")
             return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
         with db.ro(self.s.db_path) as c:   # cheap gates first, so a card that will not go out never costs a weather request
             if (c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                           (uid, slot, d_s)).fetchone() or not self._ci_wanted(c, user, slot, for_date, now)
                     or self._ci_cap_taken(c, uid, now)):
+                SKIP_WHY.set(f"check-in {slot}: slot already used, no longer wanted, or question cap taken")
                 return "skipped", None
         hot = self._ci_heat(user, slot, for_date, now)   # before the write transaction: it may call the weather service
         with db.tx(self.s.db_path) as c:
@@ -733,6 +746,8 @@ class CheckinMixin:
         slot = self._ci_today_slot_for(user, card) if user["channel"] == "telegram" else None
         if slot is None:
             return ch.send_card(user["chat_ref"], out, **kw)
+        if out.media is not None and out.media.animation and out.media.has_content:
+            return self._deliver_loop_after_morning(ch, user, slot, out, **kw)
         pic = self._ci_verdict_media(user, card, slot)
         if pic is not None and pic.photo:
             out = dataclasses.replace(out, media=pic)   # the morning picture becomes its own result picture
@@ -748,6 +763,26 @@ class CheckinMixin:
             photo = has_photo
             ch.clear_keyboard(user["chat_ref"], slot["message_id"])
         self._ci_consume(user, slot, mid, photo)
+        return mid
+
+    def _deliver_loop_after_morning(self, ch: Any, user: dict, slot: dict, out: Any, **kw: Any) -> str:
+        """B2: a run loop never goes through editMessageMedia (photos only). It is sent as a new message, and the morning
+        card is edited to a one-line result with no keyboard. The loop is out before the edit, so nothing after it may
+        raise and make the whole card retry as a second loop."""
+        mid = ch.send_card(user["chat_ref"], out, **kw)
+        done = dataclasses.replace(out, headline="Result below \u2193", body="", buttons=[], links=(), media=None, short_caption=False)
+        try:
+            ch.edit_card_body(user["chat_ref"], slot["message_id"], done, bool(slot["is_photo"]))
+        except ChannelError as e:
+            log.warning("morning card result line failed (%s), clearing its buttons", e.status)
+            try:
+                ch.clear_keyboard(user["chat_ref"], slot["message_id"])
+            except ChannelError:
+                pass
+        try:
+            self._ci_consume(user, slot, mid, True)
+        except Exception as e:   # the loop is out: a bookkeeping failure must not make the item retry and send it again
+            log.error("morning slot not marked consumed after the loop was sent: %s", type(e).__name__)
         return mid
 
     # ------------------------------------------------------------------ lines that use an answer (templated, A2)
