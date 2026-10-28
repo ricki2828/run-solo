@@ -139,7 +139,9 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     if r["feel"]:
         facts.append(f"how it felt, as the runner tapped it: {r['feel']}")
     if r["pb"]:
-        facts.append(f"personal best flag: {r['pb']}")
+        eff = (f", the time of that best effort alone: {_hm(r['pb_s'])}; it was set inside a {r['distance_m'] / 1000:.1f} km run, "
+               f"so the run's own time is not the best time" if r.get("pb_s") and r["pb"] in ("5k", "10k", "half") else "")
+        facts.append(f"personal best flag: {r['pb']}{eff}")
     if r["verdict"]:
         facts.append(f"the app's verdict: {r['verdict']}")
     lines = []

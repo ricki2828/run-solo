@@ -261,9 +261,14 @@ void main() {
       ];
       final b = await fold(runs);
       expect(b.updating, isFalse);
-      expect(b.companionPb(runs.last.id), '5k');
+      expect(b.companionPb(runs.last.id)?.wire, '5k');
+      // The result screen's own chip says the same.
+      expect(
+        chips(b, runs.last).any((c) => c.pb && c.boardKey == 'be:5000'),
+        isTrue,
+      );
       // The one before it only beat the runs before it, still a pb then.
-      expect(b.companionPb(runs[10].id), '5k');
+      expect(b.companionPb(runs[10].id)?.wire, '5k');
     });
 
     test('a slower run than an earlier best is no pb', () async {
@@ -304,10 +309,14 @@ void main() {
       final five = steady(48, day(0), 330, 2000);
       final ten = steady(49, day(4), 290, 3300);
       final b = await fold([five, ten]);
-      expect(b.companionPb(ten.id), '5k');
+      final pb = b.companionPb(ten.id)!;
+      expect(pb.wire, '5k');
+      // The effort's own time, not the 3300 s run.
+      expect(pb.seconds, lessThan(1500));
+      expect(pb.seconds, closeTo(5000 * 290 / 1000, 20));
     });
 
-    test('a trail run is only compared with trail runs', () async {
+    test('a trail run never carries a pb', () async {
       final road = steady(50, day(0), 300, 2000);
       final trail = steady(
         51,
@@ -316,9 +325,15 @@ void main() {
         2000,
       ).copyWith(mode: engine.RunMode.trail);
       final b = await fold([road, trail]);
-      // Slower than the road run, but the road run does not count: and it
-      // has no earlier trail run to beat, so no pb either way.
       expect(b.companionPb(trail.id), isNull);
+      final fast = steady(
+        53,
+        day(4),
+        250,
+        2000,
+      ).copyWith(mode: engine.RunMode.trail);
+      final c = await fold([road, trail, fast]);
+      expect(c.companionPb(fast.id), isNull);
     });
 
     test('unknown run id is null', () async {

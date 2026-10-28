@@ -370,8 +370,10 @@ void main() {
       expect(j.containsKey('climb_m'), isFalse);
       expect(j.containsKey('pb'), isFalse);
       final d = (await store.load(run.id))!;
-      final k = companionSummary(d, pb: '10k')!;
+      final k = companionSummary(d, pb: '10k', pbS: 3000)!;
       expect(k['pb'], '10k');
+      expect(k['pb_s'], 3000);
+      expect(companionSummary(d, pbS: 3000)!.containsKey('pb_s'), isFalse);
     });
 
     test('a goal run stopped short is told as a free run', () async {
@@ -1569,6 +1571,36 @@ void main() {
         CoachNext.parse({'v': 1, 'accepts_load': true})!.supportsLoad,
         isTrue,
       );
+    });
+
+    test('accepts_pb_time in the reply is what turns the pb effort time on', () {
+      expect(CoachNext.parse({'v': 1})!.supportsPbTime, isFalse);
+      expect(
+        CoachNext.parse({'v': 1, 'accepts_pb_time': true})!.supportsPbTime,
+        isTrue,
+      );
+    });
+
+    test(
+      'an older server gets no pb for a stretch inside a longer run',
+      () async {
+        await enrol();
+        // The 4x4 run is far longer than 5 km; no reply said accepts_pb_time.
+        target.pbFacts = (_) async => (wire: '5k', seconds: 1450);
+        await coordinator.sendAuto(run.id);
+        final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+        expect(sent.containsKey('pb'), isFalse);
+        expect(sent.containsKey('pb_s'), isFalse);
+      },
+    );
+
+    test('a pb read that throws still sends the run', () async {
+      await enrol();
+      target.pbFacts = (_) async => throw StateError('x');
+      await coordinator.sendAuto(run.id);
+      final sent = http.bodyOf(http.to('POST', '/v1/runs').single);
+      expect(sent['run_id'], run.id);
+      expect(sent.containsKey('pb'), isFalse);
     });
 
     test('the trail block rides on the run', () async {

@@ -231,6 +231,16 @@ class PlanNextIn(BaseModel):
 CUSTOM_SESSION_RE = re.compile(r"^custom:[0-9a-f]{16}$")
 
 
+PB_EFFORT_M = {"5k": 5000, "10k": 10000, "half": 21097.5}
+
+
+def whole_run_pb(pb: str | None, pb_s: int | None, distance_m: float) -> str | None:
+    """The pb as far as the run's type goes: a best effort set inside a much longer run does not make it a race."""
+    if pb in PB_EFFORT_M and pb_s and distance_m > PB_EFFORT_M[pb] * 1.03:
+        return None
+    return pb
+
+
 class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")
@@ -252,6 +262,9 @@ class RunIn(BaseModel):
     load: float | None = Field(default=None, ge=0, le=5000)   # LoadGuard.load for this run: minutes x how hard (1-5)
     load_basis: str | None = Field(default=None, pattern=r"^(hr|pace|assumed)$")
     pb: str | None = Field(default=None, pattern=r"^(5k|10k|half|longest|fastest_km)$")
+    # The PB effort's own time. A 5k/10k/half pb can be a stretch inside a longer run, so the time of the effort travels with
+    # the flag; without it the pb is the whole run's (an older app).
+    pb_s: int | None = Field(default=None, ge=60, le=100000)
     plan_kind: str | None = Field(default=None, pattern=r"^(easy|long|quality)$")
     plan_target_m: int | None = Field(default=None, ge=0, le=300000)
     plan_weeks_to_race: int | None = Field(default=None, ge=0, le=104)
@@ -296,8 +309,8 @@ class RunIn(BaseModel):
         try:
             return handler(v)
         except ValidationError as e:
-            # The run is kept without its trail; say so, with where it failed and never the value.
-            log.warning("trail block dropped as malformed: %s", sorted({".".join(map(str, x["loc"])) + ":" + x["type"] for x in e.errors()})[:5])
+            # The run is kept without its trail; say so, with the failing top-level field and error type, never a value or a key.
+            log.warning("trail block dropped as malformed: %s", sorted({str(x["loc"][0] if x["loc"] else "") + ":" + x["type"] for x in e.errors()})[:5])
             return None
 
     @model_validator(mode="after")
@@ -313,6 +326,8 @@ class RunIn(BaseModel):
             raise ValueError("splits are longer than the run")
         if self.load is None:
             self.load_basis = None   # a basis alone says nothing
+        if self.pb not in ("5k", "10k", "half") or (self.pb_s is not None and self.pb_s > self.duration_s):
+            self.pb_s = None   # a time says nothing without a distance PB, and an effort cannot outlast its run
         if not is_goal_name(self.session_name):
             self.goal_target_s = self.goal_target_from = self.goal_retarget_s = None   # only the app's own goal run has one
         elif self.goal_target_s is None:
@@ -1283,7 +1298,7 @@ class Service(CheckinMixin, MeasureMixin):
         """(coach type, the app's own type when it differed). See facts.infer_coach_type."""
         hist = self._history(c, uid, iso(run.start_utc), limit=80)
         coach = infer_coach_type(run.type, distance_m=run.distance_m, duration_s=run.duration_s,
-                                 zone_min=run.zone_min, pb=run.pb, history=hist,
+                                 zone_min=run.zone_min, pb=whole_run_pb(run.pb, run.pb_s, run.distance_m), history=hist,
                                  reps_done=run.reps_done, work_pace=run.work_pace_s_per_km)
         app = run.type if run.type in APP_TYPES else None
         if app == "intervals" and not run.reps_done and not run.work_pace_s_per_km:
@@ -1331,7 +1346,7 @@ class Service(CheckinMixin, MeasureMixin):
                         "UPDATE runs SET real_upload=1, received_at=?, "
                         "start_utc=?, end_utc=?, utc_offset_min=?, zone_id=?, type=?, app_type=?, duration_s=?, "
                         "distance_m=?, pace_s_per_km=?, true_pace_s_per_km=?, verdict=?, scores_delta=?, zone_min=?, "
-                        "climb_m=?, locality=?, route_id=?, load_state=?, load=?, load_basis=?, pb=?, plan_kind=?, plan_target_m=?, "
+                        "climb_m=?, locality=?, route_id=?, load_state=?, load=?, load_basis=?, pb=?, pb_s=?, plan_kind=?, plan_target_m=?, "
                         "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
                         "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?), session_name=?, work_pace_s_per_km=?, reps_done=?, "
                         "rep_spread_s=?, recovery_pace_s_per_km=?, goal_reached=?, "
@@ -1341,7 +1356,7 @@ class Service(CheckinMixin, MeasureMixin):
                         (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
-                         run.route_id, run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m,
+                         run.route_id, run.load_state, run.load, run.load_basis, run.pb, run.pb_s, run.plan_kind, run.plan_target_m,
                          run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
                          run.goal_target_s, run.goal_target_s, run.goal_target_from, run.goal_target_s, run.goal_retarget_s,
                          uid, run.run_id))
@@ -1357,14 +1372,14 @@ class Service(CheckinMixin, MeasureMixin):
             c.execute(
                 "INSERT INTO runs (user_id, run_id, start_utc, end_utc, utc_offset_min, zone_id, type, app_type, "
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
-                "locality, route_id, load_state, load, load_basis, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
+                "locality, route_id, load_state, load, load_basis, pb, pb_s, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
                 "plan_next_week, plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, "
                 "recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, received_at, "
-                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
-                 run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, *goal_cols,
+                 run.load_state, run.load, run.load_basis, run.pb, run.pb_s, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, *goal_cols,
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)

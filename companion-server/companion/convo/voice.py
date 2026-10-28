@@ -116,6 +116,19 @@ SITUATIONS: dict[str, list[tuple[str, str]]] = {
         ("New high", "{time}, {pace}/km. That's a new {pb}. Write the date down."),
         ("That's a PB", "{time} over {km} km. New {pb}. Savour it."),
     ],
+    # A best effort set inside a longer run: the effort's time and distance, never the run's.
+    "pb_effort": [
+        ("New best", "{time} over {pb_dist}, inside a longer run. A new {pb}. Enjoy it."),
+        ("PB", "{time} for {pb_dist} on the way round. That is a new {pb}. It's yours."),
+        ("Personal best", "A new {pb}: {time}, set inside today's {km} km. The training is working."),
+        ("You did it", "{time} for {pb_dist}, tucked inside a longer run. New {pb}. Have a beer."),
+        ("Best yet", "Your quickest {pb_dist} yet came in the middle of this run: {time}. Fair play."),
+        ("Record", "{time} for {pb_dist}. A new {pb}, and you were not even racing. Take the win."),
+        ("Quickest yet", "{time} for {pb_dist}, inside {km} km. New {pb}. This is what the quiet weeks were for."),
+        ("PB, mate", "{time} for {pb_dist} and a new {pb}, part way through the run. Sweet as."),
+        ("New high", "A new {pb}: {time}, over a stretch of today's run. Write the date down."),
+        ("That's a PB", "{time} over {pb_dist} inside the run. New {pb}. Savour it."),
+    ],
     "pb_other": [
         ("New best", "{pb}: {km} km at {pace}/km. Enjoy it."),
         ("PB", "{pb} at {pace}/km. It's yours."),

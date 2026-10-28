@@ -593,12 +593,12 @@ def test_the_apps_climb_and_pb_fixture_validates_and_is_stored(client, fakes):
     from pathlib import Path
     body = json.loads((Path(__file__).parent / "fixtures" / "app_climb_pb_fields.json").read_text())
     m = RunIn.model_validate(body)
-    assert (m.climb_m, m.pb) == (42, "5k")  # the app sends metres with a decimal; the server stores whole metres
+    assert (m.climb_m, m.pb, m.pb_s) == (42, "5k", 1464)  # the app sends metres with a decimal; the server stores whole metres
     t = enrol(client)
     body = {**body, "start_utc": (datetime.now(U) - timedelta(hours=3)).isoformat()}
     assert client.post("/v1/runs", json=body, headers=auth(t)).status_code == 202
     c = sqlite3.connect(client.svc.s.db_path)
-    assert c.execute("SELECT climb_m, pb FROM runs").fetchone() == (42, "5k")
+    assert c.execute("SELECT climb_m, pb, pb_s FROM runs").fetchone() == (42, "5k", 1464)
 
 
 @pytest.mark.parametrize("bad", ["marathon", "5K", "1k", ""])

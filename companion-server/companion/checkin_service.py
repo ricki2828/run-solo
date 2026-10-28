@@ -881,9 +881,9 @@ class CheckinMixin:
                 "coach_line": ({"kind": line["kind"], "headline": line["headline"], "body": line["body"],
                                 "sent_at": line["sent_at"]} if line else None),
                 "quest": quest, "care_weeks": [d.isoformat() for d in care_weeks],
-                # this server stores a run's `load` and `load_basis`, and a goal run's `goal_target_s` and `goal_target_from`:
+                # this server stores a run's `load` and `load_basis`, a goal run's `goal_target_s` and `goal_target_from`, and a pb effort's `pb_s`:
                 # the app sends them only when it sees these
-                "accepts_load": True, "accepts_goal_target": True}
+                "accepts_load": True, "accepts_goal_target": True, "accepts_pb_time": True}
 
     # ------------------------------------------------------------------ export and retention (P1)
     def _ci_export(self, c, uid: str, now: datetime) -> list[dict]:

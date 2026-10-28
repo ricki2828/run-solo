@@ -74,6 +74,26 @@ TITLE = {"easy": "Easy run", "long": "Long run", "tempo": "Tempo", "interval": "
 VIDEO_VERDICT = {"faster": "faster", "holding": "holding", "slower": "slower", "noRealChange": "holding"}
 
 
+PB_EFFORT_KM = {"5k": 5.0, "10k": 10.0, "half": 21.0975}
+
+
+def _pb_effort_facts(run: Mapping[str, Any], facts: dict[str, Any]) -> bool:
+    """A best effort set inside a longer run is drawn as the effort (its distance, time and pace), not as the run: no route or
+    splits of the whole run beside a 5 km time. True when the whole run's picture no longer applies."""
+    km = PB_EFFORT_KM.get(run.get("pb"))
+    s = run.get("pb_s")
+    if not km or not s:
+        return False
+    facts["duration_s"] = s
+    if run["distance_m"] <= km * 1030:
+        return False
+    facts["distance_km"] = km
+    facts["pace_s_per_km"] = round(s / km, 1)
+    for k in ("zone_s", "climb_m", "true_pace_s_per_km"):
+        facts.pop(k, None)
+    return True
+
+
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     """Image facts for one run, from its stored row only. The run_shape row, when the caller joined it as `_shape`,
     adds `route_xy` (the unit-box outline), `splits` and, for an interval run, `reps`."""
@@ -96,10 +116,12 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["place_note"] = run["locality"]
     if run.get("verdict") in VERDICTS:
         facts["verdict"] = run["verdict"]
+    effort = False
     if run.get("pb") in PB_LABEL:
+        effort = _pb_effort_facts(run, facts)
         facts["pb"] = run["pb"]
         facts["pb_detail"] = {"label": PB_LABEL[run["pb"]]}
-    shape = run.get("_shape") or {}
+    shape = {} if effort else run.get("_shape") or {}
     if shape.get("route"):
         facts["route_xy"] = shape["route"]
     if shape.get("splits"):

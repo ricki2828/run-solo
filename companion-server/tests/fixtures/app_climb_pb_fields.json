@@ -9,5 +9,6 @@
  "pace_s_per_km": 292.9,
  "true_pace_s_per_km": 290.1,
  "climb_m": 41.6,
- "pb": "5k"
+ "pb": "5k",
+ "pb_s": 1464
 }

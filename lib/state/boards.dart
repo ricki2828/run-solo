@@ -128,42 +128,58 @@ class Boards {
   bool get isEmpty => byKey.isEmpty;
 
   /// The companion's `pb`: `half`, `10k` or `5k` (the longest that applies)
-  /// when [runId]'s best effort at that distance is strictly faster than the
-  /// same distance in every earlier run of the same kind. Null otherwise:
-  /// - never for a distance with no earlier effort (a first 10K is not a PB);
-  /// - like for like: a Trail run only against Trail runs, others only
-  ///   against non-Trail; interval sessions (a goal run apart) and Cooper
-  ///   tests do not count either way;
-  /// - never while any best efforts are still being built: an unbuilt run
-  ///   could hold a faster time, so a PB cannot be told yet.
-  String? companionPb(String runId) {
+  /// with that best effort's own time in seconds (it can be a stretch inside
+  /// a longer run). Only when all of these hold, so the coach and the result
+  /// screen's own PB chip never disagree:
+  /// - the effort is strictly faster, on the clock, than the same distance in
+  ///   every earlier run, and there is an earlier effort (a first 10K is not
+  ///   a PB);
+  /// - the chip's rule says PB too: first on that `be:*` board as it stood
+  ///   that day, on True Pace (heat and hills out);
+  /// - not a Trail run (the wire has no trail PB); interval sessions (a goal
+  ///   run apart) and Cooper tests do not count, either way;
+  /// - the effort ran without a stop of [maxPbPauseMs] or more inside it (a
+  ///   goal run bridged over a long pause is not a continuous time);
+  /// - no best efforts are still being built: an unbuilt run could hold a
+  ///   faster time, so a PB cannot be told yet.
+  ({String wire, int seconds})? companionPb(String runId) {
     final run = _inputs[runId];
-    if (run == null || !_pbKind(run) || updating) return null;
-    final trail = run.mode == engine.RunMode.trail;
+    if (run == null ||
+        !_pbKind(run) ||
+        run.mode == engine.RunMode.trail ||
+        updating) {
+      return null;
+    }
     final before = [
       for (final i in _inputs.values)
-        if (i.runId != runId &&
-            i.date.isBefore(run.date) &&
-            _pbKind(i) &&
-            (i.mode == engine.RunMode.trail) == trail)
-          i,
+        if (i.runId != runId && i.date.isBefore(run.date) && _pbKind(i)) i,
     ];
+    final then = engine.Leaderboards.fold(
+      _inputs.values.where((i) => !i.date.isAfter(run.date)),
+    );
     for (final (d, wire) in [
       (engine.BestEffortDistance.half, 'half'),
       (engine.BestEffortDistance.k10, '10k'),
       (engine.BestEffortDistance.k5, '5k'),
     ]) {
       final mine = run.efforts[d];
-      if (mine == null) continue;
+      if (mine == null || mine.pausedMs >= maxPbPauseMs) continue;
       final prior = [
         for (final i in before)
           if (i.efforts[d] case final e?) e.elapsedMs,
       ];
-      if (prior.isEmpty) continue;
-      if (prior.every((ms) => mine.elapsedMs < ms)) return wire;
+      if (prior.isEmpty || !prior.every((ms) => mine.elapsedMs < ms)) continue;
+      final board = then[d.key];
+      if (board == null || board.length < 2 || board.rankOf(runId) != 1) {
+        continue;
+      }
+      return (wire: wire, seconds: (mine.elapsedMs / 1000).round());
     }
     return null;
   }
+
+  /// A pause this long inside the effort rules the companion pb out.
+  static const int maxPbPauseMs = 15000;
 
   static bool _pbKind(engine.BoardInput i) => switch (i.mode) {
     engine.RunMode.cooper => false,
