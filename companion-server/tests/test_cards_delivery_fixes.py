@@ -155,8 +155,8 @@ def test_quiet_hours_with_no_room_before_the_start_plan_nothing_and_say_so_once(
     with db.tx(env.path) as c:                              # starts at 07:00, quiet until 07:30: no room for the card
         c.execute("UPDATE users SET quiet_start=?, quiet_end=?", (21 * 60 + 30, 7 * 60 + 30))
     with caplog.at_level(logging.INFO):
-        env.step(at(2026, 10, 15, 6, 50))
-        env.step(at(2026, 10, 15, 6, 51))
+        env.step(at(2026, 10, 15, 6, 56))
+        env.step(at(2026, 10, 15, 6, 57))
     assert env.q("SELECT * FROM checkin_slots WHERE slot='today'") == []
     lines = [r.getMessage() for r in caplog.records if "morning card not planned" in r.getMessage()]
     assert len(lines) == 1 and f"user={env.uid}" in lines[0]   # once a day, not every tick, and it names the user
