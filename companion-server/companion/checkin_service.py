@@ -322,7 +322,7 @@ class CheckinMixin:
         # quiet, but never closer to the start than TODAY_MIN_LEAD_MIN, and is dropped rather than sent after the run
         hist = [dict(r) for r in c.execute("SELECT start_utc, zone_id FROM runs WHERE user_id=? ORDER BY start_utc DESC "
                                            "LIMIT 80", (u["id"],))]
-        start_m = ci.usual_start_min(hist, today.weekday(), u["zone_id"], now)
+        start_m = ci.earliest_start_min(hist, today.weekday(), u["zone_id"], now)   # B3: lead from the earliest recent start
         if start_m is not None:
             due = ci.at_local(today, max(start_m - ci.TODAY_LEAD_MIN, 0), u["zone_id"])
             if in_quiet(due, u["zone_id"], qs, qe):
@@ -364,12 +364,14 @@ class CheckinMixin:
         for_date = date.fromisoformat(d_s)
         ch = self.channels.get("telegram")
         if ch is None or user["channel"] != "telegram" or now >= parse_iso(exp_s) or not self.s.checkins_enabled:
+            self._skip_why = "check-ins off, not telegram, or past its deadline"
             return "skipped", None   # switched off since it was queued: nothing new goes out
         uid = user["id"]
         with db.ro(self.s.db_path) as c:   # cheap gates first, so a card that will not go out never costs a weather request
             if (c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot=? AND local_date=?",
                           (uid, slot, d_s)).fetchone() or not self._ci_wanted(c, user, slot, for_date, now)
                     or self._ci_cap_taken(c, uid, now)):
+                self._skip_why = f"check-in {slot}: slot already used, no longer wanted, or question cap taken"
                 return "skipped", None
         hot = self._ci_heat(user, slot, for_date, now)   # before the write transaction: it may call the weather service
         with db.tx(self.s.db_path) as c:
@@ -733,6 +735,8 @@ class CheckinMixin:
         slot = self._ci_today_slot_for(user, card) if user["channel"] == "telegram" else None
         if slot is None:
             return ch.send_card(user["chat_ref"], out, **kw)
+        if out.media is not None and out.media.animation and out.media.has_content:
+            return self._deliver_loop_after_morning(ch, user, slot, out, **kw)
         pic = self._ci_verdict_media(user, card, slot)
         if pic is not None and pic.photo:
             out = dataclasses.replace(out, media=pic)   # the morning picture becomes its own result picture
@@ -748,6 +752,23 @@ class CheckinMixin:
             photo = has_photo
             ch.clear_keyboard(user["chat_ref"], slot["message_id"])
         self._ci_consume(user, slot, mid, photo)
+        return mid
+
+    def _deliver_loop_after_morning(self, ch: Any, user: dict, slot: dict, out: Any, **kw: Any) -> str:
+        """B2: a run loop never goes through editMessageMedia (photos only). It is sent as a new message, and the morning
+        card is edited to a one-line result with no keyboard. The loop is out before the edit, so nothing after it may
+        raise and make the whole card retry as a second loop."""
+        mid = ch.send_card(user["chat_ref"], out, **kw)
+        done = dataclasses.replace(out, body="", buttons=[], links=(), media=None, short_caption=False)
+        try:
+            ch.edit_card_body(user["chat_ref"], slot["message_id"], done, bool(slot["is_photo"]))
+        except ChannelError as e:
+            log.warning("morning card result line failed (%s), clearing its buttons", e.status)
+            try:
+                ch.clear_keyboard(user["chat_ref"], slot["message_id"])
+            except ChannelError:
+                pass
+        self._ci_consume(user, slot, mid, True)
         return mid
 
     # ------------------------------------------------------------------ lines that use an answer (templated, A2)

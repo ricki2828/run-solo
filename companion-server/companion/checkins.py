@@ -289,6 +289,24 @@ def usual_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id:
     return int(round(((median(off) + ref) % 1440) / 5.0) * 5) % 1440
 
 
+def earliest_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id: str, now: datetime) -> int | None:
+    """The earliest start among the runs `usual_start_min` looks at, in minutes after local midnight, rounded down to 5.
+    The morning card leads from this, not from the median: a runner who starts anywhere between 10:45 and 12:30 must get
+    it before the early day, not midway (B3)."""
+    def minute(h: Mapping[str, Any]) -> tuple[int, int]:
+        loc = to_local(parse_iso(h["start_utc"]), h.get("zone_id") or zone_id)
+        return loc.weekday(), loc.hour * 60 + loc.minute
+
+    recent = [minute(h) for h in history if (now - parse_iso(h["start_utc"])).days <= 56]
+    same = [m for wd, m in recent if wd == weekday]
+    pool = same if len(same) >= 2 else [minute(h)[1] for h in history[:8]]
+    if not pool:
+        return None
+    ref = pool[0]
+    off = [((m - ref + 720) % 1440) - 720 for m in pool]
+    return int(((min(off) + ref) % 1440) // 5 * 5) % 1440
+
+
 def send_deadline(slot: str, due: datetime, latest: datetime | None = None) -> datetime:
     """When a slot stops being worth sending. `latest` caps it: the morning card never goes out after start - 5 min."""
     d = due + timedelta(minutes=SEND_WINDOW_MIN[slot])

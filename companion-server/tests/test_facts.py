@@ -200,3 +200,14 @@ def test_next_line_tomorrow_is_the_runners_local_day_not_utc():
         base = run(start_utc=start, zone_id=zone, plan_next_type="quality", plan_next_m=6000)
         assert next_line(dict(base, plan_next_day=tmrw), []) == "Next: quality session 6 km tomorrow", zone
         assert next_line(dict(base, plan_next_day=later), []) == "Next: quality session 6 km on Saturday", zone
+
+
+def test_a_reached_goal_or_a_named_session_is_never_nothing_new():
+    # 27-Oct and 19-Oct: a goal run was silenced by a card sent under 18 h earlier (B1)
+    assert not build_facts(run(session_name="8K goal", goal_reached=1, distance_m=8000), [], {}, last_card_age_h=0.75).say_nothing
+    assert not build_facts(run(session_name="5K goal", goal_reached=1, distance_m=5000), [], {}, last_card_age_h=1.5).say_nothing
+    res = build_facts(run(goal_reached=1), [], {}, last_card_age_h=1)
+    assert not res.say_nothing and "goal" in ids(res)
+    assert not build_facts(run(type="interval", session_name="Norwegian 4x4", work_pace_s_per_km=290.0, reps_done=4), [], {}, last_card_age_h=1).say_nothing
+    assert build_facts(run(goal_reached=0), [], {}, last_card_age_h=1).say_nothing   # an ordinary run stays quiet
+    assert "goal" not in ids(build_facts(run(session_name="8K goal", goal_reached=1), [], {}, last_card_age_h=30))   # base already says it

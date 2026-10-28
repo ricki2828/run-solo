@@ -1579,12 +1579,19 @@ class Service(CheckinMixin, MeasureMixin):
             trail = cv_trail.load(tr["trail_json"]) if tr else None
             hist = self._history(c, uid, run["start_utc"])
             mem = self._memory_get(c, uid, now)
-            last = c.execute("SELECT MAX(sent_at) m FROM cards WHERE user_id=? AND sent_at<=?",
+            # B1: only run cards count (a morning check-in, a recap or a question is not "a card about a run"), and a still-open
+            # morning slot for this run's day is waiting for this result, so it never makes the run card a skip
+            last = c.execute("SELECT MAX(sent_at) m FROM cards WHERE user_id=? AND kind='run' AND sent_at<=?",
                              (uid, iso(now))).fetchone()["m"]  # as of now: a card sent later (real, during a replay) is not "the last"
+            day = to_local(parse_iso(run["start_utc"]), run["zone_id"]).date().isoformat()
+            if c.execute("SELECT 1 FROM checkin_slots WHERE user_id=? AND slot='today' AND local_date=? AND state='sent' "
+                         "AND message_id IS NOT NULL", (uid, day)).fetchone():
+                last = None
             feels = self._feel_counts(c, uid, now)
         age_h = (now - parse_iso(last)).total_seconds() / 3600 if last else None
         res = build_facts(run, hist, mem, last_card_age_h=age_h)
         if res.say_nothing:
+            self._skip_why = f"run card for {run_id}: {res.reason}" + (f" (last run card {age_h:.1f} h ago)" if age_h is not None else "")
             return None
         with db.ro(self.s.db_path) as c:
             full = self._full_history(c, uid, run["start_utc"])
@@ -2316,13 +2323,16 @@ class Service(CheckinMixin, MeasureMixin):
 
     def _process(self, item: dict, now: datetime) -> tuple[str, datetime | None]:
         """-> (state, retry_at). state: done | skipped | defer."""
+        self._skip_why = None   # run_outbox logs it when the item ends up skipped (B4)
         with db.ro(self.s.db_path) as c:
             r = c.execute("SELECT * FROM users WHERE id=?", (item["user_id"],)).fetchone()
         if not r:
+            self._skip_why = "no such user"
             return "skipped", None
         user = dict(r)
         if user["paused"] or user["ops_paused"]:
             self._ops_mark(item, "skipped: paused or stopped")
+            self._skip_why = "user paused or stopped"
             return "skipped", None
         if self._kill_switch():
             return "defer", now + timedelta(minutes=15)
@@ -2334,6 +2344,7 @@ class Service(CheckinMixin, MeasureMixin):
         if in_quiet(now, user["zone_id"], qs, qe):
             until = quiet_end_utc(now, user["zone_id"], qe)
             if item["kind"] == "ci" and until >= self._ci_deadline(item["ref"]):
+                self._skip_why = "check-in would land after its deadline (quiet hours)"
                 return "skipped", None   # a check-in is dropped, never sent late (C2)
             return "defer", until
         capped = self._day_cap(user, item["kind"], now)
@@ -2380,8 +2391,12 @@ class Service(CheckinMixin, MeasureMixin):
         else:
             return "skipped", None
         if card_id is None:
+            self._skip_why = self._skip_why or f"{item['kind']}: no card built"
             return "skipped", None
-        return ("done" if self._send_card(user, card_id, now) else "skipped"), None
+        if not self._send_card(user, card_id, now):
+            self._skip_why = "card built but not sent (channel rules, e.g. WhatsApp outside the 24 h window)"
+            return "skipped", None
+        return "done", None
 
     def run_outbox(self, now: datetime | None = None, limit: int = 20, only_user: str | None = None) -> int:
         """`only_user` is the coach replay driving one user on its own clock; the live worker (no `only_user`) skips
@@ -2412,6 +2427,9 @@ class Service(CheckinMixin, MeasureMixin):
             with db.tx(self.s.db_path) as c:
                 if state in ("done", "skipped"):
                     c.execute("UPDATE outbox SET state=?, last_error=NULL WHERE id=?", (state, r["id"]))
+                    if state == "skipped":
+                        log.info("outbox skipped: id=%s kind=%s ref=%s reason=%s", r["id"], r["kind"], r["ref"],
+                                 getattr(self, "_skip_why", None) or "not specified by the handler")
                 elif state == "defer":
                     c.execute("UPDATE outbox SET state='pending', attempts=attempts-1, due_at=? WHERE id=?",
                               (iso(retry), r["id"]))
