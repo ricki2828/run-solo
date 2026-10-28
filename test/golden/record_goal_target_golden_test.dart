@@ -57,7 +57,11 @@ void main() {
     ),
   );
 
-  Future<FakeRecorderGateway> open(WidgetTester tester, int h) async {
+  Future<FakeRecorderGateway> open(
+    WidgetTester tester,
+    int h, {
+    LiveContext? context,
+  }) async {
     final fake = FakeRecorderGateway(now: now)
       ..liveSecPerKm = 370
       ..scriptedHr = 150;
@@ -66,7 +70,7 @@ void main() {
       RecordMode.intervals,
       engine.SessionSpec.goalDistance(8000, '8 km').toPigeon(),
       Units.km,
-      liveContext: started,
+      liveContext: context,
     );
     await pumpApp(tester, services, pushRoute: Routes.recording);
     tester.view.physicalSize = Size(1080, h * 3.0);
@@ -133,7 +137,7 @@ void main() {
   testWidgets('after an ease off the screen names no target and no gap', (
     tester,
   ) async {
-    final fake = await open(tester, 800);
+    final fake = await open(tester, 800, context: started);
     await at(tester, fake, 375);
     expect(find.byKey(const ValueKey('goal-target-row')), findsOneWidget);
 
