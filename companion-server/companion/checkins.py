@@ -292,14 +292,15 @@ def usual_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id:
 def earliest_start_min(history: Sequence[Mapping[str, Any]], weekday: int, zone_id: str, now: datetime) -> int | None:
     """The early end of the runner's recent starts, in minutes after local midnight, rounded down to 5: the 25th
     percentile with four or more samples (one early outlier must not drag the morning card hours early), else the
-    earliest. Same pool as `usual_start_min`. The morning card leads from this, not from the median (B3)."""
+    earliest. Same pool as `usual_start_min`, except that a weekday needs four runs of its own (an early run among two or three would
+    set the whole weekday), else the last eight runs are used. The morning card leads from this, not from the median (B3)."""
     def minute(h: Mapping[str, Any]) -> tuple[int, int]:
         loc = to_local(parse_iso(h["start_utc"]), h.get("zone_id") or zone_id)
         return loc.weekday(), loc.hour * 60 + loc.minute
 
     recent = [minute(h) for h in history if (now - parse_iso(h["start_utc"])).days <= 56]
     same = [m for wd, m in recent if wd == weekday]
-    pool = same if len(same) >= 2 else [minute(h)[1] for h in history[:8]]
+    pool = same if len(same) >= 4 else [minute(h)[1] for h in history[:8]]
     if not pool:
         return None
     # unwrap the clock circle at its widest empty stretch, so a spread across midnight stays in order
