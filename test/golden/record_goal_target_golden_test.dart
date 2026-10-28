@@ -157,4 +157,44 @@ void main() {
     expect(find.byKey(const ValueKey('goal-result')), findsOneWidget);
     await golden(tester, 'record_goal_eased_cooldown_360x800');
   });
+
+  // A kill mid-run: the new process never saw Start, so native's status is
+  // all it has (the target Start carried, and whether he chose ease off).
+  Future<void> restored(WidgetTester tester, {required bool eased}) async {
+    final fake = FakeRecorderGateway(now: now)
+      ..liveSecPerKm = 370
+      ..scriptedHr = 150
+      ..goalTargetMs = 2477000
+      ..goalEased = eased;
+    final services = fakeServices(recorder: fake, live: history());
+    await fake.start(
+      RecordMode.intervals,
+      engine.SessionSpec.goalDistance(8000, '8 km').toPigeon(),
+      Units.km,
+    );
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 800 * 3.0);
+    await pumpTimes(tester, 4);
+    for (var i = 0; i < 375; i++) {
+      fake.advance(const Duration(seconds: 1));
+    }
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 8));
+    await pumpTimes(tester, 4);
+    await settleAnimations(tester);
+  }
+
+  testWidgets('a restored eased goal run names no target', (tester) async {
+    await restored(tester, eased: true);
+    expect(find.byKey(const ValueKey('goal-target-row')), findsNothing);
+    expect(find.text('TARGET'), findsNothing);
+    expect(find.byKey(const ValueKey('event-finish')), findsOneWidget);
+  });
+
+  testWidgets('a restored goal run that was not eased still names it', (
+    tester,
+  ) async {
+    await restored(tester, eased: false);
+    expect(find.byKey(const ValueKey('goal-target-row')), findsOneWidget);
+  });
 }

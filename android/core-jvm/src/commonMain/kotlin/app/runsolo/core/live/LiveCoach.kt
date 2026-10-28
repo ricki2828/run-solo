@@ -421,11 +421,14 @@ class LiveCoach(
      * other run. Gates the goal-time wording: the prompts ([KmFacts.goalTimeMs]) and the voice status ([VoiceCoach.GoalProgress]).
      */
     val goalTarget: LiveTarget?
+        get() = if (easeMode) null else goalTargetAtStart
+
+    /** The goal's target as Start's context carried it, kept after an ease off (the status and the upload still name it). */
+    val goalTargetAtStart: LiveTarget?
         get() {
-            val s = spec?.takeIf { it.isGoal && !easeMode } ?: return null
+            val s = spec?.takeIf { it.isGoal } ?: return null
             val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
-            val base = context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 } ?: return null
-            return base
+            return context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 }
         }
 
     /**

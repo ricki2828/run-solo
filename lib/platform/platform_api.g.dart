@@ -1598,6 +1598,8 @@ class RecorderStatus {
     this.route,
     this.trail,
     this.questDoneId,
+    this.goalEased,
+    this.goalTargetMs,
   });
 
   RecorderState state;
@@ -1700,6 +1702,15 @@ class RecorderStatus {
   /// restore keeps it). The screen shows its 4 s toast once per id.
   String? questDoneId;
 
+  /// A goal run: the runner chose ease off (the coach's ease mode, rebuilt
+  /// from the journal after a kill). Null on every other run.
+  bool? goalEased;
+
+  /// A goal run: the target time (ms) Start's context carried, kept in the
+  /// run's journal, so a restored run still has what it raced. Null when
+  /// the run has none or is not a goal run.
+  int? goalTargetMs;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1735,6 +1746,8 @@ class RecorderStatus {
       route,
       trail,
       questDoneId,
+      goalEased,
+      goalTargetMs,
     ];
   }
 
@@ -1777,6 +1790,8 @@ class RecorderStatus {
       route: result[30] as RouteProgress?,
       trail: result[31] as TrailProgress?,
       questDoneId: result[32] as String?,
+      goalEased: result[33] as bool?,
+      goalTargetMs: result[34] as int?,
     );
   }
 
@@ -1789,7 +1804,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId) && _deepEquals(goalEased, other.goalEased) && _deepEquals(goalTargetMs, other.goalTargetMs);
   }
 
   @override

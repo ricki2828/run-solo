@@ -1573,6 +1573,13 @@ struct RecorderStatus: Hashable {
   /// The id of the quest the run completed live (the beat fired, journaled so a
   /// restore keeps it). The screen shows its 4 s toast once per id.
   var questDoneId: String? = nil
+  /// A goal run: the runner chose ease off (the coach's ease mode, rebuilt
+  /// from the journal after a kill). Null on every other run.
+  var goalEased: Bool? = nil
+  /// A goal run: the target time (ms) Start's context carried, kept in the
+  /// run's journal, so a restored run still has what it raced. Null when
+  /// the run has none or is not a goal run.
+  var goalTargetMs: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1610,6 +1617,8 @@ struct RecorderStatus: Hashable {
     let route: RouteProgress? = nilOrValue(pigeonVar_list[30])
     let trail: TrailProgress? = nilOrValue(pigeonVar_list[31])
     let questDoneId: String? = nilOrValue(pigeonVar_list[32])
+    let goalEased: Bool? = nilOrValue(pigeonVar_list[33])
+    let goalTargetMs: Int64? = nilOrValue(pigeonVar_list[34])
 
     return RecorderStatus(
       state: state,
@@ -1644,7 +1653,9 @@ struct RecorderStatus: Hashable {
       heightVsStartM: heightVsStartM,
       route: route,
       trail: trail,
-      questDoneId: questDoneId
+      questDoneId: questDoneId,
+      goalEased: goalEased,
+      goalTargetMs: goalTargetMs
     )
   }
   func toList() -> [Any?] {
@@ -1682,13 +1693,15 @@ struct RecorderStatus: Hashable {
       route,
       trail,
       questDoneId,
+      goalEased,
+      goalTargetMs,
     ]
   }
   static func == (lhs: RecorderStatus, rhs: RecorderStatus) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId) && deepEqualsPlatformApi(lhs.goalEased, rhs.goalEased) && deepEqualsPlatformApi(lhs.goalTargetMs, rhs.goalTargetMs)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1726,6 +1739,8 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: route, hasher: &hasher)
     deepHashPlatformApi(value: trail, hasher: &hasher)
     deepHashPlatformApi(value: questDoneId, hasher: &hasher)
+    deepHashPlatformApi(value: goalEased, hasher: &hasher)
+    deepHashPlatformApi(value: goalTargetMs, hasher: &hasher)
   }
 }
 

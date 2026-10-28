@@ -162,6 +162,11 @@ class FakeRecorderGateway implements RecorderGateway {
 
   /// The quest the fake run "completed live": status and ticks carry it.
   String? questDoneId;
+
+  /// Native's view of a goal run, for a restore after a kill: whether the
+  /// runner chose ease off, and the target (ms) Start's context carried.
+  bool? goalEased;
+  int? goalTargetMs;
   double _routeLengthM = 0;
   double? _routeClimbM;
   bool _following = false;
@@ -602,6 +607,8 @@ class FakeRecorderGateway implements RecorderGateway {
     route: _state == RecorderState.idle ? null : _route,
     trail: _state == RecorderState.idle ? null : trailProgress,
     questDoneId: _state == RecorderState.idle ? null : questDoneId,
+    goalEased: _state == RecorderState.idle ? null : goalEased,
+    goalTargetMs: _state == RecorderState.idle ? null : goalTargetMs,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
