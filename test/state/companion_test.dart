@@ -1573,13 +1573,16 @@ void main() {
       );
     });
 
-    test('accepts_pb_time in the reply is what turns the pb effort time on', () {
-      expect(CoachNext.parse({'v': 1})!.supportsPbTime, isFalse);
-      expect(
-        CoachNext.parse({'v': 1, 'accepts_pb_time': true})!.supportsPbTime,
-        isTrue,
-      );
-    });
+    test(
+      'accepts_pb_time in the reply is what turns the pb effort time on',
+      () {
+        expect(CoachNext.parse({'v': 1})!.supportsPbTime, isFalse);
+        expect(
+          CoachNext.parse({'v': 1, 'accepts_pb_time': true})!.supportsPbTime,
+          isTrue,
+        );
+      },
+    );
 
     test(
       'an older server gets no pb for a stretch inside a longer run',
