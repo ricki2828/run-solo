@@ -236,12 +236,12 @@ class RunLoopRenderer(Loop):
             if d > 0:
                 h = max(room * d / peak, 8) * p
                 if i == today:
-                    cv.rect(x - 3, base - h - 3, x + bw + 3, base, rgb(brand.BONE))
-                    cv.rect(x, base - h, x + bw, base, rgb(col))
+                    cv.rect(x - 3, base - h - 3, x + bw + 3, base, fade(g, brand.BONE, a))
+                    cv.rect(x, base - h, x + bw, base, fade(g, col, a))
                 else:
-                    cv.rect(x, base - h, x + bw, base, rgb("#5A616A"))
+                    cv.rect(x, base - h, x + bw, base, fade(g, "#5A616A", a))
             else:
-                cv.rect(x, base - 6, x + bw, base, rgb(HAIR_D))
+                cv.rect(x, base - 6, x + bw, base, fade(g, HAIR_D, a))
             cv.text((x + bw / 2, base + 40 + lift), "MTWTFSS"[i], G(24, 800 if i == today else 600),
                     fade(g, brand.BONE if i == today else QUIET_D, a), anchor="ms")
 

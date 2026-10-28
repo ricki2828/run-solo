@@ -40,14 +40,36 @@ def test_the_week_so_far_counts_up_to_this_run_only():
     assert w["runs"] == 3 and w["km"] == 23.0
 
 
-def test_the_usual_week_is_the_mean_of_the_earlier_weeks_back_to_the_first_run():
-    # history starts 22 Sep (two weeks before Monday 5 Oct is Mon 21 Sep): weeks back 0 and 1 only
-    assert week_track(THIS, HIST)["usual_km"] == 15.0   # (20 + 10) / 2
+OLD = "2026-01-05T00:00:00+00:00"   # a first stored run long before the history window
+
+
+def test_the_usual_week_skips_the_partial_week_of_the_first_run():
+    # first run 22 Sep (Wed 23 Sep local): that week is partial, so only the whole week 28 Sep-4 Oct counts
+    assert week_track(THIS, HIST)["usual_km"] == 20.0
 
 
 def test_a_quiet_week_inside_the_span_counts_as_zero():
-    hist = [THIS, row("2026-09-30T19:00:00+00:00", 20), row("2026-09-10T19:00:00+00:00", 10)]   # first run 4 weeks back
-    assert week_track(THIS, hist)["usual_km"] == 7.5   # (20 + 0 + 0 + 10) / 4
+    hist = [THIS, row("2026-09-30T19:00:00+00:00", 20), row("2026-09-10T19:00:00+00:00", 10)]   # first run Fri 11 Sep local
+    assert week_track(THIS, hist)["usual_km"] == 6.7   # whole weeks 14 Sep, 21 Sep, 28 Sep: (0 + 0 + 20) / 3
+
+
+def test_a_run_on_last_mondays_date_is_last_week_and_one_on_monday_minus_28_counts():
+    mon_last = row("2026-09-27T19:00:00+00:00", 12)    # Mon 28 Sep 08:00 local
+    assert week_track({**THIS, "_first_utc": OLD}, [THIS, mon_last])["usual_km"] == 3.0   # 12 over 4 weeks
+    mon_4 = row("2026-09-06T20:00:00+00:00", 10)       # Mon 7 Sep 08:00 local: the 4th week back
+    assert week_track({**THIS, "_first_utc": OLD}, [THIS, mon_4])["usual_km"] == 2.5
+    mon_5 = row("2026-08-30T20:00:00+00:00", 10)       # Mon 31 Aug: the 5th week back, outside the span
+    assert "usual_km" not in week_track({**THIS, "_first_utc": OLD}, [THIS, mon_5])
+
+
+def test_a_new_runner_with_no_whole_earlier_week_has_no_usual():
+    first_week = row("2026-09-30T19:00:00+00:00", 12)   # their first run, last week: a partial week
+    assert "usual_km" not in week_track(THIS, [THIS, first_week])
+
+
+def test_a_comeback_after_a_long_break_has_no_usual_not_zero():
+    # the history window holds nothing earlier, but the runner's first run is months old
+    assert "usual_km" not in week_track({**THIS, "_first_utc": OLD}, [THIS, row("2026-10-04T22:00:00+00:00", 5)])
 
 
 def test_the_week_boundary_is_the_runners_local_monday():
@@ -65,11 +87,11 @@ def test_the_week_boundary_is_the_runners_local_monday():
 def test_the_first_run_of_the_week_has_one_bar():
     w = week_track(THIS, [THIS, row("2026-09-30T19:00:00+00:00", 12)])
     assert w["runs"] == 1 and w["km"] == 10.0 and w["days"][4] == 10.0 and sum(w["days"]) == 10.0
-    assert w["usual_km"] == 12.0
+    assert "usual_km" not in w   # a lone earlier week is the first run's own, partial one
 
 
 def test_no_earlier_weeks_means_no_usual_week():
-    w = week_track(THIS, [THIS, row("2026-10-04T22:00:00+00:00", 5)])
+    w = week_track(THIS, [THIS, row("2026-10-04T22:00:00+00:00", 5)])   # only this week's runs
     assert "usual_km" not in w and w["runs"] == 2
 
 
@@ -150,3 +172,27 @@ def test_a_loop_without_the_week_is_laid_out_as_before():
     assert r.hero_y == loop.HERO_Y and r.stats_y == 1238 and r.s.week is None
     r = loop.RunLoopRenderer(loop.run_loop_from_facts(F.week_first_run()))
     assert r.hero_y == loop.WEEK_HERO_Y and r.s.week["km"] == 6.2
+
+
+def test_the_share_poster_is_drawn_without_the_week():
+    seen = []
+    still = lambda f, m: seen.append(f) or b"x"   # noqa: E731
+    r = MediaRenderer({"share": still}, {})
+    r._share_picture({**F.week_big(), "route_xy": None})
+    assert "week_track" not in seen[0]
+
+
+def test_an_older_worker_that_refuses_the_week_gets_the_card_without_it():
+    from companion.render_client import RenderError
+    seen = []
+
+    def card(facts, memory):
+        seen.append(dict(facts))
+        if "week_track" in facts:
+            raise RenderError("bad_request")
+        return b"\x89PNG" + b"0" * 64
+    r = MediaRenderer({k: card for k in ("light", "flood", "pb")}, {})
+    run = {**THIS, "user_id": "u", "app_type": "easy", "pace_s_per_km": 400, "run_id": "r1", "verdict": "holding", "pb": None,
+           "_history": HIST}
+    m = r.render({"card": "light", "video": False}, {"run_id": "r1", "headline": "x"}, [run], loop=False)
+    assert m is not None and m.photo and "week_track" in seen[0] and "week_track" not in seen[-1] and len(seen) == 2

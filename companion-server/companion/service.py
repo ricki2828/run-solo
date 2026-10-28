@@ -2272,6 +2272,8 @@ class Service(CheckinMixin, MeasureMixin):
                     r["_history"] = [dict(h) for h in c.execute(
                         "SELECT start_utc, zone_id, distance_m FROM runs WHERE user_id=? AND start_utc>=? AND start_utc<=?",
                         (user["id"], iso(end - timedelta(days=36)), iso(end)))]
+                    first = c.execute("SELECT MIN(start_utc) FROM runs WHERE user_id=?", (user["id"],)).fetchone()
+                    r["_first_utc"] = first[0] if first and first[0] else None
                 for r in runs:  # the shape rides beside the row, for the renderer only (never into a prompt)
                     sh = c.execute("SELECT route_json, splits_json, reps_json, trail_json FROM run_shape WHERE user_id=? AND run_id=?",
                                    (user["id"], r["run_id"])).fetchone()
