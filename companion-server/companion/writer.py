@@ -231,7 +231,7 @@ class Writer:
         with db.ro(self.s.db_path) as c:   # the runner's cards AND chat, briefings and proactive: one ceiling
             from .coach import budget
             runner_spend = budget.user_month_spend(c, user_id, now_utc())
-        if ceiling > 0 and runner_spend >= ceiling and user_id not in self.s.coach_memory_override:   # operators: shared ceiling only
+        if ceiling > 0 and runner_spend >= ceiling and not self.s.is_operator(user_id):   # operators: shared ceiling only
             now = now_utc()
             t = tag(u["tester_no"] if u else None)
             with db.tx(self.s.db_path) as c:
