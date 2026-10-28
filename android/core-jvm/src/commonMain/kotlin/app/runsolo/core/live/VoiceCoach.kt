@@ -165,6 +165,7 @@ class VoiceCoach(private val config: Config) {
     private var ease = false
     private var easeAnchor: Double? = null
     private var easeNextEvalM = 0.0
+    private var easePending: EaseChange? = null
     private val histM = ArrayList<Double>()
     private val histMs = ArrayList<Long>()
 
@@ -211,12 +212,24 @@ class VoiceCoach(private val config: Config) {
         val m0 = histM[i - 1]
         val m1 = histM[i]
         val t0 = histMs[i - 1] + ((fromM - m0) / (m1 - m0) * (histMs[i] - histMs[i - 1]))
+        // A GPS jump inside the window is not a pace: no pace until it has slid out ([ChaseCompare.plausible], as for the chase).
+        for (k in i until n) if (isJump(k)) return null
         return (histMs[n - 1] - t0) / 1_000.0 / (EASE_WINDOW_M / 1_000.0)
+    }
+
+    /** True when the history step ending at [k] covers a stretch too far, too fast to be running ([MIN_JUMP_M] and up). */
+    private fun isJump(k: Int): Boolean {
+        val dM = histM[k] - histM[k - 1]
+        if (dM < MIN_JUMP_M) return false
+        val dMs = histMs[k] - histMs[k - 1]
+        return !ChaseCompare.plausible(1, (dMs * 1_000.0 / dM).toLong())
     }
 
     /** The ease mode's only status line: a clear pace change over the last km. Descriptive, never an order or a target. */
     private fun easeStatus(i: Input, quiet: Boolean): Line? {
         val pos = i.position ?: return null
+        // A change found at an earlier tick waits for a quiet moment and is said with the figure it had when it was found.
+        easePending?.let { return sayEaseChange(it, pos, quiet) }
         val cur = paceOverWindow() ?: return null
         val anchor = easeAnchor
         if (anchor == null) {
@@ -229,13 +242,23 @@ class VoiceCoach(private val config: Config) {
             easeNextEvalM = pos.distanceM + EASE_WINDOW_M
             return null
         }
-        // A clear change: said at the first quiet moment (the km stays judged until then).
-        if (!quiet) return null
-        val secs = (abs(delta) / 5).roundToLong() * 5
-        easeAnchor = cur
-        easeNextEvalM = pos.distanceM + EASE_WINDOW_M
-        return Line(Kind.status, paceChangeLine(slower = delta > 0, secs = secs))
+        // A clear change: the figure is fixed now, said at the first quiet moment (the km stays judged until then).
+        val found = EaseChange(delta, cur)
+        easePending = found
+        return sayEaseChange(found, pos, quiet)
     }
+
+    private fun sayEaseChange(c: EaseChange, pos: Position, quiet: Boolean): Line? {
+        if (!quiet) return null
+        val secs = (abs(c.delta) / 5).roundToLong() * 5
+        easePending = null
+        easeAnchor = c.pace
+        easeNextEvalM = pos.distanceM + EASE_WINDOW_M
+        return Line(Kind.status, paceChangeLine(slower = c.delta > 0, secs = secs))
+    }
+
+    /** A clear pace change found at an evaluation: [delta] s/km against the reference, [pace] the km pace it moves the reference to. */
+    private class EaseChange(val delta: Double, val pace: Double)
 
     fun tick(i: Input): Line? {
         if (!config.full) return null
@@ -528,6 +551,9 @@ class VoiceCoach(private val config: Config) {
 
         /** A pace change is clear at this many s/km off the reference (a km wobbles by 5-10 on its own). */
         const val EASE_CHANGE_SEC = 15.0
+
+        /** A history step this long or longer is checked for a GPS jump (shorter ones are ordinary 1 Hz noise). */
+        const val MIN_JUMP_M = 50.0
 
         /** The ease mode's history keeps a point every this many metres. */
         const val HISTORY_STEP_M = 10.0

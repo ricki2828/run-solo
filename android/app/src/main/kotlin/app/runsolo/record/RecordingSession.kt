@@ -1359,7 +1359,7 @@ class RecordingSession(
         RecorderEventBus.emit(
             PromptResolvedEvent(
                 id = a.prompt.id.toLong(), choice = a.choice.key, source = a.source.key,
-                paceFactor = applied?.paceFactor ?: 1.0, oneRep = applied?.oneRep ?: false,
+                paceFactor = applied?.paceFactor ?: 1.0, oneRep = applied?.oneRep ?: false, eased = easeGoal,
             ),
         )
         Log.i(TAG, "prompt ${a.prompt.kind.key}#${a.prompt.id} -> ${a.choice.key} (${a.source.key}) x${applied?.paceFactor}")

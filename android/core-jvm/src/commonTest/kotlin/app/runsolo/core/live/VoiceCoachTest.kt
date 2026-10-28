@@ -489,6 +489,31 @@ class VoiceCoachTest {
     }
 
     @Test
+    fun `ease mode - a GPS jump is not a pace change`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        r.enter()
+        r.run(601, 800) { 300.0 }
+        r.d += 800.0 // 800 m in one second: the GPS moved, not the runner
+        r.run(801, 3_000) { 300.0 }
+        assertEquals(emptyList(), r.said)
+    }
+
+    @Test
+    fun `ease mode - a change that waited for a quiet moment is said with the figure it had when found`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        r.enter()
+        r.run(601, 1_150, busyUntil = { Long.MAX_VALUE }) { 320.0 }
+        r.run(1_151, 1_500, busyUntil = { Long.MAX_VALUE }) { 340.0 }
+        assertEquals(emptyList(), r.said)
+        r.run(1_501, 1_502) { 340.0 }
+        assertEquals(listOf("Slowed by about 20 seconds a km."), r.said.map { it.second }, "${r.said}")
+    }
+
+    @Test
     fun `ease mode - the zone line still speaks and no line of the mode names a target or a gap`() {
         val c = easeCoach()
         val r = EaseRun(c)

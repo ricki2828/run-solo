@@ -1,0 +1,227 @@
+{
+ "id": "proactive_run_goal_eased",
+ "group": "debrief",
+ "message": "(proactive run debrief)",
+ "fixture_patch": {
+  "today": "2026-10-27 (Tuesday)",
+  "get_recent_runs": [
+   {
+    "run_id": "r27",
+    "date": "2026-10-27",
+    "type": "easy",
+    "session_name": "8.0 km goal",
+    "distance_m": 8008,
+    "duration_s": 2990,
+    "pace_s_per_km": 373.4,
+    "zone_min": {
+     "z1": 8,
+     "z2": 21,
+     "z3": 21
+    },
+    "feel": "right",
+    "weekday": "Tue",
+    "goal_reached": 1,
+    "goal_target": "40:03",
+    "goal_target_from": "5K on 26 Oct",
+    "goal_eased": true
+   },
+   {
+    "run_id": "r26",
+    "date": "2026-10-26",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5012,
+    "duration_s": 1453,
+    "pace_s_per_km": 289.9,
+    "zone_min": {
+     "z1": 1,
+     "z2": 4,
+     "z3": 9,
+     "z4": 10.5
+    },
+    "feel": "hard",
+    "weekday": "Mon",
+    "goal_reached": 1,
+    "true_pace_s_per_km": 273.6
+   },
+   {
+    "run_id": "r22",
+    "date": "2026-10-22",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5011,
+    "duration_s": 1528,
+    "pace_s_per_km": 304.9,
+    "zone_min": {
+     "z1": 4,
+     "z2": 3,
+     "z3": 4,
+     "z4": 14.5
+    },
+    "feel": "right",
+    "weekday": "Thu",
+    "goal_reached": 1
+   },
+   {
+    "run_id": "r21",
+    "date": "2026-10-21",
+    "type": "tempo",
+    "session_name": "8.0 km goal",
+    "distance_m": 6602,
+    "duration_s": 2322,
+    "pace_s_per_km": 351.7,
+    "zone_min": {
+     "z1": 5,
+     "z2": 11,
+     "z3": 15,
+     "z4": 8
+    },
+    "feel": "right",
+    "weekday": "Wed",
+    "goal_reached": 0
+   },
+   {
+    "run_id": "r20",
+    "date": "2026-10-20",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5015,
+    "duration_s": 1618,
+    "pace_s_per_km": 322.6,
+    "zone_min": {
+     "z1": 4,
+     "z2": 4,
+     "z3": 11,
+     "z4": 8
+    },
+    "feel": "hard",
+    "weekday": "Tue",
+    "goal_reached": 1
+   }
+  ],
+  "get_plan": {
+   "goal": "Auckland Half 2026-12-06, target 1:55:00",
+   "week": 6,
+   "of": 11,
+   "this_week": [
+    {
+     "day": "2026-10-28",
+     "type": "quality",
+     "name": "Tempo",
+     "minutes": 45,
+     "detail": "3 × 10 min tempo / 2 min jog",
+     "weekday": "Wed"
+    },
+    {
+     "day": "2026-10-30",
+     "type": "easy",
+     "name": "Easy run + strides",
+     "minutes": 30,
+     "weekday": "Fri"
+    },
+    {
+     "day": "2026-11-01",
+     "type": "long",
+     "name": "Long run",
+     "distance_m": 15000,
+     "weekday": "Sun"
+    }
+   ]
+  }
+ },
+ "proactive": {
+  "trigger": "run",
+  "zone": "Asia/Singapore",
+  "run": {
+   "start_utc": "2026-10-27T02:45:34Z",
+   "type": "easy",
+   "session_name": "8.0 km goal",
+   "distance_m": 8008,
+   "duration_s": 2990,
+   "pace_s_per_km": 373.4,
+   "true_pace_s_per_km": null,
+   "zone_min": "{\"z1\": 8, \"z2\": 21, \"z3\": 21}",
+   "feel": "right",
+   "pb": null,
+   "verdict": null,
+   "goal_reached": 1,
+   "plan_next_day": "2026-10-28",
+   "plan_next_session_name": "Tempo",
+   "plan_next_type": "quality",
+   "goal_target_s": 2403,
+   "goal_target_from": "5K on 26 Oct",
+   "goal_eased": 1
+  },
+  "prior": [
+   {
+    "start_utc": "2026-10-26T04:37:37Z",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5012,
+    "duration_s": 1453,
+    "pace_s_per_km": 289.9,
+    "true_pace_s_per_km": 273.6,
+    "zone_min": "{\"z1\": 1, \"z2\": 4, \"z3\": 9, \"z4\": 10.5}",
+    "feel": "hard",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": 1,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-22T04:55:58Z",
+    "type": "tempo",
+    "session_name": "5K goal",
+    "distance_m": 5011,
+    "duration_s": 1528,
+    "pace_s_per_km": 304.9,
+    "true_pace_s_per_km": null,
+    "zone_min": "{\"z1\": 4, \"z2\": 3, \"z3\": 4, \"z4\": 14.5}",
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": 1,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   },
+   {
+    "start_utc": "2026-10-21T03:37:57Z",
+    "type": "tempo",
+    "session_name": "8.0 km goal",
+    "distance_m": 6602,
+    "duration_s": 2322,
+    "pace_s_per_km": 351.7,
+    "true_pace_s_per_km": null,
+    "zone_min": "{\"z1\": 5, \"z2\": 11, \"z3\": 15, \"z4\": 8}",
+    "feel": "right",
+    "pb": null,
+    "verdict": null,
+    "goal_reached": 0,
+    "plan_next_day": null,
+    "plan_next_session_name": null,
+    "plan_next_type": null
+   }
+  ]
+ },
+ "must": [
+  "names it as the easy/steady 8 km (mostly zone 2 and 3), the goal distance covered",
+  "says the finish plainly (49:50) and treats easing off as a sound call, not a miss",
+  "does not compare the finish with any target time: no over, behind, short or missed, no gap in minutes",
+  "if it mentions 40:03 at all, only as the time they let go when they eased off",
+  "next: Wednesday's tempo from the plan, one line"
+ ],
+ "must_not": [
+  "calls the finish over, behind, short of or off 40:03, or states a gap to it (9:47 over is the abandoned target)",
+  "a new or re-aimed target time (e.g. 50:00) presented as what they were judged against",
+  "a pace or time not in the data",
+  "shaming or telling him to push harder next time",
+  "narrating its own data limits (e.g. 'the next session I can see', 'I can only see')"
+ ],
+ "allowed_target_times": [
+  "1:55",
+  "40:03"
+ ]
+}

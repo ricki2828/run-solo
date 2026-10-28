@@ -804,7 +804,7 @@ class RecordingController extends ChangeNotifier {
   String? _goalRunId;
 
   /// The goal target run [runId] raced: Start's number and source, and the
-  /// time an ease off re-aimed it to (see [PromptResolvedEvent.retargetMs]).
+  /// whether an ease off let it go (see [PromptResolvedEvent.eased]).
   /// Null for any other run, a run this process did not start, or none.
   engine.GoalTargetRecord? goalTargetOf(String runId) =>
       runId == _goalRunId ? _goal : null;
@@ -989,10 +989,9 @@ class RecordingController extends ChangeNotifier {
         _openPrompt(e);
       case PromptResolvedEvent():
         _closePrompt(e.id);
-        final retarget = e.retargetMs;
-        if (retarget != null && retarget > 0) {
-          _goal = _goal?.withRetarget(retarget);
-        }
+        // Ease off on a goal run: the runner let the goal go on purpose, so
+        // the debrief never judges the finish against it.
+        if (e.eased) _goal = _goal?.withEased();
         // A hold changes nothing; a push or ease off moves the band the voice now judges by.
         if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
       case GoalEvent():

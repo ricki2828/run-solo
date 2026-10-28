@@ -527,37 +527,28 @@ void main() {
       final id = r.runId!;
       var kept = ctl.goalTargetOf(id)!;
       expect(
-        (kept.targetMs, kept.source, kept.retargetMs),
-        (2402600, '5K on 26 Oct', null),
+        (kept.targetMs, kept.source, kept.eased),
+        (2402600, '5K on 26 Oct', false),
       );
-      // A push or a hold carries no re-aim: nothing moves.
+      // A push or a hold lets nothing go.
       fake.emitPromptResolved(
         PromptResolvedEvent(id: 1, choice: 'push', source: 'tap'),
       );
       await settle();
-      expect(ctl.goalTargetOf(id)!.retargetMs, isNull);
-      // An ease off re-aimed the run to 50 minutes; a second one moves it again.
+      expect(ctl.goalTargetOf(id)!.eased, isFalse);
+      // An ease off on a goal run: the runner let the goal go on purpose.
       fake.emitPromptResolved(
-        PromptResolvedEvent(
-          id: 2,
-          choice: 'ease',
-          source: 'tap',
-          retargetMs: 3000000,
-        ),
+        PromptResolvedEvent(id: 2, choice: 'ease', source: 'tap', eased: true),
       );
       await settle();
       kept = ctl.goalTargetOf(id)!;
-      expect((kept.targetMs, kept.retargetMs), (2402600, 3000000));
+      expect((kept.targetMs, kept.eased), (2402600, true));
+      // A later answer without it never clears it.
       fake.emitPromptResolved(
-        PromptResolvedEvent(
-          id: 3,
-          choice: 'ease',
-          source: 'tap',
-          retargetMs: 3180000,
-        ),
+        PromptResolvedEvent(id: 3, choice: 'hold', source: 'timeout'),
       );
       await settle();
-      expect(ctl.goalTargetOf(id)!.retargetMs, 3180000);
+      expect(ctl.goalTargetOf(id)!.eased, isTrue);
       expect(ctl.goalTargetOf('another-run'), isNull);
     });
 

@@ -4,11 +4,12 @@ import 'package:test/test.dart';
 void main() {
   const id = '11111111-2222-4333-8444-555555555555';
 
-  test('a goal target round-trips through the sidecar, re-aim included', () {
+  test('a goal target round-trips through the sidecar, eased and old re-aim included', () {
     const g = GoalTargetRecord(
       targetMs: 2402600,
       source: '5K on 26 Oct',
       retargetMs: 3000000,
+      eased: true,
     );
     final s = const RunSidecar(runId: id).copyWith(goalTarget: g);
     expect(s.isEmpty, isFalse);
@@ -37,5 +38,16 @@ void main() {
     expect(g.withRetarget(3000000).retargetMs, 3000000);
     expect(g.withRetarget(3000000).withRetarget(null).retargetMs, 3000000);
     expect(g.withRetarget(3000000).withRetarget(3180000).retargetMs, 3180000);
+  });
+
+  test('eased writes only when set, and an old sidecar reads as not eased', () {
+    const plain = GoalTargetRecord(targetMs: 2400000);
+    final text = RunSidecarCodec.encode(
+      const RunSidecar(runId: id).copyWith(goalTarget: plain),
+    );
+    expect(text.contains('eased'), isFalse);
+    expect(RunSidecarCodec.decode(text).goalTarget!.eased, isFalse);
+    expect(plain.withEased().eased, isTrue);
+    expect(plain.withEased().withEased(), plain.withEased());
   });
 }

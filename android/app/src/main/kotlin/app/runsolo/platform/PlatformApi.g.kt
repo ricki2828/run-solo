@@ -2880,10 +2880,11 @@ data class PromptResolvedEvent (
   /** The effect lasts one rep only (a between-reps answer). */
   val oneRep: Boolean,
   /**
-   * A goal run's ease off re-aimed the goal time: the new target, ms (the
-   * run's journal carries the same value). Null for every other answer.
+   * A goal run's ease off: the runner let the goal go, so the rest of the run
+   * (and its debrief) never judges the finish against the target. False for
+   * every other answer.
    */
-  val retargetMs: Long? = null
+  val eased: Boolean
 ) : RecorderEvent()
  {
   companion object {
@@ -2893,8 +2894,8 @@ data class PromptResolvedEvent (
       val source = pigeonVar_list[2] as String
       val paceFactor = pigeonVar_list[3] as Double
       val oneRep = pigeonVar_list[4] as Boolean
-      val retargetMs = pigeonVar_list[5] as Long?
-      return PromptResolvedEvent(id, choice, source, paceFactor, oneRep, retargetMs)
+      val eased = pigeonVar_list[5] as Boolean
+      return PromptResolvedEvent(id, choice, source, paceFactor, oneRep, eased)
     }
   }
   fun toList(): List<Any?> {
@@ -2904,7 +2905,7 @@ data class PromptResolvedEvent (
       source,
       paceFactor,
       oneRep,
-      retargetMs,
+      eased,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2915,7 +2916,7 @@ data class PromptResolvedEvent (
       return true
     }
     val other = other as PromptResolvedEvent
-    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.paceFactor, other.paceFactor) && PlatformApiPigeonUtils.deepEquals(this.oneRep, other.oneRep) && PlatformApiPigeonUtils.deepEquals(this.retargetMs, other.retargetMs)
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.paceFactor, other.paceFactor) && PlatformApiPigeonUtils.deepEquals(this.oneRep, other.oneRep) && PlatformApiPigeonUtils.deepEquals(this.eased, other.eased)
   }
 
   override fun hashCode(): Int {
@@ -2925,7 +2926,7 @@ data class PromptResolvedEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.paceFactor)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.oneRep)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.retargetMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.eased)
     return result
   }
 }

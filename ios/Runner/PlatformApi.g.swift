@@ -2713,9 +2713,10 @@ struct PromptResolvedEvent: RecorderEvent {
   var paceFactor: Double
   /// The effect lasts one rep only (a between-reps answer).
   var oneRep: Bool
-  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
-  /// run's journal carries the same value). Null for every other answer.
-  var retargetMs: Int64? = nil
+  /// A goal run's ease off: the runner let the goal go, so the rest of the run
+  /// (and its debrief) never judges the finish against the target. False for
+  /// every other answer.
+  var eased: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -2725,7 +2726,7 @@ struct PromptResolvedEvent: RecorderEvent {
     let source = pigeonVar_list[2] as! String
     let paceFactor = pigeonVar_list[3] as! Double
     let oneRep = pigeonVar_list[4] as! Bool
-    let retargetMs: Int64? = nilOrValue(pigeonVar_list[5])
+    let eased = pigeonVar_list[5] as! Bool
 
     return PromptResolvedEvent(
       id: id,
@@ -2733,7 +2734,7 @@ struct PromptResolvedEvent: RecorderEvent {
       source: source,
       paceFactor: paceFactor,
       oneRep: oneRep,
-      retargetMs: retargetMs
+      eased: eased
     )
   }
   func toList() -> [Any?] {
@@ -2743,14 +2744,14 @@ struct PromptResolvedEvent: RecorderEvent {
       source,
       paceFactor,
       oneRep,
-      retargetMs,
+      eased,
     ]
   }
   static func == (lhs: PromptResolvedEvent, rhs: PromptResolvedEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source) && deepEqualsPlatformApi(lhs.paceFactor, rhs.paceFactor) && deepEqualsPlatformApi(lhs.oneRep, rhs.oneRep) && deepEqualsPlatformApi(lhs.retargetMs, rhs.retargetMs)
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source) && deepEqualsPlatformApi(lhs.paceFactor, rhs.paceFactor) && deepEqualsPlatformApi(lhs.oneRep, rhs.oneRep) && deepEqualsPlatformApi(lhs.eased, rhs.eased)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2760,7 +2761,7 @@ struct PromptResolvedEvent: RecorderEvent {
     deepHashPlatformApi(value: source, hasher: &hasher)
     deepHashPlatformApi(value: paceFactor, hasher: &hasher)
     deepHashPlatformApi(value: oneRep, hasher: &hasher)
-    deepHashPlatformApi(value: retargetMs, hasher: &hasher)
+    deepHashPlatformApi(value: eased, hasher: &hasher)
   }
 }
 

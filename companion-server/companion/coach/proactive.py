@@ -127,7 +127,11 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
         facts.append(f"the goal's target time: {_hm(target)}, the app's own estimate of this distance from the runner's recent "
                      f"effort{f' ({src})' if src else ''}, set before the run, not a promise")
         re = r.get("goal_retarget_s")
-        if re:
+        if r.get("goal_eased"):
+            facts.append(f"the runner chose to ease off mid-run on purpose, letting the target go: never judge the finish against "
+                         f"{_hm(target)} (no over, behind, short or missed against it); say the time they ran plainly and treat "
+                         f"easing off as a sound call")
+        elif re:
             facts.append(f"the runner eased off mid-run and the app re-aimed them to {_hm(re)}, said in their ear at the time: "
                          f"that is the target now, judge the finish against {_hm(re)} and not {_hm(target)}, which they let go on "
                          f"purpose (mention {_hm(target)} only as what they let go, never as a time they finished over)")

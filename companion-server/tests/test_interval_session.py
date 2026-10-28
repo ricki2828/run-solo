@@ -343,6 +343,24 @@ def test_a_re_aimed_goal_run_stores_its_new_target_and_only_a_goal_run_keeps_one
     assert rows["g7"] == (None, None, None) and rows["g8"] == (None, None, None)
 
 
+def test_goal_eased_is_stored_only_for_a_goal_run_and_only_when_true(client):
+    t = enrol(client)
+    for rid, extra in [("e1", dict(session_name="8.0 km goal", goal_target_s=2403, goal_eased=True)),
+                       ("e2", dict(session_name="8.0 km goal", goal_target_s=2403, goal_eased=False)),
+                       ("e3", dict(session_name="8.0 km goal", goal_target_s=2403)),
+                       ("e4", dict(session_name="Tempo", goal_target_s=2403, goal_eased=True))]:
+        assert client.post("/v1/runs", json=run_payload(rid, type="free", **extra), headers=auth(t)).status_code == 202
+    db = sqlite3.connect(client.svc.s.db_path)
+    rows = {x[0]: x[1] for x in db.execute("SELECT run_id, goal_eased FROM runs")}
+    assert rows == {"e1": 1, "e2": None, "e3": None, "e4": None}
+    # a coach-replay row updated in place keeps the flag when the re-send does not carry it
+    db.execute("UPDATE runs SET real_upload=0 WHERE run_id='e1'")
+    db.commit()
+    base = dict(type="free", session_name="8.0 km goal")
+    assert client.post("/v1/runs", json=run_payload("e1", **base, goal_target_s=2403), headers=auth(t)).json()["status"] == "updated"
+    assert db.execute("SELECT goal_eased FROM runs WHERE run_id='e1'").fetchone()[0] == 1
+
+
 def test_a_re_upload_without_a_target_keeps_the_stored_one(client):
     """The coach replay made this row; the app's own upload updates it in place. A first upload with the target, then a
     re-send without it (the app had not yet seen accepts_goal_target), must leave the stored target alone."""
@@ -381,6 +399,12 @@ def test_the_run_note_gives_the_goal_target_and_its_source_only_when_there_is_on
     text = run_note(r | {"goal_target_s": 2403, "goal_target_from": "5K on 26 Oct"}, [], "Asia/Singapore", amber=False)
     assert "the goal's target time: 40:03" in text and "(5K on 26 Oct)" in text and "not a promise" in text
     assert "re-aimed" not in text
+    text = run_note(r | {"goal_target_s": 2403, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
+    assert "ease off mid-run on purpose" in text and "never judge the finish against 40:03" in text
+    assert "re-aimed" not in text
+    # an eased run that also carries an old re-aim is still judged against nothing
+    text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
+    assert "never judge the finish against 40:03" in text and "re-aimed" not in text
     text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000}, [], "Asia/Singapore", amber=False)
     assert "re-aimed them to 50:00" in text and "judge the finish against 50:00 and not 40:03" in text
 

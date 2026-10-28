@@ -42,6 +42,21 @@ void main() {
     ], now: now);
   }
 
+  /// Start's number as the controller keeps it with the run (the screen's
+  /// ease-off check reads it).
+  final started = LiveContext(
+    boards: const [],
+    coachingMuted: false,
+    builtAtMs: 0,
+    engineVersion: 1,
+    target: LiveTarget(
+      distanceM: 8000,
+      targetMs: 2477000,
+      predicted: true,
+      source: '5K on 12 Sep',
+    ),
+  );
+
   Future<FakeRecorderGateway> open(WidgetTester tester, int h) async {
     final fake = FakeRecorderGateway(now: now)
       ..liveSecPerKm = 370
@@ -51,6 +66,7 @@ void main() {
       RecordMode.intervals,
       engine.SessionSpec.goalDistance(8000, '8 km').toPigeon(),
       Units.km,
+      liveContext: started,
     );
     await pumpApp(tester, services, pushRoute: Routes.recording);
     tester.view.physicalSize = Size(1080, h * 3.0);
@@ -113,4 +129,28 @@ void main() {
       await golden(tester, 'record_goal_target_cooldown_360x$h');
     });
   }
+
+  testWidgets('after an ease off the screen names no target and no gap', (
+    tester,
+  ) async {
+    final fake = await open(tester, 800);
+    await at(tester, fake, 375);
+    expect(find.byKey(const ValueKey('goal-target-row')), findsOneWidget);
+
+    fake.emitPromptResolved(
+      PromptResolvedEvent(id: 1, choice: 'ease', source: 'tap', eased: true),
+    );
+    await at(tester, fake, 5);
+    expect(find.byKey(const ValueKey('goal-target-row')), findsNothing);
+    expect(find.text('TARGET'), findsNothing);
+    // The run's own projected finish stays.
+    expect(find.byKey(const ValueKey('event-finish')), findsOneWidget);
+    await golden(tester, 'record_goal_eased_1km_360x800');
+
+    // Past the line: the result, with no target line or gap under it.
+    await at(tester, fake, 2812 - 380 + 200);
+    expect(find.byKey(const ValueKey('goal-target-result')), findsNothing);
+    expect(find.byKey(const ValueKey('goal-result')), findsOneWidget);
+    await golden(tester, 'record_goal_eased_cooldown_360x800');
+  });
 }

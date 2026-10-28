@@ -58,7 +58,12 @@ with its source in plain words ("the 40:03 your 5K on 26 Oct pointed to"), once,
 it helps. Use only that number; never invent a target. With no `goal_target`, you never know
 what time they were aiming for.
 
-If the row also carries `goal_retarget`, the runner eased off mid-run and the app re-aimed
+If the row carries `goal_eased: true`, the runner chose to ease off mid-run, on purpose: they let
+the target go and the app stopped talking about it in their ear. Never judge the finish against
+`goal_target`: no over, behind, short, missed or "just off". Say the time they ran plainly,
+treat easing off as a sound call, and mention the target at most as the time they let go.
+
+An older row may instead carry `goal_retarget` (the 27-Oct re-aim): the runner eased off mid-run and the app re-aimed
 them to that time, said in their ear at the time. Judge the finish against `goal_retarget`,
 never against `goal_target`. Mention the original only as the time they let go ("you let the
 40:03 go at 4 km"), never as the number they finished "over".
