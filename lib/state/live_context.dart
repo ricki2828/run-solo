@@ -370,6 +370,7 @@ class LiveContextSource {
             distanceM: target!.liveDistanceM!,
             targetMs: target.liveTargetMs!,
             predicted: target.predicted,
+            source: target.sourceText,
           ),
     boards: [
       for (final b in plan.boards)

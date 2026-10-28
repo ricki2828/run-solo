@@ -42,7 +42,7 @@ from .convo import suggest as cv_suggest
 from .convo import touches as cv_touches
 from .convo.questions import REASK_DAYS, known_without_asking, next_weekly_question
 from .convo.weather import NoWeather, OpenMeteo, cell
-from .facts import APP_TYPES, GOAL_PURPOSE, FactsResult, build_facts, next_line, known_session, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
+from .facts import APP_TYPES, GOAL_PURPOSE, FactsResult, build_facts, next_line, known_session, is_goal_name, infer_coach_type, tomorrow_is_usual_day, valid_answer, NIGGLE_TTL_DAYS
 from .rails import SLOW_DOWN, SLOW_DOWN_DAY, RateLimiter, add_alert, tag
 from .timeutil import (in_quiet, iso, now_utc, parse_iso, quiet_end_utc, resolve_cap_week, to_local, UTC,
                        valid_zone, week_key)
@@ -270,6 +270,9 @@ class RunIn(BaseModel):
     # effort it was read from ("5K on 26 Oct"). A training number like pace. Optional: an older app sends neither.
     goal_target_s: int | None = Field(default=None, ge=60, le=100000)
     goal_target_from: str | None = Field(default=None, pattern=r"^[A-Za-z0-9 .]{1,40}$")
+    # The time an ease off re-aimed that goal run to mid-run, when it did (the app said "New target ..." in the runner's ear).
+    # The finish is judged against this, not goal_target_s. Optional: an older app sends none.
+    goal_retarget_s: int | None = Field(default=None, ge=60, le=100000)
     consent_version: StrictInt | None = Field(default=None, ge=0, le=1000)  # the consent version the runner agreed to; an older app sends none
     area_lat: float | None = Field(default=None, ge=-90, le=90)  # approximate area for weather; the phone rounds to 0.1 degree and the server rounds again
     area_lon: float | None = Field(default=None, ge=-180, le=180)
@@ -308,6 +311,10 @@ class RunIn(BaseModel):
             raise ValueError("splits are longer than the run")
         if self.load is None:
             self.load_basis = None   # a basis alone says nothing
+        if not is_goal_name(self.session_name):
+            self.goal_target_s = self.goal_target_from = self.goal_retarget_s = None   # only the app's own goal run has one
+        elif self.goal_target_s is None:
+            self.goal_target_from = self.goal_retarget_s = None   # a source or a re-aim alone says nothing
         return self
 
     @field_validator("session_name", "work_pace_s_per_km", "reps_done", "rep_spread_s", "recovery_pace_s_per_km",
@@ -1055,7 +1062,7 @@ class Service(CheckinMixin, MeasureMixin):
                 "SELECT run_id, type, app_type, start_utc, zone_id, duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, "
                 "verdict, locality, plan_kind, plan_target_m, plan_week, plan_weeks, plan_next_type, plan_next_day, plan_next_week, "
                 "plan_next_min, plan_next_m, plan_next_session_id, plan_next_session_ref, plan_next_session_name, plan_next_pace_lo, plan_next_pace_hi, plan_next_pace_method, feel, session_name, work_pace_s_per_km, reps_done, "
-                "rep_spread_s, recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
+                "rep_spread_s, recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, received_at FROM runs WHERE user_id=? ORDER BY start_utc DESC", (uid,))]
             cutoff = iso(now - timedelta(days=RETENTION_LOG_DAYS))
             msgs = [dict(r) for r in c.execute(
                 "SELECT k.kind, k.headline, k.body, k.sent_at, cc.situation, cc.touch_kind, cc.media_json FROM cards k "
@@ -1302,8 +1309,8 @@ class Service(CheckinMixin, MeasureMixin):
         plan_cols = (run.plan_week, run.plan_weeks, nx.type if nx else None, nx.day if nx else None,
                      nx.week if nx else None, nx.minutes if nx else None, nx.distance_m if nx else None)
         session_cols = (run.session_name, run.work_pace_s_per_km, run.reps_done, run.rep_spread_s,
-                        run.recovery_pace_s_per_km, None if run.goal_reached is None else int(run.goal_reached),
-                        run.goal_target_s, run.goal_target_from if run.goal_target_s else None)
+                        run.recovery_pace_s_per_km, None if run.goal_reached is None else int(run.goal_reached))
+        goal_cols = (run.goal_target_s, run.goal_target_from, run.goal_retarget_s)
         with db.tx(self.s.db_path) as c:
             if run.consent_version is not None:
                 self.set_checkin_consent(uid, run.consent_version, c)
@@ -1325,12 +1332,17 @@ class Service(CheckinMixin, MeasureMixin):
                         "climb_m=?, locality=?, route_id=?, load_state=?, load=?, load_basis=?, pb=?, plan_kind=?, plan_target_m=?, "
                         "plan_weeks_to_race=?, plan_week=?, plan_weeks=?, plan_next_type=?, plan_next_day=?, plan_next_week=?, "
                         "plan_next_min=?, plan_next_m=?, feel=COALESCE(feel, ?), session_name=?, work_pace_s_per_km=?, reps_done=?, "
-                        "rep_spread_s=?, recovery_pace_s_per_km=?, goal_reached=?, goal_target_s=?, goal_target_from=? WHERE user_id=? AND run_id=?",
+                        "rep_spread_s=?, recovery_pace_s_per_km=?, goal_reached=?, "
+                        # a re-send without a target (the app has not seen accepts_goal_target yet) keeps the one stored
+                        "goal_target_s=COALESCE(?, goal_target_s), goal_target_from=CASE WHEN ? IS NULL THEN goal_target_from ELSE ? END, "
+                        "goal_retarget_s=CASE WHEN ? IS NULL THEN goal_retarget_s ELSE ? END WHERE user_id=? AND run_id=?",
                         (iso(now), iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                          run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                          json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality,
                          run.route_id, run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m,
-                         run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, uid, run.run_id))
+                         run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
+                         run.goal_target_s, run.goal_target_s, run.goal_target_from, run.goal_target_s, run.goal_retarget_s,
+                         uid, run.run_id))
                     self._keep_plan_session(c, uid, run)
                     self._keep_shape(c, uid, run)
                     self._keep_quest(c, uid, run, now, stale)
@@ -1345,12 +1357,12 @@ class Service(CheckinMixin, MeasureMixin):
                 "duration_s, distance_m, pace_s_per_km, true_pace_s_per_km, verdict, scores_delta, zone_min, climb_m, "
                 "locality, route_id, load_state, load, load_basis, pb, plan_kind, plan_target_m, plan_weeks_to_race, plan_week, plan_weeks, plan_next_type, plan_next_day, "
                 "plan_next_week, plan_next_min, plan_next_m, feel, session_name, work_pace_s_per_km, reps_done, rep_spread_s, "
-                "recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, received_at, "
-                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "recovery_pace_s_per_km, goal_reached, goal_target_s, goal_target_from, goal_retarget_s, received_at, "
+                "stale, real_upload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, run.run_id, iso(run.start_utc), iso(end), run.utc_offset_min, run.zone_id, coach_type, app_type,
                  run.duration_s, run.distance_m, run.pace_s_per_km, run.true_pace_s_per_km, run.verdict,
                  json.dumps(run.scores_delta), json.dumps(run.zone_min), run.climb_m, run.locality, run.route_id,
-                 run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols,
+                 run.load_state, run.load, run.load_basis, run.pb, run.plan_kind, run.plan_target_m, run.plan_weeks_to_race, *plan_cols, run.feel, *session_cols, *goal_cols,
                  iso(now), int(stale), 0 if replay else 1))
             self._keep_plan_session(c, uid, run)
             self._keep_shape(c, uid, run)

@@ -2674,16 +2674,29 @@ Map<String, Object?> companionIntervalFacts(RunSummary s) {
 
 /// A distance goal run's target time as the Start card showed it, with the
 /// effort it was read from ("5K on 26 Oct"): `goal_target_s` and
-/// `goal_target_from`. A training number, the same class as pace. Empty for
+/// `goal_target_from`; this rebuilds it from a [engine.StartTarget] (only for a
+/// run recorded before the target was kept with the run). A training number, the same class as pace. Empty for
 /// any other run, or without a target; an older server never gets them
 /// (the caller only asks a server that takes them).
 Map<String, Object?> companionGoalFacts(engine.StartTarget? t) {
   final ms = t?.liveTargetMs;
   if (t == null || ms == null || ms <= 0) return const {};
-  final from = t.sourceText;
+  return companionGoalFactsOf(
+    engine.GoalTargetRecord(targetMs: ms, source: t.sourceText),
+  );
+}
+
+/// The same facts from the target the run kept (what Start showed, as raced),
+/// plus `goal_retarget_s` when an ease off re-aimed the run: the debrief
+/// judges the finish against that time, not the one the runner let go.
+Map<String, Object?> companionGoalFactsOf(engine.GoalTargetRecord? g) {
+  if (g == null || g.targetMs <= 0) return const {};
+  final from = g.source;
+  final re = g.retargetMs;
   return {
-    'goal_target_s': (ms / 1000).round(),
+    'goal_target_s': (g.targetMs / 1000).round(),
     if (from != null && _goalFrom.hasMatch(from)) 'goal_target_from': from,
+    if (re != null && re > 0) 'goal_retarget_s': (re / 1000).round(),
   };
 }
 

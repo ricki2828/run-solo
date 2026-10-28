@@ -119,6 +119,7 @@ class RunSidecar {
     this.sends = const {},
     this.feel,
     this.trailOverride,
+    this.goalTarget,
     this.readSchema = schema,
   });
 
@@ -168,6 +169,11 @@ class RunSidecar {
   /// Read by trail grouping, so it decides which runs a trail verdict compares
   /// against; it never changes how a run is scored.
   final TrailOverride? trailOverride;
+
+  /// A goal run's target as it was raced: what Start showed, and the time the
+  /// run was re-aimed to by an ease off, if it was. Companion data only; never
+  /// an input to a verdict.
+  final GoalTargetRecord? goalTarget;
 
   /// The runner's own name for the run; replaces the automatic title.
   /// Display only, so it survives every recalculation.
@@ -282,6 +288,7 @@ class RunSidecar {
       sends.isEmpty &&
       feel == null &&
       trailOverride == null &&
+      goalTarget == null &&
       parkrun == null;
 
   RunSidecar copyWith({
@@ -304,8 +311,12 @@ class RunSidecar {
     Map<String, SendRecord>? sends,
     Object? feel = _unset,
     Object? trailOverride = _unset,
+    Object? goalTarget = _unset,
   }) => RunSidecar(
     runId: runId,
+    goalTarget: identical(goalTarget, _unset)
+        ? this.goalTarget
+        : goalTarget as GoalTargetRecord?,
     sends: sends ?? this.sends,
     feel: identical(feel, _unset) ? this.feel : feel as RunFeel?,
     trailOverride: identical(trailOverride, _unset)
@@ -411,6 +422,7 @@ class RunSidecar {
       'sends': {for (final e in sends.entries) e.key: e.value.toJson()},
     'feel': ?feel?.name,
     'trail_override': ?trailOverride?.toJson(),
+    'goal_target': ?goalTarget?.toJson(),
   };
 
   /// Newer than this build (W6): the app must treat the run as read-only and
@@ -495,9 +507,65 @@ class RunSidecar {
       sends: _readSends(json['sends']),
       feel: RunFeel.decode(json['feel']),
       trailOverride: TrailOverride.fromJson(json['trail_override']),
+      goalTarget: GoalTargetRecord.fromJson(json['goal_target']),
       readSchema: schemaValue,
     );
   }
+}
+
+/// The target a goal run raced, kept with the run so the companion upload
+/// sends the number the runner saw, not a rebuild of it. [targetMs] and
+/// [source] are Start's; [retargetMs] is the last time an ease off re-aimed
+/// the run to (null when it never was). Lenient on read.
+class GoalTargetRecord {
+  const GoalTargetRecord({
+    required this.targetMs,
+    this.source,
+    this.retargetMs,
+  });
+
+  final int targetMs;
+
+  /// "5K on 26 Oct": the effort the target was read from.
+  final String? source;
+
+  /// The re-aimed goal time, ms; null if the run was never re-aimed.
+  final int? retargetMs;
+
+  GoalTargetRecord withRetarget(int? ms) => GoalTargetRecord(
+    targetMs: targetMs,
+    source: source,
+    retargetMs: ms ?? retargetMs,
+  );
+
+  Map<String, Object?> toJson() => {
+    'target_ms': targetMs,
+    'source': ?source,
+    'retarget_ms': ?retargetMs,
+  };
+
+  static GoalTargetRecord? fromJson(Object? j) {
+    if (j is! Map<String, Object?>) return null;
+    final t = j['target_ms'];
+    if (t is! int || t <= 0) return null;
+    final s = j['source'];
+    final r = j['retarget_ms'];
+    return GoalTargetRecord(
+      targetMs: t,
+      source: s is String && s.isNotEmpty ? s : null,
+      retargetMs: r is int && r > 0 ? r : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is GoalTargetRecord &&
+      other.targetMs == targetMs &&
+      other.source == source &&
+      other.retargetMs == retargetMs;
+
+  @override
+  int get hashCode => Object.hash(targetMs, source, retargetMs);
 }
 
 /// One run's last send to one target (Send runs). Lenient on read: a

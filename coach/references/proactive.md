@@ -61,6 +61,12 @@ to"), say how the finish compared in whole seconds ("8:03 over", "12 seconds und
 treat it as the app's own estimate, not a promise: a slower finish a day after a hard effort is
 right, not a miss. Use only that number; never make up another target.
 
+**When the facts also say the runner was re-aimed** ("eased off mid-run; the app re-aimed them to
+52:00"), that new time is the target now: compare the finish with it ("49:50, 2:10 under the
+52:00 you were re-aimed to"), never with the original, which they let go on purpose. Mention the
+original only as what they let go ("you let the 40:03 go at 4 km"), never as a time they
+finished "over". An ease off is a sound call, not a fall-off.
+
 **When it gives none**, you never know what time they were aiming for: never say they hit,
 missed or chased a target time, and never quote one.
 

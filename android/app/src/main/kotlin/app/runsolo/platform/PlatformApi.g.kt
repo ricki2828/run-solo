@@ -839,7 +839,12 @@ data class LiveTarget (
   val distanceM: Double,
   val targetMs: Long,
   /** True = "predicted" (an estimate), false = "your PB". */
-  val predicted: Boolean
+  val predicted: Boolean,
+  /**
+   * What a goal target was read from, "5K on 26 Oct"; null for the event or
+   * a PB. Native ignores it: the app keeps it with the run for the debrief.
+   */
+  val source: String? = null
 )
  {
   companion object {
@@ -847,7 +852,8 @@ data class LiveTarget (
       val distanceM = pigeonVar_list[0] as Double
       val targetMs = pigeonVar_list[1] as Long
       val predicted = pigeonVar_list[2] as Boolean
-      return LiveTarget(distanceM, targetMs, predicted)
+      val source = pigeonVar_list[3] as String?
+      return LiveTarget(distanceM, targetMs, predicted, source)
     }
   }
   fun toList(): List<Any?> {
@@ -855,6 +861,7 @@ data class LiveTarget (
       distanceM,
       targetMs,
       predicted,
+      source,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -865,7 +872,7 @@ data class LiveTarget (
       return true
     }
     val other = other as LiveTarget
-    return PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.targetMs, other.targetMs) && PlatformApiPigeonUtils.deepEquals(this.predicted, other.predicted)
+    return PlatformApiPigeonUtils.deepEquals(this.distanceM, other.distanceM) && PlatformApiPigeonUtils.deepEquals(this.targetMs, other.targetMs) && PlatformApiPigeonUtils.deepEquals(this.predicted, other.predicted) && PlatformApiPigeonUtils.deepEquals(this.source, other.source)
   }
 
   override fun hashCode(): Int {
@@ -873,6 +880,7 @@ data class LiveTarget (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.distanceM)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.targetMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.predicted)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
     return result
   }
 }
@@ -2870,7 +2878,12 @@ data class PromptResolvedEvent (
    */
   val paceFactor: Double,
   /** The effect lasts one rep only (a between-reps answer). */
-  val oneRep: Boolean
+  val oneRep: Boolean,
+  /**
+   * A goal run's ease off re-aimed the goal time: the new target, ms (the
+   * run's journal carries the same value). Null for every other answer.
+   */
+  val retargetMs: Long? = null
 ) : RecorderEvent()
  {
   companion object {
@@ -2880,7 +2893,8 @@ data class PromptResolvedEvent (
       val source = pigeonVar_list[2] as String
       val paceFactor = pigeonVar_list[3] as Double
       val oneRep = pigeonVar_list[4] as Boolean
-      return PromptResolvedEvent(id, choice, source, paceFactor, oneRep)
+      val retargetMs = pigeonVar_list[5] as Long?
+      return PromptResolvedEvent(id, choice, source, paceFactor, oneRep, retargetMs)
     }
   }
   fun toList(): List<Any?> {
@@ -2890,6 +2904,7 @@ data class PromptResolvedEvent (
       source,
       paceFactor,
       oneRep,
+      retargetMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -2900,7 +2915,7 @@ data class PromptResolvedEvent (
       return true
     }
     val other = other as PromptResolvedEvent
-    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.paceFactor, other.paceFactor) && PlatformApiPigeonUtils.deepEquals(this.oneRep, other.oneRep)
+    return PlatformApiPigeonUtils.deepEquals(this.id, other.id) && PlatformApiPigeonUtils.deepEquals(this.choice, other.choice) && PlatformApiPigeonUtils.deepEquals(this.source, other.source) && PlatformApiPigeonUtils.deepEquals(this.paceFactor, other.paceFactor) && PlatformApiPigeonUtils.deepEquals(this.oneRep, other.oneRep) && PlatformApiPigeonUtils.deepEquals(this.retargetMs, other.retargetMs)
   }
 
   override fun hashCode(): Int {
@@ -2910,6 +2925,7 @@ data class PromptResolvedEvent (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.source)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.paceFactor)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.oneRep)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.retargetMs)
     return result
   }
 }

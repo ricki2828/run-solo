@@ -114,6 +114,17 @@ def test_goal_run_scenarios_send_what_production_sends_and_check_the_target(monk
     assert "does not name the target 40:03" in ev.target_misses(SC["proactive_run_goal_far_off"], "Easy 8 k, fine.")
 
 
+def test_a_re_aimed_goal_run_judges_the_finish_against_the_new_target():
+    """An ease off re-aims the run mid-way and the app uploads that time: the note tells the coach to judge the finish
+    against it, and a reply that scores the finish against the abandoned target is a miss."""
+    sc = SC["proactive_run_goal_reaimed"]
+    note, _ = ev.proactive_turn(sc)
+    assert "the goal's target time: 40:03" in note and "re-aimed them to 50:00" in note and "judge the finish against 50:00" in note
+    assert ev.target_misses(sc, "49:50, 10 seconds under the 50:00 you were re-aimed to; you let the 40:03 go at 4 km.") == []
+    assert ev.target_misses(sc, "Target 40:03 from your 5K, 9:47 over.") != []
+    assert "does not name the target 50:00" in ev.target_misses(sc, "Easy 8 k, fine.")
+
+
 def test_target_check_ignores_paces_and_uses_the_scenario_allowlist():
     sc = {"no_invented_target": True, "allowed_target_times": ["1:55"]}
     assert ev.target_misses(sc, "Aim for 5:30 pace on the reps, 5:30/km, 5:30 per km.") == []

@@ -547,6 +547,10 @@ abstract class RunStore implements HistoryStore {
   /// Keeps an offset already recorded.
   Future<void> setUtcOffset(String id, int minutes);
 
+  /// Keep the goal target the run raced (Start's number and source, and any
+  /// ease-off re-aim) with it. Companion data only; a null clears it.
+  Future<void> setGoalTarget(String id, engine.GoalTargetRecord? target);
+
   /// Work out where the run started (zone and offset at the start instant,
   /// from its fix) and save it with the run, so its time of day is the clock
   /// there. Backfills older runs; keeps what is stored when nothing better
@@ -972,6 +976,12 @@ class MemoryRunStore implements RunStore {
   Future<void> setUtcOffset(String id, int minutes) async {
     final s = sidecars[id] ?? engine.RunSidecar(runId: id);
     sidecars[id] = s.copyWith(utcOffsetMin: s.utcOffsetMin ?? minutes);
+  }
+
+  @override
+  Future<void> setGoalTarget(String id, engine.GoalTargetRecord? target) async {
+    final s = sidecars[id] ?? engine.RunSidecar(runId: id);
+    sidecars[id] = s.copyWith(goalTarget: target);
   }
 
   @override
@@ -1757,6 +1767,10 @@ class FileRunStore implements RunStore {
     (current) =>
         current.copyWith(utcOffsetMin: current.utcOffsetMin ?? minutes),
   );
+
+  @override
+  Future<void> setGoalTarget(String id, engine.GoalTargetRecord? target) =>
+      _writeIdentity(id, (current) => current.copyWith(goalTarget: target));
 
   @override
   Future<void> stampLocalTime(String id) async {

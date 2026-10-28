@@ -674,6 +674,9 @@ struct LiveTarget: Hashable {
   var targetMs: Int64
   /// True = "predicted" (an estimate), false = "your PB".
   var predicted: Bool
+  /// What a goal target was read from, "5K on 26 Oct"; null for the event or
+  /// a PB. Native ignores it: the app keeps it with the run for the debrief.
+  var source: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -681,11 +684,13 @@ struct LiveTarget: Hashable {
     let distanceM = pigeonVar_list[0] as! Double
     let targetMs = pigeonVar_list[1] as! Int64
     let predicted = pigeonVar_list[2] as! Bool
+    let source: String? = nilOrValue(pigeonVar_list[3])
 
     return LiveTarget(
       distanceM: distanceM,
       targetMs: targetMs,
-      predicted: predicted
+      predicted: predicted,
+      source: source
     )
   }
   func toList() -> [Any?] {
@@ -693,13 +698,14 @@ struct LiveTarget: Hashable {
       distanceM,
       targetMs,
       predicted,
+      source,
     ]
   }
   static func == (lhs: LiveTarget, rhs: LiveTarget) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.distanceM, rhs.distanceM) && deepEqualsPlatformApi(lhs.targetMs, rhs.targetMs) && deepEqualsPlatformApi(lhs.predicted, rhs.predicted)
+    return deepEqualsPlatformApi(lhs.distanceM, rhs.distanceM) && deepEqualsPlatformApi(lhs.targetMs, rhs.targetMs) && deepEqualsPlatformApi(lhs.predicted, rhs.predicted) && deepEqualsPlatformApi(lhs.source, rhs.source)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -707,6 +713,7 @@ struct LiveTarget: Hashable {
     deepHashPlatformApi(value: distanceM, hasher: &hasher)
     deepHashPlatformApi(value: targetMs, hasher: &hasher)
     deepHashPlatformApi(value: predicted, hasher: &hasher)
+    deepHashPlatformApi(value: source, hasher: &hasher)
   }
 }
 
@@ -2706,6 +2713,9 @@ struct PromptResolvedEvent: RecorderEvent {
   var paceFactor: Double
   /// The effect lasts one rep only (a between-reps answer).
   var oneRep: Bool
+  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
+  /// run's journal carries the same value). Null for every other answer.
+  var retargetMs: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -2715,13 +2725,15 @@ struct PromptResolvedEvent: RecorderEvent {
     let source = pigeonVar_list[2] as! String
     let paceFactor = pigeonVar_list[3] as! Double
     let oneRep = pigeonVar_list[4] as! Bool
+    let retargetMs: Int64? = nilOrValue(pigeonVar_list[5])
 
     return PromptResolvedEvent(
       id: id,
       choice: choice,
       source: source,
       paceFactor: paceFactor,
-      oneRep: oneRep
+      oneRep: oneRep,
+      retargetMs: retargetMs
     )
   }
   func toList() -> [Any?] {
@@ -2731,13 +2743,14 @@ struct PromptResolvedEvent: RecorderEvent {
       source,
       paceFactor,
       oneRep,
+      retargetMs,
     ]
   }
   static func == (lhs: PromptResolvedEvent, rhs: PromptResolvedEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source) && deepEqualsPlatformApi(lhs.paceFactor, rhs.paceFactor) && deepEqualsPlatformApi(lhs.oneRep, rhs.oneRep)
+    return deepEqualsPlatformApi(lhs.id, rhs.id) && deepEqualsPlatformApi(lhs.choice, rhs.choice) && deepEqualsPlatformApi(lhs.source, rhs.source) && deepEqualsPlatformApi(lhs.paceFactor, rhs.paceFactor) && deepEqualsPlatformApi(lhs.oneRep, rhs.oneRep) && deepEqualsPlatformApi(lhs.retargetMs, rhs.retargetMs)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -2747,6 +2760,7 @@ struct PromptResolvedEvent: RecorderEvent {
     deepHashPlatformApi(value: source, hasher: &hasher)
     deepHashPlatformApi(value: paceFactor, hasher: &hasher)
     deepHashPlatformApi(value: oneRep, hasher: &hasher)
+    deepHashPlatformApi(value: retargetMs, hasher: &hasher)
   }
 }
 

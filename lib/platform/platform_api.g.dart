@@ -627,6 +627,7 @@ class LiveTarget {
     required this.distanceM,
     required this.targetMs,
     required this.predicted,
+    this.source,
   });
 
   double distanceM;
@@ -636,11 +637,16 @@ class LiveTarget {
   /// True = "predicted" (an estimate), false = "your PB".
   bool predicted;
 
+  /// What a goal target was read from, "5K on 26 Oct"; null for the event or
+  /// a PB. Native ignores it: the app keeps it with the run for the debrief.
+  String? source;
+
   List<Object?> _toList() {
     return <Object?>[
       distanceM,
       targetMs,
       predicted,
+      source,
     ];
   }
 
@@ -653,6 +659,7 @@ class LiveTarget {
       distanceM: result[0]! as double,
       targetMs: result[1]! as int,
       predicted: result[2]! as bool,
+      source: result[3] as String?,
     );
   }
 
@@ -665,7 +672,7 @@ class LiveTarget {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(distanceM, other.distanceM) && _deepEquals(targetMs, other.targetMs) && _deepEquals(predicted, other.predicted);
+    return _deepEquals(distanceM, other.distanceM) && _deepEquals(targetMs, other.targetMs) && _deepEquals(predicted, other.predicted) && _deepEquals(source, other.source);
   }
 
   @override
@@ -2891,6 +2898,7 @@ class PromptResolvedEvent extends RecorderEvent {
     required this.source,
     this.paceFactor = 1.0,
     this.oneRep = false,
+    this.retargetMs,
   });
 
   int id;
@@ -2907,6 +2915,10 @@ class PromptResolvedEvent extends RecorderEvent {
   /// The effect lasts one rep only (a between-reps answer).
   bool oneRep;
 
+  /// A goal run's ease off re-aimed the goal time: the new target, ms (the
+  /// run's journal carries the same value). Null for every other answer.
+  int? retargetMs;
+
   List<Object?> _toList() {
     return <Object?>[
       id,
@@ -2914,6 +2926,7 @@ class PromptResolvedEvent extends RecorderEvent {
       source,
       paceFactor,
       oneRep,
+      retargetMs,
     ];
   }
 
@@ -2928,6 +2941,7 @@ class PromptResolvedEvent extends RecorderEvent {
       source: result[2]! as String,
       paceFactor: result[3]! as double,
       oneRep: result[4]! as bool,
+      retargetMs: result[5] as int?,
     );
   }
 
@@ -2940,7 +2954,7 @@ class PromptResolvedEvent extends RecorderEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep);
+    return _deepEquals(id, other.id) && _deepEquals(choice, other.choice) && _deepEquals(source, other.source) && _deepEquals(paceFactor, other.paceFactor) && _deepEquals(oneRep, other.oneRep) && _deepEquals(retargetMs, other.retargetMs);
   }
 
   @override

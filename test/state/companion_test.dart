@@ -1521,6 +1521,25 @@ void main() {
       expect(companionGoalFacts(timeGoal), isEmpty);
     });
 
+    test('companionGoalFactsOf: the kept target, plus the re-aim when there was one', () {
+      expect(companionGoalFactsOf(null), isEmpty);
+      const kept = engine.GoalTargetRecord(
+        targetMs: 2402600,
+        source: '5K on 26 Oct',
+      );
+      expect(companionGoalFactsOf(kept), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+      });
+      expect(companionGoalFactsOf(kept.withRetarget(3000000)), {
+        'goal_target_s': 2403,
+        'goal_target_from': '5K on 26 Oct',
+        'goal_retarget_s': 3000,
+      });
+      // A later answer without a re-aim never clears one already made.
+      expect(kept.withRetarget(3000000).withRetarget(null).retargetMs, 3000000);
+    });
+
     test('accepts_load in the reply is what turns load and load_basis on', () {
       expect(CoachNext.parse({'v': 1})!.supportsLoad, isFalse);
       expect(

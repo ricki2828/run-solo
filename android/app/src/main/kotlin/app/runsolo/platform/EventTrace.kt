@@ -135,6 +135,7 @@ object EventTrace {
                 m["source"] = e.source
                 m["paceFactor"] = e.paceFactor
                 m["oneRep"] = e.oneRep
+                e.retargetMs?.let { m["retargetMs"] = it }
             }
             is GoalEvent -> {
                 m["kind"] = "goal"
