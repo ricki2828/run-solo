@@ -738,19 +738,17 @@ class CoachPrompterTest {
     }
 
     @Test
-    fun `a re-aimed goal time lets a later fall behind the new time ask again`() {
+    fun `an ease off to the falling behind question is read back from the journal as the goal ease mode`() {
         val p = CoachPrompter()
         val a = assertNotNull(fallingBehind(p))
         p.opened(a, 3_002.0)
-        p.answer(a.id, 1, PromptSource.tap, a.openedAtMs + 3_000)
-        p.retargeted()
-        assertNull(p.atKm(facts(5, goal = 10_000.0, behind = 30_000, goalMs = 3_000_000), 2_000_000, 5_002.0))
-        assertNotNull(p.atKm(facts(6, goal = 10_000.0, behind = 50_000, goalMs = 3_000_000), 2_400_000, 6_002.0))
-        // A restore of a re-aimed ease keeps the re-aim: the question is open again, as live.
-        val line = JournalLine.PromptResolved(903_000, 1, a.id, "behindTarget", 3, listOf("push", "ease"), "ease", "tap", 900_000, 903_000, retargetMs = 3_000_000)
-        val back = CoachPrompter(CoachPrompter.restore(listOf(line)))
-        assertNull(back.atKm(facts(5, goal = 10_000.0, behind = 30_000, goalMs = 3_000_000), 2_000_000, 5_002.0))
-        assertNotNull(back.atKm(facts(6, goal = 10_000.0, behind = 50_000, goalMs = 3_000_000), 2_400_000, 6_002.0))
+        val ans = assertNotNull(p.answer(a.id, 1, PromptSource.tap, a.openedAtMs + 3_000))
+        val line = CoachPrompter.line(ans, 1, 903_000)
+        assertTrue(CoachPrompter.easedOffGoal(listOf(line)))
+        val push = line.copy(choice = "push")
+        val last2k = line.copy(trigger = "last2k", choice = "hold")
+        assertFalse(CoachPrompter.easedOffGoal(listOf(push, last2k)))
+        assertFalse(CoachPrompter.easedOffGoal(emptyList()))
     }
 
     @Test
@@ -817,7 +815,7 @@ class CoachPrompterTest {
         val p = CoachPrompter()
         assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, goalMs = t2430)))
-        assertEquals(listOf("Keep chasing", "New target"), q.buttonLabels)
+        assertEquals(listOf("Keep chasing", "Ease off"), q.buttonLabels)
         assertEquals(listOf(PromptChoice.push, PromptChoice.ease), q.options)
         val last = assertNotNull(km(CoachPrompter(), facts(3, goal = 5_000.0, behind = 8_000, goalMs = t2430)))
         assertEquals(listOf("Faster", "Same pace"), last.buttonLabels)
@@ -832,7 +830,7 @@ class CoachPrompterTest {
         assertNull(km(p, facts(2, goal = 10_000.0, behind = 10_000, goalMs = t2430)))
         val q = assertNotNull(km(p, facts(3, goal = 10_000.0, behind = 30_000, goalMs = t2430)))
         assertEquals(PromptKind.behindTarget, q.kind)
-        assertEquals("30 seconds behind 24:30, slipping. Keep chasing or new target?", q.text)
+        assertEquals("30 seconds behind 24:30, slipping. Keep chasing, or ease off?", q.text)
         assertEquals(listOf(PromptChoice.push, PromptChoice.ease), q.options)
     }
 

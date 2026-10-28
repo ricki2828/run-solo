@@ -33,81 +33,50 @@ class GoalTargetTest {
     }
 
     @Test
-    fun `ease off re-aims the goal time to the projected finish rounded up to the next whole minute`() {
-        val c = LiveCoach(ctx(LiveTarget(8_000.0, 2_220_000, predicted = true)), RunMode.intervals, SessionSpec.goalDistance(8_000, "8K"))
-        // 2 km in 746 s: 8 km projects to 2984 s = 49:44, so 50 minutes.
-        assertEquals(3_000_000L, c.rebaseGoal(2_000.0, 746_000))
-        val t = assertNotNull(c.goalTarget)
-        assertEquals(3_000_000L, t.targetMs)
-        assertEquals(false, t.predicted)
-        assertEquals(3_000_000L, assertNotNull(c.goalProgress(2_100.0, 780_000)).target.targetMs)
-        assertEquals(true, c.goalRebased)
-    }
-
-    @Test
-    fun `a second ease off re-aims again and an exact minute stays put`() {
-        val c = LiveCoach(ctx(LiveTarget(8_000.0, 2_220_000, predicted = true)), RunMode.intervals, SessionSpec.goalDistance(8_000, "8K"))
-        assertEquals(3_000_000L, c.rebaseGoal(2_000.0, 750_000)) // 3000 s exactly
-        assertEquals(3_360_000L, c.rebaseGoal(4_000.0, 1_660_000)) // 3320 s -> 56 min
-    }
-
-    @Test
-    fun `no re-aim off a few hundred metres or after the goal or on a run without a goal time`() {
+    fun `ease off on a goal run takes the goal time away - no goal target no goal progress`() {
         val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
-        assertNull(c.rebaseGoal(300.0, 100_000))
-        assertNull(LiveCoach(ctx(), RunMode.free, null).rebaseGoal(2_000.0, 600_000))
+        assertTrue(c.enterEase())
+        assertTrue(c.easeMode)
+        assertNull(c.goalTarget)
+        assertNull(c.goalProgress(2_000.0, 558_000))
+    }
+
+    @Test
+    fun `the ease mode is for a goal that is still running only`() {
+        assertEquals(false, LiveCoach(ctx(), RunMode.free, null).enterEase(), "a Free run")
+        assertEquals(false, LiveCoach(ctx(), RunMode.intervals, SessionSpec.norwegian4x4()).enterEase(), "an interval session")
+        val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
         c.goalReachedAt(5_000.0, 1_400_000)
-        assertNull(c.rebaseGoal(5_000.0, 1_400_000))
-        assertEquals(false, c.goalRebased)
+        assertEquals(false, c.enterEase(), "the goal is over")
+        assertEquals(false, c.easeMode)
     }
 
     @Test
-    fun `a restore keeps the re-aimed time and the PB chase stays silent after it`() {
+    fun `after an ease off the cue has no PB chase and no km facts so no prompt and no gap`() {
         val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
-        c.restoreRebase(1_800_000L)
-        assertEquals(1_800_000L, c.goalTarget?.targetMs)
-        assertNull(c.chaseAtCue(CueKind.projection, 2, 600_000))
-        // The cue is silent but the prompts still get their km facts, against the re-aimed clock.
-        val f = assertNotNull(c.takeKmFacts())
-        assertEquals(1_800_000L, f.goalTimeMs)
-        assertNull(f.gapMs)
-        assertEquals(600_000L - (1_800_000L * 2 / 5), f.behindTargetMs)
+        c.enterEase()
+        for (k in 1..4) {
+            assertNull(c.chaseAtCue(CueKind.projection, k, k * 330_000L), "km $k")
+            assertNull(c.takeKmFacts(), "km $k")
+        }
     }
 
     @Test
-    fun `ease off then later km then last 2 km prompt and a second re-aim all read the new time`() {
-        val c = LiveCoach(ctx(LiveTarget(10_000.0, 2_400_000, predicted = true)), RunMode.free, SessionSpec.goalDistance(10_000, "10K"))
-        val p = CoachPrompter()
-        // Runs one km: the cue's facts reach the prompter as the session does it. [elapsedMs] = active ms at the km.
-        fun km(k: Int, elapsedMs: Long): Prompt? {
-            c.chaseAtCue(CueKind.projection, k, elapsedMs)
-            val f = assertNotNull(c.takeKmFacts(), "facts at km $k")
-            return p.atKm(f, elapsedMs, k * 1_000.0 + 2)
-        }
-        fun ease(q: Prompt, distanceM: Double, elapsedMs: Long): Long {
-            p.opened(q, distanceM)
-            val a = assertNotNull(p.answer(q.id, 1, PromptSource.tap, q.openedAtMs + 3_000))
-            assertEquals(PromptChoice.ease, a.choice)
-            val re = assertNotNull(c.rebaseGoal(distanceM, elapsedMs))
-            p.retargeted()
-            return re
-        }
-        // 300 s/km against 240: behind and losing ground, so km 2 asks.
-        assertNull(km(1, 300_000))
-        val first = assertNotNull(km(2, 600_000))
-        assertEquals(PromptKind.behindTarget, first.kind)
-        assertEquals(3_000_000L, ease(first, 2_002.0, 600_000)) // 3000 s: 50 minutes
-        // 330 s/km from here: behind the new clock and growing, so km 4 asks again, naming 50 minutes.
-        assertNull(km(3, 930_000))
-        val second = assertNotNull(km(4, 1_260_000))
-        assertEquals(PromptKind.behindTarget, second.kind)
-        assertTrue(second.text.contains("behind 50 minutes"), second.text)
-        assertEquals(3_180_000L, ease(second, 4_002.0, 1_260_000)) // 3150 s rounds up to 53 minutes
-        for (k in 5..7) assertNull(km(k, 1_260_000L + (k - 4) * 330_000))
-        val last = assertNotNull(km(8, 2_580_000))
-        assertEquals(PromptKind.last2k, last.kind)
-        assertTrue(last.text.contains("over 53 minutes"), last.text)
-        assertTrue(last.text.endsWith("Faster, or same pace?"), last.text)
+    fun `a restore keeps the ease mode`() {
+        val c = LiveCoach(ctx(), RunMode.intervals, fiveK)
+        c.restoreEase(true)
+        assertTrue(c.easeMode)
+        assertNull(c.goalTarget)
+        assertNull(c.chaseAtCue(CueKind.projection, 2, 600_000))
+        assertNull(c.takeKmFacts())
+        val plain = LiveCoach(ctx(), RunMode.intervals, fiveK)
+        plain.restoreEase(false)
+        assertEquals(false, plain.easeMode)
+        assertNotNull(plain.goalTarget)
+        // A Free run never enters it, whatever the journal says.
+        val free = LiveCoach(ctx(), RunMode.free, null)
+        free.restoreEase(true)
+        assertEquals(false, free.easeMode)
     }
 
     @Test

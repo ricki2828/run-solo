@@ -39,6 +39,7 @@ import app.runsolo.core.live.Prompt
 import app.runsolo.core.live.PromptAnswer
 import app.runsolo.core.live.PromptChoice
 import app.runsolo.core.live.PromptEffect
+import app.runsolo.core.live.PromptKind
 import app.runsolo.core.live.PromptSource
 import app.runsolo.core.live.CueComposer
 import app.runsolo.core.live.CheckInSnapshot
@@ -46,7 +47,6 @@ import app.runsolo.core.live.CheckInTracker
 import app.runsolo.core.live.CooperCurve
 import app.runsolo.core.live.CueSlot
 import app.runsolo.core.live.GoalCoach
-import app.runsolo.core.live.GoalMargin
 import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.live.LiveTruePace
 import app.runsolo.core.live.MomentInput
@@ -368,9 +368,11 @@ class RecordingSession(
         // unclean.
         // Prompts already answered count toward the cap and spacing; the last push or ease keeps its effect.
         prompter = CoachPrompter(CoachPrompter.restore(replayed.prompts), distanceGate = mode != RunMode.intervals)
-        promptEffectDirty = prompter.effect != PromptEffect.NONE && replayed.prompts.none { it.retargetMs != null }
+        // An ease off on a goal run is a mode, not an effect: it comes back through the coach (no target talk at all).
+        val easedGoal = CoachPrompter.easedOffGoal(replayed.prompts)
+        promptEffectDirty = prompter.effect != PromptEffect.NONE && !easedGoal
         coach = LiveCoach(liveContext, mode, spec, replayed.cuesFired).also {
-            it.restoreRebase(replayed.prompts.lastOrNull { p -> p.retargetMs != null }?.retargetMs)
+            it.restoreEase(easedGoal)
             it.kmSplits = kmSplits
             // The zone minutes before the kill were not seen: after a restore the check-in says the zone only.
             // Kept as a field so a tracker built later (or rebuilt by the setter) starts partial too.
@@ -1214,6 +1216,8 @@ class RecordingSession(
             vc.applyEffect(prompter.effect)
             promptEffectDirty = false
         }
+        // Ease off on a goal run (this process or before a kill): the voice coach says no target gap from here.
+        if (coach.easeMode) vc.enterEase()
         val st = core.status(t)
         val steps = spec?.steps.orEmpty()
         val recording = st.state == RecorderState.recording && !core.autoPaused
@@ -1250,6 +1254,7 @@ class RecordingSession(
                 goal = coach.goalProgress(ticker.distanceM, st.activeMs),
                 // Zone lines are for a run of one stretch (Free, Trail, easy, long, a goal); a rep session moves zones by design.
                 zoneCues = steps.size <= 1,
+                position = VoiceCoach.Position(ticker.distanceM, st.activeMs),
             ),
         ) ?: return
         Log.i(TAG, "coach ${line.kind}: ${line.text}")
@@ -1338,20 +1343,15 @@ class RecordingSession(
     private fun resolvePrompt(a: PromptAnswer, t: Long) {
         lapInput.holdForPrompt(false) // the window closes; a press in the next 0.7 s is still ignored, not a lap
         questionAsked = false
-        // Ease off on a goal run re-aims the goal time (projected finish, next whole minute): journaled, said once, and
-        // every later goal compare, the last-2-km prompt and the status read it. A second ease off can re-aim again.
-        val retarget = if (a.choice == PromptChoice.ease) coach.rebaseGoal(ticker.distanceM, core.status(t).activeMs) else null
-        val goalDistanceM = coach.goalTarget?.distanceM
-        if (retarget != null) {
-            prompter.retargeted()
-            coachLines?.retarget()
-        }
-        writer.append(CoachPrompter.line(a, System.currentTimeMillis(), t, retarget))
+        // Ease off at the falling-behind question of a goal run: the rest of the run says no target, goal or PB gap (the
+        // choice itself is the journal's `pr` line; a restore reads the mode back from it).
+        val easeGoal = a.choice == PromptChoice.ease && a.prompt.kind == PromptKind.behindTarget && coach.enterEase()
+        writer.append(CoachPrompter.line(a, System.currentTimeMillis(), t))
         // The effect reaches the voice coach now; what it actually applies (a push for a runner already far off the
         // target is dropped; no target, none) is what the screen's band follows.
-        // A re-aim replaces the ease effect: the goal time is the new anchor, so no loosened pace band or slower cadence.
-        val applied = if (a.choice == PromptChoice.hold) null else if (retarget != null) PromptEffect.NONE.also { coachLines?.applyEffect(it) } else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
-        val spoken = if (retarget != null && goalDistanceM != null) GoalMargin.newTargetLine(goalDistanceM, retarget) else a.spoken
+        // The ease mode has no target to loosen: no effect, so the screen's band stays plain.
+        val applied = if (a.choice == PromptChoice.hold) null else if (easeGoal) PromptEffect.NONE.also { coachLines?.applyEffect(it) } else coachLines?.applyEffect(prompter.effect) ?: PromptEffect.NONE
+        val spoken = a.spoken
         spoken?.let {
             cues.announce(it, CueSlot.structure)
             logSaid(it)
@@ -1359,7 +1359,7 @@ class RecordingSession(
         RecorderEventBus.emit(
             PromptResolvedEvent(
                 id = a.prompt.id.toLong(), choice = a.choice.key, source = a.source.key,
-                paceFactor = applied?.paceFactor ?: 1.0, oneRep = applied?.oneRep ?: false, retargetMs = retarget,
+                paceFactor = applied?.paceFactor ?: 1.0, oneRep = applied?.oneRep ?: false,
             ),
         )
         Log.i(TAG, "prompt ${a.prompt.kind.key}#${a.prompt.id} -> ${a.choice.key} (${a.source.key}) x${applied?.paceFactor}")
@@ -1519,7 +1519,7 @@ class RecordingSession(
 
     // Voice coaching names the next step in the ten-seconds cue; a replay's transcript stays pinned.
     private fun cueText(o: RecorderCore.Output.Cue): String? =
-        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index, coach = voiceCoach != null && replay == null)
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index, coach = voiceCoach != null && replay == null, easeProjection = coach.easeMode)
 
     private fun emitState() {
         refreshSnapshot()

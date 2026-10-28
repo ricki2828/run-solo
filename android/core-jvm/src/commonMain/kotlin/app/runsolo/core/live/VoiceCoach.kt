@@ -12,7 +12,8 @@ import kotlin.math.roundToLong
  * Rules: a line is only returned when no speech is queued ([Input.busyUntil]), so coaching never
  * piles up behind a cue and a status line that could not start within [STALE_MS] of being due is
  * dropped. Priority is next step (the cue, always first: nothing is said within [NEAR_END_MS] of
- * a part ending) > drift > zone change > status. Replays and Minimal detail never construct one that speaks.
+ * a part ending) > drift > zone change > status. After an ease off on a goal run ([enterEase]) the status is only a clear,
+ * sustained pace change: no target, goal or PB is ever compared. Replays and Minimal detail never construct one that speaks.
  */
 class VoiceCoach(private val config: Config) {
     /**
@@ -65,7 +66,12 @@ class VoiceCoach(private val config: Config) {
         val goal: GoalProgress? = null,
         /** False on a rep session (several steps): the zone moves are part of the reps, not news. */
         val zoneCues: Boolean = true,
+        /** Where the run is (distance, active time): feeds the ease mode's pace-change line. Null in a replay or a test without one. */
+        val position: Position? = null,
     )
+
+    /** The run's distance and active time at a tick. */
+    data class Position(val distanceM: Double, val elapsedMs: Long)
 
     /**
      * A goal run with a target time ([target]), [distanceM] and [elapsedMs] (active) so far. Set only on those runs: it
@@ -154,20 +160,86 @@ class VoiceCoach(private val config: Config) {
         kmMargin = GoalMargin.aheadMs(g.target, d, g.elapsedMs)
     }
 
+    // Ease mode (ease off on a goal run): the pace over the km when the mode began, or when a change was last said (the
+    // reference), and the run's distance at which the next km is judged against it.
+    private var ease = false
+    private var easeAnchor: Double? = null
+    private var easeNextEvalM = 0.0
+    private val histM = ArrayList<Double>()
+    private val histMs = ArrayList<Long>()
+
     /**
-     * The goal time was re-aimed (ease off on a goal run): the margin history was against the old clock, so the trend
-     * and the last line said start again. Silent until the next whole km measures the margin to the new time.
+     * The runner chose to ease off on a goal run: from here the voice says no target, goal or PB gap, no goal status and
+     * no pace-vs-target order. It says the zone changes (as ever) and a pace change: each whole km after the reference
+     * is judged, and when its pace is at least [EASE_CHANGE_SEC] s/km off the reference the change is said, once, and the
+     * reference moves to the new pace. The reference is the pace over the km before ease off was chosen: against the
+     * previous km a slow drift would never register, and a wobble would be said twice; judging whole km (never a
+     * partial one) means the figure said is a km's worth, and at most one line per km. After a restore the history is
+     * empty, so the reference is the first full km seen.
      */
-    fun retarget() {
-        kmMargin = null
-        prevKmMargin = null
+    fun enterEase() {
+        if (ease) return
+        ease = true
         lastSaid = null
         goalLevel = false
         dueSinceT = null
+        histM.lastOrNull()?.let { anchorAt(it) }
+    }
+
+    private fun anchorAt(distanceM: Double) {
+        easeAnchor = paceOverWindow()
+        easeNextEvalM = distanceM + EASE_WINDOW_M
+    }
+
+    private fun record(p: Position) {
+        val last = histM.lastOrNull()
+        if (last != null && p.distanceM - last < HISTORY_STEP_M) return
+        histM.add(p.distanceM)
+        histMs.add(p.elapsedMs)
+    }
+
+    /** Seconds per km over the last [EASE_WINDOW_M]; null until that much of the run has been seen. */
+    private fun paceOverWindow(): Double? {
+        val n = histM.size
+        if (n < 2) return null
+        val endM = histM[n - 1]
+        val fromM = endM - EASE_WINDOW_M
+        if (histM[0] > fromM) return null
+        var i = n - 1
+        while (i > 0 && histM[i - 1] > fromM) i--
+        // histM[i - 1] <= fromM < histM[i]: interpolate the active time at fromM.
+        val m0 = histM[i - 1]
+        val m1 = histM[i]
+        val t0 = histMs[i - 1] + ((fromM - m0) / (m1 - m0) * (histMs[i] - histMs[i - 1]))
+        return (histMs[n - 1] - t0) / 1_000.0 / (EASE_WINDOW_M / 1_000.0)
+    }
+
+    /** The ease mode's only status line: a clear pace change over the last km. Descriptive, never an order or a target. */
+    private fun easeStatus(i: Input, quiet: Boolean): Line? {
+        val pos = i.position ?: return null
+        val cur = paceOverWindow() ?: return null
+        val anchor = easeAnchor
+        if (anchor == null) {
+            anchorAt(pos.distanceM)
+            return null
+        }
+        if (pos.distanceM < easeNextEvalM) return null
+        val delta = cur - anchor
+        if (abs(delta) < EASE_CHANGE_SEC) {
+            easeNextEvalM = pos.distanceM + EASE_WINDOW_M
+            return null
+        }
+        // A clear change: said at the first quiet moment (the km stays judged until then).
+        if (!quiet) return null
+        val secs = (abs(delta) / 5).roundToLong() * 5
+        easeAnchor = cur
+        easeNextEvalM = pos.distanceM + EASE_WINDOW_M
+        return Line(Kind.status, paceChangeLine(slower = delta > 0, secs = secs))
     }
 
     fun tick(i: Input): Line? {
         if (!config.full) return null
+        i.position?.let { record(it) }
         if (i.segment != segment) {
             segment = i.segment
             nextEvalMs = FIRST_EVAL_MS
@@ -360,6 +432,7 @@ class VoiceCoach(private val config: Config) {
     private var goalLevel = false
 
     private fun status(i: Input, quiet: Boolean): Line? {
+        if (ease) return easeStatus(i, quiet)
         i.goal?.let { return goalStatus(i, it, quiet) }
         if (targetPace == null || !checked || i.paceSecPerKm == null) return null
         if (i.segmentActiveMs < nextEvalMs) return null
@@ -401,6 +474,10 @@ class VoiceCoach(private val config: Config) {
     }
 
     companion object {
+        /** The ease mode's pace-change line: "Slowed by about 20 seconds a km." / "Sped up by about 20 seconds a km." */
+        fun paceChangeLine(slower: Boolean, secs: Long): String =
+            if (slower) "Slowed by about $secs seconds a km." else "Sped up by about $secs seconds a km."
+
         /** A push tightens the target only while the runner is within this of it (s/km). */
         const val PUSH_WITHIN_SEC = 10.0
 
@@ -445,6 +522,15 @@ class VoiceCoach(private val config: Config) {
 
         /** Hysteresis at a zone edge (bpm): going down needs this far under the bottom, and a pending move survives a dip this size. */
         const val ZONE_HYSTERESIS_BPM = 4.0
+
+        /** The ease mode reads the pace over this much of the run (m): a pace change must hold over about a km. */
+        const val EASE_WINDOW_M = 1_000.0
+
+        /** A pace change is clear at this many s/km off the reference (a km wobbles by 5-10 on its own). */
+        const val EASE_CHANGE_SEC = 15.0
+
+        /** The ease mode's history keeps a point every this many metres. */
+        const val HISTORY_STEP_M = 10.0
 
         /** At least this between two zone lines. */
         const val ZONE_EVERY_MS = 150_000L

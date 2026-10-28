@@ -422,34 +422,31 @@ class LiveCoach(
      */
     val goalTarget: LiveTarget?
         get() {
-            val s = spec?.takeIf { it.isGoal } ?: return null
+            val s = spec?.takeIf { it.isGoal && !easeMode } ?: return null
             val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
             val base = context?.target?.takeIf { abs(it.distanceM - step.value) < 1.0 } ?: return null
-            return rebasedTargetMs?.let { base.copy(targetMs = it, predicted = false) } ?: base
+            return base
         }
 
-    /** The goal time the runner re-aimed at ("New target" after an ease off); null = the Start target still stands. */
-    private var rebasedTargetMs: Long? = null
-
-    /** A re-aimed target is in force: the PB chase compares no longer apply (he let that clock go). */
-    val goalRebased: Boolean get() = rebasedTargetMs != null
-
     /**
-     * Ease off on a goal run: the goal time becomes the projected finish (even pace from here) rounded UP to the next
-     * whole minute. Returns it, or null when there is no goal time, the goal is reached or there is too little run to
-     * project from. Every later goal compare, prompt and status reads the new target ([goalTarget]).
+     * Ease off on a goal run (the runner picked it at the falling-behind question): for the rest of the run there is no
+     * goal time, no PB chase and no prompt. [goalTarget] is gone, so no status, prompt or compare can state a gap; the
+     * voice says the zone, the projected finish and a clear pace change only ([VoiceCoach.enterEase]).
      */
-    fun rebaseGoal(distanceM: Double, activeMs: Long): Long? {
-        val t = goalTarget ?: return null
-        if (goalReached || distanceM < REBASE_MIN_M || activeMs <= 0) return null
-        val projectedMs = activeMs / distanceM * t.distanceM
-        val minutes = kotlin.math.ceil(projectedMs / 60_000.0).toLong()
-        return (minutes * 60_000L).also { rebasedTargetMs = it }
+    var easeMode = false
+        private set
+
+    /** Enters the ease mode; false (nothing changes) off a distance goal, or once the goal is reached. */
+    fun enterEase(): Boolean {
+        if (spec?.isGoal != true || goalReached) return false
+        easeMode = true
+        kmFacts = null
+        return true
     }
 
-    /** After a restore: the re-aimed target the journal last recorded. */
-    fun restoreRebase(targetMs: Long?) {
-        rebasedTargetMs = targetMs
+    /** After a restore: the journal held an ease off on this goal run. */
+    fun restoreEase(on: Boolean) {
+        if (on && spec?.isGoal == true) easeMode = true
     }
 
     /**
@@ -483,16 +480,19 @@ class LiveCoach(
         chaseSpill = distrust
         chaseCueKm = index
         chaseCueMs = stepElapsedMs
-        // After a re-aimed target the PB chase is silent (no gap, no cue): the status line owns the comparison, against
-        // the new time. The prompts still get their km facts, measured against the rebased clock.
-        val gap = board?.takeIf { trust && !goalRebased }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
+        // Ease off: no PB chase, no target facts and so no prompt either. The jump guard above still ran.
+        if (easeMode) {
+            kmFacts = null
+            return null
+        }
+        val gap = board?.takeIf { trust }?.let { ChaseCompare.vsBest(it, index, stepElapsedMs) }
         val chasing = c.choice == CoachChoice.chase
         val behind = (goalTarget ?: context?.target)?.takeIf { trust }?.let { LiveCompare.target(it, index, stepElapsedMs)?.deltaMs }
         kmFacts = KmFacts(
             index, gap?.deltaMs?.takeIf { chasing }, board?.pbSplitsLabel ?: board?.label, gap?.proxy == true,
             step.value.toDouble(), behind, chasing, goalTarget?.targetMs,
         )
-        return if (goalRebased) null else c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
+        return c.atKm(index, gap, board?.pbSplitsLabel ?: board?.label)
     }
 
     /**
@@ -550,7 +550,7 @@ class LiveCoach(
      * split, or muted: the cue keeps its own "On pace for …".
      */
     private fun goalKm(kind: CueKind, index: Int?, s: SessionSpec, activeMs: Long): Fire? {
-        if (kind != CueKind.projection || index == null || goalReached || goalRebased) return null
+        if (kind != CueKind.projection || index == null || goalReached || easeMode) return null
         val step = s.steps.firstOrNull()?.takeIf { it.target == TargetKind.distance } ?: return null
         val key = GoalCoach.boardKey(step)
         val board = context?.boards?.firstOrNull { it.kind == LiveBoardKind.distance && it.key == key } ?: return null
@@ -566,9 +566,6 @@ class LiveCoach(
     companion object {
         /** A recovery shorter than this gets the compare in voice only, no overlay card (§3.2). */
         const val SHORT_RECOVERY_MS = 20_000L
-
-        /** A goal time is re-aimed only from this far in: a projection off a few hundred metres is noise. */
-        const val REBASE_MIN_M = 500.0
 
         /** Cooper ranks against past tests only at these minutes (the projection speaks every minute). */
         val COOPER_RANK_MINUTES = setOf(3, 6, 9)

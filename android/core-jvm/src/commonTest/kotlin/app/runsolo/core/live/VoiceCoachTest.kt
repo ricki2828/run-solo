@@ -386,24 +386,114 @@ class VoiceCoachTest {
         assertTrue(said.first { it.first >= 594 }.second.endsWith("slipping"), "$said")
     }
 
-    @Test
-    fun `a re-aimed goal time restarts the status against the new clock and names it`() {
-        val c = goalCoach()
-        val said = ArrayList<Pair<Int, String>>()
+    // ---- ease mode (ease off on a goal run): zone, projection and a clear pace change only ----
+
+    /** Drives [c] at 1 Hz from [fromS] to [toS], [pace] s/km each second, positions fed; the lines said, by second. */
+    private class EaseRun(val c: VoiceCoach) {
         var d = 0.0
-        val newTarget = app.runsolo.core.model.LiveTarget(5_000.0, 1_800_000, predicted = false) // 30:00, 360 s/km
-        var target = goalTarget
-        for (s in 1..900) {
-            if (s == 400) { c.retarget(); target = newTarget }
-            d += 1_000.0 / 330.0
-            val t = s * 1_000L
-            c.tick(VoiceCoach.Input(t, 0, t, 330.0, null, null, 0, false, VoiceCoach.GoalProgress(target, d, t)))?.let { said.add(s to it.text) }
+        val said = ArrayList<Pair<Int, String>>()
+
+        fun run(fromS: Int, toS: Int, hr: Double? = null, busyUntil: (Int) -> Long = { 0L }, pace: (Int) -> Double) {
+            for (s in fromS..toS) {
+                val t = s * 1_000L
+                d += 1_000.0 / pace(s)
+                c.tick(VoiceCoach.Input(t, 0, t, pace(s), hr, null, busyUntil(s), false, null, true, VoiceCoach.Position(d, t)))?.let { said.add(s to it.text) }
+            }
         }
-        val before = said.filter { it.first < 400 }
-        val after = said.filter { it.first >= 400 }
-        assertTrue(before.all { it.second.contains("24:30") }, "$said")
-        assertTrue(after.isNotEmpty() && after.all { it.second.contains("30 minutes") && !it.second.contains("24:30") }, "$said")
-        assertTrue(after.all { it.second.contains("ahead of") || it.second.startsWith("On ") }, "330 s/km beats 360: $said")
+    }
+
+    private fun easeCoach() = VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0, zoneBottomsBpm = bottoms))
+
+    private val banned = Regex("(?i)\\b(target|goal|behind|ahead|best|pb|off|over|under|slipping|closing|holding|margin|level|pick it up|ease)\\b")
+
+    @Test
+    fun `ease mode - a steady pace far off the old target says nothing - no ease off no pick it up no gap`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        c.enterEase()
+        r.run(601, 1_800) { 300.0 }
+        assertEquals(emptyList(), r.said)
+    }
+
+    @Test
+    fun `ease mode - slowing by 20 s a km for a km says it once and the new pace is the reference`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        c.enterEase()
+        r.run(601, 2_400) { 320.0 }
+        assertEquals(1, r.said.size, "${r.said}")
+        assertEquals("Slowed by about 20 seconds a km.", r.said[0].second)
+        // A full km at 320 s/km after the reference (320 s) plus the 20 s hold.
+        assertTrue(r.said[0].first in 900..1_000, "${r.said}")
+    }
+
+    @Test
+    fun `ease mode - then speeding up by 25 s a km says that once`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        c.enterEase()
+        r.run(601, 1_560) { 320.0 } // 3000 m: the km marks fall on whole thousands of the run
+        r.run(1_561, 3_200) { 295.0 }
+        assertEquals(listOf("Slowed by about 20 seconds a km.", "Sped up by about 25 seconds a km."), r.said.map { it.second }, "${r.said}")
+    }
+
+    @Test
+    fun `ease mode - a wobble of 10 s a km or a short slow stretch is not a pace change`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        c.enterEase()
+        // 10 s a km slower for ever: under the 15 s threshold.
+        r.run(601, 1_800) { 310.0 }
+        // 20 s at 360 inside a km at 310 moves the km pace by under 15 s a km (12.8 against 300).
+        r.run(1_801, 2_700) { s -> if (s in 2_000..2_019) 360.0 else 310.0 }
+        assertEquals(emptyList(), r.said)
+    }
+
+    @Test
+    fun `ease mode - a change that has to wait for a quiet moment is said once at the first one`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        c.enterEase()
+        r.run(601, 1_100, busyUntil = { Long.MAX_VALUE }) { 320.0 }
+        assertEquals(emptyList(), r.said)
+        r.run(1_101, 1_300) { 320.0 }
+        assertEquals(1, r.said.size, "${r.said}")
+        assertEquals(1_101, r.said[0].first)
+    }
+
+    @Test
+    fun `ease mode - the zone line still speaks and no line of the mode names a target or a gap`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600, hr = 120.0) { 300.0 }
+        c.enterEase()
+        // Up to zone 3 (133+), pace 20 s a km slower: the zone line and the pace line, never a gap word.
+        r.run(601, 2_000, hr = 140.0) { 320.0 }
+        assertTrue(r.said.any { it.second == "Heart rate up to zone 3." }, "${r.said}")
+        assertTrue(r.said.any { it.second.startsWith("Slowed by about") }, "${r.said}")
+        assertTrue(r.said.none { banned.containsMatchIn(it.second) }, "${r.said}")
+    }
+
+    @Test
+    fun `ease mode - after a restore the reference is the first full km seen and not a guess`() {
+        val c = easeCoach()
+        c.enterEase() // history empty, as after a kill
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        assertEquals(emptyList(), r.said)
+        r.run(601, 2_400) { 325.0 }
+        assertEquals(listOf("Slowed by about 25 seconds a km."), r.said.map { it.second }, "${r.said}")
+    }
+
+    @Test
+    fun `the pace change line is plain`() {
+        assertEquals("Slowed by about 20 seconds a km.", VoiceCoach.paceChangeLine(slower = true, secs = 20))
+        assertEquals("Sped up by about 20 seconds a km.", VoiceCoach.paceChangeLine(slower = false, secs = 20))
     }
 
     @Test
