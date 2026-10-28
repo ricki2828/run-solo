@@ -392,6 +392,14 @@ class VoiceCoachTest {
     private class EaseRun(val c: VoiceCoach) {
         var d = 0.0
         val said = ArrayList<Pair<Int, String>>()
+        val beforeEase = ArrayList<Pair<Int, String>>()
+
+        /** Enters ease mode; what was said before it (a pace 6 s off the target says "Pick it up") is kept apart. */
+        fun enter() {
+            beforeEase.addAll(said)
+            said.clear()
+            c.enterEase()
+        }
 
         fun run(fromS: Int, toS: Int, hr: Double? = null, busyUntil: (Int) -> Long = { 0L }, pace: (Int) -> Double) {
             for (s in fromS..toS) {
@@ -411,9 +419,23 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600) { 300.0 }
-        c.enterEase()
+        r.enter()
         r.run(601, 1_800) { 300.0 }
         assertEquals(emptyList(), r.said)
+    }
+
+    @Test
+    fun `ease mode - pick it up spoken before the ease off is never spoken after it however slow`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600) { 300.0 }
+        r.enter()
+        assertTrue(r.beforeEase.any { it.second.startsWith("Pick it up") }, "${r.beforeEase}")
+        r.run(601, 1_800) { 300.0 }
+        assertEquals(emptyList(), r.said)
+        // Well over the old target pace, and no change from the reference: still no pick it up, no gap.
+        r.run(1_801, 3_000) { 340.0 }
+        assertTrue(r.said.none { it.second.startsWith("Pick it up") }, "${r.said}")
     }
 
     @Test
@@ -421,7 +443,7 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600) { 300.0 }
-        c.enterEase()
+        r.enter()
         r.run(601, 2_400) { 320.0 }
         assertEquals(1, r.said.size, "${r.said}")
         assertEquals("Slowed by about 20 seconds a km.", r.said[0].second)
@@ -434,7 +456,7 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600) { 300.0 }
-        c.enterEase()
+        r.enter()
         r.run(601, 1_560) { 320.0 } // 3000 m: the km marks fall on whole thousands of the run
         r.run(1_561, 3_200) { 295.0 }
         assertEquals(listOf("Slowed by about 20 seconds a km.", "Sped up by about 25 seconds a km."), r.said.map { it.second }, "${r.said}")
@@ -445,7 +467,7 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600) { 300.0 }
-        c.enterEase()
+        r.enter()
         // 10 s a km slower for ever: under the 15 s threshold.
         r.run(601, 1_800) { 310.0 }
         // 20 s at 360 inside a km at 310 moves the km pace by under 15 s a km (12.8 against 300).
@@ -458,7 +480,7 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600) { 300.0 }
-        c.enterEase()
+        r.enter()
         r.run(601, 1_100, busyUntil = { Long.MAX_VALUE }) { 320.0 }
         assertEquals(emptyList(), r.said)
         r.run(1_101, 1_300) { 320.0 }
@@ -471,7 +493,7 @@ class VoiceCoachTest {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600, hr = 120.0) { 300.0 }
-        c.enterEase()
+        r.enter()
         // Up to zone 3 (133+), pace 20 s a km slower: the zone line and the pace line, never a gap word.
         r.run(601, 2_000, hr = 140.0) { 320.0 }
         assertTrue(r.said.any { it.second == "Heart rate up to zone 3." }, "${r.said}")
