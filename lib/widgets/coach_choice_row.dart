@@ -99,16 +99,14 @@ class _ChoiceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final g = onGround;
-    final fill = g == null ? t.bgRaised : (selected ? g.ink : Colors.transparent);
-    final edge = g == null
-        ? (selected ? t.inkPrimary : t.lineHair)
-        : g.ink;
+    final fill = g == null
+        ? t.bgRaised
+        : (selected ? g.ink : Colors.transparent);
+    final edge = g == null ? (selected ? t.inkPrimary : t.lineHair) : g.ink;
     final titleInk = g == null
         ? (selected ? t.inkPrimary : t.inkSecondary)
         : (selected ? g.onInk : g.ink);
-    final subInk = g == null
-        ? t.inkSecondary
-        : (selected ? g.onInk : g.ink);
+    final subInk = t.inkSecondary;
     return Semantics(
       button: true,
       selected: selected,
@@ -118,15 +116,12 @@ class _ChoiceButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(Radii.card),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 96),
+          constraints: BoxConstraints(minHeight: g == null ? 96 : 72),
           padding: const EdgeInsets.all(Space.x12),
           decoration: BoxDecoration(
             color: fill,
             borderRadius: BorderRadius.circular(Radii.card),
-            border: Border.all(
-              color: edge,
-              width: 2,
-            ),
+            border: Border.all(color: edge, width: 2),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -140,18 +135,21 @@ class _ChoiceButton extends StatelessWidget {
                   maxLines: 1,
                   softWrap: false,
                   style: RunSoloType.title28.copyWith(
-                    fontSize: 20,
+                    fontSize: g == null ? 20 : 24,
                     color: titleInk,
                   ),
                 ),
               ),
-              const SizedBox(height: Space.x4),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: RunSoloType.label13.copyWith(color: subInk),
-              ),
+              // On Ready the title alone: the screen has no room for the line.
+              if (g == null) ...[
+                const SizedBox(height: Space.x4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: RunSoloType.label13.copyWith(color: subInk),
+                ),
+              ],
             ],
           ),
         ),

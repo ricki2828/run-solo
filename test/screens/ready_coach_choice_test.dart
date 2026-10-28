@@ -92,18 +92,18 @@ void main() {
     expect(find.text('HOW DO YOU WANT TO RUN?'), findsNothing);
   });
 
-  testWidgets('the buttons are big: at least 96 px tall and half the width', (
+  testWidgets('the buttons are big: at least 72 px tall and half the width', (
     tester,
   ) async {
     await open(tester, free);
     final chase = tester.getSize(find.byKey(chaseKey));
     final steady = tester.getSize(find.byKey(steadyKey));
-    expect(chase.height, greaterThanOrEqualTo(96));
+    expect(chase.height, greaterThanOrEqualTo(72));
     expect(chase.height, steady.height);
     expect(chase.width, greaterThan(140));
   });
 
-  testWidgets('at 2x text the two cards stay equal and at least 96 tall', (
+  testWidgets('at 2x text the two cards stay equal and at least 72 tall', (
     tester,
   ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 2.0;
@@ -111,7 +111,7 @@ void main() {
     await open(tester, free);
     final chase = tester.getSize(find.byKey(chaseKey));
     final steady = tester.getSize(find.byKey(steadyKey));
-    expect(chase.height, greaterThanOrEqualTo(96));
+    expect(chase.height, greaterThanOrEqualTo(72));
     expect(chase.height, steady.height);
     // The run-type cards above still overflow at 2x (font-scale pass, #26);
     // only the coach cards are checked here.
