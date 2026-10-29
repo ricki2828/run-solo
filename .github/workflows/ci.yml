@@ -836,6 +836,17 @@ jobs:
             [ -n "$src" ] || { echo "::error::$f missing from the artifacts"; exit 1; }
             [ "$src" = "dist/$f" ] || mv "$src" "dist/$f"
           done
+      - name: Verify the AAB signing key
+        if: ${{ steps.gate.outputs.ready == 'true' }}
+        env:
+          EXPECTED: ${{ vars.EXPECTED_UPLOAD_SHA256 || '7F:9F:DC:C2:23:11:0B:4E:DD:83:5B:C4:EF:94:60:03:F9:62:29:A4:95:AE:55:6C:24:23:1D:0E:BA:42:FE:E3' }}
+        run: |
+          got=$(keytool -printcert -jarfile dist/app-play-release.aab | awk '/SHA256:/{print $2; exit}')
+          echo "AAB signer SHA-256: $got"
+          if [ "${got^^}" != "${EXPECTED^^}" ]; then
+            echo "::error title=Upload key mismatch::AAB is signed with $got, expected $EXPECTED (repo variable EXPECTED_UPLOAD_SHA256). Not uploading."
+            exit 1
+          fi
       - name: Resolve track and status
         if: ${{ steps.gate.outputs.ready == 'true' }}
         env:

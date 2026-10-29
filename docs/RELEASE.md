@@ -130,3 +130,7 @@ What it does:
 Rollback: `tools/deploy_site.sh --ref <previous good sha>`, or copy the printed `.bak-*` folder back and run `vercel deploy --prod --yes` in it.
 
 Bump "Last updated" in the page whenever its content changes, so the check (and readers) can tell versions apart.
+
+## Signing check
+
+`play-upload` compares the AAB signer SHA-256 (`keytool -printcert -jarfile`) with repo variable `EXPECTED_UPLOAD_SHA256` (default baked in: `7F:9F:DC:C2:23:11:0B:4E:DD:83:5B:C4:EF:94:60:03:F9:62:29:A4:95:AE:55:6C:24:23:1D:0E:BA:42:FE:E3`) and fails before uploading on a mismatch. `~/ai/scripts/app-release` is the cross-app front end for this pipeline.
