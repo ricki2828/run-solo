@@ -409,14 +409,14 @@ def test_the_run_note_gives_the_goal_target_and_its_source_only_when_there_is_on
     assert "the goal's target time: 40:03" in text and "(5K on 26 Oct)" in text and "not a promise" in text
     assert "re-aimed" not in text
     text = run_note(r | {"goal_target_s": 2403, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
-    assert "ease off mid-run on purpose" in text and "never judge the finish against 40:03" in text
-    assert "re-aimed" not in text
+    assert "ease off mid-run on purpose" in text and "easy run with no target" in text
+    assert "40:03" not in text and "re-aimed" not in text
     # an eased run that also carries an old re-aim is still judged against nothing
     text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
-    assert "never judge the finish against 40:03" in text and "re-aimed" not in text
+    assert "easy run with no target" in text and "40:03" not in text and "re-aimed" not in text
     # eased with no target on the row (an upload that lost it): still never judged against a target
     text = run_note(r | {"goal_eased": 1}, [], "Asia/Singapore", amber=False)
-    assert "ease off mid-run on purpose" in text and "against any target" in text and "target time" not in text
+    assert "ease off mid-run on purpose" in text and "do not grade the finish" in text and "the goal's target time" not in text
     # eased and short of the distance: a choice, not a miss
     text = run_note(r | {"goal_eased": 1, "goal_reached": 0}, [], "Asia/Singapore", amber=False)
     assert "(eased off)" in text and "goal not reached" not in text
