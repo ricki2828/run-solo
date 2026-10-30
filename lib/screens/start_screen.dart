@@ -1351,7 +1351,21 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                             (x) => x.copyWith(lastMode: RecordMode.cooper),
                           ).then((_) => _syncProbe()),
                         ),
-                        const SizedBox(height: Space.x24),
+                        const SizedBox(height: Space.x16),
+                        if (_followable(s)) ...[
+                          FollowRouteRow(
+                            route: _route,
+                            units: s.units,
+                            savedCount: services.routes.routes.length,
+                            accent: mode == RecordMode.trail && !goal
+                                ? t.typeTrail
+                                : null,
+                            onChoose: _chooseRoute,
+                            onClear: () => setState(() => _route = null),
+                          ),
+                          const SizedBox(height: Space.x16),
+                        ],
+                        const SizedBox(height: Space.x8),
                         // 29-Sep field test: the first time a run type is
                         // picked, say exactly how it runs. Gone once History
                         // has a run of the type.
@@ -1514,19 +1528,6 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                             now: services.now,
                             aimTruePaceSecPerKm: goal ? _goalAim(s) : null,
                           ),
-                        if (_followable(s)) ...[
-                          const SizedBox(height: Space.x16),
-                          FollowRouteRow(
-                            route: _route,
-                            units: s.units,
-                            savedCount: services.routes.routes.length,
-                            accent: mode == RecordMode.trail && !goal
-                                ? t.typeTrail
-                                : null,
-                            onChoose: _chooseRoute,
-                            onClear: () => setState(() => _route = null),
-                          ),
-                        ],
                         const SizedBox(height: Space.x16),
                         Row(
                           children: [

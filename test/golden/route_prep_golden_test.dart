@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,9 +46,27 @@ Future<void> pickRoute2(WidgetTester tester) async {
   await settleAnimations(tester);
 }
 
+/// A loop with a spur, so the picture shows a shape rather than a line.
+engine.SavedRoute loopRoute() => engine.RouteBuilder.build(
+  id: 'route-2',
+  name: 'River path',
+  raw: [
+    for (var i = 0; i <= 200; i++)
+      engine.RoutePoint(
+        routeLat0 +
+            0.012 * math.sin(i / 200 * 2 * math.pi) +
+            0.004 * math.sin(i / 200 * 6 * math.pi),
+        routeLon0 + 0.018 * (1 - math.cos(i / 200 * 2 * math.pi)),
+        30 + 25 * math.sin(i / 200 * 4 * math.pi),
+      ),
+  ],
+  source: engine.RouteSource.gpx,
+  createdAt: DateTime.utc(2026, 10, 2, 8),
+);
+
 final _routes = [
   testRoute(),
-  testRoute(id: 'route-2', name: 'River path', lengthM: 5200),
+  loopRoute(),
   testRoute(id: 'route-3', name: 'Ridge', lengthM: 2400),
 ];
 

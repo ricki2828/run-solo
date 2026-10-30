@@ -370,7 +370,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           RoutePreview(
             key: const ValueKey('ready-route-preview'),
             route: widget.route!,
-            height: 112,
+            height: 80,
             ground: NightSession.bgBase,
             line: NightSession.inkPrimary,
             start: NightSession.semImproving,
@@ -379,7 +379,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           Text(
             '${widget.route!.name} · ${routeSubtitle(widget.route!, s.units)}',
             key: const ValueKey('ready-route-line'),
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: RunSoloType.body15.copyWith(color: _ink),
           ),
