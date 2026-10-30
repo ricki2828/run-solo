@@ -15,6 +15,7 @@ import '../state/history_store.dart';
 import '../state/route_library.dart';
 import '../theme/theme.dart';
 import '../widgets/chrome.dart';
+import '../widgets/route_preview.dart';
 import 'watch_sheet.dart';
 
 /// Said once under the route on Start and in the sheet: the turn cues are the
@@ -457,8 +458,12 @@ class _SheetButton extends StatelessWidget {
   }
 }
 
-/// Start's row under the run type: "Follow a route ›", or the chosen route
-/// with Change and a clear button.
+/// Start's route tile under the run type. Three looks:
+///  * routes saved, none picked: a card that says "Repeat a route" and how
+///    many there are (a cyan-free accent edge on Trail, where it matters);
+///  * a route picked: its map, name, distance and climb, with Change and a
+///    clear button;
+///  * nothing saved yet: the old quiet row, which still opens the import.
 class FollowRouteRow extends StatelessWidget {
   const FollowRouteRow({
     super.key,
@@ -466,24 +471,142 @@ class FollowRouteRow extends StatelessWidget {
     required this.units,
     required this.onChoose,
     required this.onClear,
+    this.savedCount = 0,
+    this.accent,
   });
   final engine.SavedRoute? route;
   final Units units;
   final VoidCallback onChoose;
   final VoidCallback onClear;
 
+  /// How many routes are on the phone, for the hint on the empty tile.
+  final int savedCount;
+
+  /// Trail's colour: outlines the empty tile so it is hard to miss.
+  final Color? accent;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final r = route;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          key: const ValueKey('follow-route-row'),
-          onTap: onChoose,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
+    if (r != null) return _picked(t, r);
+    if (savedCount > 0) return _offer(t);
+    return _quiet(t);
+  }
+
+  Widget _quiet(RunSoloTokens t) => InkWell(
+    key: const ValueKey('follow-route-row'),
+    onTap: onChoose,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Follow a route',
+              style: RunSoloType.body17.copyWith(color: t.inkPrimary),
+            ),
+          ),
+          Text(
+            'Choose ›',
+            style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _offer(RunSoloTokens t) {
+    final edge = accent ?? t.inkSecondary;
+    return Material(
+      color: t.bgRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.card),
+        side: BorderSide(color: edge, width: accent == null ? 1 : 2),
+      ),
+      child: InkWell(
+        key: const ValueKey('follow-route-row'),
+        customBorder: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.card),
+        ),
+        onTap: onChoose,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 72),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.x16,
+              vertical: Space.x12,
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.route, size: 28, color: accent ?? t.inkPrimary),
+                const SizedBox(width: Space.x12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Repeat a route',
+                        key: const ValueKey('follow-route-title'),
+                        style: RunSoloType.heading19.copyWith(
+                          color: t.inkPrimary,
+                        ),
+                      ),
+                      Text(
+                        savedCount == 1
+                            ? 'Pick your saved route'
+                            : 'Pick one of your $savedCount routes',
+                        key: const ValueKey('follow-route-hint'),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'Choose ›',
+                  style: RunSoloType.body15.copyWith(color: t.inkPrimary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _picked(RunSoloTokens t, engine.SavedRoute r) {
+    return Container(
+      decoration: BoxDecoration(
+        color: t.bgRaised,
+        borderRadius: BorderRadius.circular(Radii.card),
+        border: Border.all(color: t.lineHair),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            key: const ValueKey('follow-route-row'),
+            onTap: onChoose,
+            child: RoutePreview(
+              key: const ValueKey('follow-route-preview'),
+              route: r,
+              ground: t.bgSunken,
+              line: t.inkPrimary,
+              start: t.semImproving,
+              radius: 0,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.x16,
+              Space.x8,
+              Space.x4,
+              Space.x4,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -492,46 +615,61 @@ class FollowRouteRow extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        r == null ? 'Follow a route' : 'Following: ${r.name}',
-                        style: RunSoloType.body17.copyWith(color: t.inkPrimary),
-                      ),
-                      if (r != null)
-                        Text(
-                          routeSubtitle(r, units),
-                          key: const ValueKey('follow-route-sub'),
-                          style: RunSoloType.label13.copyWith(
-                            color: t.inkSecondary,
-                          ),
+                        r.name,
+                        key: const ValueKey('follow-route-name'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: RunSoloType.heading19.copyWith(
+                          color: t.inkPrimary,
                         ),
+                      ),
+                      Text(
+                        routeSubtitle(r, units),
+                        key: const ValueKey('follow-route-sub'),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Text(
-                  r == null ? 'Choose ›' : 'Change ›',
-                  style: RunSoloType.body15.copyWith(color: t.inkPrimary),
-                ),
-                if (r != null)
-                  IconButton(
-                    key: const ValueKey('follow-route-clear'),
-                    tooltip: 'Stop following this route',
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    onPressed: onClear,
-                    icon: Icon(Icons.close, color: t.inkSecondary),
+                TextButton(
+                  key: const ValueKey('follow-route-change'),
+                  onPressed: onChoose,
+                  style: TextButton.styleFrom(
+                    foregroundColor: t.inkPrimary,
+                    minimumSize: const Size(48, 48),
                   ),
+                  child: const Text('Change'),
+                ),
+                IconButton(
+                  key: const ValueKey('follow-route-clear'),
+                  tooltip: 'Stop following this route',
+                  constraints: const BoxConstraints(
+                    minWidth: 48,
+                    minHeight: 48,
+                  ),
+                  onPressed: onClear,
+                  icon: Icon(Icons.close, color: t.inkSecondary),
+                ),
               ],
             ),
           ),
-        ),
-        if (r != null)
-          Text(
-            kTurnHintsLine,
-            key: const ValueKey('follow-route-hints'),
-            style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Space.x16,
+              0,
+              Space.x16,
+              Space.x12,
+            ),
+            child: Text(
+              kTurnHintsLine,
+              key: const ValueKey('follow-route-hints'),
+              style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+            ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
