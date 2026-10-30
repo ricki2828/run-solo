@@ -587,7 +587,7 @@ class RecordingController extends ChangeNotifier {
     // moment, not the event.
     try {
       if (!_snap.recording) return;
-      final m = _moments.observe(_snap, momentUnits);
+      final m = _moments.observe(_snap, momentUnits, eased: easedGoal);
       // A prompt owns the screen: the moment is dropped, never stacked on it.
       if (m != null && prompt.value == null) moment.value = m;
     } catch (_) {}
@@ -839,6 +839,14 @@ class RecordingController extends ChangeNotifier {
     if (eased) _dropTargetBand();
   }
 
+  /// The live run is a goal run the runner eased off on: from then it is an
+  /// easy run (label, no target, no grading against it). Survives a restore
+  /// ([_keepGoalFromStatus]).
+  bool get easedGoal {
+    final id = _snap.runId;
+    return id != null && id == _goalRunId && (_goal?.eased ?? false);
+  }
+
   /// The goal target run [runId] raced: Start's number and source, and the
   /// whether an ease off let it go (see [PromptResolvedEvent.eased]).
   /// Null for any other run, a run this process did not start, or none.
@@ -1034,7 +1042,7 @@ class RecordingController extends ChangeNotifier {
       case GoalEvent():
         lastGoal.value = e;
         try {
-          moment.value = _moments.goalReached(e);
+          moment.value = _moments.goalReached(e, eased: easedGoal);
         } catch (_) {}
       case FaultEvent():
         _onFault(e);

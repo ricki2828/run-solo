@@ -514,14 +514,15 @@ class VoiceCoachTest {
     }
 
     @Test
-    fun `ease mode - the zone line still speaks and no line of the mode names a target or a gap`() {
+    fun `ease mode - an easy run holds zone 2 and no line of the mode names a target or a gap`() {
         val c = easeCoach()
         val r = EaseRun(c)
         r.run(1, 600, hr = 120.0) { 300.0 }
         r.enter()
-        // Up to zone 3 (133+), pace 20 s a km slower: the zone line and the pace line, never a gap word.
+        // Up to zone 3 (133+), pace 20 s a km slower: it is an easy run now, so zone 3 is held to zone 2 (said as "keep it"),
+        // and the pace line; never a gap word.
         r.run(601, 2_000, hr = 140.0) { 320.0 }
-        assertTrue(r.said.any { it.second == "Heart rate up to zone 3." }, "${r.said}")
+        assertTrue(r.said.any { it.second == "Heart rate in zone 3. Keep it in zone 2." }, "${r.said}")
         assertTrue(r.said.any { it.second.startsWith("Slowed by about") }, "${r.said}")
         assertTrue(r.said.none { banned.containsMatchIn(it.second) }, "${r.said}")
     }
@@ -547,6 +548,17 @@ class VoiceCoachTest {
     fun `without a goal the same fast pace still says ease off`() {
         // The gate: only a goal run with a target time changes. Everything else is as before.
         assertEquals(listOf(30 to "Ease off, 15 seconds fast"), VoiceCoach(VoiceCoach.Config(true, targetPaceSecPerKm = 294.0)).run(0, 30) { 279.0 })
+    }
+
+    @Test
+    fun `ease mode - zone 2 is not drift and a cap only exists once ease off was chosen`() {
+        val c = easeCoach()
+        val r = EaseRun(c)
+        r.run(1, 600, hr = 140.0) { 300.0 } // zone 3 before the ease off: the old zone talk, no cap yet
+        assertTrue(r.said.none { it.second.contains("Keep it in zone 2") }, "${r.said}")
+        r.enter()
+        r.run(601, 1_200, hr = 120.0) { 300.0 } // back in zone 2: never "keep it in zone 2"
+        assertTrue(r.said.none { it.second.contains("Keep it") }, "${r.said}")
     }
 
     private fun free() = VoiceCoach(VoiceCoach.Config(true, zoneBottomsBpm = bottoms))

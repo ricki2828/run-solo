@@ -141,11 +141,13 @@ class EaseOffModeTest {
     }
 
     @Test
-    fun `after an ease off the zone change and a clear pace change are still said`() {
+    fun `after an ease off it is an easy run - zone 3 is held to zone 2 and a clear pace change is still said`() {
         val s = Sim(behindAnswer = 1)
         s.run(2_600)
         val after = s.said.filter { it.afterEase }.map { it.text }
-        assertTrue("Heart rate up to zone 3." in after, "$after")
+        // The run is an easy run now: zone 3 for a minute is said once as "keep it in zone 2", not as a zone-up line.
+        assertTrue("Heart rate in zone 3. Keep it in zone 2." in after, "$after")
+        assertTrue("Heart rate up to zone 3." !in after, "$after")
         // 330 s/km before the ease off was judged at km 2 (about 330): the move to 350 at km 5 is 20 s a km slower, once.
         assertEquals(listOf("Slowed by about 20 seconds a km."), after.filter { it.startsWith("Slowed") || it.startsWith("Sped") }, "$after")
     }

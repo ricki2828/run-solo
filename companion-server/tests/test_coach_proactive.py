@@ -736,6 +736,21 @@ def test_the_run_note_names_the_kind_flags_gps_and_gives_weekdays():
     assert "GPS glitch" in text and "easy on Friday 23 Oct" in text
 
 
+def test_an_eased_goal_run_is_an_easy_run_with_no_target_in_the_note():
+    from companion.coach.proactive import run_note
+    r = dict(start_utc="2026-10-29T03:00:00Z", type="tempo", session_name="5K goal", distance_m=5000, duration_s=1854,
+             pace_s_per_km=371, true_pace_s_per_km=None, zone_min=None, feel=None, pb=None, verdict=None, goal_reached=1,
+             goal_target_s=1500, goal_target_from="5K on 26 Oct", goal_retarget_s=1700, goal_eased=1,
+             plan_next_day=None, plan_next_session_name=None, plan_next_type=None)
+    text = run_note(r, [], "Pacific/Auckland", amber=False)
+    assert "kind of run: easy run" in text and "tempo" not in text
+    assert "25:00" not in text and "28:20" not in text and "the goal's target time" not in text
+    assert "ease off mid-run on purpose" in text and "do not grade the finish" in text
+    # Not eased: the target is still there to judge by.
+    r["goal_eased"] = None
+    assert "the goal's target time: 25:00" in run_note(r, [], "Pacific/Auckland", amber=False)
+
+
 def test_heat_note_carries_the_real_chips_not_the_placeholder():
     from companion.coach import proactive
     note = proactive.heat_note("Tempo", "Thursday", (31, 22), 0.059)
