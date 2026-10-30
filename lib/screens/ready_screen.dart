@@ -13,7 +13,9 @@ import '../state/settings.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/coach_choice_row.dart';
+import '../widgets/route_preview.dart';
 import '../widgets/structure_glyph.dart';
+import 'follow_route_sheet.dart' show routeSubtitle;
 
 /// The Ready screen: the start line. The one place a run says START.
 ///
@@ -47,6 +49,7 @@ class ReadyScreen extends StatefulWidget {
     this.requiresGps = false,
     this.asksCoachChoice = false,
     this.onChange,
+    this.route,
   });
 
   /// "INTERVALS", "FREE RUN" ...: the big words.
@@ -93,6 +96,10 @@ class ReadyScreen extends StatefulWidget {
 
   /// Back to the picker to change the run. Null hides the link.
   final VoidCallback? onChange;
+
+  /// The route this run follows: drawn small above START so the runner sees
+  /// where they are going. Null for a run with no route.
+  final engine.SavedRoute? route;
 
   /// A fix at this accuracy or better is "good" (same bar as the picker).
   static const double goodAccuracyM = 20;
@@ -358,6 +365,25 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
             key: const ValueKey('ready-last-run'),
             style: RunSoloType.body15.copyWith(color: _ink),
           ),
+        if (widget.route != null) ...[
+          const SizedBox(height: Space.x12),
+          RoutePreview(
+            key: const ValueKey('ready-route-preview'),
+            route: widget.route!,
+            height: 112,
+            ground: NightSession.bgBase,
+            line: NightSession.inkPrimary,
+            start: NightSession.semImproving,
+          ),
+          const SizedBox(height: Space.x8),
+          Text(
+            '${widget.route!.name} · ${routeSubtitle(widget.route!, s.units)}',
+            key: const ValueKey('ready-route-line'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: RunSoloType.body15.copyWith(color: _ink),
+          ),
+        ],
       ],
     );
     final onChips = [

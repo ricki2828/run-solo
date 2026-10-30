@@ -841,6 +841,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
               ? null
               : SessionText.structure(summary.structure!),
           lastRun: summary.lastRun,
+          route: _followable(s) ? _route : null,
           probe: _probeLive,
           requiresGps: s.goalRun,
           // Free and distance-goal runs: the voice follows the pick, made
@@ -1518,6 +1519,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                           FollowRouteRow(
                             route: _route,
                             units: s.units,
+                            savedCount: services.routes.routes.length,
+                            accent: mode == RecordMode.trail && !goal
+                                ? t.typeTrail
+                                : null,
                             onChoose: _chooseRoute,
                             onClear: () => setState(() => _route = null),
                           ),
