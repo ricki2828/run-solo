@@ -249,6 +249,23 @@ void main() {
       expect(d.observe(snap(runId: 'r2', dist: 2100), Units.km)?.headline, '2');
     });
 
+    test('an eased goal run reaches its distance without goal language', () {
+      final e = GoalEvent(
+        distanceGoal: true,
+        goalValue: 5000,
+        timeMs: 1854000,
+        distanceM: 5000,
+        newBest: true,
+        interrupted: false,
+        text: '',
+      );
+      final d = InrunMomentDetector();
+      expect(d.goalReached(e).label, 'NEW BEST');
+      final m = d.goalReached(e, eased: true);
+      expect(m.label, 'DISTANCE DONE');
+      expect(m.headline, '30:54');
+    });
+
     test('no run id, no moment', () {
       final d = InrunMomentDetector();
       expect(d.observe(snap(runId: null, dist: 5000), Units.km), isNull);

@@ -668,6 +668,8 @@ class _GoalResultScreen extends StatelessWidget {
     final d = detail;
     final g = d.analysis.goal;
     final name = g?.name ?? d.summary.spec?.name ?? 'Goal';
+    // The runner eased off on purpose: an easy run, never graded as a goal.
+    final eased = d.sidecar.goalTarget?.eased ?? false;
 
     // The big figure: the goal's own result.
     final String figure;
@@ -677,7 +679,7 @@ class _GoalResultScreen extends StatelessWidget {
       figureLabel = 'TIME';
     } else if (!g.reached) {
       figure = Fmt.distance(g.stoppedAtM, units);
-      figureLabel = 'COVERED OF ${name.toUpperCase()}';
+      figureLabel = eased ? 'DISTANCE' : 'COVERED OF ${name.toUpperCase()}';
     } else if (g.kind == engine.GoalKind.distance) {
       figure = Fmt.clock(g.goalMs!);
       figureLabel = name.toUpperCase();
@@ -689,7 +691,18 @@ class _GoalResultScreen extends StatelessWidget {
     // What the run gathered.
     final lines = <String>[];
     if (g != null) {
-      lines.add(g.resultLine);
+      if (eased && g.kind == engine.GoalKind.distance) {
+        lines.add(
+          g.reached && g.goalMs != null
+              ? '$name in ${Fmt.clock(g.goalMs!)}.'
+              : '${Fmt.distance(g.stoppedAtM, units)}.',
+        );
+      } else {
+        lines.add(g.resultLine);
+      }
+      if (eased) {
+        lines.add('You eased off on purpose, so this was an easy run.');
+      }
       if (g.interrupted) lines.add(engine.GoalResult.interruptedNote);
       double? paceSecPerKm;
       if (g.reached &&
@@ -735,7 +748,7 @@ class _GoalResultScreen extends StatelessWidget {
                   child: ResultHeadBlock(
                     fill: runTypeColor(d.summary, t),
                     builder: (context, ink) => Text(
-                      'GOAL · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
+                      '${eased ? 'EASY RUN' : 'GOAL'} · ${name.toUpperCase()} · ${Fmt.dayDate(d.run.start)} · ${Fmt.clock(d.summary.durationMs)}',
                       style: RunSoloType.label13.copyWith(
                         color: ink,
                         fontWeight: FontWeight.w700,
@@ -774,7 +787,7 @@ class _GoalResultScreen extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    g != null && !g.reached
+                    g != null && !g.reached && !eased
                         ? '$figureLabel - NOT REACHED'
                         : figureLabel,
                     style: RunSoloType.label13.copyWith(color: t.inkSecondary),

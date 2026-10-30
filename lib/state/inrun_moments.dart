@@ -66,7 +66,7 @@ class InrunMomentDetector {
   static double unitMetres(Units units) =>
       units == Units.mi ? engine.PaceFormat.metresPerMile : 1000;
 
-  InrunMoment? observe(RecordingSnapshot s, Units units) {
+  InrunMoment? observe(RecordingSnapshot s, Units units, {bool eased = false}) {
     if (s.runId == null) return null;
     final fresh = s.runId != _runId;
     if (fresh) {
@@ -138,7 +138,7 @@ class InrunMomentDetector {
           due.add(
             _make(
               InrunMomentKind.halfway,
-              label: 'GOAL',
+              label: eased ? 'EASY RUN' : 'GOAL',
               headline: 'HALFWAY',
               sub: timed
                   ? '${Fmt.clock(s.phaseRemainingMs)} to go'
@@ -153,7 +153,7 @@ class InrunMomentDetector {
           due.add(
             _make(
               InrunMomentKind.lastStretch,
-              label: 'GOAL',
+              label: eased ? 'EASY RUN' : 'GOAL',
               headline: timed ? 'LAST MINUTE' : 'LAST 400 M',
               sub: 'empty the tank',
             ),
@@ -168,9 +168,12 @@ class InrunMomentDetector {
   }
 
   /// The goal is reached (the recorder's GoalEvent).
-  InrunMoment goalReached(GoalEvent e) => _make(
+  ///
+  /// [eased]: the runner eased off on purpose, so it is an easy run that
+  /// reached the distance: no "goal" or "new best" language.
+  InrunMoment goalReached(GoalEvent e, {bool eased = false}) => _make(
     InrunMomentKind.goalReached,
-    label: e.newBest ? 'NEW BEST' : 'GOAL REACHED',
+    label: eased ? 'DISTANCE DONE' : (e.newBest ? 'NEW BEST' : 'GOAL REACHED'),
     headline: Fmt.clock(e.timeMs),
     sub: e.interrupted ? 'GPS gap, result may be off' : null,
   );

@@ -140,6 +140,7 @@ void main() {
     final fake = await open(tester, 800, context: started);
     await at(tester, fake, 375);
     expect(find.byKey(const ValueKey('goal-target-row')), findsOneWidget);
+    expect(find.text('EASY RUN'), findsNothing);
 
     fake.emitPromptResolved(
       PromptResolvedEvent(id: 1, choice: 'ease', source: 'tap', eased: true),
@@ -147,6 +148,9 @@ void main() {
     await at(tester, fake, 5);
     expect(find.byKey(const ValueKey('goal-target-row')), findsNothing);
     expect(find.text('TARGET'), findsNothing);
+    // It is an easy run now: the header says so and names no goal.
+    expect(find.text('EASY RUN'), findsOneWidget);
+    expect(find.textContaining('GOAL ·'), findsNothing);
     // The run's own projected finish stays.
     expect(find.byKey(const ValueKey('event-finish')), findsOneWidget);
     await golden(tester, 'record_goal_eased_1km_360x800');
@@ -189,6 +193,8 @@ void main() {
     expect(find.byKey(const ValueKey('goal-target-row')), findsNothing);
     expect(find.text('TARGET'), findsNothing);
     expect(find.byKey(const ValueKey('event-finish')), findsOneWidget);
+    // The easy-run label survives a kill too.
+    expect(find.text('EASY RUN'), findsOneWidget);
   });
 
   testWidgets('a restored goal run that was not eased still names it', (
@@ -196,5 +202,6 @@ void main() {
   ) async {
     await restored(tester, eased: false);
     expect(find.byKey(const ValueKey('goal-target-row')), findsOneWidget);
+    expect(find.text('EASY RUN'), findsNothing);
   });
 }
