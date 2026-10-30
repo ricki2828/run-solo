@@ -641,7 +641,17 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
 
   Future<void> _chooseRoute() async {
     final picked = await showFollowRouteSheet(context, selectedId: _route?.id);
-    if (picked != null && mounted) setState(() => _route = picked);
+    if (!mounted) return;
+    // The sheet can import or delete routes even when nothing is picked: drop
+    // a picked route that is no longer in the library.
+    final routes = AppServices.of(context).routes.routes;
+    setState(() {
+      if (picked != null) {
+        _route = picked;
+      } else if (_route != null && !routes.any((r) => r.id == _route!.id)) {
+        _route = null;
+      }
+    });
   }
 
   /// Starts the recorder and swaps to the recording screen. True when the
@@ -1282,7 +1292,11 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     final text = Theme.of(context).textTheme;
     final services = AppServices.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([services.settings, services.sessions]),
+      listenable: Listenable.merge([
+        services.settings,
+        services.sessions,
+        services.routes,
+      ]),
       builder: (context, _) {
         // From Home: Ready opens at once; never show the picker behind it.
         if (_readyPending) return const Scaffold(body: SizedBox.shrink());

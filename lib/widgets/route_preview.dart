@@ -71,9 +71,20 @@ class RoutePreviewPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = ground);
-    if (points.length < 2) return;
+    // Finite points only (one bad fix would make every offset NaN), and at
+    // most ~600 of them: a thumbnail needs no more.
+    final finite = [
+      for (final p in points)
+        if (p.lat.isFinite && p.lon.isFinite) p,
+    ];
+    final step = (finite.length / 600).ceil().clamp(1, 1 << 30);
+    final pts = [
+      for (var i = 0; i < finite.length; i += step) finite[i],
+      if (finite.isNotEmpty && (finite.length - 1) % step != 0) finite.last,
+    ];
+    if (pts.length < 2) return;
     var north = -90.0, south = 90.0, east = -180.0, west = 180.0;
-    for (final p in points) {
+    for (final p in pts) {
       north = math.max(north, p.lat);
       south = math.min(south, p.lat);
       east = math.max(east, p.lon);
@@ -90,7 +101,7 @@ class RoutePreviewPainter extends CustomPainter {
       pad + (p.lon - west) * cosLat * k + (w - spanX * k) / 2,
       pad + (north - p.lat) * k + (h - spanY * k) / 2,
     );
-    final offs = [for (final p in points) map(p)];
+    final offs = [for (final p in pts) map(p)];
     final path = Path()..moveTo(offs.first.dx, offs.first.dy);
     for (final o in offs.skip(1)) {
       path.lineTo(o.dx, o.dy);
