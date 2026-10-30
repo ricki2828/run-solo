@@ -411,6 +411,7 @@ def test_the_run_note_gives_the_goal_target_and_its_source_only_when_there_is_on
     text = run_note(r | {"goal_target_s": 2403, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
     assert "ease off mid-run on purpose" in text and "easy run with no target" in text
     assert "40:03" not in text and "re-aimed" not in text
+    assert "(goal reached)" not in text and "(eased off)" in text
     # an eased run that also carries an old re-aim is still judged against nothing
     text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
     assert "easy run with no target" in text and "40:03" not in text and "re-aimed" not in text

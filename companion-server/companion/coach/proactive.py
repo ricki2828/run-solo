@@ -124,8 +124,8 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
         facts.append(f"kind of run: {KIND_WORDS.get(r['type'], r['type'])}")
     if r["session_name"]:
         # An eased run that stopped short was a choice, not a miss: never "(goal not reached)".
-        facts.append(f"the app's session label: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
-                                                                       " (eased off)" if eased and r["goal_reached"] == 0 else
+        facts.append(f"the app's session label: {r['session_name']}" + (" (eased off)" if eased else
+                                                                       " (goal reached)" if r["goal_reached"] == 1 else
                                                                        " (goal not reached)" if r["goal_reached"] == 0 else ""))
     target = r.get("goal_target_s")
     if target and not eased:

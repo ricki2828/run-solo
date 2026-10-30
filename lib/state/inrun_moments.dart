@@ -155,7 +155,7 @@ class InrunMomentDetector {
               InrunMomentKind.lastStretch,
               label: eased ? 'EASY RUN' : 'GOAL',
               headline: timed ? 'LAST MINUTE' : 'LAST 400 M',
-              sub: 'empty the tank',
+              sub: eased ? 'keep it easy' : 'empty the tank',
             ),
           );
         }

@@ -172,7 +172,7 @@ class ReadTools:
             "pace_per_km": mmss(r["pace_s_per_km"]), "true_pace_per_km": mmss(r["true_pace_s_per_km"]),
             "work_pace_per_km": mmss(r["work_pace_s_per_km"]), "reps_done": r["reps_done"],
             "rep_spread_s": round(r["rep_spread_s"]) if r["rep_spread_s"] is not None else None,
-            "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": r["goal_reached"],
+            "recovery_pace_per_km": mmss(r["recovery_pace_s_per_km"]), "goal_reached": None if r["goal_eased"] else r["goal_reached"],
             # An eased goal run is an easy run: the target it let go is not offered to be compared against.
             "goal_target": None if r["goal_eased"] else mmss(r["goal_target_s"]),
             "goal_target_from": None if r["goal_eased"] else r["goal_target_from"],
