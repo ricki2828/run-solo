@@ -527,6 +527,17 @@ class RecordingController extends ChangeNotifier {
 
   bool _oneRepSeenWork = false;
 
+  /// Ease off on a goal run lets the target go, pace as well as time: the
+  /// screen's target band (the goal's pace) goes with it. The pace dial is
+  /// the run's own average and stays.
+  void _dropTargetBand() {
+    if (coachTarget == null && _baseCoachTarget == null) return;
+    coachTarget = null;
+    _baseCoachTarget = null;
+    _oneRepTarget = false;
+    notifyListeners();
+  }
+
   /// A rep-only target ends with the work phase it was for.
   void _endOneRepTarget(Phase phase) {
     if (!_oneRepTarget) return;
@@ -708,6 +719,7 @@ class RecordingController extends ChangeNotifier {
       final last = s.laps.last;
       _lastLapDistanceM = last.distanceM;
     }
+    _keepGoalFromStatus(s);
     // A goal's first lap is the goal step (no warm-up): after a restore the
     // cool-down card still has it.
     final goalLap = s.spec?.templateId == engine.SessionSpec.goalId
@@ -802,6 +814,30 @@ class RecordingController extends ChangeNotifier {
 
   engine.GoalTargetRecord? _goal;
   String? _goalRunId;
+
+  /// A goal run restored after a kill (this process never saw Start): native
+  /// still has the target Start's context carried and whether the runner
+  /// chose ease off (the journal), so the run keeps both for its first
+  /// upload and the screen stops naming the target. A run this process
+  /// started keeps Start's own record (it has the source too); native's
+  /// ease off only adds to it.
+  void _keepGoalFromStatus(RecorderStatus s) {
+    final id = s.runId;
+    final live =
+        s.state == RecorderState.recording || s.state == RecorderState.paused;
+    if (id == null || !live) return;
+    final eased = s.goalEased ?? false;
+    if (_goalRunId != id) {
+      final ms = s.goalTargetMs;
+      _goal = ms != null && ms > 0
+          ? engine.GoalTargetRecord(targetMs: ms, eased: eased)
+          : null;
+      _goalRunId = id;
+    } else if (eased) {
+      _goal = _goal?.withEased();
+    }
+    if (eased) _dropTargetBand();
+  }
 
   /// The goal target run [runId] raced: Start's number and source, and the
   /// whether an ease off let it go (see [PromptResolvedEvent.eased]).
@@ -994,6 +1030,7 @@ class RecordingController extends ChangeNotifier {
         if (e.eased) _goal = _goal?.withEased();
         // A hold changes nothing; a push or ease off moves the band the voice now judges by.
         if (e.choice != 'hold') _applyTargetFactor(e.paceFactor, e.oneRep);
+        if (e.eased) _dropTargetBand();
       case GoalEvent():
         lastGoal.value = e;
         try {

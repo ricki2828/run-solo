@@ -118,23 +118,28 @@ def run_note(r: dict, prior: list[dict], zone: str, amber: bool) -> str:
     facts = [f"{round(r['distance_m'] / 1000, 2):g} km in {_hm(r['duration_s'])}"]
     if r.get("type"):
         facts.append(f"kind of run: {KIND_WORDS.get(r['type'], r['type'])}")
+    eased = bool(r.get("goal_eased"))
     if r["session_name"]:
+        # An eased run that stopped short was a choice, not a miss: never "(goal not reached)".
         facts.append(f"the app's session label: {r['session_name']}" + (" (goal reached)" if r["goal_reached"] == 1 else
+                                                                       " (eased off)" if eased and r["goal_reached"] == 0 else
                                                                        " (goal not reached)" if r["goal_reached"] == 0 else ""))
     target = r.get("goal_target_s")
     if target:
         src = r.get("goal_target_from")
         facts.append(f"the goal's target time: {_hm(target)}, the app's own estimate of this distance from the runner's recent "
                      f"effort{f' ({src})' if src else ''}, set before the run, not a promise")
-        re = r.get("goal_retarget_s")
-        if r.get("goal_eased"):
-            facts.append(f"the runner chose to ease off mid-run on purpose, letting the target go: never judge the finish against "
-                         f"{_hm(target)} (no over, behind, short or missed against it); say the time they ran plainly and treat "
-                         f"easing off as a sound call")
-        elif re:
-            facts.append(f"the runner eased off mid-run and the app re-aimed them to {_hm(re)}, said in their ear at the time: "
-                         f"that is the target now, judge the finish against {_hm(re)} and not {_hm(target)}, which they let go on "
-                         f"purpose (mention {_hm(target)} only as what they let go, never as a time they finished over)")
+    if eased:
+        # Said with or without a target on the row (an upload that lost the target still knows they eased off).
+        against = f"against {_hm(target)}" if target else "against any target"
+        facts.append(f"the runner chose to ease off mid-run on purpose, letting the target go: never judge the finish "
+                     f"{against} (no over, behind, short or missed); say the time they ran plainly and treat easing off as "
+                     f"a sound call" + (f"; mention {_hm(target)} at most as the time they let go" if target else ""))
+    elif target and r.get("goal_retarget_s"):
+        re = r["goal_retarget_s"]
+        facts.append(f"the runner eased off mid-run and the app re-aimed them to {_hm(re)}, said in their ear at the time: "
+                     f"that is the target now, judge the finish against {_hm(re)} and not {_hm(target)}, which they let go on "
+                     f"purpose (mention {_hm(target)} only as what they let go, never as a time they finished over)")
     if r["pace_s_per_km"] and not amber:
         facts.append(f"pace {pace(r['pace_s_per_km'])}")
     if r["true_pace_s_per_km"] and not amber:

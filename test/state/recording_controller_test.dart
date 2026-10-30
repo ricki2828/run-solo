@@ -3,7 +3,9 @@ import 'package:run_engine/run_engine.dart' as engine;
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
+import 'package:run_solo/state/companion.dart' show companionGoalFactsOf;
 import 'package:run_solo/state/recording_controller.dart';
+import 'package:run_solo/state/voice_coach_plan.dart' show CoachTarget;
 import 'package:run_solo/state/zone_memento.dart';
 
 import '../helpers.dart';
@@ -551,6 +553,79 @@ void main() {
       expect(ctl.goalTargetOf(id)!.eased, isTrue);
       expect(ctl.goalTargetOf('another-run'), isNull);
     });
+
+    test('a goal run restored after a kill gets its target and ease off back from native', () async {
+      final spec = engine.SessionSpec.goalDistance(8000, '8.0 km').toPigeon();
+      // This process never called start: only native's status is known.
+      final r = await fake.start(RecordMode.free, spec, Units.km);
+      final id = r.runId!;
+      fake
+        ..goalTargetMs = 2402600
+        ..goalEased = true;
+      await ctl.attachResumed(RecordMode.free);
+      await settle();
+      final kept = ctl.goalTargetOf(id)!;
+      expect((kept.targetMs, kept.source, kept.eased), (2402600, null, true));
+      // What the first upload carries.
+      expect(companionGoalFactsOf(kept), {
+        'goal_target_s': 2403,
+        'goal_eased': true,
+      });
+    });
+
+    test('a restored goal run that was not eased keeps the target only', () async {
+      final spec = engine.SessionSpec.goalDistance(8000, '8.0 km').toPigeon();
+      final r = await fake.start(RecordMode.free, spec, Units.km);
+      fake
+        ..goalTargetMs = 2402600
+        ..goalEased = false;
+      await ctl.attachResumed(RecordMode.free);
+      await settle();
+      expect(ctl.goalTargetOf(r.runId!)!.eased, isFalse);
+      // Native's ease off later in the run (an event missed) is picked up too.
+      fake.goalEased = true;
+      await ctl.refreshStatus();
+      expect(ctl.goalTargetOf(r.runId!)!.eased, isTrue);
+    });
+
+    test('a restored run with no goal target keeps none', () async {
+      final r = await fake.start(RecordMode.free, null, Units.km);
+      await ctl.attachResumed(RecordMode.free);
+      await settle();
+      expect(ctl.goalTargetOf(r.runId!), isNull);
+    });
+
+    test(
+      'ease off on a goal run takes the goal pace band off the screen',
+      () async {
+        final spec = engine.SessionSpec.goalDistance(8000, '8.0 km').toPigeon();
+        final r = await ctl.start(
+          RecordMode.free,
+          spec,
+          Units.km,
+          liveContext: withTarget(),
+        );
+        ctl.coachTarget = const CoachTarget(paceSecPerKm: 300);
+        await settle();
+        // A push or hold leaves the band alone.
+        fake.emitPromptResolved(
+          PromptResolvedEvent(id: 1, choice: 'push', source: 'tap'),
+        );
+        await settle();
+        expect(ctl.coachTarget, isNotNull);
+        fake.emitPromptResolved(
+          PromptResolvedEvent(
+            id: 2,
+            choice: 'ease',
+            source: 'tap',
+            eased: true,
+          ),
+        );
+        await settle();
+        expect(ctl.coachTarget, isNull);
+        expect(ctl.goalTargetOf(r.runId!)!.eased, isTrue);
+      },
+    );
 
     test('a run that is not a goal run keeps none', () async {
       final r = await ctl.start(

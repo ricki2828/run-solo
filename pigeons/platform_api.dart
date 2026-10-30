@@ -622,6 +622,8 @@ class RecorderStatus {
     this.route,
     this.trail,
     this.questDoneId,
+    this.goalEased,
+    this.goalTargetMs,
   });
   RecorderState state;
   String? runId;
@@ -703,6 +705,15 @@ class RecorderStatus {
   /// The id of the quest the run completed live (the beat fired, journaled so a
   /// restore keeps it). The screen shows its 4 s toast once per id.
   String? questDoneId;
+
+  /// A goal run: the runner chose ease off (the coach's ease mode, rebuilt
+  /// from the journal after a kill). Null on every other run.
+  bool? goalEased;
+
+  /// A goal run: the target time (ms) Start's context carried, kept in the
+  /// run's journal, so a restored run still has what it raced. Null when
+  /// the run has none or is not a goal run.
+  int? goalTargetMs;
 }
 
 /// A route to follow (Follow a route): chosen on Start from the route library,

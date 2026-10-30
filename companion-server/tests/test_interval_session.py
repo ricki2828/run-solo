@@ -361,6 +361,15 @@ def test_goal_eased_is_stored_only_for_a_goal_run_and_only_when_true(client):
     assert db.execute("SELECT goal_eased FROM runs WHERE run_id='e1'").fetchone()[0] == 1
 
 
+def test_goal_eased_is_kept_without_a_target(client):
+    """A restored run's first upload may have lost the target but still knows he eased off."""
+    t = enrol(client)
+    assert client.post("/v1/runs", json=run_payload("e5", type="free", session_name="8.0 km goal", goal_eased=True),
+                       headers=auth(t)).status_code == 202
+    row = sqlite3.connect(client.svc.s.db_path).execute("SELECT goal_target_s, goal_eased FROM runs WHERE run_id='e5'").fetchone()
+    assert tuple(row) == (None, 1)
+
+
 def test_a_re_upload_without_a_target_keeps_the_stored_one(client):
     """The coach replay made this row; the app's own upload updates it in place. A first upload with the target, then a
     re-send without it (the app had not yet seen accepts_goal_target), must leave the stored target alone."""
@@ -405,6 +414,14 @@ def test_the_run_note_gives_the_goal_target_and_its_source_only_when_there_is_on
     # an eased run that also carries an old re-aim is still judged against nothing
     text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000, "goal_eased": 1}, [], "Asia/Singapore", amber=False)
     assert "never judge the finish against 40:03" in text and "re-aimed" not in text
+    # eased with no target on the row (an upload that lost it): still never judged against a target
+    text = run_note(r | {"goal_eased": 1}, [], "Asia/Singapore", amber=False)
+    assert "ease off mid-run on purpose" in text and "against any target" in text and "target time" not in text
+    # eased and short of the distance: a choice, not a miss
+    text = run_note(r | {"goal_eased": 1, "goal_reached": 0}, [], "Asia/Singapore", amber=False)
+    assert "(eased off)" in text and "goal not reached" not in text
+    text = run_note(r | {"goal_reached": 0}, [], "Asia/Singapore", amber=False)
+    assert "(goal not reached)" in text
     text = run_note(r | {"goal_target_s": 2403, "goal_retarget_s": 3000}, [], "Asia/Singapore", amber=False)
     assert "re-aimed them to 50:00" in text and "judge the finish against 50:00 and not 40:03" in text
 
