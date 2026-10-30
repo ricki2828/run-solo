@@ -56,7 +56,8 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
         stats.append((P.thousands(facts["avg_hr"]), "BPM"))
     colour = brand.CARD_TYPE_COLOUR.get(str(facts.get("type")), brand.LANE["aerobic"])
     mode0 = P.effort_mode(facts)[0] == "flood"
-    vh = 200 if mode0 else 300
+    week = facts.get("week_track")
+    vh = (180 if mode0 else 260) if week else (200 if mode0 else 300)
     route = P.facts_route_svg(facts, P.INNER, vh, colour, 12, "#FFFFFF", pad=24, end_dot=True)
     strip = P.zone_strip(z, 936, 22, gap=4, radius=6)
     has_route = bool(route)
@@ -80,7 +81,7 @@ def build_post_run_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | No
     body = (P.header(False, top_right, brand.QUIET)
             + P.run_layout(tag=tag, headline=_headline(facts), value=hero_v, unit=hero_u, colour=colour, visual=visual,
                            strip="" if not visual else strip, stats=stats,
-                           value_colour=brand.ARC if pb else None, chip="PB" if pb else "", moment=moment, **look))
+                           value_colour=brand.ARC if pb else None, chip="PB" if pb else "", moment=moment, week=week, **look))
     css = P.base_css(brand.GROUND, brand.INK)
     return P.doc(css, body)
 

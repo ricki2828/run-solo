@@ -20,10 +20,11 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
         gain = f"{n} seconds {word} than before"
     prev = P.fmt_dur(float(d["previous_s"])) if d.get("previous_s") else ""
     colour = brand.CARD_TYPE_COLOUR.get(str(facts.get("type")), brand.LANE["speed"])
-    route = P.facts_route_svg(facts, P.INNER, 200, colour, 10, "#FFFFFF", pad=22, end_dot=True)
+    week = facts.get("week_track")
+    route = P.facts_route_svg(facts, P.INNER, 170 if week else 200, colour, 10, "#FFFFFF", pad=22, end_dot=True)
     has_route = bool(route)
     items = P.bar_items(facts)
-    bars = "" if has_route else P.split_bars(items, P.INNER, 170, brand.INK_SECONDARY)
+    bars = "" if has_route else P.split_bars(items, P.INNER, 150 if week else 170, brand.INK_SECONDARY)
     if not has_route and not items:
         bars = P.zone_block(P.zone_seconds(facts), P.INNER, brand.INK, brand.INK_SECONDARY, "#FFFFFF", False, bar_h=80)
     stats = [(P.fmt_pace(float(facts["pace_s_per_km"])), "/KM")] if facts.get("pace_s_per_km") else []
@@ -36,7 +37,7 @@ def build_pb_html(facts: Mapping[str, Any], memory: Mapping[str, Any] | None = N
     top_right = (P.esc(memory.get("name", ""), 20).upper() + " / " if memory.get("name") else "") + P.date_label(facts.get("start_local"))
     body = (P.header(False, top_right, brand.QUIET)
             + P.run_layout(tag="NEW PERSONAL BEST", headline=label, value=hero, unit="", colour=colour, visual=visual, strip="",
-                           stats=stats, value_colour=brand.ARC, chip="PB", extra=P.esc(gain, 60), moment=True,
+                           stats=stats, value_colour=brand.ARC, chip="PB", extra=P.esc(gain, 60), moment=True, week=week,
                            ground=brand.flood_for_zone(P.effort_mode({**facts, "pb": True})[1]), fg=brand.BONE, soft=brand.BONE,
                            chip_bg="rgba(237,234,227,.22)"))
     css = P.base_css(brand.GROUND, brand.INK)
