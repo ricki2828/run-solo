@@ -21,6 +21,9 @@ class CoachChoiceRow extends StatelessWidget {
     this.onGround,
   });
 
+  /// Null (the raised-card look of the setup screens) is kept for any setup
+  /// screen that asks again; only Ready uses this row today.
+  ///
   /// Set on the Ready screen, whose ground is flooded with the run type's
   /// colour: the buttons draw in this ink (selected = filled, the rest
   /// outlined) instead of the raised-card look of the setup screens.
