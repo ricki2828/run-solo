@@ -17,6 +17,7 @@ import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.record.TreadmillMarks
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.RunFile
@@ -94,7 +95,7 @@ class LiveRecorder(rootDir: String) {
         jw.open()
         jw.append(JournalLine.Header(t, w, id, device, app, tz, mode, spec, units))
         core = c
-        treadmillMarks = app.runsolo.core.record.TreadmillMarks()
+        treadmillMarks = TreadmillMarks()
         this.spec = spec
         coach = LiveCoach(null, mode, spec).also { it.kmSplits = kmSplits }
         coachPrevT = t
@@ -227,7 +228,7 @@ class LiveRecorder(rootDir: String) {
         )
     }
 
-    private var treadmillMarks = app.runsolo.core.record.TreadmillMarks()
+    private var treadmillMarks = TreadmillMarks()
 
     /** Treadmill: [metres] reached now. Refused while paused, not past the last mark, or at its time. Answers the marks standing, flat `[ms, m, ...]`. */
     @Throws(Exception::class)
@@ -285,7 +286,7 @@ class LiveRecorder(rootDir: String) {
     }
 
     private fun clear() {
-        treadmillMarks = app.runsolo.core.record.TreadmillMarks()
+        treadmillMarks = TreadmillMarks()
         core = null
         ticker = null
         writer = null
