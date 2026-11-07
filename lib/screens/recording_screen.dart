@@ -4130,33 +4130,23 @@ class _TreadmillBlock extends StatelessWidget {
               ),
             ),
             const SizedBox(height: Space.x12),
-            // The speeds need a mark: until then the space is kept (nothing
-            // shifts when the first one lands) but empty, no "--".
-            Visibility(
-              key: const ValueKey('treadmill-speeds'),
-              visible: marks.isNotEmpty,
-              maintainSize: true,
-              maintainAnimation: true,
-              maintainState: true,
-              child: Row(
+            // Speeds and UNDO exist once there is a mark; before that the
+            // block is just the time and the strip, no blank gap.
+            if (marks.isNotEmpty) ...[
+              Row(
+                key: const ValueKey('treadmill-speeds'),
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   figure('SPEED', 'treadmill-current-speed', current),
                   figure('AVG', 'treadmill-avg-speed', average),
                 ],
               ),
-            ),
-            const SizedBox(height: Space.x12),
-            // UNDO sits clear of the chips so a double-tap on one cannot hit
-            // it. Its space is kept before the first mark (no jump).
-            Visibility(
-              visible: marks.isNotEmpty,
-              maintainSize: true,
-              maintainAnimation: true,
-              maintainState: true,
-              child: OutlinedButton(
+              const SizedBox(height: Space.x12),
+              // Clear of the chips (16 dp below) so a double-tap on one
+              // cannot hit it.
+              OutlinedButton(
                 key: const ValueKey('treadmill-undo'),
-                onPressed: marks.isEmpty ? null : ctl.undoMark,
+                onPressed: ctl.undoMark,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(200, 52),
                   foregroundColor: primary,
@@ -4168,7 +4158,7 @@ class _TreadmillBlock extends StatelessWidget {
                   style: label.copyWith(color: primary),
                 ),
               ),
-            ),
+            ],
             const SizedBox(height: Space.x16),
             TreadmillMarkerStrip(
               marks: marks,
