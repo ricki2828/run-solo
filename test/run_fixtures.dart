@@ -263,6 +263,61 @@ engine.RunFile cooperTestFile({
   );
 }
 
+/// A 12-minute test run on a treadmill ([inclinePct]): no GPS, the distance
+/// the runner typed in ([distanceM]), a 5:00 warm-up, the 12:00 test and a
+/// 2:00 cool-down.
+engine.RunFile cooperBeltFile({
+  required int n,
+  required DateTime start,
+  double distanceM = 2900,
+  double inclinePct = 1,
+}) {
+  const warmupS = 300, testS = 720, cooldownS = 120;
+  const total = warmupS + testS + cooldownS;
+  return engine.RunFile(
+    id: runId(n),
+    device: 'test',
+    app: 'test',
+    start: start,
+    end: start.add(const Duration(seconds: total)),
+    tz: 'UTC',
+    mode: engine.RunMode.cooper,
+    session: engine.SessionSpec.cooper,
+    units: engine.Units.km,
+    laps: [
+      const engine.Lap(
+        index: 0,
+        t0Ms: 0,
+        t1Ms: warmupS * 1000,
+        d0M: 0,
+        d1M: 0,
+        kind: engine.LapKind.manual,
+      ),
+      const engine.Lap(
+        index: 1,
+        t0Ms: warmupS * 1000,
+        t1Ms: (warmupS + testS) * 1000,
+        d0M: 0,
+        d1M: 0,
+        kind: engine.LapKind.auto,
+      ),
+    ],
+    treadmillDistanceM: distanceM,
+    treadmillInclinePct: inclinePct,
+    samples: [
+      for (var s = 0; s <= total; s++)
+        engine.Sample(
+          tMs: s * 1000,
+          lat: null,
+          lon: null,
+          accM: null,
+          distM: 0,
+          hr: s <= warmupS ? 135 : 168,
+        ),
+    ],
+  );
+}
+
 /// A Trail run once round a lopsided loop (about 6 km at [secPerKm] a km,
 /// with the phone's barometer climb) starting at the same place every time,
 /// so two of them are the same trail. [reverse] runs it the other way,
