@@ -161,4 +161,14 @@ void main() {
     expect(doc.findAllElements('type').single.innerText, 'treadmill');
     expect(doc.findAllElements('desc').single.innerText, contains('5200'));
   });
+
+  test(
+    'a treadmill run sends no km splits (the coach caps a split at 1 km)',
+    () {
+      // 7-Nov: samples carry no distance, so the typed 7 km became one 7 km
+      // "partial" split and the coach answered 422 for every treadmill run.
+      expect(kmSplitWindows(treadmill(distance: 7000)), isEmpty);
+      expect(kmSplitWindows(treadmill(distance: 600)), isEmpty);
+    },
+  );
 }
