@@ -16,7 +16,11 @@ class SurfaceChoiceRow extends StatelessWidget {
     required this.onSurface,
     required this.onIncline,
     required this.onGround,
+    this.compact = false,
   });
+
+  /// Tight screens: no label line, 48 dp buttons.
+  final bool compact;
 
   final bool onTreadmill;
 
@@ -45,14 +49,18 @@ class SurfaceChoiceRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'WHERE ARE YOU RUNNING?',
-          style: RunSoloType.label13.copyWith(
-            color: onGround.ink,
-            fontWeight: FontWeight.w700,
+        // The label goes where the screen is tight (intervals: the session's
+        // shape needs the room); the buttons say it themselves.
+        if (!compact) ...[
+          Text(
+            'WHERE ARE YOU RUNNING?',
+            style: RunSoloType.label13.copyWith(
+              color: onGround.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: Space.x8),
+          const SizedBox(height: Space.x8),
+        ],
         Row(
           children: [
             Expanded(
@@ -62,6 +70,7 @@ class SurfaceChoiceRow extends StatelessWidget {
                 selected: !onTreadmill,
                 onGround: onGround,
                 onTap: () => onSurface(false),
+                minHeight: compact ? 48 : 56,
               ),
             ),
             const SizedBox(width: Space.x8),
@@ -72,6 +81,7 @@ class SurfaceChoiceRow extends StatelessWidget {
                 selected: onTreadmill,
                 onGround: onGround,
                 onTap: () => onSurface(true),
+                minHeight: compact ? 48 : 56,
               ),
             ),
           ],

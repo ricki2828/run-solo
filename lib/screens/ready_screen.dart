@@ -466,6 +466,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
       const SizedBox(height: Space.x8),
       if (widget.beltChoice case final belt?) ...[
         SurfaceChoiceRow(
+          compact: widget.structure != null,
           onTreadmill: belt.value,
           incline: s.treadmillIncline,
           onGround: (ink: _ink, onInk: _chipInk),
