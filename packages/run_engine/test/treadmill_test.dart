@@ -95,7 +95,10 @@ void main() {
       );
       expect(imported.mode, RunMode.treadmill);
       expect(imported.treadmillDistanceM, isNull);
-      expect(() => RunFileCodec.decode(RunFileCodec.encode(imported)), returnsNormally);
+      expect(
+        () => RunFileCodec.decode(RunFileCodec.encode(imported)),
+        returnsNormally,
+      );
     }
   });
 
