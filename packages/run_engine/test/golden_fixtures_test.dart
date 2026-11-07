@@ -47,6 +47,7 @@ void main() {
       });
 
       switch (f.run.mode) {
+        case RunMode.treadmill:
         case RunMode.free:
         case RunMode.trail:
         case RunMode.cooper:

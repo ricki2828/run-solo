@@ -496,6 +496,7 @@ class BestEffortFinder {
   static const double bridgedGpsShare = 0.15;
 
   RunBestEfforts find(RunFile run, RunAnalysis analysis) {
+    if (run.mode == RunMode.treadmill) return RunBestEfforts.none;
     if (analysis.indoor || analysis.noisy) {
       // Say why when the run went far enough to have counted.
       return run.distanceM >= BestEffortDistance.k5.metres
@@ -828,7 +829,7 @@ class BestEffortFinder {
   static bool _racesDistanceBoards(RunAnalysis a) => switch (a.mode) {
     RunMode.free || RunMode.laps => true,
     // Hill pace is not comparable with road pace: no distance boards for Trail.
-    RunMode.cooper || RunMode.trail => false,
+    RunMode.cooper || RunMode.trail || RunMode.treadmill => false,
     RunMode.intervals => _searchWhole(a),
   };
 

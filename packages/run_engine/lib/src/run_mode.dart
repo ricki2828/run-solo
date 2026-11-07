@@ -20,7 +20,8 @@ enum RunMode {
   laps,
   free,
   cooper,
-  trail;
+  trail,
+  treadmill;
 
   /// Decodes a stored mode name written under [schema]:
   /// - 1: `free` → [laps] (§18.7 B1), `fourByFour` → [intervals];
@@ -68,7 +69,10 @@ enum RunMode {
   /// this only says what the live screen shows.
   bool get showsElevation => switch (this) {
     RunMode.free || RunMode.trail => true,
-    RunMode.intervals || RunMode.laps || RunMode.cooper => false,
+    RunMode.intervals ||
+    RunMode.laps ||
+    RunMode.cooper ||
+    RunMode.treadmill => false,
   };
 
   /// Whether the run screen also shows TRUE PACE live (a secondary figure
@@ -79,6 +83,9 @@ enum RunMode {
   /// Whether the recorder accepts LAP input in this mode (§18.2).
   bool get lapCapable => switch (this) {
     RunMode.intervals || RunMode.laps => true,
-    RunMode.free || RunMode.cooper || RunMode.trail => false,
+    RunMode.free ||
+    RunMode.cooper ||
+    RunMode.trail ||
+    RunMode.treadmill => false,
   };
 }

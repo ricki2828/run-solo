@@ -30,7 +30,7 @@ final class RecorderApiHost: RecorderApi {
 
   func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult {
     guard host.activeRunId == nil else { return StartResult(runId: nil, error: .alreadyRunning) }
-    guard source.authorized else { return StartResult(runId: nil, error: .noFinePermission) }
+    guard mode == .treadmill || source.authorized else { return StartResult(runId: nil, error: .noFinePermission) }
     let runId = UUID().uuidString.lowercased()
     do {
       try host.start(runId: runId, mode: mode, spec: spec, units: units)
@@ -63,6 +63,7 @@ final class RecorderApiHost: RecorderApi {
   func startReps() throws { host.startReps() }
   /// Mid-run coach prompts are Android only for now (the live coach is, too).
   func answerPrompt(promptId: Int64, optionIndex: Int64) throws {}
+  func setTreadmillDistance(distanceM: Double) throws { try host.setTreadmillDistance(distanceM) }
   func stop() throws -> String? { try host.stop() }
   func status() throws -> RecorderStatus { host.status() }
   func recover() throws -> [OrphanJournal] {

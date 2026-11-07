@@ -258,7 +258,10 @@ class RunDetailBody extends StatelessWidget {
               elevation: elev,
               laps: d.run.laps,
             ),
-            RecordMode.free || RecordMode.trail || RecordMode.cooper => _Splits(
+            RecordMode.free ||
+            RecordMode.treadmill ||
+            RecordMode.trail ||
+            RecordMode.cooper => _Splits(
               free: free,
               splitUnits: splitUnitsOf(d),
               elevation: elev,

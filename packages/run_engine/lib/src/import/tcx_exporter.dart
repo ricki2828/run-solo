@@ -1,6 +1,7 @@
 import 'package:xml/xml.dart';
 
 import '../model/run_file.dart';
+import '../run_mode.dart';
 
 /// Run file → TCX (plan §4 export): laps + trackpoints + HR. **Home-trim**
 /// is on by default and applies to TCX only: positions are dropped for the
@@ -18,6 +19,7 @@ class TcxExporter {
   String export(RunFile run) {
     final total = run.distanceM;
     bool keepPosition(Sample s) {
+      if (run.mode == RunMode.treadmill) return false;
       if (!homeTrim) return true;
       if (s.distM < homeTrimM) return false;
       if (total - s.distM < homeTrimM) return false;
@@ -25,7 +27,7 @@ class TcxExporter {
     }
 
     final laps = run.laps.where((l) => l.kind != LapKind.pause).toList();
-    final lapSpans = laps.isEmpty
+    final lapSpans = laps.isEmpty || run.mode == RunMode.treadmill
         ? [
             Lap(
               index: 0,
@@ -119,10 +121,12 @@ class TcxExporter {
                                     nest: s.altM!.toStringAsFixed(1),
                                   );
                                 }
-                                builder.element(
-                                  'DistanceMeters',
-                                  nest: s.distM.toStringAsFixed(1),
-                                );
+                                if (run.mode != RunMode.treadmill) {
+                                  builder.element(
+                                    'DistanceMeters',
+                                    nest: s.distM.toStringAsFixed(1),
+                                  );
+                                }
                                 if (s.hr != null) {
                                   builder.element(
                                     'HeartRateBpm',
@@ -139,7 +143,11 @@ class TcxExporter {
                     },
                   );
                 }
-                builder.element('Notes', nest: '$notesPrefix${run.id}');
+                builder.element(
+                  'Notes',
+                  nest:
+                      '$notesPrefix${run.id}${run.mode == RunMode.treadmill ? ';treadmill' : ''}',
+                );
                 builder.element(
                   'Creator',
                   nest: () {

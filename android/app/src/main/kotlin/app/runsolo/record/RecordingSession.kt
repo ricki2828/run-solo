@@ -431,6 +431,7 @@ class RecordingSession(
             )
             return
         } else {
+            if (mode != RunMode.treadmill) {
             location = LocationSource.create(context, preferRawGps).also { src ->
                 try {
                     src.start(thread.looper) { onFix(it) }
@@ -441,6 +442,7 @@ class RecordingSession(
             }
             baro = PressureSource(context).also { src ->
                 if (!src.start(handler) { onPressure(it) }) Log.i(TAG, "no barometer: elevation follows GPS altitude")
+            }
             }
             val client = BleHolder.client(context)
             ble = client
@@ -458,7 +460,7 @@ class RecordingSession(
     // Sensor callbacks (recorder thread for fixes/replay, main thread for BLE) enter under the lock.
     @Synchronized
     private fun onFix(fix: LocationFix) {
-        if (!finished) ticker.onFix(fix)
+        if (!finished && mode != RunMode.treadmill) ticker.onFix(fix)
     }
 
     @Synchronized
@@ -599,7 +601,7 @@ class RecordingSession(
             writer.append(s)
             liveElev.offer(s.t, s.hpa, s.altM, s.accuracyM, ticker.distanceM, ticker.paused)?.let { lastElevRel = it }
         }
-        val lost = ticker.gpsLost(t)
+        val lost = mode != RunMode.treadmill && ticker.gpsLost(t)
         dispatch.flush(t, ticker.distanceM)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
@@ -795,7 +797,7 @@ class RecordingSession(
      * manual pause but with no re-anchor on resume. Free, Laps and Goal runs, and the warm-up/cool-down of other sessions; the core decides.
      */
     private fun autoPauseNow(t: Long) {
-        if (!autoPause || !core.autoPause(t)) return
+        if (mode == RunMode.treadmill || !autoPause || !core.autoPause(t)) return
         ticker.onAutoPause()
         cues.dropNudge()
         writer.append(JournalLine.AutoPause(t, System.currentTimeMillis()))
@@ -847,6 +849,14 @@ class RecordingSession(
     }
 
     /** Stop and finalise in Kotlin (B3). Returns the run file path relative to `files/`, or null on corruption. */
+    @Synchronized
+    fun setTreadmillDistance(metres: Double) {
+        require(mode == RunMode.treadmill && !finished)
+        writer.append(JournalLine.TreadmillDistance(clock(), System.currentTimeMillis(), metres))
+        writer.sync()
+        check(writer.ok) { "Distance could not be saved" }
+    }
+
     @Synchronized
     fun stop(): String? {
         if (finished) return null

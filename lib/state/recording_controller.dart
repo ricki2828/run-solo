@@ -303,7 +303,10 @@ class RecordingSnapshot {
   /// Free runs have no lap input at all (plan §18.2).
   bool get lapsEnabled => switch (mode) {
     RecordMode.intervals || RecordMode.laps => true,
-    RecordMode.free || RecordMode.cooper || RecordMode.trail => false,
+    RecordMode.free ||
+    RecordMode.cooper ||
+    RecordMode.trail ||
+    RecordMode.treadmill => false,
   };
   bool get recording => state == RecorderState.recording;
   bool get paused => state == RecorderState.paused;
@@ -766,7 +769,7 @@ class RecordingController extends ChangeNotifier {
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
-      gpsLost: !s.gpsFix,
+      gpsLost: s.mode != RecordMode.treadmill && !s.gpsFix,
       hadFix: _snap.hadFix || s.gpsFix,
       fault: s.journalOk ? null : 'Journal write failed',
       clearFault: s.journalOk,
@@ -902,7 +905,7 @@ class RecordingController extends ChangeNotifier {
       mode: mode,
       spec: switch (mode) {
         RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
-        RecordMode.free || RecordMode.trail => null,
+        RecordMode.free || RecordMode.treadmill || RecordMode.trail => null,
       },
       hrPaired: _snap.hrPaired,
     );
@@ -1106,7 +1109,7 @@ class RecordingController extends ChangeNotifier {
       hrPaired: _snap.hrPaired || t.hr != null,
       gpsAccuracyM: t.gpsAccuracyM,
       clearGps: !fix,
-      gpsLost: !fix,
+      gpsLost: _snap.mode != RecordMode.treadmill && !fix,
       hadFix: _snap.hadFix || fix,
       phaseRemainingMs: t.phaseRemainingMs,
       stepIndex: t.stepIndex,
@@ -1186,7 +1189,10 @@ class RecordingController extends ChangeNotifier {
     final counts = switch (_snap.mode) {
       RecordMode.intervals => ended == Phase.work,
       RecordMode.laps => true,
-      RecordMode.free || RecordMode.cooper || RecordMode.trail => false,
+      RecordMode.free ||
+      RecordMode.cooper ||
+      RecordMode.trail ||
+      RecordMode.treadmill => false,
     };
     if (counts && lapDistanceM > 0 && lapMs > 0) {
       paces.add(lapMs / 1000 / (lapDistanceM / 1000));
@@ -1278,6 +1284,10 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onFault(FaultEvent f) {
+    if (_snap.mode == RecordMode.treadmill &&
+        (f.kind == FaultKind.gpsLost || f.kind == FaultKind.gpsWeak)) {
+      return;
+    }
     _snap = switch (f.kind) {
       FaultKind.gpsLost => _snap.copyWith(gpsLost: true, clearGps: true),
       // Debug-only signal that a LAP reached Free mode; the screen has no LAP there.

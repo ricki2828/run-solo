@@ -246,6 +246,10 @@ final class RecorderHost {
   }
 
   /// Ends the run and finalises it; the absolute run file path (nil when idle).
+  func setTreadmillDistance(_ metres: Double) throws {
+    try queue.sync { try kotlin.setTreadmillDistance(metres: metres, t: clock.monoMs(), w: clock.wallMs()) }
+  }
+
   func stop(t: Int64? = nil, w: Int64? = nil) throws -> String? {
     try queue.sync { try stopLocked(t: t ?? clock.monoMs(), w: w ?? clock.wallMs()) }
   }
@@ -324,10 +328,11 @@ final class RecorderHost {
 
   /// Feeds `source`'s fixes into the run and ticks once a second until stop. Call after start.
   func attach(_ source: LocationSource) {
-    DispatchQueue.main.async {
+    let indoor = queue.sync { mode == .treadmill }
+    if !indoor { DispatchQueue.main.async {
       source.addFixListener("recorder") { [weak self] location in self?.onLocation(location) }
       source.start(background: true, owner: "recorder")
-    }
+    } }
     queue.sync {
       self.source = source
       startTimer(interval: .seconds(1)) { [weak self] in self?.liveTick() }
@@ -489,7 +494,7 @@ final class RecorderHost {
 
   static func int(_ v: Any?) -> Int64 { (v as? NSNumber)?.int64Value ?? 0 }
 
-  static let recordModes: [String: RecordMode] = ["intervals": .intervals, "laps": .laps, "free": .free, "cooper": .cooper, "trail": .trail]
+  static let recordModes: [String: RecordMode] = ["intervals": .intervals, "laps": .laps, "free": .free, "cooper": .cooper, "trail": .trail, "treadmill": .treadmill]
   static let phases: [String: Phase] = ["none": .none, "warmup": .warmup, "work": .work, "recovery": .recovery, "cooldown": .cooldown]
   static let states: [String: RecorderState] = ["idle": .idle, "recording": .recording, "paused": .paused, "finalising": .finalising]
   static let lapSources: [String: LapSource] = ["button": .button, "notification": .notification, "volumeKey": .volumeKey, "auto": .auto]

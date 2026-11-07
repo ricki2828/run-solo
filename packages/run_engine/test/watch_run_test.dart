@@ -126,7 +126,7 @@ void main() {
     });
 
     test('this build refuses a newer schema even with a valid watch block', () {
-      final j = json('watch_run_5s_track')..['schema'] = 9;
+      final j = json('watch_run_5s_track')..['schema'] = RunFile.schema + 1;
       expect(
         () => RunFile.fromJson(j),
         throwsA(isA<RunFileNewerVersionException>()),

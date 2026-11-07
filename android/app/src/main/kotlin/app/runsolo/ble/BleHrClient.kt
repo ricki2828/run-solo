@@ -293,7 +293,7 @@ class BleHrClient(context: Context) {
     @SuppressLint("MissingPermission")
     private fun connect(address: String, autoConnect: Boolean) {
         val a = adapter
-        if (a == null || !a.isEnabled || !hasPermissions()) {
+        if (a == null || !a.isEnabled || (Build.VERSION.SDK_INT >= 31 && !granted(Manifest.permission.BLUETOOTH_CONNECT))) {
             trail.note("connect skipped: adapter=${a?.isEnabled} perms=${hasPermissions()}")
             if (!autoConnect) apply(policy.onConnectFailed(now()))
             return

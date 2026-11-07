@@ -213,7 +213,8 @@ enum class RecordMode(val raw: Int) {
   LAPS(1),
   FREE(2),
   COOPER(3),
-  TRAIL(4);
+  TRAIL(4),
+  TREADMILL(5);
 
   companion object {
     fun ofRaw(raw: Int): RecordMode? {
@@ -4467,6 +4468,7 @@ interface RecorderApi {
    */
   fun startReps()
   /** Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle. */
+  fun setTreadmillDistance(distanceM: Double)
   fun stop(): String?
   fun status(): RecorderStatus
   /**
@@ -4744,6 +4746,24 @@ interface RecorderApi {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               api.startReps()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.setTreadmillDistance$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val distanceMArg = args[0] as Double
+            val wrapped: List<Any?> = try {
+              api.setTreadmillDistance(distanceMArg)
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

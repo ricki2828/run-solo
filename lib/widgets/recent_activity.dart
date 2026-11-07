@@ -164,7 +164,7 @@ class _RecentActivityState extends State<RecentActivity> {
 /// The Aurora run-type colour: only ever on the session name and the
 /// figures, never on the title's time-of-day word.
 Color runTypeColor(RunSummary run, RunSoloTokens t) => switch (run.mode) {
-  RecordMode.free => t.typeFree,
+  RecordMode.free || RecordMode.treadmill => t.typeFree,
   RecordMode.laps when run.spec?.templateId == engine.SessionSpec.broncoId =>
     t.typeTests,
   RecordMode.laps => t.typeLaps,

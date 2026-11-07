@@ -304,7 +304,7 @@ class FakeRecorderGateway implements RecorderGateway {
       mode,
       switch (mode) {
         RecordMode.intervals || RecordMode.cooper || RecordMode.laps => spec,
-        RecordMode.free || RecordMode.trail => null,
+        RecordMode.free || RecordMode.treadmill || RecordMode.trail => null,
       },
     );
     return StartResult(runId: _runId);
@@ -513,6 +513,7 @@ class FakeRecorderGateway implements RecorderGateway {
     switch (_mode) {
       // Plan §18.2 / A5: no lap input in a Free run or a 12-minute test
       // (RunMode.lapInput); BEGIN TEST is startReps, never a lap.
+      case RecordMode.treadmill:
       case RecordMode.free:
       case RecordMode.trail:
       case RecordMode.cooper:
@@ -539,6 +540,17 @@ class FakeRecorderGateway implements RecorderGateway {
           break;
       }
     });
+  }
+
+  @override
+  Future<void> setTreadmillDistance(double distanceM) async {
+    if (_mode != RecordMode.treadmill ||
+        !distanceM.isFinite ||
+        distanceM <= 0 ||
+        distanceM > 500000) {
+      throw ArgumentError.value(distanceM);
+    }
+    _totalDistanceM = distanceM;
   }
 
   @override
@@ -825,7 +837,9 @@ class FakeRecorderGateway implements RecorderGateway {
       final step = toBoundary > 0 ? math.min(remaining, toBoundary) : remaining;
       _elapsedMs += step;
       _activeMs += step;
-      if (!_gpsLost) _totalDistanceM += step / liveSecPerKm;
+      if (_mode != RecordMode.treadmill && !_gpsLost) {
+        _totalDistanceM += step / liveSecPerKm;
+      }
       remaining -= step;
       final ended = target != null
           ? !_gpsLost && _stepDistanceM >= target - 0.01
@@ -1014,19 +1028,23 @@ class FakeRecorderGateway implements RecorderGateway {
   }
 
   void _emitTick() {
-    _extendRoute();
+    if (_mode != RecordMode.treadmill) _extendRoute();
     final jitter = (_rng.nextDouble() - 0.5) * 6;
     _emit(
       TickEvent(
         elapsedMs: _elapsedMs,
         lapElapsedMs: _elapsedMs - _lapStartElapsedMs,
         lapDistanceM: _totalDistanceM - _lapStartDistanceM,
-        lapPaceLiveSecPerKm: _gpsLost ? null : liveSecPerKm + jitter,
+        lapPaceLiveSecPerKm: _mode == RecordMode.treadmill || _gpsLost
+            ? null
+            : liveSecPerKm + jitter,
         totalDistanceM: _totalDistanceM,
         hr: (!hrPaired || _strapDropped)
             ? null
             : (scriptedHr ?? _hrFor(_phase)),
-        gpsAccuracyM: _gpsLost ? null : gpsAccuracyM,
+        gpsAccuracyM: _mode == RecordMode.treadmill || _gpsLost
+            ? null
+            : gpsAccuracyM,
         state: _state,
         phase: _phase,
         repIndex: _repIndex,

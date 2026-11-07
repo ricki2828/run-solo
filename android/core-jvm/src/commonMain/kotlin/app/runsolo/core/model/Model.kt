@@ -13,27 +13,27 @@ package app.runsolo.core.model
  * dirt (no LAP input, no session) with its own trail-tuned auto-pause profile.
  */
 enum class RunMode {
-    intervals, laps, free, cooper, trail;
+    intervals, laps, free, cooper, trail, treadmill;
 
     /** Whether LAP presses (button, notification, volume key) are accepted at all. Exhaustive: a new mode must decide. */
     val lapInput: Boolean
         get() = when (this) {
             intervals, laps -> true
-            free, cooper, trail -> false
+            free, cooper, trail, treadmill -> false
         }
 
     /** Volume-key laps default (W8): on only for the by-feel Laps run. */
     val volumeKeyLapsDefault: Boolean
         get() = when (this) {
             laps -> true
-            intervals, free, cooper, trail -> false
+            intervals, free, cooper, trail, treadmill -> false
         }
 
     /** Whether the run's phases follow its session's steps (Cooper: warm-up, the 12:00 work step, cool-down). */
     val followsSteps: Boolean
         get() = when (this) {
             intervals, cooper -> true
-            laps, free, trail -> false
+            laps, free, trail, treadmill -> false
         }
 
     companion object {

@@ -58,6 +58,7 @@ object SummaryWords {
                 spec?.isGoal == true -> "Free run. Goal: ${goal(spec, miles)}."
                 mode == RunMode.intervals -> spec?.let { if (it.templateId == SessionSpec.NORWEGIAN_4X4_ID) "${it.spoken}. Warm up as long as you like." else "${it.spoken}." }
                 mode == RunMode.cooper -> "Cooper test."
+                mode == RunMode.treadmill -> "Treadmill run."
                 mode == RunMode.laps -> "Laps run."
                 else -> "Free run."
             }

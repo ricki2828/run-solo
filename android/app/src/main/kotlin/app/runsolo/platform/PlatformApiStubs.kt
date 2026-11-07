@@ -24,6 +24,7 @@ class RecorderApiStub : RecorderApi {
 
     override fun answerPrompt(promptId: Long, optionIndex: Long) = Unit
 
+    override fun setTreadmillDistance(distanceM: Double) = Unit
     override fun stop(): String? = null
 
     override fun status(): RecorderStatus =

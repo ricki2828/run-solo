@@ -85,6 +85,7 @@ object JournalCodec {
                 m["choice"] = line.choice; m["src"] = line.source; m["open"] = line.openedAtMs; m["at"] = line.atMs
                 line.retargetMs?.let { m["tg"] = it }
             }
+            is JournalLine.TreadmillDistance -> { m["k"] = "td"; m["t"] = line.t; m["w"] = line.w; m["m"] = line.metres }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.QuestDone -> { m["k"] = "qd"; m["t"] = line.t; m["w"] = line.w; m["id"] = line.questId }
             is JournalLine.RouteLine -> { m["k"] = "route"; m["t"] = line.t; m["w"] = line.w; m["route"] = line.route.toJson() }
@@ -119,7 +120,7 @@ object JournalCodec {
         return when (mode) {
             RunMode.intervals -> m.obj("preset")?.let { SessionSpec.fromLegacyPreset(it) }
             RunMode.cooper -> SessionSpec.COOPER
-            RunMode.laps, RunMode.free, RunMode.trail -> null
+            RunMode.laps, RunMode.free, RunMode.trail, RunMode.treadmill -> null
         }
     }
 
@@ -178,6 +179,7 @@ object JournalCodec {
                 m.string("choice"), m.string("src"), m.long("open"), m.long("at"),
                 (m["tg"] as? Number)?.toLong(),
             )
+            "td" -> JournalLine.TreadmillDistance(t, w, m.double("m"))
             "tm" -> JournalLine.TipsMuted(t, w)
             "qd" -> JournalLine.QuestDone(t, w, m.string("id"))
             "route" -> JournalLine.RouteLine(t, w, FollowRoute.fromJson(m.obj("route") ?: throw IllegalArgumentException("route.route")))

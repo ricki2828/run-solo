@@ -260,7 +260,7 @@ class RecorderCore(
      */
     fun autoPauseAllowed(): Boolean {
         return when (mode) {
-            RunMode.free, RunMode.laps, RunMode.trail -> true
+            RunMode.free, RunMode.laps, RunMode.trail, RunMode.treadmill -> true
             RunMode.cooper -> false
             RunMode.intervals -> when {
                 spec == null -> false // a by-feel 4x4 from an old journal
@@ -641,7 +641,7 @@ class RecorderCore(
                     else -> null
                 }
                 RunMode.laps -> if (spec == null || (spec.isFartlek && spec.steps.isEmpty())) null else "laps takes no session but a fartlek"
-                RunMode.free -> if (spec == null) null else "free takes no session"
+                RunMode.free, RunMode.treadmill -> if (spec == null) null else "free takes no session"
                 RunMode.trail -> if (spec == null) null else "trail takes no session"
                 RunMode.cooper -> if (spec?.templateId == SessionSpec.COOPER_ID) null else "cooper needs the Cooper session"
             }

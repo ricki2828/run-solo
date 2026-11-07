@@ -81,6 +81,7 @@ data class RunFile(
     val coach: CoachLog? = null,
     /** Set when a Garmin watch recorded the run (the file is then schema 8); null = recorded by the phone (schema 7). */
     val watch: WatchInfo? = null,
+    val treadmillDistanceM: Double? = null,
 ) {
     /**
      * The watch that recorded the run and its track sample-rate steps. `rateChanges` is `[atMs, rateS]` pairs, first
@@ -135,11 +136,11 @@ data class RunFile(
 
     val fixCount: Int get() = samples.count { it.hasFix }
 
-    val distanceM: Double get() = samples.lastOrNull()?.distM ?: 0.0
+    val distanceM: Double get() = treadmillDistanceM ?: samples.lastOrNull()?.distM ?: 0.0
     val elapsedMs: Long get() = endEpochMs - startEpochMs
 
     fun toJson(): Map<String, Any?> = linkedMapOf(
-        "schema" to if (watch != null) WATCH_SCHEMA else SCHEMA,
+        "schema" to if (mode == RunMode.treadmill) 9 else if (watch != null) WATCH_SCHEMA else SCHEMA,
         "id" to id,
         "device" to device,
         "app" to app,
@@ -159,6 +160,7 @@ data class RunFile(
             if (it.elevM == null) row else row + ((it.elevM * 10).roundToLong() / 10.0)
         },
     ).apply {
+        treadmillDistanceM?.let { put("treadmillDistanceM", it) }
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
         coach?.let { c ->
@@ -334,6 +336,7 @@ data class RunFile(
                 elevSrc = if (samples.any { it.elevM != null }) fuser.source else null,
                 route = r.route?.let { FollowedRoute(it, offSpans) },
                 coach = coachLog(r),
+                treadmillDistanceM = r.treadmillDistanceM.takeIf { h.mode == RunMode.treadmill },
             )
         }
 

@@ -108,6 +108,9 @@ Map<String, Object?> legacyRunJson(RunFile run, int schema) {
         out['mode'] = switch (run.mode) {
           RunMode.intervals => 'fourByFour',
           RunMode.laps => schema == 1 ? 'free' : 'laps',
+          RunMode.treadmill => throw UnsupportedError(
+            'treadmill requires schema 9',
+          ),
           RunMode.free => 'free',
           RunMode.cooper => 'cooper',
           RunMode.trail => 'trail',
@@ -136,6 +139,7 @@ Map<String, Object?> legacySidecarJson(RunSidecar s, int schema) {
     null => null,
     RunMode.intervals => 'fourByFour',
     RunMode.laps => schema == 1 ? 'free' : 'laps',
+    RunMode.treadmill => throw UnsupportedError('treadmill requires schema 9'),
     RunMode.free => 'free',
     RunMode.cooper => 'cooper',
     RunMode.trail => 'trail',

@@ -192,7 +192,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     // The probe runs for every goal: each starts at the Start press and
     // counts distance from the first fix (plan §G, Q1).
     final want =
-        AppServices.of(context).settings.settings.goalRun || _readyOpen;
+        AppServices.of(context).settings.settings.lastMode !=
+            RecordMode.treadmill &&
+        (AppServices.of(context).settings.settings.goalRun || _readyOpen);
     if (want && !_probing) {
       final rec = AppServices.of(context).recorder;
       _probing = true;
@@ -682,7 +684,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       await services.recorder.setSpokenSummary(s.spokenSummary);
       await services.recorder.setVoiceCoach(_voiceCoach(services, s));
       services.recording.coachTarget = _coachTarget(services, s);
-      await services.recorder.setAutoPause(s.autoPause);
+      await services.recorder.setAutoPause(
+        s.lastMode != RecordMode.treadmill && s.autoPause,
+      );
       if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
           s.volumeKeyLapFor(RecordMode.laps),
@@ -702,7 +706,10 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
             _ when s.goalRun => s.goalSpec(kEventNames.parkrun)!.toPigeon(),
             RecordMode.intervals => services.pickedSession.toPigeon(),
             RecordMode.cooper => engine.SessionSpec.cooper.toPigeon(),
-            RecordMode.laps || RecordMode.free || RecordMode.trail => null,
+            RecordMode.laps ||
+            RecordMode.free ||
+            RecordMode.trail ||
+            RecordMode.treadmill => null,
           };
       // LC1: the live compare's history, 150 ms or none; off until LV2.
       // PD2 (#84 review P1): the target raced is the one shown, so a tap
@@ -753,7 +760,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         mode,
         spec,
         s.units,
-        liveContext: live,
+        liveContext: mode == RecordMode.treadmill ? null : live,
         route: _followable(s) ? _route?.toFollowRoute() : null,
       );
     } catch (e) {
@@ -854,6 +861,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           route: _followable(s) ? _route : null,
           probe: _probeLive,
           requiresGps: s.goalRun,
+          indoor: s.lastMode == RecordMode.treadmill,
           // Free and distance-goal runs: the voice follows the pick, made
           // on Ready (28-Oct: too easy to miss on the busy setup screen).
           // `_start` reads the saved choice at GO, as before.
@@ -962,6 +970,14 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         target: todayTarget,
         structure: null,
         lastRun: null,
+      ),
+      RecordMode.treadmill => (
+        runType: 'TREADMILL',
+        ground: AuroraRunType.free,
+        plan: 'Time and heart rate. Enter treadmill distance at finish.',
+        target: null,
+        structure: null,
+        lastRun: _lastRunLine(s, RecordMode.treadmill, 'treadmill'),
       ),
       RecordMode.free => (
         runType: 'FREE RUN',
@@ -1230,6 +1246,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
                         'for trail runs yet.',
                   ],
                 );
+        case RecordMode.treadmill:
+          return null;
         case RecordMode.free:
           final has = runs.any((r) => r.mode == RecordMode.free);
           spec = has
