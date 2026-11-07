@@ -951,21 +951,36 @@ class RecordingController extends ChangeNotifier {
     // On top of an auto-pause this makes it the runner's pause; it still
     // began at the auto-pause (native keeps that start, #91).
     _pausedAtMs ??= displayElapsedMs;
-    return _gateway.pause();
+    _pausePending = true;
+    return _gateway.pause().catchError((Object e) {
+      _pausePending = false;
+      if (!_snap.paused) _pausedAtMs = null;
+      throw e;
+    });
   }
 
-  Future<void> resume() => _gateway.resume();
+  Future<void> resume() {
+    _pausePending = false;
+    return _gateway.resume();
+  }
 
   /// TOTAL when the current pause began: native's (#91) from the last
   /// status read, else the in-app PAUSE / STOP or a pause seen on a tick;
   /// null while recording. A run stopped
   /// while paused ends here (#88), so the finish screen shows this.
-  int? get pausedAtElapsedMs => _snap.paused ? _pausedAtMs : null;
+  ///
+  /// Also valid once pause() has been answered but native's state event has
+  /// not landed yet, else the finish screen read null there and fell back to
+  /// a clock that keeps running through the pause (treadmill, 7-Nov).
+  int? get pausedAtElapsedMs =>
+      (_snap.paused || _pausePending) ? _pausedAtMs : null;
   int? _pausedAtMs;
+  bool _pausePending = false;
 
   void _trackPause(RecorderState next) {
     if (next == RecorderState.recording) {
       _pausedAtMs = null;
+      _pausePending = false;
     } else if (next == RecorderState.paused && _snap.recording) {
       _pausedAtMs ??= _snap.elapsedMs;
     }
