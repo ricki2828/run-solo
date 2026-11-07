@@ -13,6 +13,7 @@ import '../state/settings.dart';
 import '../theme/caps_text.dart';
 import '../theme/theme.dart';
 import '../widgets/coach_choice_row.dart';
+import '../widgets/surface_choice_row.dart';
 import '../widgets/route_preview.dart';
 import '../widgets/structure_glyph.dart';
 import 'follow_route_sheet.dart' show routeSubtitle;
@@ -51,6 +52,7 @@ class ReadyScreen extends StatefulWidget {
     this.asksCoachChoice = false,
     this.onChange,
     this.route,
+    this.beltChoice,
   });
 
   /// "INTERVALS", "FREE RUN" ...: the big words.
@@ -103,6 +105,12 @@ class ReadyScreen extends StatefulWidget {
   /// where they are going. Null for a run with no route.
   final engine.SavedRoute? route;
 
+  /// Intervals and the 12-minute test: show "WHERE ARE YOU RUNNING?" above
+  /// START. The notifier holds whether the session runs on a treadmill (true);
+  /// the Start screen reads it at GO. Null = the choice is not offered (the
+  /// run is outdoors, or a free treadmill run, which is its own run type).
+  final ValueNotifier<bool>? beltChoice;
+
   /// A fix at this accuracy or better is "good" (same bar as the picker).
   static const double goodAccuracyM = 20;
 
@@ -130,7 +138,15 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.beltChoice?.addListener(_onBelt);
   }
+
+  void _onBelt() {
+    if (mounted) setState(() {});
+  }
+
+  /// No GPS on this run: a free treadmill run, or a session on the belt.
+  bool get _indoor => widget.indoor || (widget.beltChoice?.value ?? false);
 
   bool _bleStarted = false;
 
@@ -151,6 +167,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.beltChoice?.removeListener(_onBelt);
     // Leaving Ready for any reason but GO lets go of the speech player (GO
     // releases it itself once "go" is said).
     if (!_going) _voice(stop: true);
@@ -294,7 +311,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
     // At large text nothing fits one screen: the whole page scrolls (START
     // included) rather than clip. Otherwise the run's words scroll alone.
     final big = MediaQuery.textScalerOf(context).scale(10) > 12;
-    final compact = widget.asksCoachChoice;
+    final compact = widget.asksCoachChoice || widget.beltChoice != null;
     final page = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: _readyChildren(s, big: big, compact: compact),
@@ -447,6 +464,18 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
       big ? words : Expanded(child: SingleChildScrollView(child: words)),
       if (pinned) ...[const SizedBox(height: Space.x8), ...planLines],
       const SizedBox(height: Space.x8),
+      if (widget.beltChoice case final belt?) ...[
+        SurfaceChoiceRow(
+          onTreadmill: belt.value,
+          incline: s.treadmillIncline,
+          onGround: (ink: _ink, onInk: _chipInk),
+          onSurface: (v) => belt.value = v,
+          onIncline: (pct) =>
+              AppServices.of(context).settings
+                  .update((x) => x.copyWith(treadmillIncline: pct)),
+        ),
+        const SizedBox(height: Space.x12),
+      ],
       if (widget.asksCoachChoice) ...[
         CoachChoiceRow(
           selected: s.coachChoice,
@@ -478,7 +507,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!widget.indoor)
+              if (!_indoor)
                 _Chip(
                   key: const ValueKey('ready-gps'),
                   label: 'GPS',
@@ -499,7 +528,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               const SizedBox(height: Space.x12),
               ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 20),
-                child: widget.indoor || gps == _Gps.good
+                child: _indoor || gps == _Gps.good
                     ? null
                     : Text(
                         widget.requiresGps

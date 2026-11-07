@@ -326,12 +326,11 @@ class RunEngine {
     final at = now ?? DateTime.now().toUtc();
     final trace = Trace(run.samples);
     final calc = MetricsCalculator(constants);
-    final mode = run.mode == RunMode.treadmill
+    final mode = run.onTreadmill
         ? run.mode
         : (sidecar?.runTypeOverride ?? run.mode);
     final fixShare = trace.fixShare();
-    final indoor =
-        mode == RunMode.treadmill || fixShare < constants.indoorFixShareBelow;
+    final indoor = run.onTreadmill || fixShare < constants.indoorFixShareBelow;
     final quality = trace.quality(
       maxGapMs: constants.qualityMaxGapMs,
       maxAccuracyM: constants.qualityMaxAccuracyM,
@@ -341,12 +340,15 @@ class RunEngine {
     final session = effectiveSession(run, mode);
     final parkrunInfo = sidecar?.parkrun;
     final key = comparisonKeyOf(session, mode, courseId: parkrunInfo?.courseId);
-    final weather = WeatherRecord.fromJson(sidecar?.weather);
+    // A belt has no weather: whatever a sidecar holds is not the run's.
+    final weather = run.onTreadmill
+        ? null
+        : WeatherRecord.fromJson(sidecar?.weather);
     // True Pace: the hills and the heat of this run, taken out of every pace
     // a verdict, score or board compares.
     final elevation = RunElevation.of(run);
     final slowdown = weather?.heat?.fraction;
-    final truePace = mode == RunMode.treadmill
+    final truePace = run.onTreadmill
         ? null
         : RunTruePace.of(run, elevation: elevation, slowdown: slowdown);
 

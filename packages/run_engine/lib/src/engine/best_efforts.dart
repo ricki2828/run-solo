@@ -496,7 +496,7 @@ class BestEffortFinder {
   static const double bridgedGpsShare = 0.15;
 
   RunBestEfforts find(RunFile run, RunAnalysis analysis) {
-    if (run.mode == RunMode.treadmill) return RunBestEfforts.none;
+    if (run.onTreadmill) return RunBestEfforts.none;
     if (analysis.indoor || analysis.noisy) {
       // Say why when the run went far enough to have counted.
       return run.distanceM >= BestEffortDistance.k5.metres

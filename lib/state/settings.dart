@@ -122,6 +122,7 @@ class AppSettings {
     this.coachingDetail = CoachingDetail.full,
     this.voiceDetail = kVoiceDetailDefault,
     this.coachChoice = engine.CoachChoice.chase,
+    this.treadmillIncline = AppSettings.defaultTreadmillIncline,
     this.autoPause = true,
     this.countdownSeconds = defaultCountdownSeconds,
     this.coachingTips = true,
@@ -280,6 +281,11 @@ class AppSettings {
   /// and tests are not asked and carry none.
   final engine.CoachChoice coachChoice;
 
+  /// Ready → "Incline" for a session run on a treadmill: percent, one of
+  /// [treadmillInclineChoices] (3 stands for "3+"). The last one tapped is
+  /// kept. Default 1 % (matches outdoor effort).
+  final int treadmillIncline;
+
   /// Recording → "Auto-pause": the recorder pauses itself when you stop and
   /// resumes when you move. Default on.
   final bool autoPause;
@@ -289,6 +295,10 @@ class AppSettings {
   /// 0 = off (recording starts on the tap). Default 3 s.
   final int countdownSeconds;
   static const int defaultCountdownSeconds = 3;
+
+  /// The incline chips on Ready for a treadmill session (percent; 3 = "3+").
+  static const List<int> treadmillInclineChoices = [0, 1, 2, 3];
+  static const int defaultTreadmillIncline = 1;
   static const List<int> countdownChoices = [0, 3, 5, 10];
 
   /// Voice → "Coaching tips" (LV2, A10.7): where you stand and short tips,
@@ -475,6 +485,7 @@ class AppSettings {
     CoachingDetail? coachingDetail,
     VoiceDetail? voiceDetail,
     engine.CoachChoice? coachChoice,
+    int? treadmillIncline,
     bool? autoPause,
     int? countdownSeconds,
     bool? coachingTips,
@@ -530,6 +541,7 @@ class AppSettings {
     coachingDetail: coachingDetail ?? this.coachingDetail,
     voiceDetail: voiceDetail ?? this.voiceDetail,
     coachChoice: coachChoice ?? this.coachChoice,
+    treadmillIncline: treadmillIncline ?? this.treadmillIncline,
     autoPause: autoPause ?? this.autoPause,
     countdownSeconds: countdownSeconds ?? this.countdownSeconds,
     coachingTips: coachingTips ?? this.coachingTips,
@@ -587,6 +599,7 @@ class AppSettings {
     'coachingDetail': coachingDetail.name,
     'voiceDetail': voiceDetail.name,
     'coachChoice': coachChoice.key,
+    'treadmillIncline': treadmillIncline,
     'autoPause': autoPause,
     'countdownSeconds': countdownSeconds,
     'coachingTips': coachingTips,
@@ -697,6 +710,12 @@ class AppSettings {
           d.voiceDetail,
       coachChoice:
           engine.CoachChoice.parse(pick('coachChoice', '')) ?? d.coachChoice,
+      treadmillIncline:
+          AppSettings.treadmillInclineChoices.contains(
+            pick('treadmillIncline', -1),
+          )
+          ? pick('treadmillIncline', d.treadmillIncline)
+          : d.treadmillIncline,
       autoPause: pick('autoPause', d.autoPause),
       countdownSeconds:
           countdownChoices.contains(

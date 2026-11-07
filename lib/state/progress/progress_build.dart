@@ -48,7 +48,8 @@ class ProgressRun {
       distanceM = s.distanceM,
       mode = s.mode,
       isGoal = s.spec?.isGoal == true,
-      cooperVo2 = s.cooper?.valid == true
+      // A treadmill test stays out of the outdoor level (7-Nov).
+      cooperVo2 = s.cooper?.valid == true && !s.cooper!.onTreadmill
           ? (s.cooper!.vo2Adjusted ?? s.cooper!.vo2)
           : null,
       hardInterval = s.mode == RecordMode.intervals && s.eligibleAsPrior,

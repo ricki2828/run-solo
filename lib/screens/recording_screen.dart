@@ -446,8 +446,13 @@ class _RecordingScreenState extends State<RecordingScreen>
 
   Future<void> _stop() async {
     if (_stopping || _askingDistance) return;
-    if (_ctl!.snapshot.mode == RecordMode.treadmill) {
+    if (_ctl!.snapshot.indoor) {
       _askingDistance = true;
+      final snap = _ctl!.snapshot;
+      // A free treadmill run and the 12-minute test need a distance; a
+      // session of reps may skip it (its reps run on the clock).
+      final required = snap.mode == RecordMode.treadmill || snap.isCooper;
+      final prompt = snap.isCooper ? 'Test distance' : 'Treadmill distance';
       // Prefilled with the last marker, still editable (the belt's own total
       // may differ a little from the marker the runner tapped).
       final marked = _ctl!.snapshot.treadmillMarks;
@@ -463,21 +468,41 @@ class _RecordingScreenState extends State<RecordingScreen>
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, update) => AlertDialog(
-            title: const Text('Treadmill distance'),
-            content: _PrefilledField(
-              key: const ValueKey('treadmill-distance'),
-              initial: input,
-              onChanged: (value) => input = value,
-              decoration: InputDecoration(
-                labelText: miles ? 'Distance (mi)' : 'Distance (km)',
-                errorText: error,
-              ),
+            title: Text(prompt),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (snap.isCooper)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: Space.x8),
+                    key: ValueKey('treadmill-test-hint'),
+                    child: Text(
+                      'The distance the treadmill shows for the 12 minutes.',
+                    ),
+                  ),
+                _PrefilledField(
+                  key: const ValueKey('treadmill-distance'),
+                  initial: input,
+                  onChanged: (value) => input = value,
+                  decoration: InputDecoration(
+                    labelText: miles ? 'Distance (mi)' : 'Distance (km)',
+                    errorText: error,
+                  ),
+                ),
+              ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('CANCEL'),
               ),
+              if (!required)
+                TextButton(
+                  key: const ValueKey('treadmill-distance-skip'),
+                  onPressed: () => Navigator.pop(context, 0.0),
+                  child: const Text('SKIP'),
+                ),
               TextButton(
                 onPressed: () {
                   final distance = double.tryParse(
@@ -502,7 +527,7 @@ class _RecordingScreenState extends State<RecordingScreen>
       _askingDistance = false;
       if (metres == null || !mounted) return;
       try {
-        await _services!.recorder.setTreadmillDistance(metres);
+        if (metres > 0) await _services!.recorder.setTreadmillDistance(metres);
       } catch (_) {
         if (mounted) {
           setState(() => _stopError = 'Could not save distance. Try again.');
@@ -647,8 +672,7 @@ class _RecordingScreenState extends State<RecordingScreen>
           // MAP view (founder 2-Oct): only where a map can show, remembered
           // per run type, and never under the finish or saving screens.
           final runType = liveRunType(s);
-          final canMap =
-              s.mode != RecordMode.treadmill && services.maps.available;
+          final canMap = !s.indoor && services.maps.available;
           // Run pages (11-Oct): page 1 the numbers, page 2 the map and the
           // route readouts; the page is remembered per run type.
           if (!(s.paused && !_finishing)) {
@@ -793,7 +817,7 @@ class _RecordingScreenState extends State<RecordingScreen>
               ],
               if (!s.showEndRep) ...[
                 const SizedBox(height: Space.x8),
-                if (s.mode != RecordMode.treadmill)
+                if (!s.indoor)
                   GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
               ],
             ],
@@ -879,7 +903,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                   maintainSize: true,
                   maintainAnimation: true,
                   maintainState: true,
-                  child: s.phase == Phase.warmup
+                  child: s.indoor
+                      ? _TreadmillPanel(
+                          s: s,
+                          ctl: ctl,
+                          units: ctl.runUnits ??= settings.units,
+                          secondary: t.inkSecondary,
+                          primary: t.inkPrimary,
+                        )
+                      : s.phase == Phase.warmup
                       ? _Stats(s: s, units: settings.units)
                       : _SegmentPace(
                           s: s,
@@ -912,6 +944,20 @@ class _RecordingScreenState extends State<RecordingScreen>
                   ),
                 ),
               ),
+              if (s.indoor)
+                Expanded(
+                  flex: 14,
+                  child: _PausedHidden(
+                    paused: s.paused,
+                    child: _TreadmillPanel(
+                      s: s,
+                      ctl: ctl,
+                      units: ctl.runUnits ??= settings.units,
+                      secondary: t.inkSecondary,
+                      primary: t.inkPrimary,
+                    ),
+                  ),
+                ),
             ] else if (s.lapsEnabled) ...[
               _PausedHidden(
                 paused: s.paused,
@@ -972,7 +1018,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                 maintainSize: true,
                 maintainAnimation: true,
                 maintainState: true,
-                child: s.mode == RecordMode.treadmill
+                child: s.indoor
                     ? const SizedBox.shrink()
                     : GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
               ),
@@ -1072,7 +1118,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                           if (!s.showEndRep) ...[
                             const SizedBox(height: Space.x12),
-                            if (s.mode != RecordMode.treadmill)
+                            if (!s.indoor)
                               GpsBar(
                                 accuracyM: s.gpsAccuracyM,
                                 lost: s.gpsLost,
@@ -1775,7 +1821,7 @@ class _Header extends StatelessWidget {
           showTotal:
               s.mode != RecordMode.free &&
               s.mode != RecordMode.trail &&
-              s.mode != RecordMode.treadmill,
+              !s.indoor,
           compact: compact,
           secondary: secondary,
         ),
@@ -3268,7 +3314,7 @@ class _FinishScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                s.mode == RecordMode.treadmill
+                s.indoor
                     ? 'Enter distance when you save'
                     : goalDistanceText(s.totalDistanceM, units),
                 key: const ValueKey('finish-distance'),
@@ -4181,6 +4227,119 @@ class _TreadmillBlock extends StatelessWidget {
               style: RunSoloType.runNote.copyWith(color: secondary),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A session (reps, the 12-minute test) run on a treadmill: the marker strip
+/// and, once there is a mark, the speed readouts, under the session's own
+/// clock. The rep timer stays the biggest number; this takes what room is
+/// left and scales down on a short phone. UNDO sits in the unit row so a
+/// double-tap on a chip cannot hit it.
+class _TreadmillPanel extends StatelessWidget {
+  const _TreadmillPanel({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    required this.secondary,
+    required this.primary,
+  });
+
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final Color secondary;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final marks = s.treadmillMarks;
+    final unit = units == Units.mi ? 'mph' : 'km/h';
+    String speed(double? mps) => mps == null
+        ? '--'
+        : (units == Units.mi
+                  ? engine.TreadmillSplits.mpsToMph(mps)
+                  : engine.TreadmillSplits.mpsToKmh(mps))
+              .toStringAsFixed(1);
+    final current = engine.TreadmillSplits.currentMps(marks);
+    final average = engine.TreadmillSplits.averageMps(marks);
+    final label = RunLabelScope.style(context, secondary);
+    Widget figure(String name, String key, double? mps) => Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$name $unit', style: label),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              speed(mps),
+              key: ValueKey(key),
+              style: RunSoloType.display44.copyWith(color: primary),
+            ),
+          ),
+        ],
+      ),
+    );
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: 328,
+          child: Column(
+            key: const ValueKey('treadmill-panel'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (marks.isNotEmpty) ...[
+                Row(
+                  key: const ValueKey('treadmill-speeds'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    figure('SPEED', 'treadmill-current-speed', current),
+                    figure('AVG', 'treadmill-avg-speed', average),
+                  ],
+                ),
+                const SizedBox(height: Space.x8),
+              ],
+              TreadmillMarkerStrip(
+                marks: marks,
+                units: units,
+                onMark: ctl.addMark,
+                enabled: !s.paused,
+              ),
+              Row(
+                children: [
+                  Text(
+                    units == Units.mi ? 'mi' : 'km',
+                    key: const ValueKey('treadmill-chip-unit'),
+                    style: label,
+                  ),
+                  const Spacer(),
+                  if (marks.isNotEmpty)
+                    TextButton(
+                      key: const ValueKey('treadmill-undo'),
+                      onPressed: ctl.undoMark,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(120, 48),
+                        foregroundColor: primary,
+                      ),
+                      child: Text(
+                        'UNDO MARK',
+                        style: label.copyWith(color: primary),
+                      ),
+                    ),
+                ],
+              ),
+              if (marks.isEmpty)
+                Text(
+                  'Double-tap a marker as you pass it',
+                  key: const ValueKey('treadmill-hint'),
+                  textAlign: TextAlign.center,
+                  style: RunSoloType.runNote.copyWith(color: secondary),
+                ),
+            ],
+          ),
         ),
       ),
     );

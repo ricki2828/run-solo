@@ -85,7 +85,12 @@ data class RunFile(
     val treadmillDistanceM: Double? = null,
     /** Treadmill markers as `[movingMs, metres]`; empty on every other run and on files from before markers. */
     val treadmillMarks: List<TreadmillMarkPoint> = emptyList(),
+    /** A session run on a treadmill (intervals, the 12-minute test): the incline in percent, 3 = "3 or more". Null = not on a treadmill session. Key `treadmillInclinePct`. */
+    val treadmillInclinePct: Double? = null,
 ) {
+    /** Recorded with no GPS: a free treadmill run or a session on the belt. */
+    val onTreadmill: Boolean get() = mode == RunMode.treadmill || treadmillInclinePct != null
+
     /**
      * The watch that recorded the run and its track sample-rate steps. `rateChanges` is `[atMs, rateS]` pairs, first
      * at 0, `atMs` ascending; `rateS` is seconds between samples, 0 = no track (splits and laps only).
@@ -143,7 +148,7 @@ data class RunFile(
     val elapsedMs: Long get() = endEpochMs - startEpochMs
 
     fun toJson(): Map<String, Any?> = linkedMapOf(
-        "schema" to if (mode == RunMode.treadmill) 9 else if (watch != null) WATCH_SCHEMA else SCHEMA,
+        "schema" to if (onTreadmill) 9 else if (watch != null) WATCH_SCHEMA else SCHEMA,
         "id" to id,
         "device" to device,
         "app" to app,
@@ -164,6 +169,7 @@ data class RunFile(
         },
     ).apply {
         treadmillDistanceM?.let { put("treadmillDistanceM", it) }
+        treadmillInclinePct?.let { put("treadmillInclinePct", it) }
         if (treadmillMarks.isNotEmpty()) put("treadmillMarks", treadmillMarks.map { listOf(it.activeMs, it.distanceM) })
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
@@ -340,8 +346,9 @@ data class RunFile(
                 elevSrc = if (samples.any { it.elevM != null }) fuser.source else null,
                 route = r.route?.let { FollowedRoute(it, offSpans) },
                 coach = coachLog(r),
-                treadmillDistanceM = r.treadmillDistanceM.takeIf { h.mode == RunMode.treadmill },
-                treadmillMarks = if (h.mode == RunMode.treadmill) r.treadmillMarks else emptyList(),
+                treadmillDistanceM = r.treadmillDistanceM.takeIf { h.indoor },
+                treadmillMarks = if (h.indoor) r.treadmillMarks else emptyList(),
+                treadmillInclinePct = h.treadmillInclinePct,
             )
         }
 

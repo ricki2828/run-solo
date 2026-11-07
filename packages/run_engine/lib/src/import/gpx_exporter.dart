@@ -1,7 +1,6 @@
 import 'package:xml/xml.dart';
 
 import '../model/run_file.dart';
-import '../run_mode.dart';
 import 'tcx_exporter.dart';
 
 /// Run file → GPX 1.1 (Send runs, share a file). One `<trkseg>` per lap, so
@@ -21,7 +20,7 @@ class GpxExporter {
   String export(RunFile run, {String? name}) {
     final total = run.distanceM;
     bool keep(Sample s) {
-      if (run.mode == RunMode.treadmill || !s.hasFix) return false;
+      if (run.onTreadmill || !s.hasFix) return false;
       if (!homeTrim) return true;
       return s.distM >= homeTrimM && total - s.distM >= homeTrimM;
     }
@@ -60,18 +59,15 @@ class GpxExporter {
           'trk',
           nest: () {
             if (name != null) b.element('name', nest: name);
-            if (run.mode == RunMode.treadmill) {
+            if (run.onTreadmill) {
               b.element(
                 'desc',
                 nest:
                     'Treadmill; distance ${run.distanceM} m; duration ${run.elapsedMs / 1000} s',
               );
             }
-            b.element(
-              'type',
-              nest: run.mode == RunMode.treadmill ? 'treadmill' : 'running',
-            );
-            for (final lap in run.mode == RunMode.treadmill ? <Lap>[] : spans) {
+            b.element('type', nest: run.onTreadmill ? 'treadmill' : 'running');
+            for (final lap in run.onTreadmill ? <Lap>[] : spans) {
               b.element(
                 'trkseg',
                 nest: () {

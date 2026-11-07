@@ -22,7 +22,8 @@ class PigeonRecorderGateway implements RecorderGateway {
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
-  }) => _api.start(mode, spec, units, liveContext, route);
+    double? treadmillInclinePct,
+  }) => _api.start(mode, spec, units, liveContext, route, treadmillInclinePct);
 
   @override
   Future<void> pause() => _api.pause();

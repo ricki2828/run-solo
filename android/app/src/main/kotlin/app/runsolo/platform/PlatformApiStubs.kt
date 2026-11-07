@@ -5,7 +5,7 @@ package app.runsolo.platform
  * Real implementations (RecorderService, BleHrClient) land in Phase 1.
  */
 class RecorderApiStub : RecorderApi {
-    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult =
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?, treadmillInclinePct: Double?): StartResult =
         StartResult(runId = null, error = StartError.NO_FINE_PERMISSION)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult =

@@ -28,7 +28,6 @@ library;
 import 'dart:math' as math;
 
 import '../model/run_file.dart';
-import '../run_mode.dart';
 import 'hr_zones.dart';
 import 'metrics.dart';
 
@@ -453,7 +452,7 @@ List<SplitWindow> kmSplitWindows(RunFile run) {
   final s = run.samples;
   // A treadmill run's distance is typed in at the finish; its samples carry
   // none, so there is nothing to split on (7-Nov: one "7 km split" 422'd).
-  if (run.mode == RunMode.treadmill || s.length < 2) return const [];
+  if (run.onTreadmill || s.length < 2) return const [];
   final dist = run.distanceM;
   if (dist < kMinPartialSplitM) return const [];
   final out = <SplitWindow>[];

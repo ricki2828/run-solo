@@ -603,6 +603,14 @@ class _HeaderState extends State<_Header> {
               ),
             ],
           ),
+          if (d.summary.treadmillTag case final tag?) ...[
+            const SizedBox(height: Space.x8),
+            Text(
+              tag,
+              key: const ValueKey('detail-treadmill-tag'),
+              style: RunSoloType.body15.copyWith(color: ink),
+            ),
+          ],
           if (movingGapMs(free, d.summary.durationMs, isTest: cooper != null)
               case final gapMs?) ...[
             const SizedBox(height: Space.x8),

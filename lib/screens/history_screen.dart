@@ -530,6 +530,14 @@ class HistoryRow extends StatelessWidget {
                         color: t.inkSecondary,
                       ),
                     ),
+                    if (run.treadmillTag case final tag?)
+                      Text(
+                        tag,
+                        key: ValueKey('treadmill-tag-${run.id}'),
+                        style: RunSoloType.label13.copyWith(
+                          color: t.inkSecondary,
+                        ),
+                      ),
                   ],
                 ),
               ],

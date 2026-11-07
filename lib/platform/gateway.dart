@@ -81,12 +81,15 @@ abstract class RecorderGateway {
   /// null for free (CONTRACT.md I1). [liveContext]: the live compare's
   /// history (Phase 4 §3.2), or null for none. [route]: a route to follow
   /// (Follow a route; Free, Trail and Goal runs), or null for none.
+  /// [treadmillInclinePct]: an intervals or Cooper session run on a treadmill
+  /// at this incline (percent, 3 = "3+"): no GPS; null = outdoors.
   Future<StartResult> start(
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   });
   Future<void> pause();
   Future<void> resume();

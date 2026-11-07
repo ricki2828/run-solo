@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show ValueNotifier, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:run_engine/run_engine.dart' as engine;
 
@@ -87,6 +89,38 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   bool _starting = false;
   String? _error;
 
+  /// Ready's "On a treadmill" choice for this visit (intervals and the
+  /// 12-minute test). Not remembered; the incline is (settings).
+  final ValueNotifier<bool> _onBelt = ValueNotifier<bool>(false);
+
+  /// Whether this run can be run on a treadmill: the 12-minute test, and
+  /// intervals whose reps are all timed (a distance rep needs GPS or, later,
+  /// the REP DONE tap). Not a goal, the event or a Bronco; not on iOS, whose
+  /// recorder has no treadmill sessions yet.
+  bool _beltAllowed(AppSettings s, {RecordMode? testMode}) {
+    if (testMode != null || s.goalRun) return false;
+    if (defaultTargetPlatform == TargetPlatform.iOS) return false;
+    switch (s.lastMode) {
+      case RecordMode.cooper:
+        return _pickedTest == 'cooper';
+      case RecordMode.intervals:
+        final spec = AppServices.of(context).pickedSession;
+        return spec.templateId != engine.SessionSpec.parkrunId &&
+            !spec.steps.any((st) => st.target == engine.TargetKind.distance);
+      case RecordMode.laps ||
+          RecordMode.free ||
+          RecordMode.trail ||
+          RecordMode.treadmill:
+        return false;
+    }
+  }
+
+  /// The treadmill incline this run starts with, or null outdoors.
+  double? _beltIncline(AppSettings s, {RecordMode? testMode}) =>
+      _beltAllowed(s, testMode: testMode) && _onBelt.value
+      ? s.treadmillIncline.toDouble()
+      : null;
+
   /// Follow a route: the route picked for this run (Free, Trail and Goal);
   /// not remembered, each run chooses its own.
   engine.SavedRoute? _route;
@@ -147,6 +181,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _onBelt.addListener(_syncProbe);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -170,6 +205,8 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       );
     }
     WidgetsBinding.instance.removeObserver(this);
+    _onBelt.removeListener(_syncProbe);
+    _onBelt.dispose();
     _plans?.removeListener(_onPlanChanged);
     _stopProbe();
     _probeLive.dispose();
@@ -194,6 +231,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     final want =
         AppServices.of(context).settings.settings.lastMode !=
             RecordMode.treadmill &&
+        !_onBelt.value &&
         (AppServices.of(context).settings.settings.goalRun || _readyOpen);
     if (want && !_probing) {
       final rec = AppServices.of(context).recorder;
@@ -684,8 +722,9 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       await services.recorder.setSpokenSummary(s.spokenSummary);
       await services.recorder.setVoiceCoach(_voiceCoach(services, s));
       services.recording.coachTarget = _coachTarget(services, s);
+      final incline = _beltIncline(s, testMode: testMode);
       await services.recorder.setAutoPause(
-        s.lastMode != RecordMode.treadmill && s.autoPause,
+        s.lastMode != RecordMode.treadmill && incline == null && s.autoPause,
       );
       if ((testMode ?? s.recordMode) == RecordMode.laps) {
         await services.recorder.setVolumeKeyLaps(
@@ -760,8 +799,12 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
         mode,
         spec,
         s.units,
-        liveContext: mode == RecordMode.treadmill ? null : live,
+        // No GPS compare on a belt: there is no pace to compare.
+        liveContext: mode == RecordMode.treadmill || incline != null
+            ? null
+            : live,
         route: _followable(s) ? _route?.toFollowRoute() : null,
+        treadmillInclinePct: incline,
       );
     } catch (e) {
       // A PlatformException must never strand the button in "starting".
@@ -862,6 +905,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
           probe: _probeLive,
           requiresGps: s.goalRun,
           indoor: s.lastMode == RecordMode.treadmill,
+          beltChoice: _beltAllowed(s, testMode: testMode) ? _onBelt : null,
           // Free and distance-goal runs: the voice follows the pick, made
           // on Ready (28-Oct: too easy to miss on the busy setup screen).
           // `_start` reads the saved choice at GO, as before.
@@ -879,6 +923,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       ),
     );
     _readyOpen = false;
+    if (mounted) _onBelt.value = false; // each Ready visit asks again
     if (!mounted || _runStarted) return;
     _syncProbe();
     if (_readyPending) {

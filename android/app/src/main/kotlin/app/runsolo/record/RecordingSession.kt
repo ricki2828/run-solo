@@ -123,7 +123,12 @@ class RecordingSession(
     private val liveContext: LiveContext? = null,
     /** The route this run follows (Follow a route): journaled as the `route` line, handed back from the journal on resume. */
     route: FollowRoute? = null,
+    /** A session run on a treadmill: the incline (percent). Null = outdoors (or a free treadmill run, which is its own mode). Journaled in the header, so a resume keeps it. */
+    val treadmillInclinePct: Double? = null,
 ) : app.runsolo.platform.StartGuard.Session {
+    /** No GPS at all: the free treadmill mode, or a session on the belt. */
+    val indoor: Boolean = mode == RunMode.treadmill || treadmillInclinePct != null
+
     // Application context: the session outlives the Activity (swipe from Recents keeps the
     // service alive; an Activity context would unbind TTS and leak the Activity).
     private val context: Context = context.applicationContext
@@ -274,7 +279,7 @@ class RecordingSession(
         replay?.anchorAt(t)
         startWallMs = System.currentTimeMillis()
         writer.open()
-        writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units))
+        writer.append(JournalLine.Header(t, startWallMs, runId, device, app, tz, mode, spec, units, treadmillInclinePct))
         liveContext?.let { writer.append(JournalLine.LiveContextLine(t, startWallMs, it)) }
         followRoute?.let { writer.append(JournalLine.RouteLine(t, startWallMs, it)) }
         core = RecorderCore(mode, spec, coreConfig)
@@ -435,7 +440,7 @@ class RecordingSession(
             )
             return
         } else {
-            if (mode != RunMode.treadmill) {
+            if (!indoor) {
             location = LocationSource.create(context, preferRawGps).also { src ->
                 try {
                     src.start(thread.looper) { onFix(it) }
@@ -464,7 +469,7 @@ class RecordingSession(
     // Sensor callbacks (recorder thread for fixes/replay, main thread for BLE) enter under the lock.
     @Synchronized
     private fun onFix(fix: LocationFix) {
-        if (!finished && mode != RunMode.treadmill) ticker.onFix(fix)
+        if (!finished && !indoor) ticker.onFix(fix)
     }
 
     @Synchronized
@@ -605,7 +610,7 @@ class RecordingSession(
             writer.append(s)
             liveElev.offer(s.t, s.hpa, s.altM, s.accuracyM, ticker.distanceM, ticker.paused)?.let { lastElevRel = it }
         }
-        val lost = mode != RunMode.treadmill && ticker.gpsLost(t)
+        val lost = !indoor && ticker.gpsLost(t)
         dispatch.flush(t, ticker.distanceM)
         handle(core.tick(t, ticker.distanceM, gpsOk = !lost), t)
         dispatch.ticked(t, ticker.distanceM)
@@ -801,7 +806,7 @@ class RecordingSession(
      * manual pause but with no re-anchor on resume. Free, Laps and Goal runs, and the warm-up/cool-down of other sessions; the core decides.
      */
     private fun autoPauseNow(t: Long) {
-        if (mode == RunMode.treadmill || !autoPause || !core.autoPause(t)) return
+        if (indoor || !autoPause || !core.autoPause(t)) return
         ticker.onAutoPause()
         cues.dropNudge()
         writer.append(JournalLine.AutoPause(t, System.currentTimeMillis()))
@@ -854,7 +859,7 @@ class RecordingSession(
 
     @Synchronized
     fun setTreadmillDistance(metres: Double) {
-        require(mode == RunMode.treadmill && !finished)
+        require(indoor && !finished)
         writer.append(JournalLine.TreadmillDistance(clock(), System.currentTimeMillis(), metres))
         writer.sync()
         check(writer.ok) { "Distance could not be saved" }
@@ -863,7 +868,7 @@ class RecordingSession(
     /** Treadmill: marks [metres] as reached now (moving time). Refused while paused, not past the last mark, or at the last mark's time. Answers the marks standing. */
     @Synchronized
     fun addTreadmillMark(metres: Double): List<Double> {
-        require(mode == RunMode.treadmill && !finished)
+        require(indoor && !finished)
         val t = clock()
         val active = core.status(t).activeMs
         if (treadmillMarks.accepts(metres, active, paused = core.state == RecorderState.paused)) {
@@ -878,7 +883,7 @@ class RecordingSession(
     /** Treadmill: takes the latest mark back. Answers the marks left. */
     @Synchronized
     fun undoTreadmillMark(): List<Double> {
-        require(mode == RunMode.treadmill && !finished)
+        require(indoor && !finished)
         if (treadmillMarks.points.isNotEmpty()) {
             writer.append(JournalLine.TreadmillMarkUndo(clock(), System.currentTimeMillis()))
             writer.sync()
@@ -1640,7 +1645,8 @@ class RecordingSession(
             prompt = promptStatus(t),
             goalEased = if (spec?.isGoal == true) coach.easeMode else null,
             goalTargetMs = coach.goalTargetAtStart?.targetMs,
-            treadmillMarks = if (mode == RunMode.treadmill) treadmillMarks.flat() else null,
+            treadmillMarks = if (indoor) treadmillMarks.flat() else null,
+            treadmillInclinePct = treadmillInclinePct,
         )
     }
 

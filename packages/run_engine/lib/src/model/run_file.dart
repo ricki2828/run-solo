@@ -460,6 +460,7 @@ class RunFile {
     this.watch,
     this.treadmillDistanceM,
     this.treadmillMarks = const [],
+    this.treadmillInclinePct,
     this.readSchema = schema,
   });
 
@@ -472,8 +473,7 @@ class RunFile {
   static const int phoneSchema = 7;
 
   /// The schema [toJson] writes for this run: 8 with a watch block, else 7.
-  int get writeSchema =>
-      mode == RunMode.treadmill ? 9 : (watch != null ? 8 : phoneSchema);
+  int get writeSchema => onTreadmill ? 9 : (watch != null ? 8 : phoneSchema);
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -535,6 +535,17 @@ class RunFile {
   /// written before markers (they load unchanged).
   final List<TreadmillMark> treadmillMarks;
 
+  /// A session (intervals, the 12-minute test) run on a treadmill: the
+  /// incline in percent (0 = flat, 3 stands for "3 or more"). Null = not a
+  /// treadmill session; a free treadmill run ([RunMode.treadmill]) may carry
+  /// it too. Optional key `treadmillInclinePct`, schema 9.
+  final double? treadmillInclinePct;
+
+  /// Recorded with no GPS on a treadmill: a free treadmill run, or a session
+  /// run on the belt. Its distance is typed in, never measured.
+  bool get onTreadmill =>
+      mode == RunMode.treadmill || treadmillInclinePct != null;
+
   double get distanceM =>
       treadmillDistanceM ?? (samples.isEmpty ? 0 : samples.last.distM);
 
@@ -554,6 +565,9 @@ class RunFile {
     Object? coach = _unset,
     Object? watch = _unset,
   }) => RunFile(
+    treadmillDistanceM: treadmillDistanceM,
+    treadmillMarks: treadmillMarks,
+    treadmillInclinePct: treadmillInclinePct,
     id: id ?? this.id,
     device: device,
     app: app,
@@ -586,6 +600,7 @@ class RunFile {
     'tz': tz,
     'mode': mode.name,
     if (treadmillDistanceM != null) 'treadmillDistanceM': treadmillDistanceM,
+    if (treadmillInclinePct != null) 'treadmillInclinePct': treadmillInclinePct,
     if (treadmillMarks.isNotEmpty)
       'treadmillMarks': treadmillMarks.map((m) => m.toJson()).toList(),
     'session': session?.toJson(),
@@ -628,6 +643,7 @@ class RunFile {
     'watch',
     'treadmillDistanceM',
     'treadmillMarks',
+    'treadmillInclinePct',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -659,10 +675,14 @@ class RunFile {
       throw RunFileFormatException('id must be a filename-safe token');
     }
     final mode = RunMode.decode(_readString(json, 'mode'), schema: schemaValue);
-    if ((mode == RunMode.treadmill || json['treadmillDistanceM'] != null) &&
+    if ((mode == RunMode.treadmill ||
+            json['treadmillDistanceM'] != null ||
+            json['treadmillInclinePct'] != null) &&
         schemaValue < 9) {
       throw RunFileFormatException('treadmill needs schema 9');
     }
+    final incline = RunFileCodec._treadmillIncline(json);
+    final onBelt = mode == RunMode.treadmill || incline != null;
     final unitsName = _readString(json, 'units');
     final units = Units.values.cast<Units?>().firstWhere(
       (u) => u!.name == unitsName,
@@ -714,8 +734,9 @@ class RunFile {
           : FollowedRoute.fromJson(json['route']),
       coach: json['coach'] == null ? null : CoachLog.fromJson(json['coach']),
       watch: json['watch'] == null ? null : WatchInfo.fromJson(json['watch']),
-      treadmillDistanceM: RunFileCodec._treadmillDistance(json, mode),
-      treadmillMarks: RunFileCodec._treadmillMarks(json, mode),
+      treadmillDistanceM: RunFileCodec._treadmillDistance(json, onBelt),
+      treadmillMarks: RunFileCodec._treadmillMarks(json, onBelt),
+      treadmillInclinePct: incline,
       readSchema: schemaValue,
     );
   }
@@ -804,14 +825,19 @@ class RunFile {
 class RunFileCodec {
   const RunFileCodec._();
 
-  static double? _treadmillDistance(Map<String, Object?> json, RunMode mode) {
+  static double? _treadmillIncline(Map<String, Object?> json) {
+    final v = json['treadmillInclinePct'];
+    if (v == null) return null;
+    if (v is! num || !v.isFinite || v < 0 || v > 15) {
+      throw RunFileFormatException('invalid treadmill incline');
+    }
+    return v.toDouble();
+  }
+
+  static double? _treadmillDistance(Map<String, Object?> json, bool onBelt) {
     final v = json['treadmillDistanceM'];
     if (v == null) return null;
-    if (mode != RunMode.treadmill ||
-        v is! num ||
-        !v.isFinite ||
-        v <= 0 ||
-        v > 500000) {
+    if (!onBelt || v is! num || !v.isFinite || v <= 0 || v > 500000) {
       throw RunFileFormatException('invalid treadmill distance');
     }
     return v.toDouble();
@@ -819,11 +845,11 @@ class RunFileCodec {
 
   static List<TreadmillMark> _treadmillMarks(
     Map<String, Object?> json,
-    RunMode mode,
+    bool onBelt,
   ) {
     final v = json['treadmillMarks'];
     if (v == null) return const [];
-    if (mode != RunMode.treadmill || v is! List) {
+    if (!onBelt || v is! List) {
       throw RunFileFormatException('invalid treadmill marks');
     }
     final out = <TreadmillMark>[];

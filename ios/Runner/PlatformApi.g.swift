@@ -1584,6 +1584,9 @@ struct RecorderStatus: Hashable {
   /// Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
   /// recreated screen or a restored run shows them. Null/empty = none.
   var treadmillMarks: [Double]? = nil
+  /// A session (intervals, the 12-minute test) run on a treadmill: the incline
+  /// in percent as sent at Start. Null = outdoors, or a free treadmill run.
+  var treadmillInclinePct: Double? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1624,6 +1627,7 @@ struct RecorderStatus: Hashable {
     let goalEased: Bool? = nilOrValue(pigeonVar_list[33])
     let goalTargetMs: Int64? = nilOrValue(pigeonVar_list[34])
     let treadmillMarks: [Double]? = nilOrValue(pigeonVar_list[35])
+    let treadmillInclinePct: Double? = nilOrValue(pigeonVar_list[36])
 
     return RecorderStatus(
       state: state,
@@ -1661,7 +1665,8 @@ struct RecorderStatus: Hashable {
       questDoneId: questDoneId,
       goalEased: goalEased,
       goalTargetMs: goalTargetMs,
-      treadmillMarks: treadmillMarks
+      treadmillMarks: treadmillMarks,
+      treadmillInclinePct: treadmillInclinePct
     )
   }
   func toList() -> [Any?] {
@@ -1702,13 +1707,14 @@ struct RecorderStatus: Hashable {
       goalEased,
       goalTargetMs,
       treadmillMarks,
+      treadmillInclinePct,
     ]
   }
   static func == (lhs: RecorderStatus, rhs: RecorderStatus) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId) && deepEqualsPlatformApi(lhs.goalEased, rhs.goalEased) && deepEqualsPlatformApi(lhs.goalTargetMs, rhs.goalTargetMs) && deepEqualsPlatformApi(lhs.treadmillMarks, rhs.treadmillMarks)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId) && deepEqualsPlatformApi(lhs.goalEased, rhs.goalEased) && deepEqualsPlatformApi(lhs.goalTargetMs, rhs.goalTargetMs) && deepEqualsPlatformApi(lhs.treadmillMarks, rhs.treadmillMarks) && deepEqualsPlatformApi(lhs.treadmillInclinePct, rhs.treadmillInclinePct)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1749,6 +1755,7 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: goalEased, hasher: &hasher)
     deepHashPlatformApi(value: goalTargetMs, hasher: &hasher)
     deepHashPlatformApi(value: treadmillMarks, hasher: &hasher)
+    deepHashPlatformApi(value: treadmillInclinePct, hasher: &hasher)
   }
 }
 
@@ -4097,7 +4104,11 @@ protocol RecorderApi {
   /// `cooperHistory` entry.
   /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
   /// `route` line; null = follow nothing.
-  func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult
+  /// `treadmillInclinePct`: the session (intervals, `cooper`) runs on a
+  /// treadmill at this incline (percent, 3 = "3 or more"): no GPS, no fix
+  /// permission needed, journaled in the header. Null = outdoors. A free
+  /// treadmill run is `RecordMode.treadmill` and sends null.
+  func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?, treadmillInclinePct: Double?) throws -> StartResult
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.
   func startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig) throws -> StartResult
   /// Continue an orphaned journal after the user confirms (plan §3): writes the
@@ -4239,6 +4250,10 @@ class RecorderApiSetup {
     /// `cooperHistory` entry.
     /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
     /// `route` line; null = follow nothing.
+    /// `treadmillInclinePct`: the session (intervals, `cooper`) runs on a
+    /// treadmill at this incline (percent, 3 = "3 or more"): no GPS, no fix
+    /// permission needed, journaled in the header. Null = outdoors. A free
+    /// treadmill run is `RecordMode.treadmill` and sends null.
     let startChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.start\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       startChannel.setMessageHandler { message, reply in
@@ -4248,8 +4263,9 @@ class RecorderApiSetup {
         let unitsArg = args[2] as! Units
         let liveContextArg: LiveContext? = nilOrValue(args[3])
         let routeArg: FollowRoute? = nilOrValue(args[4])
+        let treadmillInclinePctArg: Double? = nilOrValue(args[5])
         do {
-          let result = try api.start(mode: modeArg, spec: specArg, units: unitsArg, liveContext: liveContextArg, route: routeArg)
+          let result = try api.start(mode: modeArg, spec: specArg, units: unitsArg, liveContext: liveContextArg, route: routeArg, treadmillInclinePct: treadmillInclinePctArg)
           reply(wrapResult(result))
         } catch {
           reply(wrapError(error))

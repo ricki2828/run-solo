@@ -625,6 +625,7 @@ class RecorderStatus {
     this.goalEased,
     this.goalTargetMs,
     this.treadmillMarks,
+    this.treadmillInclinePct,
   });
   RecorderState state;
   String? runId;
@@ -719,6 +720,10 @@ class RecorderStatus {
   /// Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
   /// recreated screen or a restored run shows them. Null/empty = none.
   List<double>? treadmillMarks;
+
+  /// A session (intervals, the 12-minute test) run on a treadmill: the incline
+  /// in percent as sent at Start. Null = outdoors, or a free treadmill run.
+  double? treadmillInclinePct;
 }
 
 /// A route to follow (Follow a route): chosen on Start from the route library,
@@ -918,12 +923,17 @@ abstract class RecorderApi {
   /// `cooperHistory` entry.
   /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
   /// `route` line; null = follow nothing.
+  /// `treadmillInclinePct`: the session (intervals, `cooper`) runs on a
+  /// treadmill at this incline (percent, 3 = "3 or more"): no GPS, no fix
+  /// permission needed, journaled in the header. Null = outdoors. A free
+  /// treadmill run is `RecordMode.treadmill` and sends null.
   StartResult start(
     RecordMode mode,
     SessionSpec? spec,
     Units units,
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   );
 
   /// Debug builds only: like `start`, fed from a fixture instead of GPS/BLE.

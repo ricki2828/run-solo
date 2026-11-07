@@ -82,7 +82,7 @@ class RecorderService : Service() {
                 // Treadmill has no GPS. Android 14+ checks location permission for a location FGS
                 // and knows specialUse; Android 10-13 doesn't know specialUse and doesn't check, so
                 // keep location there rather than rely on ServiceCompat masking an unknown type.
-                if (s.mode == app.runsolo.core.model.RunMode.treadmill && Build.VERSION.SDK_INT >= 34) {
+                if (s.indoor && Build.VERSION.SDK_INT >= 34) {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 } else {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION

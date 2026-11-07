@@ -51,6 +51,7 @@ typedef CooperTest = ({
   double vo2,
   double? vo2Adj,
   List<double> minuteM,
+  bool treadmill,
 });
 
 /// The prime figure (product call 27-Sep): heat twin when it exists.
@@ -73,7 +74,9 @@ List<CooperTest> cooperTests(List<RunSummary> runs) {
         c == null ||
         !c.valid ||
         c.vo2 == null ||
-        c.minuteM.length != engine.CooperProjection.minutes) {
+        // A treadmill test has no minute-by-minute curve (no GPS).
+        (!c.onTreadmill &&
+            c.minuteM.length != engine.CooperProjection.minutes)) {
       continue;
     }
     out.add((
@@ -82,6 +85,7 @@ List<CooperTest> cooperTests(List<RunSummary> runs) {
       vo2: c.vo2!,
       vo2Adj: c.vo2Adjusted,
       minuteM: c.minuteM,
+      treadmill: c.onTreadmill,
     ));
   }
   out.sort((a, b) => a.date.compareTo(b.date));
@@ -138,10 +142,21 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                 ? tests.where((x) => x.date.isBefore(d.run.start)).toList()
                 : tests.sublist(0, i);
             // Every valid test up to and including this one: the bars show
-            // the last 10, the best counts over all of them (A11).
-            final upTo = [
-              for (final p in prior) primeOf(p),
-              if (e != null) c!.primeVo2!,
+            // the last 10 (treadmill tests hollow), the best counts over the
+            // tests on the same surface (A11; a belt is not a road).
+            final belt = c?.onTreadmill ?? false;
+            final upToTests = [
+              for (final p in prior) (vo2: primeOf(p), treadmill: p.treadmill),
+              if (e != null) (vo2: c!.primeVo2!, treadmill: belt),
+            ];
+            final upTo = [for (final x in upToTests) x.vo2];
+            final bestSame = [
+              for (final x in upToTests)
+                if (x.treadmill == belt) x.vo2,
+            ];
+            final samePrior = [
+              for (final p in prior)
+                if (p.treadmill == belt) p,
             ];
             final birthYear = AppServices.of(context)
                 .settings
@@ -157,7 +172,7 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
             final change = e == null
                 ? null
                 : engine.CooperResult.changeLine(c!.primeVo2!, d.run.start, [
-                    for (final p in prior) (p.date, primeOf(p)),
+                    for (final p in samePrior) (p.date, primeOf(p)),
                   ]);
             return ListView(
               padding: const EdgeInsets.symmetric(
@@ -237,6 +252,18 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                               color: t.inkSecondary,
                             ),
                           ),
+                          if (c.treadmillTag case final tag?)
+                            Padding(
+                              padding: const EdgeInsets.only(top: Space.x4),
+                              child: Text(
+                                tag,
+                                key: const ValueKey('cooper-treadmill-tag'),
+                                style: RunSoloType.body15.copyWith(
+                                  color: t.inkPrimary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                           // The raw figure stays visible, secondary (27-Sep call).
                           if (c.rawSecondaryLine != null)
                             Text(
@@ -282,7 +309,16 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                               values: upTo.length > Vo2Bars.maxBars
                                   ? upTo.sublist(upTo.length - Vo2Bars.maxBars)
                                   : upTo,
-                              best: upTo.reduce(math.max),
+                              hollow: [
+                                for (final x
+                                    in upToTests.length > Vo2Bars.maxBars
+                                        ? upToTests.sublist(
+                                            upToTests.length - Vo2Bars.maxBars,
+                                          )
+                                        : upToTests)
+                                  x.treadmill,
+                              ],
+                              best: bestSame.reduce(math.max),
                             ),
                           ],
                         ] else if (c?.invalidLine != null)
@@ -316,12 +352,13 @@ class _CooperResultScreenState extends State<CooperResultScreen> {
                         PaceStrip(
                           minuteM: c!.minuteM!,
                           curve: engine.CooperProjection.curveFor([
-                            for (final p in prior) p.minuteM,
+                            for (final p in prior)
+                              if (!p.treadmill) p.minuteM,
                           ]),
                         ),
                         const SizedBox(height: Space.x8),
                         Text(
-                          prior.length <
+                          prior.where((p) => !p.treadmill).length <
                                   engine.CooperProjection.personalAfterTests
                               ? 'vs typical curve (research-based)'
                               : 'vs your usual',

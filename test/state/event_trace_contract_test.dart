@@ -241,6 +241,7 @@ class TraceGateway implements RecorderGateway {
     Units u, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   }) => throw UnimplementedError();
   @override
   Future<void> pause() => throw UnimplementedError();

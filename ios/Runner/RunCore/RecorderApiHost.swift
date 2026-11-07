@@ -28,8 +28,10 @@ final class RecorderApiHost: RecorderApi {
     }
   }
 
-  func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?) throws -> StartResult {
+  func start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?, treadmillInclinePct: Double?) throws -> StartResult {
     guard host.activeRunId == nil else { return StartResult(runId: nil, error: .alreadyRunning) }
+    // Treadmill sessions (intervals, the 12-minute test on a belt) are Android-only for now; the app hides the choice on iOS.
+    guard treadmillInclinePct == nil else { return StartResult(runId: nil, error: .unsupportedSession) }
     guard mode == .treadmill || source.authorized else { return StartResult(runId: nil, error: .noFinePermission) }
     let runId = UUID().uuidString.lowercased()
     do {

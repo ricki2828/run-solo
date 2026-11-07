@@ -1602,6 +1602,7 @@ class RecorderStatus {
     this.goalEased,
     this.goalTargetMs,
     this.treadmillMarks,
+    this.treadmillInclinePct,
   });
 
   RecorderState state;
@@ -1717,6 +1718,10 @@ class RecorderStatus {
   /// recreated screen or a restored run shows them. Null/empty = none.
   List<double>? treadmillMarks;
 
+  /// A session (intervals, the 12-minute test) run on a treadmill: the incline
+  /// in percent as sent at Start. Null = outdoors, or a free treadmill run.
+  double? treadmillInclinePct;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1755,6 +1760,7 @@ class RecorderStatus {
       goalEased,
       goalTargetMs,
       treadmillMarks,
+      treadmillInclinePct,
     ];
   }
 
@@ -1800,6 +1806,7 @@ class RecorderStatus {
       goalEased: result[33] as bool?,
       goalTargetMs: result[34] as int?,
       treadmillMarks: (result[35] as List<Object?>?)?.cast<double>(),
+      treadmillInclinePct: result[36] as double?,
     );
   }
 
@@ -1812,7 +1819,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId) && _deepEquals(goalEased, other.goalEased) && _deepEquals(goalTargetMs, other.goalTargetMs) && _deepEquals(treadmillMarks, other.treadmillMarks);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId) && _deepEquals(goalEased, other.goalEased) && _deepEquals(goalTargetMs, other.goalTargetMs) && _deepEquals(treadmillMarks, other.treadmillMarks) && _deepEquals(treadmillInclinePct, other.treadmillInclinePct);
   }
 
   @override
@@ -4368,14 +4375,18 @@ class RecorderApi {
   /// `cooperHistory` entry.
   /// `route`: a route to follow (Free, Trail and Goal runs), journaled as the
   /// `route` line; null = follow nothing.
-  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, LiveContext? liveContext, FollowRoute? route) async {
+  /// `treadmillInclinePct`: the session (intervals, `cooper`) runs on a
+  /// treadmill at this incline (percent, 3 = "3 or more"): no GPS, no fix
+  /// permission needed, journaled in the header. Null = outdoors. A free
+  /// treadmill run is `RecordMode.treadmill` and sends null.
+  Future<StartResult> start(RecordMode mode, SessionSpec? spec, Units units, LiveContext? liveContext, FollowRoute? route, double? treadmillInclinePct) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.start$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, liveContext, route]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode, spec, units, liveContext, route, treadmillInclinePct]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(

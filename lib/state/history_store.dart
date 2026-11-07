@@ -355,6 +355,16 @@ class RunSummary {
       analysis?.truePace?.factors ??
       engine.TruePaceFactors.none;
 
+  /// A session run on a treadmill: the incline in percent (index row, else
+  /// the test's figures); null for an outdoor run and a free treadmill run.
+  double? get treadmillInclinePct =>
+      row?.treadmillInclinePct ?? cooper?.treadmillInclinePct;
+
+  /// "Treadmill · 1%" for a session run on a treadmill; null otherwise.
+  String? get treadmillTag => treadmillInclinePct == null
+      ? null
+      : engine.CooperResult.treadmillTagOf(treadmillInclinePct!);
+
   /// A 12-minute test's figures (C1): the row's, else the analysis's.
   CooperFigures? get cooper =>
       row?.cooper ?? CooperFigures.of(analysis?.cooper);
