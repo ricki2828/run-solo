@@ -160,8 +160,14 @@ class _TrendScreenState extends State<TrendScreen> {
                   RecordMode.cooper => _CooperTrend(runs: runs),
                   // Trail has no pace trend (no pace verdict yet), so the
                   // selector never offers it; the case only keeps the switch exhaustive.
-                  RecordMode.laps || RecordMode.free || RecordMode.trail =>
-                    _DistanceTrend(runs: runs, units: units, mode: mode),
+                  RecordMode.laps ||
+                  RecordMode.free ||
+                  RecordMode.treadmill ||
+                  RecordMode.trail => _DistanceTrend(
+                    runs: runs,
+                    units: units,
+                    mode: mode,
+                  ),
                 },
                 const SizedBox(height: Space.x24),
                 if (runs.isEmpty)

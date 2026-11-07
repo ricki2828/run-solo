@@ -101,6 +101,7 @@ abstract class RecorderGateway {
   Future<void> startReps();
 
   /// Finalises in Kotlin before returning the run id; null when idle.
+  Future<void> setTreadmillDistance(double distanceM);
   Future<String?> stop();
   Future<RecorderStatus> status();
 

@@ -45,12 +45,14 @@ class ReadyScreen extends StatefulWidget {
     this.structureLine,
     this.lastRun,
     this.requiresGps = false,
+    this.indoor = false,
     this.asksCoachChoice = false,
     this.onChange,
   });
 
   /// "INTERVALS", "FREE RUN" ...: the big words.
   final String runType;
+  final bool indoor;
 
   /// The run type's colour; the whole screen is flooded with it.
   final Color ground;
@@ -434,19 +436,20 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Chip(
-                key: const ValueKey('ready-gps'),
-                label: 'GPS',
-                value: switch (gps) {
-                  _Gps.searching =>
-                    widget.requiresGps ? 'WAITING' : 'SEARCHING',
-                  _Gps.good => 'GOOD',
-                  _Gps.weak => 'WEAK',
-                },
-                dot: gps == _Gps.good
-                    ? NightSession.semImproving
-                    : NightSession.semWarn,
-              ),
+              if (!widget.indoor)
+                _Chip(
+                  key: const ValueKey('ready-gps'),
+                  label: 'GPS',
+                  value: switch (gps) {
+                    _Gps.searching =>
+                      widget.requiresGps ? 'WAITING' : 'SEARCHING',
+                    _Gps.good => 'GOOD',
+                    _Gps.weak => 'WEAK',
+                  },
+                  dot: gps == _Gps.good
+                      ? NightSession.semImproving
+                      : NightSession.semWarn,
+                ),
               if (HostCaps.strapPairing) ...[
                 const SizedBox(height: Space.x8),
                 _strapChip(s),
@@ -454,7 +457,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               const SizedBox(height: Space.x12),
               SizedBox(
                 height: 20,
-                child: gps == _Gps.good
+                child: widget.indoor || gps == _Gps.good
                     ? null
                     : Text(
                         widget.requiresGps

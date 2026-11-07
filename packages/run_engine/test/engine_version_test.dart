@@ -13,11 +13,12 @@ void main() {
       RunMode.free,
       RunMode.cooper,
       RunMode.trail,
+      RunMode.treadmill,
     ]);
   });
 
-  test('run file and sidecar write schema 8 (sidecar 3) and read from 1', () {
-    expect(RunFile.schema, 8);
+  test('run file reads schema 9, ordinary phone writes stay schema 7', () {
+    expect(RunFile.schema, 9);
     expect(RunFile.minReadSchema, 1);
     expect(RunSidecar.schema, 3);
     expect(RunSidecar.minReadSchema, 1);

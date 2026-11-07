@@ -41,6 +41,9 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> startReps() => _api.startReps();
 
   @override
+  Future<void> setTreadmillDistance(double distanceM) =>
+      _api.setTreadmillDistance(distanceM);
+  @override
   Future<String?> stop() => _api.stop();
 
   @override

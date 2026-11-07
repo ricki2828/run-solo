@@ -57,6 +57,10 @@ sealed class JournalLine {
         }
     }
 
+    data class TreadmillDistance(override val t: Long, override val w: Long, val metres: Double) : JournalLine() {
+        init { require(metres.isFinite() && metres > 0 && metres <= 500_000) }
+    }
+
     data class Lap(override val t: Long, override val w: Long, val source: LapSource) : JournalLine()
 
     data class Pause(override val t: Long, override val w: Long) : JournalLine()

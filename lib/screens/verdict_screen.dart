@@ -252,7 +252,9 @@ class _VerdictScreenState extends State<VerdictScreen> {
               _load = _loadDetail();
             }),
           ),
-          RecordMode.laps || RecordMode.free => _SummaryScreen(
+          RecordMode.laps ||
+          RecordMode.free ||
+          RecordMode.treadmill => _SummaryScreen(
             detail: detail,
             justFinished: widget.justFinished,
             // A re-tag (Trail suggestion) reloads the run under its new type.
@@ -1010,6 +1012,7 @@ class _SummaryScreen extends StatelessWidget {
               engine.SessionSpec.fartlekId =>
         'FARTLEK',
       RecordMode.laps => 'LAPS RUN',
+      RecordMode.treadmill => 'TREADMILL',
       RecordMode.free => 'FREE RUN',
       RecordMode.trail => 'TRAIL RUN',
       RecordMode.cooper => '12-MINUTE TEST',

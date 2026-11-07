@@ -78,7 +78,7 @@ class RecorderService : Service() {
                 this,
                 RecorderNotification.NOTIFICATION_ID,
                 notification.build(s.notificationContent()),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                if (s.mode == app.runsolo.core.model.RunMode.treadmill) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
             )
         } catch (e: Exception) {
             // Android 14+: location FGS refused (permission revoked between check and start, or

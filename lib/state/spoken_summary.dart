@@ -30,6 +30,7 @@ String? spokenVerdictOf(RunDetail d, List<RunSummary> all) {
             ? 'Norwegian 4x4'
             : null,
       );
+    case RecordMode.treadmill:
     case RecordMode.free:
     case RecordMode.laps:
     case RecordMode.cooper:
@@ -42,7 +43,10 @@ String? spokenVerdictOf(RunDetail d, List<RunSummary> all) {
 bool spokenPaceOf(RunSummary s) => switch (s.mode) {
   RecordMode.intervals => s.spec?.isGoal == true,
   RecordMode.cooper => false,
-  RecordMode.free || RecordMode.laps || RecordMode.trail => true,
+  RecordMode.free ||
+  RecordMode.treadmill ||
+  RecordMode.laps ||
+  RecordMode.trail => true,
 };
 
 /// Says the end-of-run line for a run that has just finished. Never throws:

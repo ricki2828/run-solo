@@ -14,7 +14,7 @@ extension RunTypeBarColour on RunSoloTokens {
   Color get pbBarColour => accentArc;
 
   Color barColourFor(RecordMode m) => switch (m) {
-    RecordMode.free => typeFree,
+    RecordMode.free || RecordMode.treadmill => typeFree,
     RecordMode.trail => typeTrail,
     RecordMode.laps => typeLaps,
     RecordMode.intervals => typeIntervals,

@@ -228,7 +228,12 @@ class _HomeScreenState extends State<HomeScreen> {
     bool ready = false,
   }) async {
     final perms = _perms;
-    if (perms != null && !perms.canRecord) {
+    final settings = AppServices.of(context).settings.settings;
+    final picked = apply?.call(settings) ?? settings;
+    if (ready &&
+        picked.recordMode != RecordMode.treadmill &&
+        perms != null &&
+        !perms.canRecord) {
       final ok = await Navigator.of(context).pushNamed(Routes.permissions);
       if (!mounted || ok != true) {
         _refresh();
@@ -255,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return label == 'Distance or time' ? 'goal run' : label;
     }
     return switch (s.lastMode) {
+      RecordMode.treadmill => 'TREADMILL',
       RecordMode.free => 'free run',
       RecordMode.trail => 'trail run',
       RecordMode.laps =>
@@ -606,7 +612,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       );
                     },
                   ),
-                  if (perms != null && !perms.canRecord)
+                  if (settings.recordMode != RecordMode.treadmill &&
+                      perms != null &&
+                      !perms.canRecord)
                     Padding(
                       padding: const EdgeInsets.only(bottom: Space.x16),
                       child: InkWell(

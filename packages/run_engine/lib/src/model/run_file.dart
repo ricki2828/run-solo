@@ -458,19 +458,21 @@ class RunFile {
     this.route,
     this.coach,
     this.watch,
+    this.treadmillDistanceM,
     this.readSchema = schema,
   });
 
   /// The newest schema this build reads, and the one it writes for a watch run
   /// ([watch] set). A phone-recorded run is written as [phoneSchema].
-  static const int schema = 8;
+  static const int schema = 9;
 
   /// The schema of a run with no `watch` block, so a build from before schema 8
   /// still reads every phone-recorded run.
   static const int phoneSchema = 7;
 
   /// The schema [toJson] writes for this run: 8 with a watch block, else 7.
-  int get writeSchema => watch != null ? schema : phoneSchema;
+  int get writeSchema =>
+      mode == RunMode.treadmill ? 9 : (watch != null ? 8 : phoneSchema);
 
   /// The lowest schema this build reads (every older one is mapped forward).
   static const int minReadSchema = 1;
@@ -526,7 +528,10 @@ class RunFile {
 
   int get elapsedMs => samples.isEmpty ? 0 : samples.last.tMs;
 
-  double get distanceM => samples.isEmpty ? 0 : samples.last.distM;
+  final double? treadmillDistanceM;
+
+  double get distanceM =>
+      treadmillDistanceM ?? (samples.isEmpty ? 0 : samples.last.distM);
 
   bool get hasHr => samples.any((s) => s.hr != null);
 
@@ -575,6 +580,7 @@ class RunFile {
     'end': end.toUtc().toIso8601String(),
     'tz': tz,
     'mode': mode.name,
+    if (treadmillDistanceM != null) 'treadmillDistanceM': treadmillDistanceM,
     'session': session?.toJson(),
     'units': units.name,
     'laps': laps.map((l) => l.toJson()).toList(),
@@ -613,6 +619,7 @@ class RunFile {
     'route',
     'coach',
     'watch',
+    'treadmillDistanceM',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -644,6 +651,10 @@ class RunFile {
       throw RunFileFormatException('id must be a filename-safe token');
     }
     final mode = RunMode.decode(_readString(json, 'mode'), schema: schemaValue);
+    if ((mode == RunMode.treadmill || json['treadmillDistanceM'] != null) &&
+        schemaValue < 9) {
+      throw RunFileFormatException('treadmill needs schema 9');
+    }
     final unitsName = _readString(json, 'units');
     final units = Units.values.cast<Units?>().firstWhere(
       (u) => u!.name == unitsName,
@@ -695,6 +706,7 @@ class RunFile {
           : FollowedRoute.fromJson(json['route']),
       coach: json['coach'] == null ? null : CoachLog.fromJson(json['coach']),
       watch: json['watch'] == null ? null : WatchInfo.fromJson(json['watch']),
+      treadmillDistanceM: RunFileCodec._treadmillDistance(json, mode),
       readSchema: schemaValue,
     );
   }
@@ -739,7 +751,7 @@ class RunFile {
       final ok = switch (mode) {
         RunMode.intervals || RunMode.cooper => spec.steps.isNotEmpty,
         RunMode.laps => spec.templateId == SessionSpec.fartlekId,
-        RunMode.free || RunMode.trail => false,
+        RunMode.free || RunMode.treadmill || RunMode.trail => false,
       };
       if (!ok) {
         throw RunFileFormatException(
@@ -762,7 +774,10 @@ class RunFile {
               ),
       RunMode.cooper => SessionSpec.cooper,
       // A preset on a Laps/Free file was never written; ignore it as before.
-      RunMode.laps || RunMode.free || RunMode.trail => null,
+      RunMode.laps ||
+      RunMode.free ||
+      RunMode.treadmill ||
+      RunMode.trail => null,
     };
   }
 
@@ -779,6 +794,19 @@ class RunFile {
 /// round trip is byte-identical (plan §12 import/export).
 class RunFileCodec {
   const RunFileCodec._();
+
+  static double? _treadmillDistance(Map<String, Object?> json, RunMode mode) {
+    final v = json['treadmillDistanceM'];
+    if (v == null) return null;
+    if (mode != RunMode.treadmill ||
+        v is! num ||
+        !v.isFinite ||
+        v <= 0 ||
+        v > 500000) {
+      throw RunFileFormatException('invalid treadmill distance');
+    }
+    return v.toDouble();
+  }
 
   static String encode(RunFile run) => jsonEncode(run.toJson());
 

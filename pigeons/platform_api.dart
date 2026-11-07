@@ -31,7 +31,7 @@ import 'package:pigeon/pigeon.dart';
 ///   starts the 12:00, projection cues. Not offered in the UI yet.
 /// - `trail`: a `free` run on hills and dirt: no LAP, no session, and its own
 ///   trail-tuned auto-pause profile (`MovingDetector.forTrailAutoPause`).
-enum RecordMode { intervals, laps, free, cooper, trail }
+enum RecordMode { intervals, laps, free, cooper, trail, treadmill }
 
 enum Units { km, mi }
 
@@ -947,6 +947,7 @@ abstract class RecorderApi {
   void startReps();
 
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
+  void setTreadmillDistance(double distanceM);
   String? stop();
   RecorderStatus status();
 

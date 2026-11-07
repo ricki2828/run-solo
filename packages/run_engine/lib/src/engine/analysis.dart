@@ -46,7 +46,7 @@ SessionSpec? effectiveSession(RunFile run, RunMode mode) {
     RunMode.cooper => SessionSpec.cooper,
     RunMode.laps =>
       own?.templateId == SessionSpec.fartlekId ? SessionSpec.fartlek : null,
-    RunMode.free || RunMode.trail => null,
+    RunMode.free || RunMode.trail || RunMode.treadmill => null,
   };
 }
 
@@ -58,7 +58,7 @@ String? comparisonKeyOf(
   RunMode mode, {
   String? courseId,
 }) => switch (mode) {
-  RunMode.free || RunMode.trail => null,
+  RunMode.free || RunMode.trail || RunMode.treadmill => null,
   RunMode.laps =>
     session?.templateId == SessionSpec.fartlekId ? ComparisonKey.fartlek : null,
   RunMode.intervals =>
@@ -326,9 +326,12 @@ class RunEngine {
     final at = now ?? DateTime.now().toUtc();
     final trace = Trace(run.samples);
     final calc = MetricsCalculator(constants);
-    final mode = sidecar?.runTypeOverride ?? run.mode;
+    final mode = run.mode == RunMode.treadmill
+        ? run.mode
+        : (sidecar?.runTypeOverride ?? run.mode);
     final fixShare = trace.fixShare();
-    final indoor = fixShare < constants.indoorFixShareBelow;
+    final indoor =
+        mode == RunMode.treadmill || fixShare < constants.indoorFixShareBelow;
     final quality = trace.quality(
       maxGapMs: constants.qualityMaxGapMs,
       maxAccuracyM: constants.qualityMaxAccuracyM,
@@ -343,15 +346,14 @@ class RunEngine {
     // a verdict, score or board compares.
     final elevation = RunElevation.of(run);
     final slowdown = weather?.heat?.fraction;
-    final truePace = RunTruePace.of(
-      run,
-      elevation: elevation,
-      slowdown: slowdown,
-    );
+    final truePace = mode == RunMode.treadmill
+        ? null
+        : RunTruePace.of(run, elevation: elevation, slowdown: slowdown);
 
     // Exhaustive (W7): a new mode fails to compile here instead of being
     // mislabelled as a 4x4.
     switch (mode) {
+      case RunMode.treadmill:
       case RunMode.free:
       case RunMode.trail:
       case RunMode.cooper:

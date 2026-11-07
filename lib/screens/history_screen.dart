@@ -446,8 +446,12 @@ class HistoryRow extends StatelessWidget {
                                         'Fartlek · ${Fmt.distance(run.distanceM, units)}',
                                       RecordMode.laps =>
                                         '${run.laps} laps · ${Fmt.distance(run.distanceM, units)}',
-                                      RecordMode.free || RecordMode.trail =>
-                                        Fmt.distance(run.distanceM, units),
+                                      RecordMode.free ||
+                                      RecordMode.treadmill ||
+                                      RecordMode.trail => Fmt.distance(
+                                        run.distanceM,
+                                        units,
+                                      ),
                                       // The test's own window (27-Sep field test:
                                       // total distance counted the cool-down).
                                       RecordMode.cooper => Fmt.distance(

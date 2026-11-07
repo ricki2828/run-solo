@@ -108,7 +108,14 @@ class TcxImporter {
     final manualLaps = laps.where((l) => l.kind == LapKind.manual).length;
     final notes = activity.getElement('Notes')?.innerText.trim() ?? '';
     final ownId = notes.startsWith(TcxExporter.notesPrefix)
-        ? notes.substring(TcxExporter.notesPrefix.length)
+        ? notes.substring(TcxExporter.notesPrefix.length).split(';').first
+        : null;
+    final treadmill = notes.endsWith(';treadmill');
+    final importedDistance = treadmill
+        ? lapElements.fold<double>(
+            0,
+            (sum, lap) => sum + (_num(lap.getElement('DistanceMeters')) ?? 0),
+          )
         : null;
 
     final device =
@@ -131,7 +138,16 @@ class TcxImporter {
       // §18.7: any <Lap> → `laps`, none → `free`. Never 4x4 by lap count:
       // Garmin/Coros write a <Lap> per auto-km, so a 10 km easy run would
       // otherwise enter the 4x4 trend. The 4x4 flip is a sidecar override.
-      mode: mode ?? (manualLaps >= 1 ? RunMode.laps : RunMode.free),
+      mode: treadmill
+          ? RunMode.treadmill
+          : (mode ?? (manualLaps >= 1 ? RunMode.laps : RunMode.free)),
+      treadmillDistanceM:
+          importedDistance != null &&
+              importedDistance.isFinite &&
+              importedDistance > 0 &&
+              importedDistance <= 500000
+          ? importedDistance
+          : null,
       session: null,
       units: units,
       laps: laps,

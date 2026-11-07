@@ -106,6 +106,7 @@ class LiveRecorder(rootDir: String) {
 
     /** NaN for [altM] / [speedMps] means the platform gave none. */
     fun onFix(t: Long, w: Long, lat: Double, lon: Double, altM: Double, accuracyM: Double, speedMps: Double) {
+        if (core?.mode == RunMode.treadmill) return
         val tk = ticker ?: return
         wall = w
         tk.onFix(LocationFix(t, lat, lon, altM.takeUnless { it.isNaN() }, accuracyM, speedMps.takeUnless { it.isNaN() }))
@@ -164,7 +165,7 @@ class LiveRecorder(rootDir: String) {
         pendingEvents.clear()
         val samples = tk.tick(t)
         for (s in samples) writer?.append(s)
-        emit(c.tick(t, tk.distanceM, !tk.gpsLost(t)), events)
+        emit(c.tick(t, tk.distanceM, c.mode == RunMode.treadmill || !tk.gpsLost(t)), events)
         // As RecordingSession.checkInTick: a whole km crossed in this tick says its split.
         coach?.onTick(coachPrevT, coachPrevD, t, tk.distanceM) { c.status(it).activeMs }?.base?.let { text ->
             events.add(mapOf("type" to "km", "t" to t, "text" to text))
@@ -224,6 +225,14 @@ class LiveRecorder(rootDir: String) {
     }
 
     /** Ends the run and finalises it; returns the run file path relative to the root. */
+    @Throws(Exception::class)
+    fun setTreadmillDistance(metres: Double, t: Long, w: Long) {
+        require(core?.mode == RunMode.treadmill)
+        writer?.append(JournalLine.TreadmillDistance(t, w, metres))
+        writer?.sync()
+        check(writer?.ok == true) { "Distance could not be saved" }
+    }
+
     @Throws(Exception::class)
     fun stop(t: Long, w: Long): String? {
         val c = core ?: return null

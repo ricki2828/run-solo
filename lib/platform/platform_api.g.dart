@@ -117,6 +117,7 @@ enum RecordMode {
   free,
   cooper,
   trail,
+  treadmill,
 }
 
 enum Units {
@@ -4517,6 +4518,24 @@ class RecorderApi {
   }
 
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
+  Future<void> setTreadmillDistance(double distanceM) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.setTreadmillDistance$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[distanceM]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   Future<String?> stop() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.stop$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(

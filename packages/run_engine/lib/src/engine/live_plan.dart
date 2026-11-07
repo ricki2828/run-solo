@@ -196,6 +196,8 @@ abstract final class LivePlanner {
     List<double>? curve;
     List<double>? history;
     switch (mode) {
+      case RunMode.treadmill:
+        break;
       case RunMode.free:
       case RunMode.laps:
         add(k5.key, '5K', LiveBoardPlanKind.distance, k5.metres);

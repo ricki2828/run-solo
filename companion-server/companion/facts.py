@@ -19,7 +19,7 @@ FLOOD_SHARE = 0.4  # share of zone time in Z4 and Z5 that makes a run hard
 TEMPO_LIGHT_SHARE = 0.15  # a tempo with no feel tap reads light only below this Z4+Z5 share
 
 # The app records one of these (RecordMode). The coach's rules speak easy | long | tempo | interval | race.
-APP_TYPES = frozenset({"intervals", "cooper", "laps", "free", "trail"})
+APP_TYPES = frozenset({"intervals", "cooper", "laps", "free", "trail", "treadmill"})
 LONG_MIN_KM = 12.0
 LONG_EASY_MULT = 1.5
 LONG_MIN_S = 75 * 60
@@ -114,7 +114,7 @@ def infer_coach_type(app_type: str, *, distance_m: float, duration_s: float, zon
         return "race"
     if app_type == "laps":
         return "interval" if has_reps else "easy"
-    if pb:
+    if pb and app_type != "treadmill":
         return "race"
     easy = [h["distance_m"] for h in history[:80] if h.get("type") == "easy" and h.get("distance_m")][:5]
     typical_km = sorted(easy)[len(easy) // 2] / 1000 if easy else 0.0
@@ -223,7 +223,7 @@ TYPE_LABEL = {
     "easy": "easy run", "long": "long run", "tempo": "tempo run",
     "interval": "interval session", "race": "race",
 }
-APP_TYPE_LABEL = {"trail": "trail run", "cooper": "Cooper test"}  # app types whose own name beats the coach type
+APP_TYPE_LABEL = {"treadmill": "treadmill run", "trail": "trail run", "cooper": "Cooper test"}  # app types whose own name beats the coach type
 TRAIL_SESSION_LABEL = {"easy": "easy trail run", "tempo": "tempo trail run", "long": "long trail run"}
 
 
@@ -324,6 +324,7 @@ def comparable(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> 
     with a work pace is matched on the same session name and work pace instead."""
     if not run.get("distance_m"):
         return None
+    history = [h for h in history if (h.get("app_type") == "treadmill") == (run.get("app_type") == "treadmill")]
     if run.get("type") == "interval" and not is_session_run(run):
         return None   # an interval run with no reps detected has no work pace: the whole-run average is not a comparison
     t0 = _when(run)

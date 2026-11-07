@@ -62,6 +62,7 @@ class ModeChipRow extends StatelessWidget {
   static const List<RecordMode> offered = [
     RecordMode.free,
     RecordMode.trail,
+    RecordMode.treadmill,
     RecordMode.laps,
     RecordMode.intervals,
   ];
@@ -72,6 +73,7 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.laps => 'LAPS',
       RecordMode.free => 'FREE',
       RecordMode.trail => 'TRAIL',
+      RecordMode.treadmill => 'TREADMILL',
       RecordMode.cooper => 'TEST',
     },
     subtitle: switch (m) {
@@ -79,12 +81,13 @@ class ModeChipRow extends StatelessWidget {
       RecordMode.laps => 'LAP by hand',
       RecordMode.free => 'Just run',
       RecordMode.trail => 'Hills, dirt, climbs',
+      RecordMode.treadmill => 'Time and heart rate',
       RecordMode.cooper => '12 minutes',
     },
     selected: !goal && selected == m,
     compact: auroraList || compactTiles,
     typeColor: switch (m) {
-      RecordMode.free => t.typeFree,
+      RecordMode.free || RecordMode.treadmill => t.typeFree,
       RecordMode.trail => t.typeTrail,
       RecordMode.laps => t.typeLaps,
       RecordMode.intervals => t.typeIntervals,
@@ -102,6 +105,7 @@ class ModeChipRow extends StatelessWidget {
     final chips = <Widget>[
       _mode(t, RecordMode.free),
       _mode(t, RecordMode.trail),
+      _mode(t, RecordMode.treadmill),
       _mode(t, RecordMode.laps),
       if (onGoal != null)
         ModeChip(

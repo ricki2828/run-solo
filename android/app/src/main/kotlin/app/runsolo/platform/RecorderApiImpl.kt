@@ -72,13 +72,15 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
     /** Plan §3: fine (not approximate) location, system location on, ≥ 50 MB free. */
-    private fun precondition(): StartError? {
+    private fun precondition(treadmill: Boolean = false): StartError? {
+        if (!treadmill) {
         val fine = granted(Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = granted(Manifest.permission.ACCESS_COARSE_LOCATION)
         if (!fine && !coarse) return StartError.NO_FINE_PERMISSION
         if (!fine) return StartError.APPROXIMATE_ONLY
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         if (!lm.isLocationEnabled) return StartError.LOCATION_OFF
+        }
         val free = try {
             StatFs(context.filesDir.path).availableBytes
         } catch (_: Exception) {
@@ -155,7 +157,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             Log.w(TAG, "start refused: $it")
             return StartResult(runId = null, error = StartError.UNSUPPORTED_SESSION)
         }
-        precondition()?.let { return StartResult(runId = null, error = it) }
+        precondition(coreMode == app.runsolo.core.model.RunMode.treadmill)?.let { return StartResult(runId = null, error = it) }
         val runner = replay?.let { make -> make(coreSpec) ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE) }
         // A context that breaks the contract never blocks Start: the run is just silent (WARN-3).
         val coreContext = liveContext?.let { ctx ->
@@ -202,7 +204,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             Log.w(TAG, "resume: unreadable journal $runId: $e")
             return StartResult(runId = null, error = StartError.NO_SUCH_JOURNAL)
         }
-        precondition()?.let { return StartResult(runId = null, error = it) }
+        precondition(replayed.header.mode == app.runsolo.core.model.RunMode.treadmill)?.let { return StartResult(runId = null, error = it) }
         return begin(resumeSession(runId, replayed)) { it.startResumed(replayed) }
     }
 
@@ -236,6 +238,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     override fun startReps() {
         active()?.startReps()
     }
+
+    override fun setTreadmillDistance(distanceM: Double) { active()?.setTreadmillDistance(distanceM) ?: error("No active run") }
 
     override fun stop(): String? {
         val svc = RecorderService.instance

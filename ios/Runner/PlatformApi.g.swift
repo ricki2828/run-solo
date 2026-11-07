@@ -194,6 +194,7 @@ enum RecordMode: Int {
   case free = 2
   case cooper = 3
   case trail = 4
+  case treadmill = 5
 }
 
 enum Units: Int {
@@ -4107,6 +4108,7 @@ protocol RecorderApi {
   /// so a manual LAP mid-rep can never be confused with starting.
   func startReps() throws
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
+  func setTreadmillDistance(distanceM: Double) throws
   func stop() throws -> String?
   func status() throws -> RecorderStatus
   /// Called on app open: journals without a finalised file, newest first. Never
@@ -4355,6 +4357,21 @@ class RecorderApiSetup {
       startRepsChannel.setMessageHandler(nil)
     }
     /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
+    let setTreadmillDistanceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.setTreadmillDistance\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setTreadmillDistanceChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let distanceMArg = args[0] as! Double
+        do {
+          try api.setTreadmillDistance(distanceM: distanceMArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setTreadmillDistanceChannel.setMessageHandler(nil)
+    }
     let stopChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.stop\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       stopChannel.setMessageHandler { _, reply in

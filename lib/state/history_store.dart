@@ -35,6 +35,7 @@ import 'sidecar_writer.dart';
 RecordMode recordModeOf(engine.RunMode m) => switch (m) {
   engine.RunMode.intervals => RecordMode.intervals,
   engine.RunMode.laps => RecordMode.laps,
+  engine.RunMode.treadmill => RecordMode.treadmill,
   engine.RunMode.free => RecordMode.free,
   engine.RunMode.cooper => RecordMode.cooper,
   engine.RunMode.trail => RecordMode.trail,
@@ -43,6 +44,7 @@ RecordMode recordModeOf(engine.RunMode m) => switch (m) {
 engine.RunMode runModeOf(RecordMode m) => switch (m) {
   RecordMode.intervals => engine.RunMode.intervals,
   RecordMode.laps => engine.RunMode.laps,
+  RecordMode.treadmill => engine.RunMode.treadmill,
   RecordMode.free => engine.RunMode.free,
   RecordMode.cooper => engine.RunMode.cooper,
   RecordMode.trail => engine.RunMode.trail,
@@ -52,6 +54,7 @@ engine.RunMode runModeOf(RecordMode m) => switch (m) {
 String modeLabel(RecordMode m) => switch (m) {
   RecordMode.intervals => 'INT',
   RecordMode.laps => 'LAPS',
+  RecordMode.treadmill => 'TREADMILL',
   RecordMode.free => 'FREE',
   RecordMode.trail => 'TRAIL',
   RecordMode.cooper => 'TEST',
@@ -60,6 +63,7 @@ String modeLabel(RecordMode m) => switch (m) {
 String modeTitle(RecordMode m) => switch (m) {
   RecordMode.intervals => 'Intervals',
   RecordMode.laps => 'Laps run',
+  RecordMode.treadmill => 'TREADMILL',
   RecordMode.free => 'Free run',
   RecordMode.trail => 'Trail run',
   RecordMode.cooper => '12-minute test',
@@ -341,8 +345,9 @@ class RunSummary {
   int? get restingHrBpm => row?.restingHrBpm;
 
   /// TRUE PACE of the whole run, s/km; null for a run under 500 m.
-  double? get truePaceSecPerKm =>
-      row?.truePaceSecPerKm ?? analysis?.truePace?.trueSecPerKm;
+  double? get truePaceSecPerKm => mode == RecordMode.treadmill
+      ? null
+      : row?.truePaceSecPerKm ?? analysis?.truePace?.trueSecPerKm;
 
   /// The whole run's hills and heat factors (neutral without).
   engine.TruePaceFactors get truePaceFactors =>

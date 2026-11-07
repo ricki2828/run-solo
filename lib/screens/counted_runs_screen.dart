@@ -123,6 +123,7 @@ class CountedRun {
   }
 
   static String _type(engine.BoardInput i) => switch (i.mode) {
+    engine.RunMode.treadmill => 'TREADMILL',
     engine.RunMode.free => 'Free run',
     engine.RunMode.laps => 'Laps run',
     engine.RunMode.cooper => 'Cooper test',

@@ -441,8 +441,74 @@ class _RecordingScreenState extends State<RecordingScreen>
     }
   }
 
+  bool _askingDistance = false;
+
   Future<void> _stop() async {
-    if (_stopping) return;
+    if (_stopping || _askingDistance) return;
+    if (_ctl!.snapshot.mode == RecordMode.treadmill) {
+      _askingDistance = true;
+      var input = '';
+      String? error;
+      final metres = await showDialog<double>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, update) => AlertDialog(
+            title: const Text('Treadmill distance'),
+            content: TextField(
+              key: const ValueKey('treadmill-distance'),
+              onChanged: (value) => input = value,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                labelText: _services!.settings.settings.units == Units.mi
+                    ? 'Distance (mi)'
+                    : 'Distance (km)',
+                errorText: error,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCEL'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final distance = double.tryParse(
+                    input.trim().replaceAll(',', '.'),
+                  );
+                  final m =
+                      (distance ?? 0) *
+                      (_services!.settings.settings.units == Units.mi
+                          ? 1609.344
+                          : 1000);
+                  if (!m.isFinite || m <= 0 || m > 500000) {
+                    update(
+                      () => error =
+                          'Enter a distance greater than zero (up to 500 km)',
+                    );
+                    return;
+                  }
+                  Navigator.pop(context, m);
+                },
+                child: const Text('SAVE'),
+              ),
+            ],
+          ),
+        ),
+      );
+      _askingDistance = false;
+      if (metres == null || !mounted) return;
+      try {
+        await _services!.recorder.setTreadmillDistance(metres);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _stopError = 'Could not save distance. Try again.');
+        }
+        return;
+      }
+    }
     setState(() {
       _stopping = true;
       _stopError = null;
@@ -580,7 +646,8 @@ class _RecordingScreenState extends State<RecordingScreen>
           // MAP view (founder 2-Oct): only where a map can show, remembered
           // per run type, and never under the finish or saving screens.
           final runType = liveRunType(s);
-          final canMap = services.maps.available;
+          final canMap =
+              s.mode != RecordMode.treadmill && services.maps.available;
           // Run pages (11-Oct): page 1 the numbers, page 2 the map and the
           // route readouts; the page is remembered per run type.
           if (!(s.paused && !_finishing)) {
@@ -725,7 +792,8 @@ class _RecordingScreenState extends State<RecordingScreen>
               ],
               if (!s.showEndRep) ...[
                 const SizedBox(height: Space.x8),
-                GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+                if (s.mode != RecordMode.treadmill)
+                  GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
               ],
             ],
           );
@@ -861,6 +929,23 @@ class _RecordingScreenState extends State<RecordingScreen>
                   child: _Stats(s: s, units: settings.units),
                 ),
               ),
+            ] else if (s.mode == RecordMode.treadmill) ...[
+              const Spacer(),
+              Text('TIME', style: RunLabelScope.style(context, t.inkSecondary)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  Fmt.clock(ctl.displayElapsedMs),
+                  key: const ValueKey('treadmill-time'),
+                  style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+                ),
+              ),
+              const SizedBox(height: Space.x16),
+              Text(
+                'Enter treadmill distance at finish',
+                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
+              ),
+              const Spacer(),
             ] else ...[
               // The big gap to your best on a known trail; absent (no gap)
               // until one is matched.
@@ -893,7 +978,9 @@ class _RecordingScreenState extends State<RecordingScreen>
                 maintainSize: true,
                 maintainAnimation: true,
                 maintainState: true,
-                child: GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+                child: s.mode == RecordMode.treadmill
+                    ? const SizedBox.shrink()
+                    : GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
               ),
             ],
             if (lapGap && !freeBlock) const Spacer(),
@@ -990,7 +1077,11 @@ class _RecordingScreenState extends State<RecordingScreen>
                           ),
                           if (!s.showEndRep) ...[
                             const SizedBox(height: Space.x12),
-                            GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
+                            if (s.mode != RecordMode.treadmill)
+                              GpsBar(
+                                accuracyM: s.gpsAccuracyM,
+                                lost: s.gpsLost,
+                              ),
                           ],
                         ] else
                           Expanded(
@@ -1508,6 +1599,8 @@ String phaseTitle(RecordingSnapshot s) {
         return n.isOdd ? 'SURGE ${(n + 1) ~/ 2}' : 'EASY ${n ~/ 2}';
       }
       return 'LAP ${s.lapIndex + 1}';
+    case RecordMode.treadmill:
+      return 'TREADMILL';
     case RecordMode.free:
       return 'FREE RUN';
     case RecordMode.trail:
@@ -1679,7 +1772,10 @@ class _Header extends StatelessWidget {
         _Vitals(
           s: s,
           maxHr: maxHr,
-          showTotal: s.mode != RecordMode.free && s.mode != RecordMode.trail,
+          showTotal:
+              s.mode != RecordMode.free &&
+              s.mode != RecordMode.trail &&
+              s.mode != RecordMode.treadmill,
           compact: compact,
           secondary: secondary,
         ),
@@ -3172,7 +3268,9 @@ class _FinishScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                goalDistanceText(s.totalDistanceM, units),
+                s.mode == RecordMode.treadmill
+                    ? 'Enter distance when you save'
+                    : goalDistanceText(s.totalDistanceM, units),
                 key: const ValueKey('finish-distance'),
                 textAlign: TextAlign.center,
                 style: RunSoloType.display44.copyWith(color: t.inkSecondary),
