@@ -58,7 +58,9 @@ class _TreadmillMarkerStripState extends State<TreadmillMarkerStrip> {
   void initState() {
     super.initState();
     _page = PageController(
-      viewportFraction: 0.4,
+      viewportFraction:
+          1 /
+          3, // three whole chips: the next one centred, a neighbour each side
       initialPage: TreadmillMarkerStrip.nextIndex(widget.marks, widget.units),
     );
   }
@@ -66,12 +68,16 @@ class _TreadmillMarkerStripState extends State<TreadmillMarkerStrip> {
   @override
   void didUpdateWidget(TreadmillMarkerStrip old) {
     super.didUpdateWidget(old);
-    if (old.marks.length != widget.marks.length && _page.hasClients) {
-      _page.animateToPage(
-        TreadmillMarkerStrip.nextIndex(widget.marks, widget.units),
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+    if (old.marks.length != widget.marks.length) {
+      // After this frame, so the strip has laid out with the new marks first.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_page.hasClients) return;
+        _page.animateToPage(
+          TreadmillMarkerStrip.nextIndex(widget.marks, widget.units),
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      });
     }
   }
 
@@ -100,6 +106,7 @@ class _TreadmillMarkerStripState extends State<TreadmillMarkerStrip> {
         padEnds: true,
         itemBuilder: (context, i) {
           final marked = i <= lastIndex;
+          final next = i == lastIndex + 1;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: GestureDetector(
@@ -116,17 +123,34 @@ class _TreadmillMarkerStripState extends State<TreadmillMarkerStrip> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: marked ? t.inkPrimary : Colors.transparent,
-                  border: Border.all(color: t.inkSecondary, width: 2),
+                  border: Border.all(
+                    color: next || marked ? t.inkPrimary : t.inkSecondary,
+                    width: next ? 5 : 2,
+                  ),
                   borderRadius: BorderRadius.circular(Radii.chip * 2),
                 ),
                 child: Center(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(
-                      TreadmillMarkerStrip.chipLabel(i, widget.units),
-                      style: RunSoloType.display44.copyWith(
-                        color: marked ? t.bgBase : t.inkPrimary,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (marked) ...[
+                          Icon(
+                            Icons.check_rounded,
+                            key: ValueKey('marker-tick-$i'),
+                            size: 32,
+                            color: t.bgBase,
+                          ),
+                          const SizedBox(width: 2),
+                        ],
+                        Text(
+                          TreadmillMarkerStrip.chipLabel(i, widget.units),
+                          style: RunSoloType.display44.copyWith(
+                            color: marked ? t.bgBase : t.inkPrimary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

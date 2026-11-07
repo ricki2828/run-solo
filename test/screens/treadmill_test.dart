@@ -187,6 +187,48 @@ void main() {
       await pumpTimes(tester, 3);
     }
 
+    bool speedsShown(WidgetTester tester) => tester
+        .widget<Visibility>(find.byKey(const ValueKey('treadmill-speeds')))
+        .visible;
+
+    bool undoShown(WidgetTester tester) => tester
+        .widget<Visibility>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('treadmill-undo')),
+            matching: find.byType(Visibility),
+          ),
+        )
+        .visible;
+
+    /// The strip's centre line against the chip's: the next chip sits on it.
+    void expectCentred(WidgetTester tester, int chip) {
+      final strip = tester.getCenter(
+        find.byKey(const ValueKey('treadmill-strip')),
+      );
+      final c = tester.getCenter(find.byKey(ValueKey('marker-chip-$chip')));
+      expect((c.dx - strip.dx).abs(), lessThan(1), reason: 'chip $chip');
+    }
+
+    testWidgets(
+      'the next chip is centred at the start, after a mark and after undo',
+      (tester) async {
+        final fake = await open(tester);
+        expectCentred(tester, 0);
+        fake.advance(const Duration(minutes: 3));
+        await pumpTimes(tester, 3);
+        await doubleTap(tester, 0);
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expectCentred(tester, 1);
+        await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expectCentred(tester, 0);
+      },
+    );
+
     String text(WidgetTester tester, String key) =>
         tester.widget<Text>(find.byKey(ValueKey(key))).data!;
 
@@ -194,12 +236,23 @@ void main() {
       tester,
     ) async {
       final fake = await open(tester);
-      expect(find.byKey(const ValueKey('treadmill-hint')), findsOneWidget);
-      expect(text(tester, 'treadmill-current-speed'), '--');
+      expect(
+        text(tester, 'treadmill-hint'),
+        'Double-tap a marker as you pass it',
+      );
+      expect(speedsShown(tester), isFalse);
+      expect(undoShown(tester), isFalse);
       fake.advance(const Duration(minutes: 3)); // 0.5 km in 3:00 = 10 km/h
       await pumpTimes(tester, 3);
       await doubleTap(tester, 0);
-      expect(find.byKey(const ValueKey('treadmill-hint')), findsNothing);
+      expect(
+        text(tester, 'treadmill-hint'),
+        'Double-tap the next marker · swipe if you missed one',
+      );
+      expect(speedsShown(tester), isTrue);
+      expect(undoShown(tester), isTrue);
+      expect(find.byKey(const ValueKey('marker-tick-0')), findsOneWidget);
+      expect(text(tester, 'treadmill-chip-unit'), 'km');
       expect(text(tester, 'treadmill-current-speed'), '10.0');
       expect(text(tester, 'treadmill-avg-speed'), '10.0');
       fake.advance(const Duration(minutes: 2, seconds: 30));
@@ -250,8 +303,11 @@ void main() {
       expect(text(tester, 'treadmill-avg-speed'), '10.0');
       await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
       await pumpTimes(tester, 6);
-      expect(find.byKey(const ValueKey('treadmill-hint')), findsOneWidget);
-      expect(find.byKey(const ValueKey('treadmill-undo')), findsNothing);
+      expect(
+        text(tester, 'treadmill-hint'),
+        'Double-tap a marker as you pass it',
+      );
+      expect(undoShown(tester), isFalse);
     });
 
     testWidgets('the finish distance is prefilled with the last mark', (

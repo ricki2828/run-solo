@@ -40,4 +40,26 @@ void main() {
       await golden(tester, 'record_treadmill_markers_360x$h');
     });
   }
+
+  testWidgets('treadmill markers: before the first mark at 360 x 640', (
+    tester,
+  ) async {
+    final fake = FakeRecorderGateway(now: now);
+    final services = fakeServices(
+      recorder: fake,
+      settings: const AppSettings(
+        onboardingDone: true,
+        lastMode: RecordMode.treadmill,
+      ),
+    );
+    await services.recording.start(RecordMode.treadmill, null, Units.km);
+    await pumpApp(tester, services, pushRoute: Routes.recording);
+    tester.view.physicalSize = const Size(1080, 640 * 3.0);
+    await pumpTimes(tester, 3);
+    fake.advance(const Duration(minutes: 1, seconds: 20));
+    await pumpTimes(tester, 6);
+    await tester.pump(const Duration(seconds: 1));
+    await settleAnimations(tester);
+    await golden(tester, 'record_treadmill_markers_none_360x640');
+  });
 }

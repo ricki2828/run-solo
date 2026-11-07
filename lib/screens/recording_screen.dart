@@ -4140,38 +4140,46 @@ class _TreadmillBlock extends StatelessWidget {
               ),
             ),
             const SizedBox(height: Space.x12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                figure('SPEED', 'treadmill-current-speed', current),
-                figure('AVG', 'treadmill-avg-speed', average),
-              ],
+            // The speeds need a mark: until then the space is kept (nothing
+            // shifts when the first one lands) but empty, no "--".
+            Visibility(
+              key: const ValueKey('treadmill-speeds'),
+              visible: marks.isNotEmpty,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  figure('SPEED', 'treadmill-current-speed', current),
+                  figure('AVG', 'treadmill-avg-speed', average),
+                ],
+              ),
             ),
             const SizedBox(height: Space.x12),
-            SizedBox(
-              height: 44,
-              child: marks.isEmpty
-                  ? Center(
-                      child: Text(
-                        units == Units.mi
-                            ? 'Double-tap 0.25 mi when you pass it'
-                            : 'Double-tap 0.5 km when you pass it',
-                        key: const ValueKey('treadmill-hint'),
-                        textAlign: TextAlign.center,
-                        style: RunSoloType.runNote.copyWith(color: secondary),
-                      ),
-                    )
-                  : Center(
-                      child: TextButton(
-                        key: const ValueKey('treadmill-undo'),
-                        onPressed: ctl.undoMark,
-                        child: Text(
-                          'UNDO LAST MARK',
-                          style: label.copyWith(color: primary),
-                        ),
-                      ),
-                    ),
+            // UNDO sits clear of the chips so a double-tap on one cannot hit
+            // it. Its space is kept before the first mark (no jump).
+            Visibility(
+              visible: marks.isNotEmpty,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: OutlinedButton(
+                key: const ValueKey('treadmill-undo'),
+                onPressed: marks.isEmpty ? null : ctl.undoMark,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(200, 52),
+                  foregroundColor: primary,
+                  side: BorderSide(color: secondary, width: 2),
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(
+                  'UNDO LAST MARK',
+                  style: label.copyWith(color: primary),
+                ),
+              ),
             ),
+            const SizedBox(height: Space.x16),
             TreadmillMarkerStrip(
               marks: marks,
               units: units,
@@ -4179,7 +4187,16 @@ class _TreadmillBlock extends StatelessWidget {
             ),
             const SizedBox(height: Space.x8),
             Text(
-              'Enter treadmill distance at finish',
+              units == Units.mi ? 'mi' : 'km',
+              key: const ValueKey('treadmill-chip-unit'),
+              style: label,
+            ),
+            Text(
+              marks.isEmpty
+                  ? 'Double-tap a marker as you pass it'
+                  : 'Double-tap the next marker · swipe if you missed one',
+              key: const ValueKey('treadmill-hint'),
+              textAlign: TextAlign.center,
               style: RunSoloType.runNote.copyWith(color: secondary),
             ),
           ],

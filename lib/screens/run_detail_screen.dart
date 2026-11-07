@@ -259,7 +259,7 @@ class RunDetailBody extends StatelessWidget {
               laps: d.run.laps,
             ),
             RecordMode.treadmill when d.run.treadmillMarks.isNotEmpty =>
-              _MarkerSplits(marks: d.run.treadmillMarks, units: units),
+              MarkerSplits(marks: d.run.treadmillMarks, units: units),
             RecordMode.free ||
             RecordMode.treadmill ||
             RecordMode.trail ||
@@ -1392,8 +1392,9 @@ class _DistanceSplits extends StatelessWidget {
 /// Treadmill: one row per marker the runner tapped, with the stretch since
 /// the last one (the first starts at 0). Speed is the belt speed over that
 /// stretch, from the marks alone.
-class _MarkerSplits extends StatelessWidget {
-  const _MarkerSplits({required this.marks, required this.units});
+/// Public for its widget test.
+class MarkerSplits extends StatelessWidget {
+  const MarkerSplits({super.key, required this.marks, required this.units});
   final List<engine.TreadmillMark> marks;
   final Units units;
 
