@@ -27,13 +27,23 @@ Future<void> golden(WidgetTester tester, String name) async {
   );
 }
 
-Future<void> openReady(WidgetTester tester, AppServices services) async {
+Future<void> openReady(
+  WidgetTester tester,
+  AppServices services, {
+  bool phone640 = true,
+}) async {
   await pumpApp(
     tester,
     services,
     pushRoute: Routes.start,
     pushArguments: const StartArgs(readyFirst: true),
   );
+  // After pumpApp, which sets its own size: the 640 dp phone the ready_*
+  // goldens are named for. The countdown shots keep pumpApp's taller size.
+  if (phone640) {
+    tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+    tester.view.devicePixelRatio = 3;
+  }
   await pumpTimes(tester, 4);
   await settleAnimations(tester);
   await pumpTimes(tester, 2);
@@ -115,7 +125,7 @@ void main() {
         lastMode: RecordMode.intervals,
       ),
     );
-    await openReady(tester, services);
+    await openReady(tester, services, phone640: false);
     await tester.tap(find.byKey(const ValueKey('ready-start')));
     await tester.pump(); // starts the numeral's animation
     await tester.pump(const Duration(milliseconds: 500));
@@ -132,7 +142,7 @@ void main() {
         lastMode: RecordMode.intervals,
       ),
     );
-    await openReady(tester, services);
+    await openReady(tester, services, phone640: false);
     await tester.tap(find.byKey(const ValueKey('ready-start')));
     await tester.pump(const Duration(seconds: 3));
     // GO's numeral has finished animating in; the 450 ms hold has not ended.

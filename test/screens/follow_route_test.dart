@@ -118,7 +118,16 @@ void main() {
 
       // Chosen and saved.
       expect(services.routes.routes, hasLength(1));
-      expect(find.text('Following: Hill loop'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('follow-route-name')))
+            .data,
+        'Hill loop',
+      );
+      expect(
+        find.byKey(const ValueKey('follow-route-preview')),
+        findsOneWidget,
+      );
       expect(find.textContaining('GPX file'), findsOneWidget);
       expect(
         find.text('Turn hints come from the route shape, not trail data.'),
@@ -186,13 +195,83 @@ void main() {
       expect(find.text('Hill loop'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('route-route-1')));
       await settleAnimations(tester);
-      expect(find.text('Following: Hill loop'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('follow-route-name')))
+            .data,
+        'Hill loop',
+      );
+      expect(
+        find.byKey(const ValueKey('follow-route-preview')),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const ValueKey('follow-route-clear')));
       await settleAnimations(tester);
-      expect(find.text('Follow a route'), findsOneWidget);
+      expect(find.text('Repeat a route'), findsOneWidget);
       await readyAndGo(tester);
       await settleAnimations(tester);
       expect(fake.startCalls.single.route, isNull);
+    });
+
+    testWidgets('saved routes: a Repeat a route card says how many', (
+      tester,
+    ) async {
+      await openStart(
+        tester,
+        routes: [
+          testRoute(),
+          testRoute(id: 'route-2', name: 'River'),
+        ],
+      );
+      expect(find.text('Repeat a route'), findsOneWidget);
+      expect(find.text('Pick one of your 2 routes'), findsOneWidget);
+      expect(find.byKey(const ValueKey('follow-route-preview')), findsNothing);
+    });
+
+    testWidgets('no saved routes: the quiet row, no card', (tester) async {
+      await openStart(tester);
+      expect(find.text('Follow a route'), findsOneWidget);
+      expect(find.text('Repeat a route'), findsNothing);
+    });
+
+    testWidgets('a picked route shows its map, Change reopens the sheet', (
+      tester,
+    ) async {
+      await openStart(tester, routes: [testRoute()]);
+      await tapVisible(tester, find.byKey(_row));
+      await settleAnimations(tester);
+      await tester.tap(find.byKey(const ValueKey('route-route-1')));
+      await settleAnimations(tester);
+      expect(
+        find.byKey(const ValueKey('follow-route-preview')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('follow-route-sub')), findsOneWidget);
+      await tapVisible(
+        tester,
+        find.byKey(const ValueKey('follow-route-change')),
+      );
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('follow-turn-hints')), findsOneWidget);
+    });
+
+    testWidgets('the Ready screen draws the route being followed', (
+      tester,
+    ) async {
+      await openStart(tester, routes: [testRoute()]);
+      await tapVisible(tester, find.byKey(_row));
+      await settleAnimations(tester);
+      await tester.tap(find.byKey(const ValueKey('route-route-1')));
+      await settleAnimations(tester);
+      await tapVisible(tester, find.byKey(const ValueKey('start-ready-up')));
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('ready-route-preview')), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('ready-route-line')))
+            .data,
+        startsWith('Hill loop'),
+      );
     });
 
     testWidgets('a route picked, then a type that cannot follow, sends none', (

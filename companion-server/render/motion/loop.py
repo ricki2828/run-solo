@@ -106,6 +106,7 @@ class RunLoop:
     bars: list | None = None    # [(seconds, zone, label)]: reps for an interval session, else each km (no route)
     avg_s: float | None = None  # the average the dashed line sits at
     pb: dict | None = None      # {"old_s": 1349, "new_s": 1301, "delta": "48 S"}
+    week: dict | None = None    # the runner's week so far (facts["week_track"]): a band lands under the stats
 
 
 def _pad5(zs) -> list[float]:
@@ -175,23 +176,79 @@ def run_loop_from_facts(f: dict) -> RunLoop:
             bars = [(x.pace_s, x.zone or 2, fmt_pace(x.pace_s)) for x in spec.splits]
             avg = spec.duration_s / km
     return RunLoop(spec.kind_label, brand.ARC if pb else lane, spec.date_label, route, zones, hero, unit, stats, zone_s,
-                   bars, avg, pb)
+                   bars, avg, pb, f.get("week_track") or None)
+
+
+WEEK_HERO_Y, WEEK_STATS_Y = 880, 1000   # with the week band under them, the run's blocks sit higher and a little smaller
+WEEK_TOP, WEEK_IN = 1074, (3.0, 3.6)        # the band's top edge, and when it lands (before the held frame at HOLD[0])
 
 
 class RunLoopRenderer(Loop):
     BOX = (110, 290, W - 110, 770)
+    WEEK_BOX = (110, 290, W - 110, 650)
 
     def __init__(self, s: RunLoop):
         self.s = s
         self.layers = None
+        self.hero_y = WEEK_HERO_Y if s.week else HERO_Y
+        self.stats_y = WEEK_STATS_Y if s.week else 1238
         if s.route:
-            self.layers = RouteLayers(fit(s.route, self.BOX), s.route_zone)
-        self.hero = Hero.fitted(s.hero, M, HERO_Y, s.unit)
+            self.layers = RouteLayers(fit(s.route, self.WEEK_BOX if s.week else self.BOX), s.route_zone)
+        self.hero = Hero.fitted(s.hero, M, self.hero_y, s.unit, 290 if s.week else 400)
+        self.bar_base, self.bar_top = (610, 320) if s.week else (720, 330)
+
+    def _week(self, fr: Frame, t: float) -> None:
+        """This week so far: km and runs, a bar of the week against the usual one, and seven day bars, Monday first. The run's
+        own day is in the card's colour; earlier days are quiet; days to come are a stub."""
+        w = self.s.week
+        a = out_cubic(seg(t, *WEEK_IN))
+        if a <= 0:
+            return
+        cv, g = fr.cv, fr.ground
+        top = WEEK_TOP
+        lift = (1 - a) * 18
+        col = self.s.label_col
+        km = float(w["km"])
+        usual = w.get("usual_km")
+        cv.text((M, top + 30 + lift), "THIS WEEK", G(24, 700), fade(g, QUIET_D, a), tracking=3)
+        cv.text((M, top + 124 + lift), f"{km:.1f}", S(104), fade(g, brand.BONE, a))
+        kx = M + Canvas.text_width(f"{km:.1f}", S(104)) + 14
+        cv.text((kx, top + 124 + lift), "KM", S(40), fade(g, QUIET_D, a))
+        runs = int(w["runs"])
+        line = f"{runs} RUN{'' if runs == 1 else 'S'}" + (f"  /  USUAL {int(round(float(usual)))} KM" if usual is not None else "")
+        cv.text((M, top + 168 + lift), line, G(26, 600), fade(g, QUIET_D, a), tracking=2)
+        tw = 380   # the week against the usual one: a fill, and a tick where the usual week ends
+        full = max(km, float(usual or 0), 0.1)
+        y = top + 198 + lift
+        cv.rect(M, y, M + tw, y + 10, fade(g, HAIR_D, a), r=5)
+        cv.rect(M, y, M + max(10, tw * km / full * out_cubic(seg(t, WEEK_IN[0] + 0.1, WEEK_IN[1]))), y + 10, fade(g, col, a), r=5)
+        if usual:
+            ux = M + tw * float(usual) / full
+            cv.rect(ux - 2, y - 7, ux + 2, y + 17, fade(g, brand.BONE, a))
+        days, today = [float(x) for x in w["days"]][:7], int(w["today_idx"])
+        x0, x1, base, room = 520, W - M, top + 196, 150
+        slot = (x1 - x0) / 7
+        bw = slot * 0.62
+        peak = max(days + [0.1])
+        for i, d in enumerate(days):
+            x = x0 + i * slot + (slot - bw) / 2
+            p = out_cubic(seg(t, WEEK_IN[0] + i * 0.04, WEEK_IN[0] + i * 0.04 + 0.4))
+            if d > 0:
+                h = max(room * d / peak, 8) * p
+                if i == today:
+                    cv.rect(x - 3, base - h - 3, x + bw + 3, base, fade(g, brand.BONE, a))
+                    cv.rect(x, base - h, x + bw, base, fade(g, col, a))
+                else:
+                    cv.rect(x, base - h, x + bw, base, fade(g, "#5A616A", a))
+            else:
+                cv.rect(x, base - 6, x + bw, base, fade(g, HAIR_D, a))
+            cv.text((x + bw / 2, base + 40 + lift), "MTWTFSS"[i], G(24, 800 if i == today else 600),
+                    fade(g, brand.BONE if i == today else QUIET_D, a), anchor="ms")
 
     def _bars(self, fr: Frame, t: float) -> None:
         bars = self.s.bars
         n = len(bars)
-        x0, x1, base, top = M + 8, W - M - 8, 720, 330
+        x0, x1, base, top = M + 8, W - M - 8, self.bar_base, self.bar_top
         gap = 18 if n <= 12 else 6 if n <= 30 else 3
         bw = (x1 - x0 - gap * (n - 1)) / n
         tmax, tmin = max(b[0] for b in bars), min(b[0] for b in bars)
@@ -272,9 +329,11 @@ class RunLoopRenderer(Loop):
             fr.set_base(self.layers.image(in_out_cubic(seg(t, 0.2, 2.5))))
         t_line, t_rise, t_stats = ((0.95, 1.35), (1.15, 1.7), 1.6) if pb else ((2.15, 2.6), (2.35, 2.95), 2.75)
         # the zone strip is the lap line the number rises out of: effort first, then the number
-        zone_strip(fr, s.zone_s, HERO_Y + 18, seg(t, *t_line))
+        zone_strip(fr, s.zone_s, self.hero_y + 18, seg(t, *t_line))
         self.hero.draw(fr, brand.ARC if pb else brand.BONE, seg(t, *t_rise))
-        stats_row(fr, s.stats, 1238, t, t_stats)
+        stats_row(fr, s.stats, self.stats_y, t, t_stats)
+        if s.week:
+            self._week(fr, t)
         chrome(fr, s.label, s.label_col, s.date)
 
 

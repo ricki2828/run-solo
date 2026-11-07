@@ -582,10 +582,13 @@ void main() {
       await ctl.attachResumed(RecordMode.free);
       await settle();
       expect(ctl.goalTargetOf(r.runId!)!.eased, isFalse);
+      expect(ctl.easedGoal, isFalse);
       // Native's ease off later in the run (an event missed) is picked up too.
       fake.goalEased = true;
       await ctl.refreshStatus();
       expect(ctl.goalTargetOf(r.runId!)!.eased, isTrue);
+      // It is an easy run now: the screen's label follows.
+      expect(ctl.easedGoal, isTrue);
     });
 
     test('a restored run with no goal target keeps none', () async {

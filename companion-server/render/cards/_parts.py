@@ -374,17 +374,95 @@ def stat_blocks(stats: Sequence[tuple[str, str]], top: int, height: int, colour:
             f'{items}</div>')
 
 
+WEEK_TOP, WEEK_H = 1170, 150   # the "this week" band under the stat blocks, when a run card carries the week so far
+WEEK_DAYS = "MTWTFSS"
+
+
+def week_summary(week: Mapping[str, Any]) -> tuple[str, str]:
+    """(km so far, small line). The small line is the runs so far and, when there are earlier weeks, the usual week's km."""
+    runs = int(week["runs"])
+    line = f"{runs} RUN{'' if runs == 1 else 'S'}"
+    usual = week.get("usual_km")
+    if usual is not None:
+        line += f" / USUAL {int(round(float(usual)))} KM"
+    return fmt_km(float(week["km"])), line
+
+
+def week_bars(week: Mapping[str, Any], width: int, height: int, colour: str, base_colour: str, ink: str, quiet: str) -> str:
+    """Seven day bars, Monday first, in km. The run's own day is the lane colour with an ink outline; the earlier days are
+    quiet; the days still to come are a hairline stub. The tallest day sets the scale."""
+    days = [float(x) for x in week["days"]][:7]
+    today = int(week["today_idx"])
+    peak = max(days + [0.1])
+    slot = width / 7
+    bw = slot * 0.62
+    base, room = height - 30, height - 30 - 30
+    parts = []
+    for i, km in enumerate(days):
+        x = i * slot + (slot - bw) / 2
+        cx = x + bw / 2
+        if km > 0:
+            h = max(room * km / peak, 6)
+            if i == today:
+                parts.append(f'<rect x="{x - 3:.1f}" y="{base - h - 3:.1f}" width="{bw + 6:.1f}" height="{h + 3:.1f}" fill="{colour}" stroke="{ink}" stroke-width="4"/>')
+            else:
+                parts.append(f'<rect x="{x:.1f}" y="{base - h:.1f}" width="{bw:.1f}" height="{h:.1f}" fill="{base_colour}"/>')
+        else:
+            parts.append(f'<rect x="{x:.1f}" y="{base - 5}" width="{bw:.1f}" height="5" fill="{brand.HAIRLINE}"/>')
+        parts.append(f'<text x="{cx:.1f}" y="{height - 6}" text-anchor="middle" font-family="{brand.SCHIBSTED}" font-weight="{800 if i == today else 600}" '
+                     f'font-size="20" letter-spacing="1" fill="{ink if i == today else quiet}">{WEEK_DAYS[i]}</text>')
+    return f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}">{"".join(parts)}</svg>'
+
+
+def week_band(week: Mapping[str, Any], colour: str, top: int = WEEK_TOP, height: int = WEEK_H) -> str:
+    """The week so far, compact: km and runs on the left with a bar of this week against the usual one, day bars on the right."""
+    km, line = week_summary(week)
+    usual = week.get("usual_km")
+    track_w = 330
+    full = max(float(week["km"]), float(usual or 0), 0.1)
+    fill = track_w * float(week["km"]) / full
+    tick = f'<div style="position:absolute;left:{track_w * float(usual) / full - 2:.1f}px;top:-3px;width:4px;height:14px;background:{brand.INK}"></div>' if usual else ""
+    inner_w = 560
+    bars = week_bars(week, inner_w, height - 28, colour, "#AEB3B9", brand.INK, brand.QUIET)
+    return (f'<div class="abs weekband" style="left:{BX}px;top:{top}px;width:{BW}px;height:{height}px;border-radius:{RADIUS}px;background:#FFFFFF;'
+            f'border:2px solid {brand.HAIRLINE};overflow:hidden">'
+            f'<div class="abs cap" style="left:40px;top:16px;font-size:20px;color:{brand.QUIET}">THIS WEEK</div>'
+            f'<div class="abs" style="left:40px;top:38px;display:flex;align-items:baseline;gap:10px;white-space:nowrap">'
+            f'<span class="saira" style="font-size:66px;line-height:1;color:{brand.INK}">{km}</span>'
+            f'<span class="saira" style="font-size:30px;color:{brand.INK_SECONDARY}">KM</span></div>'
+            f'<div class="abs cap" style="left:40px;top:96px;font-size:21px;white-space:nowrap;color:{brand.INK_SECONDARY}">{esc(line, 30)}</div>'
+            f'<div class="abs" style="left:40px;top:128px;width:{track_w}px;height:8px;background:{brand.HAIRLINE};border-radius:4px">'
+            f'<div style="width:{fill:.1f}px;height:8px;background:{colour};border-radius:4px"></div>{tick}</div>'
+            f'<div class="abs" style="left:{BW - 32 - inner_w}px;top:12px">{bars}</div></div>')
+
+
 def run_layout(*, tag: str, headline: str, value: str, unit: str, colour: str, visual: str, strip: str,
                stats: Sequence[tuple[str, str]], value_colour: str | None = None, chip: str = "",
                extra: str = "", headline_size: int = 96, unit_colour: str | None = None,
                ground: str = brand.VIOLET, fg: str = brand.ON_VIOLET, soft: str = brand.ON_VIOLET_SOFT,
-               chip_bg: str = brand.VIOLET_PANEL, moment: bool = False) -> str:
+               chip_bg: str = brand.VIOLET_PANEL, moment: bool = False, week: Mapping[str, Any] | None = None) -> str:
     """Post-run, PB and share cards: a hero block (zone flood, lane colour or violet), a lane-tinted visual panel, a thin
     zone strip, stat blocks. A `moment` (hard session, PB) gets the number at full size and a shorter panel.
-    With no visual the hero block takes the space."""
+    With no visual the hero block takes the space. With `week` (the runner's week so far) every block is a little shorter
+    and a "this week" band sits at the bottom."""
     top = 168
     look = dict(tag=tag, headline=headline, value=value, unit=unit, value_colour=value_colour, unit_colour=unit_colour, chip=chip,
                 extra=extra, headline_size=headline_size, ground=ground, fg=fg, soft=soft, chip_bg=chip_bg)
+    if week:
+        if visual and moment:
+            out = hero_block(top, 560, size=340, **look)
+            out += panel(752, 210, visual, colour, "visual")
+            strip_top = 978
+        elif visual:
+            out = hero_block(top, 480, size=230, **look)
+            out += panel(672, 290, visual, colour, "visual")
+            strip_top = 978
+        else:
+            out = hero_block(top, 760, size=420, **look)
+            strip_top = 0
+        if strip and visual:
+            out += f'<div class="abs strip" style="left:{PAD}px;top:{strip_top}px">{strip}</div>'
+        return out + stat_blocks(stats, 1004, 150, colour) + week_band(week, colour)
     if visual and moment:
         out = hero_block(top, 620, size=380, **look)
         out += panel(812, 240, visual, colour, "visual")

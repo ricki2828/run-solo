@@ -133,6 +133,31 @@ def pb_5k() -> dict[str, Any]:
     }
 
 
+# --- the runner's week so far on a run card (facts["week_track"]) ---------------------------------------------------
+def with_week(facts: dict[str, Any], days: list[float], usual_km: float | None) -> dict[str, Any]:
+    """A run's facts plus the week so far: `days` is km per local weekday, Monday first, the run's day the last non-zero one."""
+    today = max(i for i, d in enumerate(days) if d)
+    wt: dict[str, Any] = {"days": days, "today_idx": today, "runs": sum(1 for d in days if d), "km": round(sum(days), 1)}
+    if usual_km is not None:
+        wt["usual_km"] = usual_km
+    return {**facts, "week_track": wt}
+
+
+def week_first_run() -> dict[str, Any]:
+    """Tuesday's easy run is the first of the week; the usual week is 31 km."""
+    return with_week(slow_hot_day(), [0, 6.2, 0, 0, 0, 0, 0], 31.0)
+
+
+def week_third_run() -> dict[str, Any]:
+    """Thursday's long run is the third of the week."""
+    return with_week(milos_trail() | {"start_local": "2026-10-08T07:20"}, [8.0, 0, 10.4, 12.4, 0, 0, 0], 34.5)
+
+
+def week_big() -> dict[str, Any]:
+    """Sunday's 5 K best closes a 57 km week against a 31 km usual one."""
+    return with_week(pb_5k() | {"start_local": "2026-10-11T07:00"}, [10.2, 0, 12.5, 8.0, 0, 21.1, 5.0], 31.5)
+
+
 def milestone_1000km() -> dict[str, Any]:
     return {"kind": "distance_km", "value": 1000, "since": "March", "runs": 143, "line": "A lot of early mornings."}
 

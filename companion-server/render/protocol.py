@@ -39,7 +39,7 @@ ERROR_CODES = frozenset({"bad_request", "timeout", "too_big", "render_failed"})
 ALLOWED_FACT_KEYS = frozenset({
     "type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s", "climb_m",
     "place_note", "verdict", "pb", "pb_detail",
-    "title", "route_xy", "splits", "reps", "work_pace_s_per_km", "share",
+    "title", "route_xy", "splits", "reps", "work_pace_s_per_km", "share", "week_track",
     "week_label", "runs", "days", "score_moves", "best_moment", "quickest_pace_s_per_km",
     "load", "usual_load", "band", "pct", "words", "weeks",   # weekly_recap only: this week's load against the usual week, and 6 weeks of bars
     # suggestion / milestone / race_countdown / monthly cards (persisted in convo_cards.media_json when the coach
@@ -104,7 +104,8 @@ TRAIL_PROFILE_MAX, TRAIL_BOARD_MAX, TRAIL_NAME_MAX = 64, 10, 30
 # exactly what media.run_facts / week_facts build.
 RUN_KEYS = frozenset({"type", "start_local", "distance_km", "duration_s", "headline", "pace_s_per_km", "zone_s",
                       "climb_m", "place_note", "verdict", "pb", "pb_detail",
-                      "title", "route_xy", "splits", "reps", "work_pace_s_per_km"})   # the shape facts: run cards and run videos only
+                      "title", "route_xy", "splits", "reps", "work_pace_s_per_km",
+                      "week_track"})   # the shape facts, and the runner's week so far: run cards and run videos only
 WEEK_KEYS = frozenset({"week_label", "distance_km", "runs", "duration_s", "days", "score_moves", "best_moment",
                        "pace_s_per_km", "quickest_pace_s_per_km"})
 LOAD_KEYS = frozenset({"load", "usual_load", "band", "pct", "words", "weeks"})   # the weekly card's load panel; not the loop's
@@ -236,10 +237,29 @@ def _shapes_ok(facts: dict) -> bool:
                 isinstance(x, dict) and set(x) <= {*fields, "zone"} and all(num_ok(x.get(f), f) for f in fields)
                 and (x.get("zone") is None or _int_in(x["zone"], 1, 5)) for x in v)):
             return False
+    if "week_track" in facts and not _week_track_ok(facts["week_track"]):
+        return False
     wp = facts.get("work_pace_s_per_km")
     if wp is not None and not (isinstance(wp, (int, float)) and not isinstance(wp, bool) and 60 <= wp <= 3600):
         return False
     return True
+
+
+WEEK_TRACK_KEYS = frozenset({"days", "today_idx", "runs", "km", "usual_km"})
+
+
+def _week_track_ok(w: Any) -> bool:
+    """The runner's week so far on a run card: km per local weekday (Mon..Sun, days after the run are 0), the run's own weekday,
+    the runs and km so far (the days add up to the km), and the usual week's km when there are earlier weeks. Numbers only."""
+    if not (isinstance(w, dict) and {"days", "today_idx", "runs", "km"} <= set(w) <= WEEK_TRACK_KEYS):
+        return False
+    days = w["days"]
+    if not (isinstance(days, list) and len(days) == 7 and all(_num(d) and 0 <= d <= 1000 for d in days)):
+        return False
+    u = w.get("usual_km")
+    return (_int_in(w["today_idx"], 0, 6) and _int_in(w["runs"], 1, 100) and _num(w["km"]) and 0 <= w["km"] <= 7000
+            and abs(sum(days) - w["km"]) <= 0.5 and all(d == 0 for d in days[w["today_idx"] + 1:])
+            and (u is None or (_num(u) and 0 <= u <= 7000)))
 
 
 def _num(v: Any) -> bool:

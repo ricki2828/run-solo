@@ -299,7 +299,10 @@ class VoiceCoach(private val config: Config) {
         // Drift first: it outranks status, and a status that comes due while it speaks goes stale.
         if (drift != null && quiet && drift.firesAt <= i.t) {
             lastDriftT = i.t
-            return Line(Kind.drift, "Heart rate in zone ${drift.zone}. Ease back to zone ${config.plannedMaxZone}.")
+            // An eased goal run is an easy run: the cap is the easy zone, said without the "ease" order or any target word.
+            val text = if (config.plannedMaxZone == null) "Heart rate in zone ${drift.zone}. Keep it in zone $EASE_MAX_ZONE."
+            else "Heart rate in zone ${drift.zone}. Ease back to zone ${config.plannedMaxZone}."
+            return Line(Kind.drift, text)
         }
         if (move != null && quiet) {
             // A zone skipped on the way (2 straight to 4) is said as the one he is in.
@@ -313,9 +316,16 @@ class VoiceCoach(private val config: Config) {
 
     private class Drift(val zone: Int, val firesAt: Long)
 
+    /**
+     * The zone the run should stay at or under: the plan's, or after an ease off on a goal run (it is an easy run now) zone
+     * [EASE_MAX_ZONE], when there are zone bottoms to read. Null = no cap.
+     */
+    private val maxZone: Int?
+        get() = config.plannedMaxZone ?: if (ease && config.zoneBottomsBpm != null) EASE_MAX_ZONE else null
+
     /** The zone above plan and when the line may fire; null when not above, or drift is off. */
     private fun driftAbove(i: Input): Drift? {
-        val planned = config.plannedMaxZone
+        val planned = maxZone
         val bottoms = config.zoneBottomsBpm
         val hr = i.hr
         if (planned == null || bottoms == null || hr == null) {
@@ -383,7 +393,7 @@ class VoiceCoach(private val config: Config) {
             return null
         }
         val saidAt = lastZoneCueT
-        val silent = zone < FIRST_ZONE_CUE && !reachedZone3 || zone == 1 || zone > (config.plannedMaxZone ?: 5)
+        val silent = zone < FIRST_ZONE_CUE && !reachedZone3 || zone == 1 || zone > (maxZone ?: 5)
         if (zone >= 3) reachedZone3 = true
         if (silent) {
             heldZone = zone
@@ -533,6 +543,9 @@ class VoiceCoach(private val config: Config) {
 
         /** Continuously above the planned zone this long before the drift line. */
         const val DRIFT_AFTER_MS = 60_000L
+
+        /** The easy zone an eased goal run is held to: above it for [DRIFT_AFTER_MS] says "Keep it in zone 2". */
+        const val EASE_MAX_ZONE = 2
 
         /** At most one drift line per this. */
         const val DRIFT_EVERY_MS = 180_000L

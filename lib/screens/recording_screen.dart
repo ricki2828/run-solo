@@ -1016,6 +1016,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                           s: s,
                           maxHr: maxHr,
                           compact: compact,
+                          eased: ctl.easedGoal,
                           trailing: hasPage2 && !pausedNow
                               ? PageDots(page: _page, onTap: (p) => _goPage(p))
                               : null,
@@ -1581,7 +1582,7 @@ Color phaseTitleColor(RecordingSnapshot s, RunSoloTokens t) {
 /// `repIndex` is 1-based in work / recovery (RecorderCore.kt); the last rep
 /// goes straight to cool-down, so recoveries count to `reps - 1` (brief
 /// §4.4 "Recovery 2 of 3").
-String phaseTitle(RecordingSnapshot s) {
+String phaseTitle(RecordingSnapshot s, {bool eased = false}) {
   switch (s.mode) {
     case RecordMode.laps:
       // Bronco (manual sets, founder 28-Sep): 5 taps, one per 240 m set.
@@ -1623,7 +1624,8 @@ String phaseTitle(RecordingSnapshot s) {
     final name = (s.spec?.name ?? '').toUpperCase();
     if (s.phase == Phase.cooldown) return 'COOL-DOWN · $name DONE';
     if (s.phase == Phase.work) {
-      return 'GOAL · $name';
+      // Eased off on purpose (30-Oct): no goal left to name, it is an easy run.
+      return eased ? 'EASY RUN' : 'GOAL · $name';
     }
   }
   final step = s.currentStep;
@@ -1713,11 +1715,15 @@ class _Header extends StatelessWidget {
     required this.s,
     required this.maxHr,
     this.compact = false,
+    this.eased = false,
     this.trailing,
   });
   final RecordingSnapshot s;
   final int maxHr;
   final bool compact;
+
+  /// A goal run the runner eased off on: it is an easy run now ([phaseTitle]).
+  final bool eased;
 
   /// The NUMBERS / MAP switch, when a map can be shown.
   final Widget? trailing;
@@ -1739,7 +1745,7 @@ class _Header extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  phaseTitle(s),
+                  phaseTitle(s, eased: eased),
                   softWrap: false,
                   style: RunSoloType.title28.copyWith(
                     color: phaseTitleColor(s, t),
@@ -3974,7 +3980,9 @@ class GoalDoneBlock extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'GOAL · ${(s.spec?.name ?? '').toUpperCase()}',
+                ctl.easedGoal
+                    ? 'EASY RUN · ${(s.spec?.name ?? '').toUpperCase()}'
+                    : 'GOAL · ${(s.spec?.name ?? '').toUpperCase()}',
                 style: RunSoloType.runCaption.copyWith(color: muted),
               ),
               FittedBox(

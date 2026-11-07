@@ -21,7 +21,7 @@ from .convo.touches import _zone_minutes
 from .facts import GOAL_PURPOSE, known_session, pb_effort_figures, pb_inside_longer_run
 from render import protocol as P
 
-from .render_client import RenderClient
+from .render_client import RenderClient, RenderError
 from .trail import card_facts as trail_card_facts
 from .timeutil import parse_iso, to_local
 
@@ -89,6 +89,64 @@ def _pb_effort_facts(run: Mapping[str, Any], facts: dict[str, Any]) -> bool:
     return True
 
 
+USUAL_WEEKS = 4   # the usual week is the mean km of up to this many weeks before the run's own
+
+
+def week_track(run: Mapping[str, Any], history: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The runner's week so far, as of this run, from stored rows only (`history` holds this run's row and any others; a
+    row needs start_utc, zone_id and distance_m; the caller may add `_first_utc` to `run`, the runner's earliest stored run,
+    which can be older than the history it passes). The week is the ISO week of the run's local date in the run's zone, Monday
+    first; runs after this one are left out, so a late retry still says "so far". `usual_km` is the mean km of the up to four
+    whole weeks before this one, counting back only through whole weeks after the week of the runner's first run (that week is
+    partial); a quiet week inside the span counts as zero. It is omitted when there is no whole earlier week, or when those
+    weeks hold no km (a comeback after a long break). None when the run has no start or distance."""
+    try:
+        zone = run["zone_id"]
+        start = parse_iso(run["start_utc"])
+        today = to_local(start, zone).date()
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not run.get("distance_m"):
+        return None
+    monday = today - timedelta(days=today.weekday())
+    days = [0.0] * 7
+    runs, earlier = 0, [0.0] * USUAL_WEEKS
+    first = None
+    if run.get("_first_utc"):
+        try:
+            first = to_local(parse_iso(run["_first_utc"]), zone).date()
+        except (TypeError, ValueError):
+            first = None
+    for r in history:
+        try:
+            if not r.get("distance_m"):
+                continue
+            t = parse_iso(r["start_utc"])
+            d = to_local(t, r.get("zone_id") or zone).date()
+        except (KeyError, TypeError, ValueError):
+            continue
+        if d >= monday:
+            if t <= start and d <= today:
+                days[d.weekday()] += r["distance_m"] / 1000
+                runs += 1
+        else:
+            if first is None or d < first:
+                first = d
+            back = ((monday - d).days - 1) // 7   # 0 = the week before this one (its Monday is 7 days back)
+            if back < USUAL_WEEKS:
+                earlier[back] += r["distance_m"] / 1000
+    if not runs:
+        return None
+    out: dict[str, Any] = {"days": [round(x, 1) for x in days], "today_idx": today.weekday(), "runs": runs}
+    out["km"] = round(sum(out["days"]), 1)
+    if first is not None and first < monday:
+        weeks = min(USUAL_WEEKS, ((monday - first).days - 1) // 7)   # whole weeks after the first run's own week
+        usual = round(sum(earlier[:weeks]) / weeks, 1) if weeks > 0 else 0.0
+        if usual > 0:
+            out["usual_km"] = usual
+    return out
+
+
 def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
     """Image facts for one run, from its stored row only. The run_shape row, when the caller joined it as `_shape`,
     adds `route_xy` (the unit-box outline), `splits` and, for an interval run, `reps`."""
@@ -125,6 +183,9 @@ def run_facts(run: Mapping[str, Any], headline: str) -> dict[str, Any]:
         facts["reps"] = shape["reps"]
     if run.get("work_pace_s_per_km") and run["type"] == "interval":
         facts["work_pace_s_per_km"] = run["work_pace_s_per_km"]
+    wt = week_track(run, run["_history"]) if run.get("_history") else None   # the rows ride beside the run, for the renderer only
+    if wt:
+        facts["week_track"] = wt
     return facts
 
 
@@ -445,6 +506,11 @@ class MediaRenderer:
             if photo is None:
                 photo = self.cards[kind](facts, memory or {})
         except Exception as e:
+            if isinstance(e, RenderError) and e.code == "bad_request" and any(r.get("_history") for r in runs):
+                # an older worker refuses the week_track key (deploy skew): the card goes without the week, not as text
+                log.warning("render worker refused the week; retrying %s without it", kind)
+                bare = [{k: v for k, v in r.items() if k != "_history"} for r in runs]
+                return self.render(plan, card, bare, memory, clip, loop)
             raise MediaError(f"{kind}: {type(e).__name__}") from None
         if not photo or len(photo) > PHOTO_MAX_BYTES:
             raise MediaError(f"{kind}: photo size {len(photo or b'')}")
@@ -475,7 +541,7 @@ class MediaRenderer:
         then draws the older card. The route is drawn only when the app sent its shape, which its "Show route shape on
         cards" switch controls (switching it off forgets every stored shape), so the opt-in is the shape's presence."""
         try:
-            photo = self.cards["share"]({**facts, "share": share_optins(facts)}, {})
+            photo = self.cards["share"]({**{k: v for k, v in facts.items() if k != "week_track"}, "share": share_optins(facts)}, {})
         except Exception as e:
             log.warning("share picture failed, falling back to the older card: %s", type(e).__name__)
             return None
