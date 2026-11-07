@@ -258,6 +258,8 @@ class RunDetailBody extends StatelessWidget {
               elevation: elev,
               laps: d.run.laps,
             ),
+            RecordMode.treadmill when d.run.treadmillMarks.isNotEmpty =>
+              _MarkerSplits(marks: d.run.treadmillMarks, units: units),
             RecordMode.free ||
             RecordMode.treadmill ||
             RecordMode.trail ||
@@ -1382,6 +1384,58 @@ class _DistanceSplits extends StatelessWidget {
               ],
             ),
         ],
+      ],
+    );
+  }
+}
+
+/// Treadmill: one row per marker the runner tapped, with the stretch since
+/// the last one (the first starts at 0). Speed is the belt speed over that
+/// stretch, from the marks alone.
+class _MarkerSplits extends StatelessWidget {
+  const _MarkerSplits({required this.marks, required this.units});
+  final List<engine.TreadmillMark> marks;
+  final Units units;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final mi = units == Units.mi;
+    final splits = engine.TreadmillSplits.of(marks);
+    final speedUnit = mi ? 'mph' : 'km/h';
+    String speed(engine.TreadmillSplit sp) {
+      final mps = sp.mps;
+      if (mps == null) return '--';
+      final v = mi
+          ? engine.TreadmillSplits.mpsToMph(mps)
+          : engine.TreadmillSplits.mpsToKmh(mps);
+      return v.toStringAsFixed(1);
+    }
+
+    return Column(
+      key: const ValueKey('run-marker-splits'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'MARKER SPLITS',
+          style: RunSoloType.micro11.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x4),
+        Text(
+          'Moving time between the markers you tapped.',
+          style: RunSoloType.label13.copyWith(color: t.inkSecondary),
+        ),
+        const SizedBox(height: Space.x8),
+        _TableHeader(cells: [mi ? 'MI' : 'KM', 'Time', speedUnit]),
+        for (var i = 0; i < splits.length; i++)
+          _TableRow(
+            highlight: false,
+            cells: [
+              Fmt.distanceBare(splits[i].toM, units),
+              Fmt.clock(splits[i].ms),
+              speed(splits[i]),
+            ],
+          ),
       ],
     );
   }

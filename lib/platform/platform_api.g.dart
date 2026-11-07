@@ -1601,6 +1601,7 @@ class RecorderStatus {
     this.questDoneId,
     this.goalEased,
     this.goalTargetMs,
+    this.treadmillMarks,
   });
 
   RecorderState state;
@@ -1712,6 +1713,10 @@ class RecorderStatus {
   /// the run has none or is not a goal run.
   int? goalTargetMs;
 
+  /// Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
+  /// recreated screen or a restored run shows them. Null/empty = none.
+  List<double>? treadmillMarks;
+
   List<Object?> _toList() {
     return <Object?>[
       state,
@@ -1749,6 +1754,7 @@ class RecorderStatus {
       questDoneId,
       goalEased,
       goalTargetMs,
+      treadmillMarks,
     ];
   }
 
@@ -1793,6 +1799,7 @@ class RecorderStatus {
       questDoneId: result[32] as String?,
       goalEased: result[33] as bool?,
       goalTargetMs: result[34] as int?,
+      treadmillMarks: (result[35] as List<Object?>?)?.cast<double>(),
     );
   }
 
@@ -1805,7 +1812,7 @@ class RecorderStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId) && _deepEquals(goalEased, other.goalEased) && _deepEquals(goalTargetMs, other.goalTargetMs);
+    return _deepEquals(state, other.state) && _deepEquals(runId, other.runId) && _deepEquals(mode, other.mode) && _deepEquals(laps, other.laps) && _deepEquals(elapsedMs, other.elapsedMs) && _deepEquals(lapIndex, other.lapIndex) && _deepEquals(gpsFix, other.gpsFix) && _deepEquals(hrConnected, other.hrConnected) && _deepEquals(phase, other.phase) && _deepEquals(repIndex, other.repIndex) && _deepEquals(phaseRemainingMs, other.phaseRemainingMs) && _deepEquals(spec, other.spec) && _deepEquals(stepIndex, other.stepIndex) && _deepEquals(stepRemainingMs, other.stepRemainingMs) && _deepEquals(stepRemainingM, other.stepRemainingM) && _deepEquals(journalOk, other.journalOk) && _deepEquals(pausedAtElapsedMs, other.pausedAtElapsedMs) && _deepEquals(finishRequests, other.finishRequests) && _deepEquals(tipsMuted, other.tipsMuted) && _deepEquals(prompt, other.prompt) && _deepEquals(autoPaused, other.autoPaused) && _deepEquals(elevGainM, other.elevGainM) && _deepEquals(elevLossM, other.elevLossM) && _deepEquals(gradePct, other.gradePct) && _deepEquals(retracing, other.retracing) && _deepEquals(retraceSame, other.retraceSame) && _deepEquals(backToStartM, other.backToStartM) && _deepEquals(climbAheadM, other.climbAheadM) && _deepEquals(descentAheadM, other.descentAheadM) && _deepEquals(heightVsStartM, other.heightVsStartM) && _deepEquals(route, other.route) && _deepEquals(trail, other.trail) && _deepEquals(questDoneId, other.questDoneId) && _deepEquals(goalEased, other.goalEased) && _deepEquals(goalTargetMs, other.goalTargetMs) && _deepEquals(treadmillMarks, other.treadmillMarks);
   }
 
   @override
@@ -4534,6 +4541,49 @@ class RecorderApi {
         isNullValid: true,
     )
     ;
+  }
+
+  /// Treadmill: the runner double-tapped the marker at [distanceM]. Native
+  /// stamps the moving time, journals it and answers with every mark now
+  /// standing, as flat `[movingMs, metres, movingMs, metres, ...]`. A distance
+  /// not past the last mark is ignored (the standing marks come back).
+  Future<List<double>> addTreadmillMark(double distanceM) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.addTreadmillMark$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[distanceM]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<double>();
+  }
+
+  /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
+  Future<List<double>> undoTreadmillMark() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.undoTreadmillMark$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<double>();
   }
 
   Future<String?> stop() async {

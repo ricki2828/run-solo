@@ -220,8 +220,42 @@ class LiveRecorder(rootDir: String) {
                 "phaseRemainingMs" to s.phaseRemainingMs, "stepIndex" to s.stepIndex, "stepRemainingMs" to s.stepRemainingMs,
                 "stepRemainingM" to s.stepRemainingM, "pausedAtElapsedMs" to c.pausedAtElapsedMs, "distanceM" to c.distanceM,
                 "gpsOk" to (ticker?.gpsLost(t) == false), "journalOk" to (writer?.ok ?: true), "writeError" to lastWriteError,
+                "treadmillMarks" to marksFlat(),
             ),
         )
+    }
+
+    private val treadmillMarks = ArrayList<app.runsolo.core.journal.TreadmillMarkPoint>()
+
+    private fun marksFlat(): List<Double> = treadmillMarks.flatMap { listOf(it.activeMs.toDouble(), it.distanceM) }
+
+    /** Treadmill: [metres] reached now. Not past the last mark = ignored. Answers the marks standing, flat `[ms, m, ...]`. */
+    @Throws(Exception::class)
+    fun addTreadmillMark(metres: Double, t: Long, w: Long): List<Double> {
+        val c = core
+        require(c?.mode == RunMode.treadmill)
+        val last = treadmillMarks.lastOrNull()
+        if (metres.isFinite() && metres > 0 && metres <= 500_000 && (last == null || metres > last.distanceM)) {
+            val active = c!!.status(t).activeMs.coerceAtLeast(last?.activeMs ?: 0L)
+            writer?.append(JournalLine.TreadmillMark(t, w, metres, active))
+            writer?.sync()
+            check(writer?.ok == true) { "Marker could not be saved" }
+            treadmillMarks.add(app.runsolo.core.journal.TreadmillMarkPoint(active, metres))
+        }
+        return marksFlat()
+    }
+
+    /** Treadmill: takes the latest mark back; answers the marks left. */
+    @Throws(Exception::class)
+    fun undoTreadmillMark(t: Long, w: Long): List<Double> {
+        require(core?.mode == RunMode.treadmill)
+        if (treadmillMarks.isNotEmpty()) {
+            writer?.append(JournalLine.TreadmillMarkUndo(t, w))
+            writer?.sync()
+            check(writer?.ok == true) { "Undo could not be saved" }
+            treadmillMarks.removeAt(treadmillMarks.lastIndex)
+        }
+        return marksFlat()
     }
 
     /** Ends the run and finalises it; returns the run file path relative to the root. */

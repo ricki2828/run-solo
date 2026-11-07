@@ -5,6 +5,7 @@ import app.runsolo.core.elevation.ElevationFuser
 import app.runsolo.core.gps.PointFilter
 import app.runsolo.core.journal.JournalLine
 import app.runsolo.core.journal.Replay
+import app.runsolo.core.journal.TreadmillMarkPoint
 import app.runsolo.core.journal.RunEvent
 import app.runsolo.core.json.Json
 import app.runsolo.core.live.CoachChoice
@@ -82,6 +83,8 @@ data class RunFile(
     /** Set when a Garmin watch recorded the run (the file is then schema 8); null = recorded by the phone (schema 7). */
     val watch: WatchInfo? = null,
     val treadmillDistanceM: Double? = null,
+    /** Treadmill markers as `[movingMs, metres]`; empty on every other run and on files from before markers. */
+    val treadmillMarks: List<TreadmillMarkPoint> = emptyList(),
 ) {
     /**
      * The watch that recorded the run and its track sample-rate steps. `rateChanges` is `[atMs, rateS]` pairs, first
@@ -161,6 +164,7 @@ data class RunFile(
         },
     ).apply {
         treadmillDistanceM?.let { put("treadmillDistanceM", it) }
+        if (treadmillMarks.isNotEmpty()) put("treadmillMarks", treadmillMarks.map { listOf(it.activeMs, it.distanceM) })
         if (elevSrc != null) put("elev_src", elevSrc.wire)
         if (nudgesFired.isNotEmpty()) put("nudges_fired", nudgesFired.map { listOf(it.first, it.second) })
         coach?.let { c ->
@@ -337,6 +341,7 @@ data class RunFile(
                 route = r.route?.let { FollowedRoute(it, offSpans) },
                 coach = coachLog(r),
                 treadmillDistanceM = r.treadmillDistanceM.takeIf { h.mode == RunMode.treadmill },
+                treadmillMarks = if (h.mode == RunMode.treadmill) r.treadmillMarks else emptyList(),
             )
         }
 

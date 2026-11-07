@@ -624,6 +624,7 @@ class RecorderStatus {
     this.questDoneId,
     this.goalEased,
     this.goalTargetMs,
+    this.treadmillMarks,
   });
   RecorderState state;
   String? runId;
@@ -714,6 +715,10 @@ class RecorderStatus {
   /// run's journal, so a restored run still has what it raced. Null when
   /// the run has none or is not a goal run.
   int? goalTargetMs;
+
+  /// Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
+  /// recreated screen or a restored run shows them. Null/empty = none.
+  List<double>? treadmillMarks;
 }
 
 /// A route to follow (Follow a route): chosen on Start from the route library,
@@ -948,6 +953,15 @@ abstract class RecorderApi {
 
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
   void setTreadmillDistance(double distanceM);
+
+  /// Treadmill: the runner double-tapped the marker at [distanceM]. Native
+  /// stamps the moving time, journals it and answers with every mark now
+  /// standing, as flat `[movingMs, metres, movingMs, metres, ...]`. A distance
+  /// not past the last mark is ignored (the standing marks come back).
+  List<double> addTreadmillMark(double distanceM);
+
+  /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
+  List<double> undoTreadmillMark();
   String? stop();
   RecorderStatus status();
 

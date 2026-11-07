@@ -29,6 +29,59 @@ RunFile treadmill({double? distance = 5200}) => RunFile(
 );
 
 void main() {
+  test('markers roundtrip, and a file without them still loads', () {
+    final json = treadmill().toJson();
+    expect(json.containsKey('treadmillMarks'), isFalse);
+    expect(RunFile.fromJson(json).treadmillMarks, isEmpty);
+    json['treadmillMarks'] = [
+      [180000, 500.0],
+      [330000, 1000.0],
+    ];
+    final run = RunFile.fromJson(json);
+    expect(run.treadmillMarks.map((m) => m.distanceM), [500, 1000]);
+    expect(run.toJson()['treadmillMarks'], json['treadmillMarks']);
+  });
+
+  test('bad markers are rejected', () {
+    for (final bad in <Object?>[
+      [
+        [180000, 500.0],
+        [100000, 1000.0], // time goes back
+      ],
+      [
+        [180000, 500.0],
+        [330000, 500.0], // distance does not grow
+      ],
+      [
+        [-1, 500.0],
+      ],
+      [
+        [1, 0],
+      ],
+      [
+        [1],
+      ],
+      'x',
+    ]) {
+      final json = treadmill().toJson()..['treadmillMarks'] = bad;
+      expect(
+        () => RunFile.fromJson(json),
+        throwsA(isA<RunFileFormatException>()),
+        reason: '$bad',
+      );
+    }
+    final outdoor = treadmill().toJson()
+      ..['mode'] = 'free'
+      ..remove('treadmillDistanceM')
+      ..['treadmillMarks'] = [
+        [1, 5.0],
+      ];
+    expect(
+      () => RunFile.fromJson(outdoor),
+      throwsA(isA<RunFileFormatException>()),
+    );
+  });
+
   test('manual distance roundtrips without manufacturing GPS or splits', () {
     final run = RunFileCodec.decode(RunFileCodec.encode(treadmill()));
     expect(run.writeSchema, 9);

@@ -157,6 +157,130 @@ void main() {
         .data;
     expect(shown, '10:00');
   });
+
+  group('distance markers', () {
+    Future<FakeRecorderGateway> open(WidgetTester tester) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(
+          onboardingDone: true,
+          lastMode: RecordMode.treadmill,
+        ),
+      );
+      await services.recording.start(RecordMode.treadmill, null, Units.km);
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = const Size(1080, 2400);
+      await pumpTimes(tester, 3);
+      return fake;
+    }
+
+    Future<void> doubleTap(WidgetTester tester, int chip) async {
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 300)); // strip settles
+      }
+      final f = find.byKey(ValueKey('marker-chip-$chip'));
+      await tester.tap(f);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(f);
+      await tester.pump(const Duration(milliseconds: 400));
+      await pumpTimes(tester, 3);
+    }
+
+    String text(WidgetTester tester, String key) =>
+        tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
+    testWidgets('hint first, then a double-tap marks and the speeds show', (
+      tester,
+    ) async {
+      final fake = await open(tester);
+      expect(find.byKey(const ValueKey('treadmill-hint')), findsOneWidget);
+      expect(text(tester, 'treadmill-current-speed'), '--');
+      fake.advance(const Duration(minutes: 3)); // 0.5 km in 3:00 = 10 km/h
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 0);
+      expect(find.byKey(const ValueKey('treadmill-hint')), findsNothing);
+      expect(text(tester, 'treadmill-current-speed'), '10.0');
+      expect(text(tester, 'treadmill-avg-speed'), '10.0');
+      fake.advance(const Duration(minutes: 2, seconds: 30));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 1); // next 0.5 km in 2:30 = 12 km/h
+      expect(text(tester, 'treadmill-current-speed'), '12.0');
+      expect(text(tester, 'treadmill-avg-speed'), '10.9');
+    });
+
+    testWidgets('swipe to a later marker skips the missed one', (tester) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 6));
+      await pumpTimes(tester, 3);
+      await tester.drag(
+        find.byKey(const ValueKey('treadmill-strip')),
+        const Offset(-300, 0),
+      );
+      await pumpTimes(tester, 6);
+      await doubleTap(tester, 2); // 1.5 km in 6:00 = 15 km/h
+      expect(text(tester, 'treadmill-current-speed'), '15.0');
+      expect((await fake.status()).treadmillMarks, [360000.0, 1500.0]);
+    });
+
+    testWidgets('a mark not past the last one is ignored', (tester) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 0);
+      await fake.addTreadmillMark(300); // behind the last mark
+      await fake.addTreadmillMark(500); // the same distance again
+      expect((await fake.status()).treadmillMarks, [180000.0, 500.0]);
+    });
+
+    testWidgets('UNDO takes the last mark back and the strip returns to it', (
+      tester,
+    ) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 0);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 1);
+      expect(text(tester, 'treadmill-current-speed'), '10.0');
+      await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+      await pumpTimes(tester, 6);
+      expect((await fake.status()).treadmillMarks, [180000.0, 500.0]);
+      expect(text(tester, 'treadmill-avg-speed'), '10.0');
+      await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+      await pumpTimes(tester, 6);
+      expect(find.byKey(const ValueKey('treadmill-hint')), findsOneWidget);
+      expect(find.byKey(const ValueKey('treadmill-undo')), findsNothing);
+    });
+
+    testWidgets('the finish distance is prefilled with the last mark', (
+      tester,
+    ) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 0);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 1);
+      await tester.tap(find.byKey(const ValueKey('stop')));
+      await pumpTimes(tester, 4);
+      await tester.tap(find.byKey(const ValueKey('finish-save')));
+      await pumpTimes(tester, 4);
+      final field = tester.widget<TextField>(
+        find.byKey(const ValueKey('treadmill-distance')),
+      );
+      expect(field.controller!.text, '1.00');
+      await tester.enterText(
+        find.byKey(const ValueKey('treadmill-distance')),
+        '1.05',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'SAVE'));
+      await pumpTimes(tester, 6);
+      expect(fake.finalised.single.distanceM, 1050);
+    });
+  });
 }
 
 /// Events reach the controller [lagMs] after native emitted them, as on a

@@ -259,6 +259,12 @@ class TraceGateway implements RecorderGateway {
   Future<void> setTreadmillDistance(double distanceM) async {}
 
   @override
+  Future<List<double>> addTreadmillMark(double distanceM) async => const [];
+
+  @override
+  Future<List<double>> undoTreadmillMark() async => const [];
+
+  @override
   Future<String?> stop() => throw UnimplementedError();
   @override
   Future<bool> discard() => throw UnimplementedError();

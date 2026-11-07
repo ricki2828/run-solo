@@ -244,6 +244,11 @@ class RecordingSession(
     /** Distance step whose "GPS weak" was already said (once per step, W3). */
     private var gpsWeakStep: Int? = null
     private var replayLapsPressed = 0
+
+    /** Treadmill distance markers standing (moving ms, metres); rebuilt from the journal after a kill. */
+    private val treadmillMarks = ArrayList<app.runsolo.core.journal.TreadmillMarkPoint>()
+
+    private fun treadmillMarksFlat(): List<Double> = treadmillMarks.flatMap { listOf(it.activeMs.toDouble(), it.distanceM) }
     private var hrConnected = false
     private var lastHr: Int? = null
 
@@ -302,6 +307,7 @@ class RecordingSession(
             orphan
         }
         core = RecorderCore.restore(replayed, t, coreConfig)
+        treadmillMarks.addAll(replayed.treadmillMarks)
         lapCount = core.lapCount
         lapStartT = t
         // Laps from the journal, with active time (pauses and gaps excluded) per lap.
@@ -855,6 +861,35 @@ class RecordingSession(
         writer.append(JournalLine.TreadmillDistance(clock(), System.currentTimeMillis(), metres))
         writer.sync()
         check(writer.ok) { "Distance could not be saved" }
+    }
+
+    /** Treadmill: marks [metres] as reached now (moving time). Not past the last mark = ignored. Answers the marks standing. */
+    @Synchronized
+    fun addTreadmillMark(metres: Double): List<Double> {
+        require(mode == RunMode.treadmill && !finished)
+        val last = treadmillMarks.lastOrNull()
+        if (metres.isFinite() && metres > 0 && metres <= 500_000 && (last == null || metres > last.distanceM)) {
+            val t = clock()
+            val active = core.status(t).activeMs.coerceAtLeast(last?.activeMs ?: 0L)
+            writer.append(JournalLine.TreadmillMark(t, System.currentTimeMillis(), metres, active))
+            writer.sync()
+            check(writer.ok) { "Marker could not be saved" }
+            treadmillMarks.add(app.runsolo.core.journal.TreadmillMarkPoint(active, metres))
+        }
+        return treadmillMarksFlat()
+    }
+
+    /** Treadmill: takes the latest mark back. Answers the marks left. */
+    @Synchronized
+    fun undoTreadmillMark(): List<Double> {
+        require(mode == RunMode.treadmill && !finished)
+        if (treadmillMarks.isNotEmpty()) {
+            writer.append(JournalLine.TreadmillMarkUndo(clock(), System.currentTimeMillis()))
+            writer.sync()
+            check(writer.ok) { "Undo could not be saved" }
+            treadmillMarks.removeAt(treadmillMarks.lastIndex)
+        }
+        return treadmillMarksFlat()
     }
 
     @Synchronized
@@ -1608,6 +1643,7 @@ class RecordingSession(
             prompt = promptStatus(t),
             goalEased = if (spec?.isGoal == true) coach.easeMode else null,
             goalTargetMs = coach.goalTargetAtStart?.targetMs,
+            treadmillMarks = if (mode == RunMode.treadmill) treadmillMarksFlat() else null,
         )
     }
 

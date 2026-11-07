@@ -86,6 +86,8 @@ object JournalCodec {
                 line.retargetMs?.let { m["tg"] = it }
             }
             is JournalLine.TreadmillDistance -> { m["k"] = "td"; m["t"] = line.t; m["w"] = line.w; m["m"] = line.metres }
+            is JournalLine.TreadmillMark -> { m["k"] = "tmk"; m["t"] = line.t; m["w"] = line.w; m["m"] = line.distanceM; m["a"] = line.activeMs }
+            is JournalLine.TreadmillMarkUndo -> { m["k"] = "tmu"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.TipsMuted -> { m["k"] = "tm"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.QuestDone -> { m["k"] = "qd"; m["t"] = line.t; m["w"] = line.w; m["id"] = line.questId }
             is JournalLine.RouteLine -> { m["k"] = "route"; m["t"] = line.t; m["w"] = line.w; m["route"] = line.route.toJson() }
@@ -180,6 +182,8 @@ object JournalCodec {
                 (m["tg"] as? Number)?.toLong(),
             )
             "td" -> JournalLine.TreadmillDistance(t, w, m.double("m"))
+            "tmk" -> JournalLine.TreadmillMark(t, w, m.double("m"), m.long("a"))
+            "tmu" -> JournalLine.TreadmillMarkUndo(t, w)
             "tm" -> JournalLine.TipsMuted(t, w)
             "qd" -> JournalLine.QuestDone(t, w, m.string("id"))
             "route" -> JournalLine.RouteLine(t, w, FollowRoute.fromJson(m.obj("route") ?: throw IllegalArgumentException("route.route")))
