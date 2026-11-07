@@ -244,12 +244,15 @@ void main() {
       Rect chip(String title) => tester.getRect(
         find.ancestor(of: find.text(title), matching: find.byType(ModeChip)),
       );
-      // Reading order: FREE TRAIL / LAPS GOAL / INTERVALS TESTS.
+      // Reading order: FREE TRAIL / TREADMILL LAPS / GOAL INTERVALS / TESTS.
       final rows = [
         [chip('FREE'), chip('TRAIL')],
-        [chip('LAPS'), chip('GOAL')],
-        [chip('INTERVALS'), chip('TESTS')],
+        [chip('TREADMILL'), chip('LAPS')],
+        [chip('GOAL'), chip('INTERVALS')],
       ];
+      final tests = chip('TESTS');
+      expect(tests.left, closeTo(rows[0][0].left, 1), reason: 'TESTS row');
+      expect(tests.top, greaterThan(rows.last[0].bottom), reason: 'last row');
       for (var i = 0; i < rows.length; i++) {
         final (l, r) = (rows[i][0], rows[i][1]);
         expect(r.left, greaterThan(l.right - 1), reason: 'two per row');
