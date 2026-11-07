@@ -159,6 +159,11 @@ object JournalReplay {
             if (line is JournalLine.TreadmillDistance) { treadmillDistanceM = line.metres; continue }
             if (line is JournalLine.TreadmillMark) { marks.add(TreadmillMarkPoint(line.activeMs, line.distanceM)); continue }
             if (line is JournalLine.TreadmillMarkUndo) { if (marks.isNotEmpty()) marks.removeAt(marks.lastIndex); continue }
+            if (line is JournalLine.LapUndo) {
+                // REP DONE taken back: the latest lap never happened. Not a timeline event itself.
+                events.indexOfLast { it is RunEvent.Lap }.takeIf { it >= 0 }?.let { events.removeAt(it) }
+                continue
+            }
             if (line is JournalLine.Gap) {
                 // Run time continues through the dark span; the new device base is line.t.
                 val gapStart = lastRunT
@@ -189,7 +194,7 @@ object JournalReplay {
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
                         is JournalLine.LiveContextLine, is JournalLine.CueFired,
-                        is JournalLine.TreadmillDistance, is JournalLine.TreadmillMark, is JournalLine.TreadmillMarkUndo, is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine, is JournalLine.PromptResolved -> throw IllegalStateException()
+                        is JournalLine.LapUndo, is JournalLine.TreadmillDistance, is JournalLine.TreadmillMark, is JournalLine.TreadmillMarkUndo, is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine, is JournalLine.PromptResolved -> throw IllegalStateException()
                     },
                 )
             }

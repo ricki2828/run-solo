@@ -107,9 +107,11 @@ void main() {
     await fake.discard();
   });
 
-  testWidgets('distance reps do not offer the treadmill yet', (tester) async {
+  testWidgets('distance reps offer the treadmill, the event does not', (
+    tester,
+  ) async {
     await openReady(tester, mode: RecordMode.intervals, sessionId: '400s');
-    expect(find.byKey(SurfaceChoiceRow.treadmillKey), findsNothing);
+    expect(find.byKey(SurfaceChoiceRow.treadmillKey), findsOneWidget);
   });
 
   testWidgets('the run screen of a rep session on a belt: strip, no GPS', (
@@ -186,8 +188,8 @@ void main() {
     expect(fake.finalised.single.distanceM, 2800);
   });
 
-  group('live projection on a belt', () {
-    Future<(FakeRecorderGateway, AppServices)> inTest(
+  group('distance reps on a belt', () {
+    Future<(FakeRecorderGateway, AppServices)> inRep(
       WidgetTester tester,
     ) async {
       final fake = FakeRecorderGateway(now: now);
@@ -196,61 +198,105 @@ void main() {
         settings: const AppSettings(onboardingDone: true),
       );
       await services.recording.start(
-        RecordMode.cooper,
-        engine.SessionSpec.cooper.toPigeon(),
+        RecordMode.intervals,
+        engine.SessionCatalogue.fourHundreds.defaults.toPigeon(),
         Units.km,
         treadmillInclinePct: 1,
       );
       await pumpApp(tester, services, pushRoute: Routes.recording);
       await pumpTimes(tester, 4);
-      fake.advance(const Duration(minutes: 4));
-      await pumpTimes(tester, 3);
-      // Warm-up: no strip, a reminder to reset the treadmill.
-      expect(find.byKey(const ValueKey('treadmill-test-reset')), findsOne);
-      expect(find.byKey(const ValueKey('treadmill-strip')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('start-test')));
+      await tester.tap(find.byKey(const ValueKey('start-reps')));
       await pumpTimes(tester, 4);
       return (fake, services);
     }
 
-    testWidgets('nothing before the first mark, then the outdoor '
-        'projection on every mark and UNDO', (tester) async {
-      final (fake, services) = await inTest(tester);
-      expect(find.byKey(const ValueKey('treadmill-strip')), findsOneWidget);
-      fake.advance(const Duration(minutes: 3));
-      await pumpTimes(tester, 3);
-      expect(find.byKey(const ValueKey('belt-cooper-estimate')), findsNothing);
-      await fake.addTreadmillMark(750);
-      await services.recording.refreshStatus();
-      await pumpTimes(tester, 3);
-      final e1 = services.recording.snapshot.beltCooperEstimate;
-      expect(e1, isNotNull);
-      expect(
-        e1!.distanceM,
-        closeTo(
-          engine.CooperProjection.project(
-            engine.CooperCurve.defaultCurve,
-            elapsedSeconds: 180,
-            distanceM: 750,
-          )!.distanceM,
-          1,
-        ),
-      );
-      expect(find.byKey(const ValueKey('belt-cooper-distance')), findsOne);
-      expect(find.byKey(const ValueKey('belt-cooper-vo2')), findsOne);
-      fake.advance(const Duration(minutes: 2));
-      await fake.addTreadmillMark(1250);
-      await services.recording.refreshStatus();
-      final e2 = services.recording.snapshot.beltCooperEstimate!;
-      expect(e2.distanceM, isNot(closeTo(e1.distanceM, 1)));
-      // UNDO goes back to the first mark's projection.
-      await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+    testWidgets('REP DONE takes a double-tap, shows the rep time up', (
+      tester,
+    ) async {
+      final (fake, services) = await inRep(tester);
+      fake.advance(const Duration(seconds: 50));
       await pumpTimes(tester, 4);
+      expect(find.byKey(const ValueKey('rep-done-block')), findsOneWidget);
+      expect(find.byKey(const ValueKey('treadmill-strip')), findsNothing);
       expect(
-        services.recording.snapshot.beltCooperEstimate!.distanceM,
-        closeTo(e1.distanceM, 1),
+        tester.widget<Text>(find.byKey(const ValueKey('rep-done-prompt'))).data,
+        contains('rep: tap when the treadmill shows it'),
       );
+      final size = tester.getSize(find.byKey(const ValueKey('rep-done')));
+      expect(size.height, greaterThanOrEqualTo(72));
+      // The clock counts the rep up, not metres down.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('timer'))).data,
+        matches(RegExp(r'^\d+:\d\d$')),
+      );
+      // One tap does nothing.
+      await tester.tap(find.byKey(const ValueKey('rep-done')));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(services.recording.snapshot.phase, Phase.work);
+      // A double-tap ends the rep; recovery starts.
+      await tester.tap(find.byKey(const ValueKey('rep-done')));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.byKey(const ValueKey('rep-done')));
+      await pumpTimes(tester, 4);
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 2);
+      expect(services.recording.snapshot.phase, Phase.recovery);
+      expect(services.recording.snapshot.beltReps.single.distanceM, 400);
+      expect(find.byKey(const ValueKey('last-belt-rep-speed')), findsOne);
+      expect(find.byKey(const ValueKey('undo-rep-done')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
       await fake.discard();
+    });
+
+    testWidgets('UNDO REP DONE puts the rep back, its clock unbroken', (
+      tester,
+    ) async {
+      final (fake, services) = await inRep(tester);
+      fake.advance(const Duration(seconds: 30));
+      await pumpTimes(tester, 3);
+      await services.recording.repDone();
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 3);
+      expect(services.recording.snapshot.phase, Phase.recovery);
+      await tester.tap(find.byKey(const ValueKey('undo-rep-done')));
+      await pumpTimes(tester, 4);
+      expect(fake.undoRepDoneCalls, 1);
+      expect(services.recording.snapshot.phase, Phase.work);
+      expect(services.recording.snapshot.repIndex, 1);
+      expect(services.recording.snapshot.beltReps, isEmpty);
+      expect(find.byKey(const ValueKey('undo-rep-done')), findsNothing);
+      expect(find.byKey(const ValueKey('rep-done')), findsOneWidget);
+    });
+
+    testWidgets('UNDO goes away after its window', (tester) async {
+      final (fake, services) = await inRep(tester);
+      fake.advance(const Duration(seconds: 30));
+      await services.recording.repDone();
+      await services.recording.refreshStatus();
+      expect(services.recording.repUndoAvailable, isTrue);
+      fake.advance(const Duration(seconds: 20));
+      await pumpTimes(tester, 3);
+      expect(services.recording.repUndoAvailable, isFalse);
+    });
+
+    testWidgets('a time rep has no REP DONE', (tester) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.norwegian4x4().toPigeon(),
+        Units.km,
+        treadmillInclinePct: 1,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      await tester.tap(find.byKey(const ValueKey('start-reps')));
+      await pumpTimes(tester, 4);
+      expect(services.recording.canRepDone, isFalse);
+      expect(find.byKey(const ValueKey('rep-done')), findsNothing);
     });
   });
 }

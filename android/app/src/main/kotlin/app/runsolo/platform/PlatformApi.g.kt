@@ -4498,6 +4498,13 @@ interface RecorderApi {
   fun addTreadmillMark(distanceM: Double): List<Double>
   /** Treadmill: UNDO the latest mark; answers with the marks left, same shape. */
   fun undoTreadmillMark(): List<Double>
+  /**
+   * Treadmill session: UNDO the latest REP DONE tap (a `lap` in a distance
+   * step), if it is still the latest thing that happened (no later lap, within
+   * a minute): the session is inside the step the tap ended, its clock
+   * unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
+   */
+  fun undoRepDone()
   fun stop(): String?
   fun status(): RecorderStatus
   /**
@@ -4835,6 +4842,22 @@ interface RecorderApi {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               listOf(api.undoTreadmillMark())
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.undoRepDone$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.undoRepDone()
+              listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }

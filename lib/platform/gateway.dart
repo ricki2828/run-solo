@@ -112,6 +112,10 @@ abstract class RecorderGateway {
 
   /// UNDO the latest marker; answers the marks left (same shape).
   Future<List<double>> undoTreadmillMark();
+
+  /// Treadmill session: takes the latest REP DONE tap back (native checks it
+  /// is still the latest lap and recent); the status then shows the rep again.
+  Future<void> undoRepDone();
   Future<String?> stop();
   Future<RecorderStatus> status();
 

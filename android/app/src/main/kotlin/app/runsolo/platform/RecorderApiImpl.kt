@@ -280,6 +280,8 @@ class RecorderApiImpl(
 
     override fun addTreadmillMark(distanceM: Double): List<Double> = active()?.addTreadmillMark(distanceM) ?: error("No active run")
 
+    override fun undoRepDone() { active()?.undoRepDone() ?: error("No active run") }
+
     override fun undoTreadmillMark(): List<Double> = active()?.undoTreadmillMark() ?: error("No active run")
 
     override fun stop(): String? {

@@ -109,7 +109,7 @@ class RecordingSnapshot {
     this.questDoneId,
     this.treadmillMarks = const [],
     this.treadmillInclinePct,
-    this.warmupActiveMs,
+    this.beltReps = const [],
   });
 
   final RecorderState state;
@@ -242,27 +242,16 @@ class RecordingSnapshot {
   bool get indoor =>
       mode == RecordMode.treadmill || treadmillInclinePct != null;
 
-  /// A 12-minute test on a treadmill: the active time the warm-up lasted (the
-  /// first lap, ended by BEGIN TEST), so a marker's moving time maps to time in
-  /// the test. Null before BEGIN TEST and outside such a test.
-  final int? warmupActiveMs;
+  /// Treadmill distance reps done so far: each rep's prescribed distance and
+  /// the time the REP DONE tap gave (the app cannot measure it). Oldest first.
+  final List<({double distanceM, int ms})> beltReps;
 
-  /// The live Cooper projection on a belt, from the markers as outdoor GPS
-  /// distance does it: the last marker's distance at its time into the test,
-  /// through the same fade curve ([engine.CooperProjection.project], nothing
-  /// before the first minute). Null before the first marker, in the warm-up
-  /// and outside a belt test. Markers count from BEGIN TEST (the runner resets
-  /// the treadmill's distance there), so an UNDO moves it back with the marks.
-  engine.CooperEstimate? get beltCooperEstimate {
-    final w = warmupActiveMs;
-    if (!isCooper || !indoor || phase != Phase.work || w == null) return null;
-    if (treadmillMarks.isEmpty) return null;
-    final m = treadmillMarks.last;
-    return engine.CooperProjection.project(
-      engine.CooperCurve.defaultCurve,
-      elapsedSeconds: (m.activeMs - w) / 1000,
-      distanceM: m.distanceM,
-    );
+  /// The last finished belt rep's speed in m/s (distance over its time); null
+  /// before the first.
+  double? get lastBeltRepMps {
+    if (beltReps.isEmpty) return null;
+    final r = beltReps.last;
+    return r.ms > 0 ? r.distanceM / (r.ms / 1000) : null;
   }
 
   /// The run follows a route.
@@ -411,7 +400,7 @@ class RecordingSnapshot {
     String? questDoneId,
     List<engine.TreadmillMark>? treadmillMarks,
     double? treadmillInclinePct,
-    int? warmupActiveMs,
+    List<({double distanceM, int ms})>? beltReps,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -459,7 +448,7 @@ class RecordingSnapshot {
     questDoneId: questDoneId ?? this.questDoneId,
     treadmillMarks: treadmillMarks ?? this.treadmillMarks,
     treadmillInclinePct: treadmillInclinePct ?? this.treadmillInclinePct,
-    warmupActiveMs: warmupActiveMs ?? this.warmupActiveMs,
+    beltReps: beltReps ?? this.beltReps,
   );
 }
 
@@ -799,12 +788,9 @@ class RecordingController extends ChangeNotifier {
       clearTipsMuted: s.tipsMuted == null,
       treadmillMarks: marksFromFlat(s.treadmillMarks),
       treadmillInclinePct: s.treadmillInclinePct,
-      warmupActiveMs:
-          s.treadmillInclinePct != null &&
-              s.mode == RecordMode.cooper &&
-              s.laps.isNotEmpty
-          ? s.laps.first.activeMs
-          : null,
+      beltReps: s.treadmillInclinePct != null && s.mode == RecordMode.intervals
+          ? beltRepsFromLaps(s.laps, s.spec)
+          : const [],
       autoPaused: s.autoPaused ?? false,
       elevGainM: s.elevGainM,
       elevLossM: s.elevLossM,
@@ -1032,6 +1018,46 @@ class RecordingController extends ChangeNotifier {
     return _gateway.resume();
   }
 
+  int? _repDoneAtMs;
+  int _repDoneLapIndex = -1;
+
+  /// How long UNDO REP DONE stays up after a tap (native keeps it 60 s).
+  static const Duration repUndoWindow = Duration(seconds: 15);
+
+  /// A distance rep or distance recovery on a treadmill: REP DONE (the
+  /// runner's double-tap, "the treadmill shows it") ends the step as a lap.
+  bool get canRepDone => _snap.indoor && _snap.distanceStep && _snap.recording;
+
+  /// UNDO REP DONE is up: a tap ended a step less than [repUndoWindow] ago and
+  /// nothing has ended one since.
+  bool get repUndoAvailable {
+    final at = _repDoneAtMs;
+    return at != null &&
+        _snap.indoor &&
+        _snap.recording &&
+        _snap.lapIndex == _repDoneLapIndex + 1 &&
+        displayElapsedMs - at < repUndoWindow.inMilliseconds;
+  }
+
+  /// REP DONE: the step ends now, at its prescribed distance; its time is the
+  /// time of the tap. Journaled natively as the lap, so a kill keeps it.
+  Future<void> repDone() async {
+    if (!canRepDone) return;
+    final before = _snap.lapIndex;
+    await _gateway.lap(LapSource.button);
+    _repDoneAtMs = displayElapsedMs;
+    _repDoneLapIndex = before;
+    notifyListeners();
+  }
+
+  /// UNDO REP DONE: takes the tap back (native checks it is still the latest).
+  Future<void> undoRepDone() async {
+    if (!repUndoAvailable) return;
+    _repDoneAtMs = null;
+    await _gateway.undoRepDone();
+    await refreshStatus();
+  }
+
   /// Treadmill: marks the marker at [distanceM] as reached now. Native stamps
   /// the moving time and journals it; this only shows what native answers.
   Future<void> addMark(double distanceM) async {
@@ -1184,7 +1210,8 @@ class RecordingController extends ChangeNotifier {
         ),
       );
     }
-    final bad = !fix || t.gpsAccuracyM! > 20;
+    // A belt has no GPS to be bad (no END REP, no GPS banner).
+    final bad = !_snap.indoor && (!fix || t.gpsAccuracyM! > 20);
     final hr = t.hr;
     final prevMax = _snap.stepMaxHr;
     _snap = _snap.copyWith(
@@ -1426,6 +1453,29 @@ class RecordingController extends ChangeNotifier {
       final counts =
           spec == null || (l.index.isOdd && l.index <= 2 * spec.repCount);
       if (counts && ms > 0 && m > 0) out.add(ms / 1000 / (m / 1000));
+    }
+    return out;
+  }
+
+  /// A treadmill session's finished work reps as (prescribed distance, time):
+  /// lap `2k - 1` ends work rep `k` (warm-up lap 0, then work and recovery
+  /// alternate, as [repPacesFromLaps] reads it), whose step is the `k`-th work
+  /// step. Reps whose step is timed carry no distance and are left out.
+  static List<({double distanceM, int ms})> beltRepsFromLaps(
+    List<LapSummary> laps,
+    SessionSpec? spec,
+  ) {
+    if (spec == null || laps.isEmpty) return const [];
+    final work = [
+      for (final st in spec.steps)
+        if (st.kind == StepKind.work) st,
+    ];
+    final out = <({double distanceM, int ms})>[];
+    for (final l in laps) {
+      if (!l.index.isOdd || l.index > 2 * work.length) continue;
+      final step = work[(l.index + 1) ~/ 2 - 1];
+      if (step.target != TargetKind.distance || l.activeMs <= 0) continue;
+      out.add((distanceM: step.value.toDouble(), ms: l.activeMs));
     }
     return out;
   }
