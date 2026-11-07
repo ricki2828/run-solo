@@ -189,18 +189,11 @@ void main() {
       await pumpTimes(tester, 3);
     }
 
-    bool speedsShown(WidgetTester tester) => tester
-        .widget<Visibility>(find.byKey(const ValueKey('treadmill-speeds')))
-        .visible;
+    bool speedsShown(WidgetTester tester) =>
+        find.byKey(const ValueKey('treadmill-speeds')).evaluate().isNotEmpty;
 
-    bool undoShown(WidgetTester tester) => tester
-        .widget<Visibility>(
-          find.ancestor(
-            of: find.byKey(const ValueKey('treadmill-undo')),
-            matching: find.byType(Visibility),
-          ),
-        )
-        .visible;
+    bool undoShown(WidgetTester tester) =>
+        find.byKey(const ValueKey('treadmill-undo')).evaluate().isNotEmpty;
 
     /// The strip's centre line against the chip's: the next chip sits on it.
     void expectCentred(WidgetTester tester, int chip) {
