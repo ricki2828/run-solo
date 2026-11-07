@@ -11,6 +11,7 @@ from companion.timeutil import iso, now_utc, parse_iso
 from conftest import auth, enrol, post_tg, run_payload, tg_callback
 
 TRAIL = "The Saddle Trail"
+OFFER_MONTH = "2026-10"   # the month baked into every offer id below; the server files an offer under its id's month, not the run's
 
 
 def offer(n=1, **over):
@@ -18,11 +19,6 @@ def offer(n=1, **over):
          "trail_name": TRAIL}
     o.update(over)
     return o
-
-
-def month_of(payload) -> str:
-    start = datetime.fromisoformat(payload["start_utc"]) + timedelta(minutes=payload["utc_offset_min"])
-    return start.strftime("%Y-%m")
 
 
 def three_offers():
@@ -111,10 +107,10 @@ def test_a_bad_block_drops_the_quest_never_the_run(client, bad):
 
 def test_offers_are_kept_in_order_and_a_place_name_needs_the_opt_in(client):
     t = enrol(client)
-    p = post(client, t, quest={"offers": three_offers()})
+    post(client, t, quest={"offers": three_offers()})
     got = rows(client)
     assert [r["quest_id"] for r in got] == [o["id"] for o in three_offers()]
-    assert {r["state"] for r in got} == {"offered"} and got[0]["month"] == month_of(p)
+    assert {r["state"] for r in got} == {"offered"} and got[0]["month"] == OFFER_MONTH
     assert got[0]["trail_name"] is None   # place opt-in is off
     place_on(client, t)
     post(client, t, "r2", quest={"offers": three_offers()})
@@ -430,7 +426,7 @@ def test_month_skipped_cancels_the_queued_offer_and_keeps_the_month_closed(clien
     t = enrol(client)
     post(client, t, quest={"offers": three_offers()})
     assert quest_due(client) is not None
-    post(client, t, "r2", minutes_ago=5, quest={"month_skipped": month_of(run_payload("x", minutes_ago=5))})
+    post(client, t, "r2", minutes_ago=5, quest={"month_skipped": OFFER_MONTH})
     assert quest_due(client) is None
     assert {r["state"] for r in rows(client)} == {"skipped"}
     post(client, t, "r3", minutes_ago=2, quest={"offers": three_offers()})   # offered again: nothing is stored or queued
@@ -478,7 +474,7 @@ def test_an_older_upload_cannot_undo_the_current_quest(client):
 def test_month_skipped_names_its_month_and_an_older_upload_cannot_use_it(client):
     t = enrol(client)
     post(client, t, "r_new", minutes_ago=5, quest={"offers": three_offers()})
-    post(client, t, "r_old", minutes_ago=300, quest={"month_skipped": month_of(run_payload("x", minutes_ago=5))})   # queued offline
+    post(client, t, "r_old", minutes_ago=300, quest={"month_skipped": OFFER_MONTH})   # queued offline
     assert {r["state"] for r in rows(client)} == {"offered"} and quest_due(client) is not None
     post(client, t, "r_mid", minutes_ago=3, quest={"month_skipped": "2020-01"})   # another month: this one is untouched
     assert {r["state"] for r in rows(client)} == {"offered"} and quest_due(client) is not None
