@@ -16,6 +16,7 @@ class TreadmillMarkerStrip extends StatefulWidget {
     required this.marks,
     required this.units,
     required this.onMark,
+    this.enabled = true,
     this.height = 84,
   });
 
@@ -24,6 +25,10 @@ class TreadmillMarkerStrip extends StatefulWidget {
 
   /// Called with the chip's distance (metres) on a double-tap.
   final void Function(double distanceM) onMark;
+
+  /// False while paused: dimmed, and a double-tap marks nothing (a paused
+  /// mark would carry the last mark's moving time).
+  final bool enabled;
   final double height;
 
   /// Metres between chips.
@@ -97,67 +102,78 @@ class _TreadmillMarkerStripState extends State<TreadmillMarkerStrip> {
             widget.marks.last.distanceM,
             widget.units,
           );
-    return SizedBox(
-      key: const ValueKey('treadmill-strip'),
-      height: widget.height,
-      child: PageView.builder(
-        controller: _page,
-        itemCount: TreadmillMarkerStrip.chipCount,
-        padEnds: true,
-        itemBuilder: (context, i) {
-          final marked = i <= lastIndex;
-          final next = i == lastIndex + 1;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: GestureDetector(
-              key: ValueKey('marker-chip-$i'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _page.animateToPage(
-                i,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-              ),
-              onDoubleTap: marked
-                  ? null
-                  : () => widget.onMark((i + 1) * spacing),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: marked ? t.inkPrimary : Colors.transparent,
-                  border: Border.all(
-                    color: next || marked ? t.inkPrimary : t.inkSecondary,
-                    width: next ? 5 : 2,
-                  ),
-                  borderRadius: BorderRadius.circular(Radii.chip * 2),
+    return Opacity(
+      opacity: widget.enabled ? 1 : 0.4,
+      child: SizedBox(
+        key: const ValueKey('treadmill-strip'),
+        height: widget.height,
+        child: PageView.builder(
+          controller: _page,
+          itemCount: TreadmillMarkerStrip.chipCount,
+          padEnds: true,
+          itemBuilder: (context, i) {
+            final marked = i <= lastIndex;
+            final next = i == lastIndex + 1;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: GestureDetector(
+                key: ValueKey('marker-chip-$i'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _page.animateToPage(
+                  i,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
                 ),
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (marked) ...[
-                          Icon(
-                            Icons.check_rounded,
-                            key: ValueKey('marker-tick-$i'),
-                            size: 32,
-                            color: t.bgBase,
+                onDoubleTap: marked || !widget.enabled
+                    ? null
+                    : () {
+                        // Not mid-swipe or mid-glide: the chip under the finger
+                        // may be a neighbour sliding past.
+                        if (_page.hasClients &&
+                            _page.position.isScrollingNotifier.value) {
+                          return;
+                        }
+                        widget.onMark((i + 1) * spacing);
+                      },
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: marked ? t.inkPrimary : Colors.transparent,
+                    border: Border.all(
+                      color: next || marked ? t.inkPrimary : t.inkSecondary,
+                      width: next ? 5 : 2,
+                    ),
+                    borderRadius: BorderRadius.circular(Radii.chip * 2),
+                  ),
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (marked) ...[
+                            Icon(
+                              Icons.check_rounded,
+                              key: ValueKey('marker-tick-$i'),
+                              size: 32,
+                              color: t.bgBase,
+                            ),
+                            const SizedBox(width: 2),
+                          ],
+                          Text(
+                            TreadmillMarkerStrip.chipLabel(i, widget.units),
+                            style: RunSoloType.display44.copyWith(
+                              color: marked ? t.bgBase : t.inkPrimary,
+                            ),
                           ),
-                          const SizedBox(width: 2),
                         ],
-                        Text(
-                          TreadmillMarkerStrip.chipLabel(i, widget.units),
-                          style: RunSoloType.display44.copyWith(
-                            color: marked ? t.bgBase : t.inkPrimary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

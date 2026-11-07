@@ -591,6 +591,11 @@ class RecordingController extends ChangeNotifier {
   /// keeps it current.
   Units momentUnits = Units.km;
 
+  /// The units this run started in (treadmill chips are laid out in them, so
+  /// a mid-run Settings change cannot misalign the marks). Null until Start
+  /// sets it, or the screen on a resumed run.
+  Units? runUnits;
+
   void _detectMoment() {
     // A feature of the display, never of the run: a failure here drops the
     // moment, not the event.
@@ -815,6 +820,7 @@ class RecordingController extends ChangeNotifier {
     }
     if (result.error == null || result.error == StartError.alreadyRunning) {
       _reset(mode, spec);
+      runUnits = units;
       // The planned line for the map: native streams only what the runner has run.
       followedRoute = route;
       await attach();
@@ -893,6 +899,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _reset(RecordMode mode, SessionSpec? spec) {
+    runUnits = null;
     liveRoute.clear();
     followedRoute = null;
     _lastLapDistanceM = 0;

@@ -565,10 +565,13 @@ class FakeRecorderGateway implements RecorderGateway {
     if (_mode != RecordMode.treadmill || _state == RecorderState.idle) {
       throw StateError('No treadmill run');
     }
-    if (distanceM.isFinite &&
+    // As native: not while paused, past the last mark in distance and in time.
+    if (_state == RecorderState.recording &&
+        distanceM.isFinite &&
         distanceM > 0 &&
         distanceM <= 500000 &&
-        (_marks.isEmpty || distanceM > _marks.last.$2)) {
+        (_marks.isEmpty ||
+            (distanceM > _marks.last.$2 && _activeMs > _marks.last.$1))) {
       _marks.add((_activeMs, distanceM));
     }
     return _marksFlat;

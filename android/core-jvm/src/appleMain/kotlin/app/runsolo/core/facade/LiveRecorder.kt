@@ -10,6 +10,7 @@ import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
+import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
@@ -93,6 +94,7 @@ class LiveRecorder(rootDir: String) {
         jw.open()
         jw.append(JournalLine.Header(t, w, id, device, app, tz, mode, spec, units))
         core = c
+        treadmillMarks = app.runsolo.core.record.TreadmillMarks()
         this.spec = spec
         coach = LiveCoach(null, mode, spec).also { it.kmSplits = kmSplits }
         coachPrevT = t
@@ -220,42 +222,40 @@ class LiveRecorder(rootDir: String) {
                 "phaseRemainingMs" to s.phaseRemainingMs, "stepIndex" to s.stepIndex, "stepRemainingMs" to s.stepRemainingMs,
                 "stepRemainingM" to s.stepRemainingM, "pausedAtElapsedMs" to c.pausedAtElapsedMs, "distanceM" to c.distanceM,
                 "gpsOk" to (ticker?.gpsLost(t) == false), "journalOk" to (writer?.ok ?: true), "writeError" to lastWriteError,
-                "treadmillMarks" to marksFlat(),
+                "treadmillMarks" to treadmillMarks.flat(),
             ),
         )
     }
 
-    private val treadmillMarks = ArrayList<app.runsolo.core.journal.TreadmillMarkPoint>()
+    private var treadmillMarks = app.runsolo.core.record.TreadmillMarks()
 
-    private fun marksFlat(): List<Double> = treadmillMarks.flatMap { listOf(it.activeMs.toDouble(), it.distanceM) }
-
-    /** Treadmill: [metres] reached now. Not past the last mark = ignored. Answers the marks standing, flat `[ms, m, ...]`. */
+    /** Treadmill: [metres] reached now. Refused while paused, not past the last mark, or at its time. Answers the marks standing, flat `[ms, m, ...]`. */
     @Throws(Exception::class)
     fun addTreadmillMark(metres: Double, t: Long, w: Long): List<Double> {
-        val c = core
-        require(c?.mode == RunMode.treadmill)
-        val last = treadmillMarks.lastOrNull()
-        if (metres.isFinite() && metres > 0 && metres <= 500_000 && (last == null || metres > last.distanceM)) {
-            val active = c!!.status(t).activeMs.coerceAtLeast(last?.activeMs ?: 0L)
+        val c = checkNotNull(core) { "no active run" }
+        require(c.mode == RunMode.treadmill)
+        val active = c.status(t).activeMs
+        if (treadmillMarks.accepts(metres, active, paused = c.state == RecorderState.paused)) {
             writer?.append(JournalLine.TreadmillMark(t, w, metres, active))
             writer?.sync()
             check(writer?.ok == true) { "Marker could not be saved" }
-            treadmillMarks.add(app.runsolo.core.journal.TreadmillMarkPoint(active, metres))
+            treadmillMarks.add(metres, active)
         }
-        return marksFlat()
+        return treadmillMarks.flat()
     }
 
     /** Treadmill: takes the latest mark back; answers the marks left. */
     @Throws(Exception::class)
     fun undoTreadmillMark(t: Long, w: Long): List<Double> {
-        require(core?.mode == RunMode.treadmill)
-        if (treadmillMarks.isNotEmpty()) {
+        val c = checkNotNull(core) { "no active run" }
+        require(c.mode == RunMode.treadmill)
+        if (treadmillMarks.points.isNotEmpty()) {
             writer?.append(JournalLine.TreadmillMarkUndo(t, w))
             writer?.sync()
             check(writer?.ok == true) { "Undo could not be saved" }
-            treadmillMarks.removeAt(treadmillMarks.lastIndex)
+            treadmillMarks.undo()
         }
-        return marksFlat()
+        return treadmillMarks.flat()
     }
 
     /** Ends the run and finalises it; returns the run file path relative to the root. */
@@ -285,6 +285,7 @@ class LiveRecorder(rootDir: String) {
     }
 
     private fun clear() {
+        treadmillMarks = app.runsolo.core.record.TreadmillMarks()
         core = null
         ticker = null
         writer = null

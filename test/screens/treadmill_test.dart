@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:run_solo/app/routes.dart';
@@ -310,6 +312,120 @@ void main() {
       expect(undoShown(tester), isFalse);
     });
 
+    testWidgets('a pause is not a mark: the next speed uses moving time', (
+      tester,
+    ) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 0); // 0.5 km at 3:00 moving
+      await tester.tap(find.text('PAUSE'));
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(minutes: 1)); // a minute standing still
+      await pumpTimes(tester, 3);
+      // native refuses a mark while paused; the standing marks come back
+      expect(await fake.addTreadmillMark(1000), [180000.0, 500.0]);
+      await tester.tap(find.byKey(const ValueKey('resume')));
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(minutes: 2, seconds: 30));
+      await pumpTimes(tester, 3);
+      await doubleTap(tester, 1); // 0.5 km in 2:30 moving = 12 km/h
+      expect(text(tester, 'treadmill-current-speed'), '12.0');
+      expect((await fake.status()).treadmillMarks, [
+        180000.0,
+        500.0,
+        330000.0,
+        1000.0,
+      ]);
+    });
+
+    testWidgets('a double-tap while the strip is still gliding marks nothing', (
+      tester,
+    ) async {
+      final fake = await open(tester);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      // The strip is still gliding to another chip: the double-tap handler
+      // (called directly, so no gesture arena decides) must not mark.
+      final controller = tester
+          .widget<PageView>(
+            find.descendant(
+              of: find.byKey(const ValueKey('treadmill-strip')),
+              matching: find.byType(PageView),
+            ),
+          )
+          .controller!;
+      unawaited(
+        controller.animateToPage(
+          3,
+          duration: const Duration(seconds: 1),
+          curve: Curves.linear,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      final chip = tester.widget<GestureDetector>(
+        find.byKey(const ValueKey('marker-chip-1')),
+      );
+      chip.onDoubleTap!();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect((await fake.status()).treadmillMarks, isNull);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+    });
+
+    testWidgets(
+      'a run started in miles keeps 0.25 mi chips and prefills miles',
+      (tester) async {
+        final fake = FakeRecorderGateway(now: now);
+        final services = fakeServices(
+          recorder: fake,
+          // Settings say km: the run's own units must win.
+          settings: const AppSettings(
+            onboardingDone: true,
+            lastMode: RecordMode.treadmill,
+          ),
+        );
+        await services.recording.start(RecordMode.treadmill, null, Units.mi);
+        await pumpApp(tester, services, pushRoute: Routes.recording);
+        tester.view.physicalSize = const Size(1080, 2400);
+        await pumpTimes(tester, 3);
+        expect(find.text('0.25'), findsOneWidget);
+        expect(text(tester, 'treadmill-chip-unit'), 'mi');
+        fake.advance(const Duration(minutes: 2));
+        await pumpTimes(tester, 3);
+        await doubleTap(tester, 0);
+        expect((await fake.status()).treadmillMarks, [120000.0, 402.336]);
+        expect(find.text('mph'), findsNothing); // label reads "SPEED mph"
+        await tester.tap(find.byKey(const ValueKey('stop')));
+        await pumpTimes(tester, 4);
+        await tester.tap(find.byKey(const ValueKey('finish-save')));
+        await pumpTimes(tester, 4);
+        final field = tester.widget<TextField>(
+          find.descendant(
+            of: find.byKey(const ValueKey('treadmill-distance')),
+            matching: find.byType(TextField),
+          ),
+        );
+        expect(field.controller!.text, '0.25');
+        expect(find.text('Distance (mi)'), findsOneWidget);
+      },
+    );
+
+    test('marks are refused outside a live treadmill run', () async {
+      final fake = FakeRecorderGateway(now: now);
+      await expectLater(fake.addTreadmillMark(500), throwsStateError);
+      await fake.start(RecordMode.free, null, Units.km);
+      await expectLater(fake.addTreadmillMark(500), throwsStateError);
+      await expectLater(fake.undoTreadmillMark(), throwsStateError);
+      await fake.discard();
+      await fake.start(RecordMode.treadmill, null, Units.km);
+      fake.advance(const Duration(minutes: 3));
+      expect(await fake.addTreadmillMark(500), [180000.0, 500.0]);
+      await fake.stop();
+      await expectLater(fake.addTreadmillMark(1000), throwsStateError);
+    });
+
     testWidgets('the finish distance is prefilled with the last mark', (
       tester,
     ) async {
@@ -325,7 +441,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('finish-save')));
       await pumpTimes(tester, 4);
       final field = tester.widget<TextField>(
-        find.byKey(const ValueKey('treadmill-distance')),
+        find.descendant(
+          of: find.byKey(const ValueKey('treadmill-distance')),
+          matching: find.byType(TextField),
+        ),
       );
       expect(field.controller!.text, '1.00');
       await tester.enterText(

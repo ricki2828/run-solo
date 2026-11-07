@@ -451,31 +451,25 @@ class _RecordingScreenState extends State<RecordingScreen>
       // Prefilled with the last marker, still editable (the belt's own total
       // may differ a little from the marker the runner tapped).
       final marked = _ctl!.snapshot.treadmillMarks;
-      final miles = _services!.settings.settings.units == Units.mi;
+      final miles =
+          (_ctl!.runUnits ?? _services!.settings.settings.units) == Units.mi;
       var input = marked.isEmpty
           ? ''
           : (miles
                 ? (marked.last.distanceM / 1609.344).toStringAsFixed(2)
                 : (marked.last.distanceM / 1000).toStringAsFixed(2));
-      final field = TextEditingController(text: input);
       String? error;
       final metres = await showDialog<double>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, update) => AlertDialog(
             title: const Text('Treadmill distance'),
-            content: TextField(
+            content: _PrefilledField(
               key: const ValueKey('treadmill-distance'),
-              controller: field,
+              initial: input,
               onChanged: (value) => input = value,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
               decoration: InputDecoration(
-                labelText: _services!.settings.settings.units == Units.mi
-                    ? 'Distance (mi)'
-                    : 'Distance (km)',
+                labelText: miles ? 'Distance (mi)' : 'Distance (km)',
                 errorText: error,
               ),
             ),
@@ -489,11 +483,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   final distance = double.tryParse(
                     input.trim().replaceAll(',', '.'),
                   );
-                  final m =
-                      (distance ?? 0) *
-                      (_services!.settings.settings.units == Units.mi
-                          ? 1609.344
-                          : 1000);
+                  final m = (distance ?? 0) * (miles ? 1609.344 : 1000);
                   if (!m.isFinite || m <= 0 || m > 500000) {
                     update(
                       () => error =
@@ -945,7 +935,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                 child: _TreadmillBlock(
                   s: s,
                   ctl: ctl,
-                  units: settings.units,
+                  units: ctl.runUnits ??= settings.units,
                   secondary: t.inkSecondary,
                   primary: t.inkPrimary,
                 ),
@@ -4184,6 +4174,7 @@ class _TreadmillBlock extends StatelessWidget {
               marks: marks,
               units: units,
               onMark: ctl.addMark,
+              enabled: !s.paused,
             ),
             const SizedBox(height: Space.x8),
             Text(
@@ -4204,4 +4195,42 @@ class _TreadmillBlock extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The finish dialog's distance box: owns its text controller so it is
+/// disposed with the dialog, and starts with [initial] (the last marker).
+class _PrefilledField extends StatefulWidget {
+  const _PrefilledField({
+    super.key,
+    required this.initial,
+    required this.onChanged,
+    required this.decoration,
+  });
+  final String initial;
+  final ValueChanged<String> onChanged;
+  final InputDecoration decoration;
+
+  @override
+  State<_PrefilledField> createState() => _PrefilledFieldState();
+}
+
+class _PrefilledFieldState extends State<_PrefilledField> {
+  late final TextEditingController _c = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _c,
+    onChanged: widget.onChanged,
+    autofocus: true,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: widget.decoration,
+  );
 }
