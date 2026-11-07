@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -78,7 +79,14 @@ class RecorderService : Service() {
                 this,
                 RecorderNotification.NOTIFICATION_ID,
                 notification.build(s.notificationContent()),
-                if (s.mode == app.runsolo.core.model.RunMode.treadmill) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                // Treadmill has no GPS. Android 14+ checks location permission for a location FGS
+                // and knows specialUse; Android 10-13 doesn't know specialUse and doesn't check, so
+                // keep location there rather than rely on ServiceCompat masking an unknown type.
+                if (s.mode == app.runsolo.core.model.RunMode.treadmill && Build.VERSION.SDK_INT >= 34) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                },
             )
         } catch (e: Exception) {
             // Android 14+: location FGS refused (permission revoked between check and start, or
