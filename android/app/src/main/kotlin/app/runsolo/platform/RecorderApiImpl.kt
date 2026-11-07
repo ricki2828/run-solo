@@ -241,6 +241,10 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
 
     override fun setTreadmillDistance(distanceM: Double) { active()?.setTreadmillDistance(distanceM) ?: error("No active run") }
 
+    override fun addTreadmillMark(distanceM: Double): List<Double> = active()?.addTreadmillMark(distanceM) ?: error("No active run")
+
+    override fun undoTreadmillMark(): List<Double> = active()?.undoTreadmillMark() ?: error("No active run")
+
     override fun stop(): String? {
         val svc = RecorderService.instance
         val path = if (svc != null && RecorderService.session != null) {

@@ -102,6 +102,13 @@ abstract class RecorderGateway {
 
   /// Finalises in Kotlin before returning the run id; null when idle.
   Future<void> setTreadmillDistance(double distanceM);
+
+  /// Treadmill marker reached now; native stamps the moving time, journals it
+  /// and answers every mark standing, flat `[movingMs, metres, ...]`.
+  Future<List<double>> addTreadmillMark(double distanceM);
+
+  /// UNDO the latest marker; answers the marks left (same shape).
+  Future<List<double>> undoTreadmillMark();
   Future<String?> stop();
   Future<RecorderStatus> status();
 

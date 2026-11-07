@@ -107,6 +107,7 @@ class RecordingSnapshot {
     this.route,
     this.trail,
     this.questDoneId,
+    this.treadmillMarks = const [],
   });
 
   final RecorderState state;
@@ -226,6 +227,9 @@ class RecordingSnapshot {
   /// The quest this run completed live (native fired its beat and journaled
   /// it): the screen shows its toast once per id. Never cleared within a run.
   final String? questDoneId;
+
+  /// Treadmill markers standing (native's), in order; empty elsewhere.
+  final List<engine.TreadmillMark> treadmillMarks;
 
   /// The run follows a route.
   bool get followsRoute => route != null;
@@ -371,6 +375,7 @@ class RecordingSnapshot {
     TrailProgress? trail,
     bool clearTrail = false,
     String? questDoneId,
+    List<engine.TreadmillMark>? treadmillMarks,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -416,6 +421,7 @@ class RecordingSnapshot {
     route: clearRoute ? null : (route ?? this.route),
     trail: clearTrail ? null : (trail ?? this.trail),
     questDoneId: questDoneId ?? this.questDoneId,
+    treadmillMarks: treadmillMarks ?? this.treadmillMarks,
   );
 }
 
@@ -585,6 +591,11 @@ class RecordingController extends ChangeNotifier {
   /// keeps it current.
   Units momentUnits = Units.km;
 
+  /// The units this run started in (treadmill chips are laid out in them, so
+  /// a mid-run Settings change cannot misalign the marks). Null until Start
+  /// sets it, or the screen on a resumed run.
+  Units? runUnits;
+
   void _detectMoment() {
     // A feature of the display, never of the run: a failure here drops the
     // moment, not the event.
@@ -748,6 +759,7 @@ class RecordingController extends ChangeNotifier {
       clearStepRemainingM: s.stepRemainingM == null,
       tipsMuted: s.tipsMuted,
       clearTipsMuted: s.tipsMuted == null,
+      treadmillMarks: marksFromFlat(s.treadmillMarks),
       autoPaused: s.autoPaused ?? false,
       elevGainM: s.elevGainM,
       elevLossM: s.elevLossM,
@@ -808,6 +820,7 @@ class RecordingController extends ChangeNotifier {
     }
     if (result.error == null || result.error == StartError.alreadyRunning) {
       _reset(mode, spec);
+      runUnits = units;
       // The planned line for the map: native streams only what the runner has run.
       followedRoute = route;
       await attach();
@@ -886,6 +899,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _reset(RecordMode mode, SessionSpec? spec) {
+    runUnits = null;
     liveRoute.clear();
     followedRoute = null;
     _lastLapDistanceM = 0;
@@ -962,6 +976,21 @@ class RecordingController extends ChangeNotifier {
   Future<void> resume() {
     _pausePending = false;
     return _gateway.resume();
+  }
+
+  /// Treadmill: marks the marker at [distanceM] as reached now. Native stamps
+  /// the moving time and journals it; this only shows what native answers.
+  Future<void> addMark(double distanceM) async {
+    final flat = await _gateway.addTreadmillMark(distanceM);
+    _snap = _snap.copyWith(treadmillMarks: marksFromFlat(flat));
+    notifyListeners();
+  }
+
+  /// Treadmill: UNDO the latest marker.
+  Future<void> undoMark() async {
+    final flat = await _gateway.undoTreadmillMark();
+    _snap = _snap.copyWith(treadmillMarks: marksFromFlat(flat));
+    notifyListeners();
   }
 
   /// TOTAL when the current pause began: native's (#91) from the last
@@ -1360,4 +1389,13 @@ class RecordingController extends ChangeNotifier {
     repStartPulse.dispose();
     super.dispose();
   }
+}
+
+/// Native's flat `[movingMs, metres, ...]` as marks; null/odd = none.
+List<engine.TreadmillMark> marksFromFlat(List<double>? flat) {
+  if (flat == null || flat.length < 2) return const [];
+  return [
+    for (var i = 0; i + 1 < flat.length; i += 2)
+      engine.TreadmillMark(flat[i].round(), flat[i + 1]),
+  ];
 }

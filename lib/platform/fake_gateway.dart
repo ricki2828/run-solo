@@ -352,6 +352,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _autoPaused = false;
     _finishRequests = 0;
     _activeMs = 0;
+    _marks.clear();
     _lapStartElapsedMs = 0;
     _lapStartActiveMs = 0;
     _lapStartDistanceM = 0;
@@ -553,6 +554,38 @@ class FakeRecorderGateway implements RecorderGateway {
     _totalDistanceM = distanceM;
   }
 
+  final List<(int, double)> _marks = [];
+
+  List<double> get _marksFlat => [
+    for (final m in _marks) ...[m.$1.toDouble(), m.$2],
+  ];
+
+  @override
+  Future<List<double>> addTreadmillMark(double distanceM) async {
+    if (_mode != RecordMode.treadmill || _state == RecorderState.idle) {
+      throw StateError('No treadmill run');
+    }
+    // As native: not while paused, past the last mark in distance and in time.
+    if (_state == RecorderState.recording &&
+        distanceM.isFinite &&
+        distanceM > 0 &&
+        distanceM <= 500000 &&
+        (_marks.isEmpty ||
+            (distanceM > _marks.last.$2 && _activeMs > _marks.last.$1))) {
+      _marks.add((_activeMs, distanceM));
+    }
+    return _marksFlat;
+  }
+
+  @override
+  Future<List<double>> undoTreadmillMark() async {
+    if (_mode != RecordMode.treadmill || _state == RecorderState.idle) {
+      throw StateError('No treadmill run');
+    }
+    if (_marks.isNotEmpty) _marks.removeLast();
+    return _marksFlat;
+  }
+
   @override
   Future<String?> stop() async {
     if (_state == RecorderState.idle) return null;
@@ -621,6 +654,9 @@ class FakeRecorderGateway implements RecorderGateway {
     questDoneId: _state == RecorderState.idle ? null : questDoneId,
     goalEased: _state == RecorderState.idle ? null : goalEased,
     goalTargetMs: _state == RecorderState.idle ? null : goalTargetMs,
+    treadmillMarks: _state == RecorderState.idle || _marks.isEmpty
+        ? null
+        : _marksFlat,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );

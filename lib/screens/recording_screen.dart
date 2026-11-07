@@ -35,6 +35,7 @@ import '../widgets/start_readout.dart';
 import '../widgets/target_band.dart';
 import '../widgets/quest_done_toast.dart';
 import '../widgets/trail_ghost.dart';
+import '../widgets/treadmill_marker_strip.dart';
 import '../widgets/zone_gauge.dart';
 import '../widgets/zone_ladder.dart';
 import 'live_map_view.dart';
@@ -447,24 +448,28 @@ class _RecordingScreenState extends State<RecordingScreen>
     if (_stopping || _askingDistance) return;
     if (_ctl!.snapshot.mode == RecordMode.treadmill) {
       _askingDistance = true;
-      var input = '';
+      // Prefilled with the last marker, still editable (the belt's own total
+      // may differ a little from the marker the runner tapped).
+      final marked = _ctl!.snapshot.treadmillMarks;
+      final miles =
+          (_ctl!.runUnits ?? _services!.settings.settings.units) == Units.mi;
+      var input = marked.isEmpty
+          ? ''
+          : (miles
+                ? (marked.last.distanceM / 1609.344).toStringAsFixed(2)
+                : (marked.last.distanceM / 1000).toStringAsFixed(2));
       String? error;
       final metres = await showDialog<double>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, update) => AlertDialog(
             title: const Text('Treadmill distance'),
-            content: TextField(
+            content: _PrefilledField(
               key: const ValueKey('treadmill-distance'),
+              initial: input,
               onChanged: (value) => input = value,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
               decoration: InputDecoration(
-                labelText: _services!.settings.settings.units == Units.mi
-                    ? 'Distance (mi)'
-                    : 'Distance (km)',
+                labelText: miles ? 'Distance (mi)' : 'Distance (km)',
                 errorText: error,
               ),
             ),
@@ -478,11 +483,7 @@ class _RecordingScreenState extends State<RecordingScreen>
                   final distance = double.tryParse(
                     input.trim().replaceAll(',', '.'),
                   );
-                  final m =
-                      (distance ?? 0) *
-                      (_services!.settings.settings.units == Units.mi
-                          ? 1609.344
-                          : 1000);
+                  final m = (distance ?? 0) * (miles ? 1609.344 : 1000);
                   if (!m.isFinite || m <= 0 || m > 500000) {
                     update(
                       () => error =
@@ -930,22 +931,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                 ),
               ),
             ] else if (s.mode == RecordMode.treadmill) ...[
-              const Spacer(),
-              Text('TIME', style: RunLabelScope.style(context, t.inkSecondary)),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  Fmt.clock(ctl.displayElapsedMs),
-                  key: const ValueKey('treadmill-time'),
-                  style: RunSoloType.display96.copyWith(color: t.inkPrimary),
+              Expanded(
+                child: _TreadmillBlock(
+                  s: s,
+                  ctl: ctl,
+                  units: ctl.runUnits ??= settings.units,
+                  secondary: t.inkSecondary,
+                  primary: t.inkPrimary,
                 ),
               ),
-              const SizedBox(height: Space.x16),
-              Text(
-                'Enter treadmill distance at finish',
-                style: RunSoloType.body15.copyWith(color: t.inkSecondary),
-              ),
-              const Spacer(),
             ] else ...[
               // The big gap to your best on a known trail; absent (no gap)
               // until one is matched.
@@ -4062,4 +4056,181 @@ class MuteTipsButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Treadmill run screen: the time, the two speeds the markers give and the
+/// marker strip. Speeds come from the marks alone (no GPS on a belt):
+/// CURRENT is the last stretch between marks, AVG the run so far at the last
+/// mark. Native owns the marks; this shows them and asks for the next.
+class _TreadmillBlock extends StatelessWidget {
+  const _TreadmillBlock({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    required this.secondary,
+    required this.primary,
+  });
+
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final Color secondary;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final marks = s.treadmillMarks;
+    final unit = units == Units.mi ? 'mph' : 'km/h';
+    String speed(double? mps) => mps == null
+        ? '--'
+        : (units == Units.mi
+                  ? engine.TreadmillSplits.mpsToMph(mps)
+                  : engine.TreadmillSplits.mpsToKmh(mps))
+              .toStringAsFixed(1);
+    String pace(double? mps) => mps == null
+        ? '--'
+        : Fmt.paceUnit(engine.TreadmillSplits.secPerKm(mps), units);
+    final current = engine.TreadmillSplits.currentMps(marks);
+    final average = engine.TreadmillSplits.averageMps(marks);
+    final label = RunLabelScope.style(context, secondary);
+    Widget figure(String name, String key, double? mps) => Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$name $unit', style: label),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              speed(mps),
+              key: ValueKey(key),
+              style: RunSoloType.display64.copyWith(color: primary),
+            ),
+          ),
+          Text(
+            pace(mps),
+            style: RunSoloType.runNote.copyWith(color: secondary),
+          ),
+        ],
+      ),
+    );
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(
+        width: 328,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('TIME', style: label),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                Fmt.clock(ctl.displayElapsedMs),
+                key: const ValueKey('treadmill-time'),
+                style: RunSoloType.display96.copyWith(color: primary),
+              ),
+            ),
+            const SizedBox(height: Space.x12),
+            // The speeds need a mark: until then the space is kept (nothing
+            // shifts when the first one lands) but empty, no "--".
+            Visibility(
+              key: const ValueKey('treadmill-speeds'),
+              visible: marks.isNotEmpty,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  figure('SPEED', 'treadmill-current-speed', current),
+                  figure('AVG', 'treadmill-avg-speed', average),
+                ],
+              ),
+            ),
+            const SizedBox(height: Space.x12),
+            // UNDO sits clear of the chips so a double-tap on one cannot hit
+            // it. Its space is kept before the first mark (no jump).
+            Visibility(
+              visible: marks.isNotEmpty,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: OutlinedButton(
+                key: const ValueKey('treadmill-undo'),
+                onPressed: marks.isEmpty ? null : ctl.undoMark,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(200, 52),
+                  foregroundColor: primary,
+                  side: BorderSide(color: secondary, width: 2),
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(
+                  'UNDO LAST MARK',
+                  style: label.copyWith(color: primary),
+                ),
+              ),
+            ),
+            const SizedBox(height: Space.x16),
+            TreadmillMarkerStrip(
+              marks: marks,
+              units: units,
+              onMark: ctl.addMark,
+              enabled: !s.paused,
+            ),
+            const SizedBox(height: Space.x8),
+            Text(
+              units == Units.mi ? 'mi' : 'km',
+              key: const ValueKey('treadmill-chip-unit'),
+              style: label,
+            ),
+            Text(
+              marks.isEmpty
+                  ? 'Double-tap a marker as you pass it'
+                  : 'Double-tap the next marker · swipe if you missed one',
+              key: const ValueKey('treadmill-hint'),
+              textAlign: TextAlign.center,
+              style: RunSoloType.runNote.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The finish dialog's distance box: owns its text controller so it is
+/// disposed with the dialog, and starts with [initial] (the last marker).
+class _PrefilledField extends StatefulWidget {
+  const _PrefilledField({
+    super.key,
+    required this.initial,
+    required this.onChanged,
+    required this.decoration,
+  });
+  final String initial;
+  final ValueChanged<String> onChanged;
+  final InputDecoration decoration;
+
+  @override
+  State<_PrefilledField> createState() => _PrefilledFieldState();
+}
+
+class _PrefilledFieldState extends State<_PrefilledField> {
+  late final TextEditingController _c = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _c,
+    onChanged: widget.onChanged,
+    autofocus: true,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: widget.decoration,
+  );
 }

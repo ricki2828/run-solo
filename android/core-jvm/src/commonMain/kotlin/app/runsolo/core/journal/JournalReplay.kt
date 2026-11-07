@@ -71,10 +71,15 @@ data class Replay(
     /** Every `pr` line, in journal order: mid-run prompts already answered, for the cap, spacing, effect and the run record. */
     val prompts: List<JournalLine.PromptResolved> = emptyList(),
     val treadmillDistanceM: Double? = null,
+    /** Treadmill markers still standing after the undo lines: (moving ms, metres), in order. */
+    val treadmillMarks: List<TreadmillMarkPoint> = emptyList(),
 ) {
     val isPaused: Boolean
         get() = events.lastOrNull { it.isPauseEdge }.let { it is RunEvent.Pause || it is RunEvent.AutoPause }
 }
+
+/** A treadmill marker: [activeMs] of moving time had passed when [distanceM] was marked. */
+data class TreadmillMarkPoint(val activeMs: Long, val distanceM: Double)
 
 object JournalReplay {
     open class NoHeader(message: String) : RuntimeException(message)
@@ -103,6 +108,7 @@ object JournalReplay {
         val lines = if (endsWithNewline) rawLines.dropLast(1) else rawLines
 
         var treadmillDistanceM: Double? = null
+        val marks = ArrayList<TreadmillMarkPoint>()
         var header: JournalLine.Header? = null
         val events = ArrayList<RunEvent>()
         var badLines = 0
@@ -151,6 +157,8 @@ object JournalReplay {
             val runT: Long
             if (line is JournalLine.Resume) treadmillDistanceM = null
             if (line is JournalLine.TreadmillDistance) { treadmillDistanceM = line.metres; continue }
+            if (line is JournalLine.TreadmillMark) { marks.add(TreadmillMarkPoint(line.activeMs, line.distanceM)); continue }
+            if (line is JournalLine.TreadmillMarkUndo) { if (marks.isNotEmpty()) marks.removeAt(marks.lastIndex); continue }
             if (line is JournalLine.Gap) {
                 // Run time continues through the dark span; the new device base is line.t.
                 val gapStart = lastRunT
@@ -181,7 +189,7 @@ object JournalReplay {
                         is JournalLine.HrLink -> RunEvent.HrLink(runT, line.connected)
                         is JournalLine.Header, is JournalLine.Gap,
                         is JournalLine.LiveContextLine, is JournalLine.CueFired,
-                        is JournalLine.TreadmillDistance, is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine, is JournalLine.PromptResolved -> throw IllegalStateException()
+                        is JournalLine.TreadmillDistance, is JournalLine.TreadmillMark, is JournalLine.TreadmillMarkUndo, is JournalLine.TipsMuted, is JournalLine.QuestDone, is JournalLine.RouteLine, is JournalLine.PromptResolved -> throw IllegalStateException()
                     },
                 )
             }
@@ -211,6 +219,7 @@ object JournalReplay {
             questDoneId = questDoneId,
             prompts = prompts,
             treadmillDistanceM = treadmillDistanceM,
+            treadmillMarks = marks,
         )
     }
 }

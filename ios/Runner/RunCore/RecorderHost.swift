@@ -250,6 +250,14 @@ final class RecorderHost {
     try queue.sync { try kotlin.setTreadmillDistance(metres: metres, t: clock.monoMs(), w: clock.wallMs()) }
   }
 
+  func addTreadmillMark(_ metres: Double) throws -> [Double] {
+    try queue.sync { try kotlin.addTreadmillMark(metres: metres, t: clock.monoMs(), w: clock.wallMs()).map { $0.doubleValue } }
+  }
+
+  func undoTreadmillMark() throws -> [Double] {
+    try queue.sync { try kotlin.undoTreadmillMark(t: clock.monoMs(), w: clock.wallMs()).map { $0.doubleValue } }
+  }
+
   func stop(t: Int64? = nil, w: Int64? = nil) throws -> String? {
     try queue.sync { try stopLocked(t: t ?? clock.monoMs(), w: w ?? clock.wallMs()) }
   }
@@ -291,7 +299,8 @@ final class RecorderHost {
         stepIndex: s["stepIndex"].flatMap { $0 is NSNull ? nil : Self.int($0) },
         stepRemainingMs: s["stepRemainingMs"].flatMap { $0 is NSNull ? nil : Self.int($0) },
         stepRemainingM: s["stepRemainingM"] as? Double, journalOk: s["journalOk"] as? Bool ?? true,
-        pausedAtElapsedMs: s["pausedAtElapsedMs"].flatMap { $0 is NSNull ? nil : Self.int($0) })
+        pausedAtElapsedMs: s["pausedAtElapsedMs"].flatMap { $0 is NSNull ? nil : Self.int($0) },
+        treadmillMarks: (s["treadmillMarks"] as? [Double]).flatMap { $0.isEmpty ? nil : $0 })
     }
   }
 

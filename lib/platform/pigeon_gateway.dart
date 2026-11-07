@@ -44,6 +44,13 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> setTreadmillDistance(double distanceM) =>
       _api.setTreadmillDistance(distanceM);
   @override
+  Future<List<double>> addTreadmillMark(double distanceM) =>
+      _api.addTreadmillMark(distanceM);
+
+  @override
+  Future<List<double>> undoTreadmillMark() => _api.undoTreadmillMark();
+
+  @override
   Future<String?> stop() => _api.stop();
 
   @override

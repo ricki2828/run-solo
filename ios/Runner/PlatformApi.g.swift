@@ -1581,6 +1581,9 @@ struct RecorderStatus: Hashable {
   /// run's journal, so a restored run still has what it raced. Null when
   /// the run has none or is not a goal run.
   var goalTargetMs: Int64? = nil
+  /// Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
+  /// recreated screen or a restored run shows them. Null/empty = none.
+  var treadmillMarks: [Double]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -1620,6 +1623,7 @@ struct RecorderStatus: Hashable {
     let questDoneId: String? = nilOrValue(pigeonVar_list[32])
     let goalEased: Bool? = nilOrValue(pigeonVar_list[33])
     let goalTargetMs: Int64? = nilOrValue(pigeonVar_list[34])
+    let treadmillMarks: [Double]? = nilOrValue(pigeonVar_list[35])
 
     return RecorderStatus(
       state: state,
@@ -1656,7 +1660,8 @@ struct RecorderStatus: Hashable {
       trail: trail,
       questDoneId: questDoneId,
       goalEased: goalEased,
-      goalTargetMs: goalTargetMs
+      goalTargetMs: goalTargetMs,
+      treadmillMarks: treadmillMarks
     )
   }
   func toList() -> [Any?] {
@@ -1696,13 +1701,14 @@ struct RecorderStatus: Hashable {
       questDoneId,
       goalEased,
       goalTargetMs,
+      treadmillMarks,
     ]
   }
   static func == (lhs: RecorderStatus, rhs: RecorderStatus) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId) && deepEqualsPlatformApi(lhs.goalEased, rhs.goalEased) && deepEqualsPlatformApi(lhs.goalTargetMs, rhs.goalTargetMs)
+    return deepEqualsPlatformApi(lhs.state, rhs.state) && deepEqualsPlatformApi(lhs.runId, rhs.runId) && deepEqualsPlatformApi(lhs.mode, rhs.mode) && deepEqualsPlatformApi(lhs.laps, rhs.laps) && deepEqualsPlatformApi(lhs.elapsedMs, rhs.elapsedMs) && deepEqualsPlatformApi(lhs.lapIndex, rhs.lapIndex) && deepEqualsPlatformApi(lhs.gpsFix, rhs.gpsFix) && deepEqualsPlatformApi(lhs.hrConnected, rhs.hrConnected) && deepEqualsPlatformApi(lhs.phase, rhs.phase) && deepEqualsPlatformApi(lhs.repIndex, rhs.repIndex) && deepEqualsPlatformApi(lhs.phaseRemainingMs, rhs.phaseRemainingMs) && deepEqualsPlatformApi(lhs.spec, rhs.spec) && deepEqualsPlatformApi(lhs.stepIndex, rhs.stepIndex) && deepEqualsPlatformApi(lhs.stepRemainingMs, rhs.stepRemainingMs) && deepEqualsPlatformApi(lhs.stepRemainingM, rhs.stepRemainingM) && deepEqualsPlatformApi(lhs.journalOk, rhs.journalOk) && deepEqualsPlatformApi(lhs.pausedAtElapsedMs, rhs.pausedAtElapsedMs) && deepEqualsPlatformApi(lhs.finishRequests, rhs.finishRequests) && deepEqualsPlatformApi(lhs.tipsMuted, rhs.tipsMuted) && deepEqualsPlatformApi(lhs.prompt, rhs.prompt) && deepEqualsPlatformApi(lhs.autoPaused, rhs.autoPaused) && deepEqualsPlatformApi(lhs.elevGainM, rhs.elevGainM) && deepEqualsPlatformApi(lhs.elevLossM, rhs.elevLossM) && deepEqualsPlatformApi(lhs.gradePct, rhs.gradePct) && deepEqualsPlatformApi(lhs.retracing, rhs.retracing) && deepEqualsPlatformApi(lhs.retraceSame, rhs.retraceSame) && deepEqualsPlatformApi(lhs.backToStartM, rhs.backToStartM) && deepEqualsPlatformApi(lhs.climbAheadM, rhs.climbAheadM) && deepEqualsPlatformApi(lhs.descentAheadM, rhs.descentAheadM) && deepEqualsPlatformApi(lhs.heightVsStartM, rhs.heightVsStartM) && deepEqualsPlatformApi(lhs.route, rhs.route) && deepEqualsPlatformApi(lhs.trail, rhs.trail) && deepEqualsPlatformApi(lhs.questDoneId, rhs.questDoneId) && deepEqualsPlatformApi(lhs.goalEased, rhs.goalEased) && deepEqualsPlatformApi(lhs.goalTargetMs, rhs.goalTargetMs) && deepEqualsPlatformApi(lhs.treadmillMarks, rhs.treadmillMarks)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -1742,6 +1748,7 @@ struct RecorderStatus: Hashable {
     deepHashPlatformApi(value: questDoneId, hasher: &hasher)
     deepHashPlatformApi(value: goalEased, hasher: &hasher)
     deepHashPlatformApi(value: goalTargetMs, hasher: &hasher)
+    deepHashPlatformApi(value: treadmillMarks, hasher: &hasher)
   }
 }
 
@@ -4109,6 +4116,13 @@ protocol RecorderApi {
   func startReps() throws
   /// Finalises in Kotlin (journal -> tmp -> fsync -> rename -> delete journal). No-op when idle.
   func setTreadmillDistance(distanceM: Double) throws
+  /// Treadmill: the runner double-tapped the marker at [distanceM]. Native
+  /// stamps the moving time, journals it and answers with every mark now
+  /// standing, as flat `[movingMs, metres, movingMs, metres, ...]`. A distance
+  /// not past the last mark is ignored (the standing marks come back).
+  func addTreadmillMark(distanceM: Double) throws -> [Double]
+  /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
+  func undoTreadmillMark() throws -> [Double]
   func stop() throws -> String?
   func status() throws -> RecorderStatus
   /// Called on app open: journals without a finalised file, newest first. Never
@@ -4371,6 +4385,39 @@ class RecorderApiSetup {
       }
     } else {
       setTreadmillDistanceChannel.setMessageHandler(nil)
+    }
+    /// Treadmill: the runner double-tapped the marker at [distanceM]. Native
+    /// stamps the moving time, journals it and answers with every mark now
+    /// standing, as flat `[movingMs, metres, movingMs, metres, ...]`. A distance
+    /// not past the last mark is ignored (the standing marks come back).
+    let addTreadmillMarkChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.addTreadmillMark\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      addTreadmillMarkChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let distanceMArg = args[0] as! Double
+        do {
+          let result = try api.addTreadmillMark(distanceM: distanceMArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      addTreadmillMarkChannel.setMessageHandler(nil)
+    }
+    /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
+    let undoTreadmillMarkChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.undoTreadmillMark\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      undoTreadmillMarkChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.undoTreadmillMark()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      undoTreadmillMarkChannel.setMessageHandler(nil)
     }
     let stopChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.stop\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

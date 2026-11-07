@@ -64,6 +64,8 @@ final class RecorderApiHost: RecorderApi {
   /// Mid-run coach prompts are Android only for now (the live coach is, too).
   func answerPrompt(promptId: Int64, optionIndex: Int64) throws {}
   func setTreadmillDistance(distanceM: Double) throws { try host.setTreadmillDistance(distanceM) }
+  func addTreadmillMark(distanceM: Double) throws -> [Double] { try host.addTreadmillMark(distanceM) }
+  func undoTreadmillMark() throws -> [Double] { try host.undoTreadmillMark() }
   func stop() throws -> String? { try host.stop() }
   func status() throws -> RecorderStatus { host.status() }
   func recover() throws -> [OrphanJournal] {

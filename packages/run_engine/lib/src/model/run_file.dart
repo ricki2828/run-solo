@@ -459,6 +459,7 @@ class RunFile {
     this.coach,
     this.watch,
     this.treadmillDistanceM,
+    this.treadmillMarks = const [],
     this.readSchema = schema,
   });
 
@@ -530,6 +531,10 @@ class RunFile {
 
   final double? treadmillDistanceM;
 
+  /// Treadmill distance markers, in order; empty on other runs and on files
+  /// written before markers (they load unchanged).
+  final List<TreadmillMark> treadmillMarks;
+
   double get distanceM =>
       treadmillDistanceM ?? (samples.isEmpty ? 0 : samples.last.distM);
 
@@ -581,6 +586,8 @@ class RunFile {
     'tz': tz,
     'mode': mode.name,
     if (treadmillDistanceM != null) 'treadmillDistanceM': treadmillDistanceM,
+    if (treadmillMarks.isNotEmpty)
+      'treadmillMarks': treadmillMarks.map((m) => m.toJson()).toList(),
     'session': session?.toJson(),
     'units': units.name,
     'laps': laps.map((l) => l.toJson()).toList(),
@@ -620,6 +627,7 @@ class RunFile {
     'coach',
     'watch',
     'treadmillDistanceM',
+    'treadmillMarks',
   };
 
   factory RunFile.fromJson(Map<String, Object?> json) {
@@ -707,6 +715,7 @@ class RunFile {
       coach: json['coach'] == null ? null : CoachLog.fromJson(json['coach']),
       watch: json['watch'] == null ? null : WatchInfo.fromJson(json['watch']),
       treadmillDistanceM: RunFileCodec._treadmillDistance(json, mode),
+      treadmillMarks: RunFileCodec._treadmillMarks(json, mode),
       readSchema: schemaValue,
     );
   }
@@ -806,6 +815,28 @@ class RunFileCodec {
       throw RunFileFormatException('invalid treadmill distance');
     }
     return v.toDouble();
+  }
+
+  static List<TreadmillMark> _treadmillMarks(
+    Map<String, Object?> json,
+    RunMode mode,
+  ) {
+    final v = json['treadmillMarks'];
+    if (v == null) return const [];
+    if (mode != RunMode.treadmill || v is! List) {
+      throw RunFileFormatException('invalid treadmill marks');
+    }
+    final out = <TreadmillMark>[];
+    for (final row in v) {
+      final m = TreadmillMark.fromJson(row);
+      if (out.isNotEmpty &&
+          (m.distanceM <= out.last.distanceM ||
+              m.activeMs < out.last.activeMs)) {
+        throw RunFileFormatException('treadmill marks out of order');
+      }
+      out.add(m);
+    }
+    return List.unmodifiable(out);
   }
 
   static String encode(RunFile run) => jsonEncode(run.toJson());
@@ -1185,4 +1216,28 @@ class CoachPromptLog {
     answeredMs,
     Object.hashAll(options),
   );
+}
+
+/// One treadmill distance marker: [distanceM] was reached after [activeMs] of
+/// moving time. File form `[activeMs, distanceM]`.
+class TreadmillMark {
+  const TreadmillMark(this.activeMs, this.distanceM);
+  final int activeMs;
+  final double distanceM;
+
+  List<Object> toJson() => [activeMs, distanceM];
+
+  factory TreadmillMark.fromJson(Object? raw) {
+    if (raw is! List ||
+        raw.length != 2 ||
+        raw[0] is! int ||
+        raw[1] is! num ||
+        (raw[0] as int) < 0 ||
+        !(raw[1] as num).isFinite ||
+        (raw[1] as num) <= 0 ||
+        (raw[1] as num) > 500000) {
+      throw RunFileFormatException('invalid treadmill mark');
+    }
+    return TreadmillMark(raw[0] as int, (raw[1] as num).toDouble());
+  }
 }

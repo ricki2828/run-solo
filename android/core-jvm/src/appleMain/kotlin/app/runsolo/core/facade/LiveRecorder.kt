@@ -10,12 +10,14 @@ import app.runsolo.core.live.LiveCoach
 import app.runsolo.core.model.HrReading
 import app.runsolo.core.model.LapSource
 import app.runsolo.core.model.LocationFix
+import app.runsolo.core.model.RecorderState
 import app.runsolo.core.model.RunMode
 import app.runsolo.core.model.SessionSpec
 import app.runsolo.core.model.Units
 import app.runsolo.core.record.CueWords
 import app.runsolo.core.record.RecorderCore
 import app.runsolo.core.record.SampleTicker
+import app.runsolo.core.record.TreadmillMarks
 import app.runsolo.core.replay.ReplayScenarios
 import app.runsolo.core.run.Finaliser
 import app.runsolo.core.run.RunFile
@@ -93,6 +95,7 @@ class LiveRecorder(rootDir: String) {
         jw.open()
         jw.append(JournalLine.Header(t, w, id, device, app, tz, mode, spec, units))
         core = c
+        treadmillMarks = TreadmillMarks()
         this.spec = spec
         coach = LiveCoach(null, mode, spec).also { it.kmSplits = kmSplits }
         coachPrevT = t
@@ -220,8 +223,40 @@ class LiveRecorder(rootDir: String) {
                 "phaseRemainingMs" to s.phaseRemainingMs, "stepIndex" to s.stepIndex, "stepRemainingMs" to s.stepRemainingMs,
                 "stepRemainingM" to s.stepRemainingM, "pausedAtElapsedMs" to c.pausedAtElapsedMs, "distanceM" to c.distanceM,
                 "gpsOk" to (ticker?.gpsLost(t) == false), "journalOk" to (writer?.ok ?: true), "writeError" to lastWriteError,
+                "treadmillMarks" to treadmillMarks.flat(),
             ),
         )
+    }
+
+    private var treadmillMarks = TreadmillMarks()
+
+    /** Treadmill: [metres] reached now. Refused while paused, not past the last mark, or at its time. Answers the marks standing, flat `[ms, m, ...]`. */
+    @Throws(Exception::class)
+    fun addTreadmillMark(metres: Double, t: Long, w: Long): List<Double> {
+        val c = checkNotNull(core) { "no active run" }
+        require(c.mode == RunMode.treadmill)
+        val active = c.status(t).activeMs
+        if (treadmillMarks.accepts(metres, active, paused = c.state == RecorderState.paused)) {
+            writer?.append(JournalLine.TreadmillMark(t, w, metres, active))
+            writer?.sync()
+            check(writer?.ok == true) { "Marker could not be saved" }
+            treadmillMarks.add(metres, active)
+        }
+        return treadmillMarks.flat()
+    }
+
+    /** Treadmill: takes the latest mark back; answers the marks left. */
+    @Throws(Exception::class)
+    fun undoTreadmillMark(t: Long, w: Long): List<Double> {
+        val c = checkNotNull(core) { "no active run" }
+        require(c.mode == RunMode.treadmill)
+        if (treadmillMarks.points.isNotEmpty()) {
+            writer?.append(JournalLine.TreadmillMarkUndo(t, w))
+            writer?.sync()
+            check(writer?.ok == true) { "Undo could not be saved" }
+            treadmillMarks.undo()
+        }
+        return treadmillMarks.flat()
     }
 
     /** Ends the run and finalises it; returns the run file path relative to the root. */
@@ -251,6 +286,7 @@ class LiveRecorder(rootDir: String) {
     }
 
     private fun clear() {
+        treadmillMarks = TreadmillMarks()
         core = null
         ticker = null
         writer = null

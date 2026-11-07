@@ -61,6 +61,17 @@ sealed class JournalLine {
         init { require(metres.isFinite() && metres > 0 && metres <= 500_000) }
     }
 
+    /**
+     * Treadmill: the runner double-tapped a distance marker. [activeMs] is the moving time (pauses
+     * excluded) when it was marked. Distances only grow; an undo line drops the latest mark.
+     */
+    data class TreadmillMark(override val t: Long, override val w: Long, val distanceM: Double, val activeMs: Long) : JournalLine() {
+        init { require(distanceM.isFinite() && distanceM > 0 && distanceM <= 500_000 && activeMs >= 0) }
+    }
+
+    /** Treadmill: UNDO took the latest [TreadmillMark] back. */
+    data class TreadmillMarkUndo(override val t: Long, override val w: Long) : JournalLine()
+
     data class Lap(override val t: Long, override val w: Long, val source: LapSource) : JournalLine()
 
     data class Pause(override val t: Long, override val w: Long) : JournalLine()
