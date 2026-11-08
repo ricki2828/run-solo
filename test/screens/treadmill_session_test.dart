@@ -299,4 +299,72 @@ void main() {
       expect(find.byKey(const ValueKey('rep-done')), findsNothing);
     });
   });
+
+  group('live projection on a belt', () {
+    Future<(FakeRecorderGateway, AppServices)> inTest(
+      WidgetTester tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(
+        RecordMode.cooper,
+        engine.SessionSpec.cooper.toPigeon(),
+        Units.km,
+        treadmillInclinePct: 1,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(minutes: 4));
+      await pumpTimes(tester, 3);
+      // Warm-up: no strip, a reminder to reset the treadmill.
+      expect(find.byKey(const ValueKey('treadmill-test-reset')), findsOne);
+      expect(find.byKey(const ValueKey('treadmill-strip')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('start-test')));
+      await pumpTimes(tester, 4);
+      return (fake, services);
+    }
+
+    testWidgets('nothing before the first mark, then the outdoor '
+        'projection on every mark and UNDO', (tester) async {
+      final (fake, services) = await inTest(tester);
+      expect(find.byKey(const ValueKey('treadmill-strip')), findsOneWidget);
+      fake.advance(const Duration(minutes: 3));
+      await pumpTimes(tester, 3);
+      expect(find.byKey(const ValueKey('belt-cooper-estimate')), findsNothing);
+      await fake.addTreadmillMark(750);
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 3);
+      final e1 = services.recording.snapshot.beltCooperEstimate;
+      expect(e1, isNotNull);
+      expect(
+        e1!.distanceM,
+        closeTo(
+          engine.CooperProjection.project(
+            engine.CooperCurve.defaultCurve,
+            elapsedSeconds: 180,
+            distanceM: 750,
+          )!.distanceM,
+          1,
+        ),
+      );
+      expect(find.byKey(const ValueKey('belt-cooper-distance')), findsOne);
+      expect(find.byKey(const ValueKey('belt-cooper-vo2')), findsOne);
+      fake.advance(const Duration(minutes: 2));
+      await fake.addTreadmillMark(1250);
+      await services.recording.refreshStatus();
+      final e2 = services.recording.snapshot.beltCooperEstimate!;
+      expect(e2.distanceM, isNot(closeTo(e1.distanceM, 1)));
+      // UNDO goes back to the first mark's projection.
+      await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+      await pumpTimes(tester, 4);
+      expect(
+        services.recording.snapshot.beltCooperEstimate!.distanceM,
+        closeTo(e1.distanceM, 1),
+      );
+      await fake.discard();
+    });
+  });
 }

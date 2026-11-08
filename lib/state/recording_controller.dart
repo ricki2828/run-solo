@@ -110,6 +110,7 @@ class RecordingSnapshot {
     this.treadmillMarks = const [],
     this.treadmillInclinePct,
     this.beltReps = const [],
+    this.warmupActiveMs,
   });
 
   final RecorderState state;
@@ -241,6 +242,29 @@ class RecordingSnapshot {
   /// no map or GPS status and the marker strip.
   bool get indoor =>
       mode == RecordMode.treadmill || treadmillInclinePct != null;
+
+  /// A 12-minute test on a treadmill: the active time the warm-up lasted (the
+  /// first lap, ended by BEGIN TEST), so a marker's moving time maps to time in
+  /// the test. Null before BEGIN TEST and outside such a test.
+  final int? warmupActiveMs;
+
+  /// The live Cooper projection on a belt, from the markers as outdoor GPS
+  /// distance does it: the last marker's distance at its time into the test,
+  /// through the same fade curve ([engine.CooperProjection.project], nothing
+  /// before the first minute). Null before the first marker, in the warm-up
+  /// and outside a belt test. Markers count from BEGIN TEST (the runner resets
+  /// the treadmill's distance there), so an UNDO moves it back with the marks.
+  engine.CooperEstimate? get beltCooperEstimate {
+    final w = warmupActiveMs;
+    if (!isCooper || !indoor || phase != Phase.work || w == null) return null;
+    if (treadmillMarks.isEmpty) return null;
+    final m = treadmillMarks.last;
+    return engine.CooperProjection.project(
+      engine.CooperCurve.defaultCurve,
+      elapsedSeconds: (m.activeMs - w) / 1000,
+      distanceM: m.distanceM,
+    );
+  }
 
   /// Treadmill distance reps done so far: each rep's prescribed distance and
   /// the time the REP DONE tap gave (the app cannot measure it). Oldest first.
@@ -401,6 +425,7 @@ class RecordingSnapshot {
     List<engine.TreadmillMark>? treadmillMarks,
     double? treadmillInclinePct,
     List<({double distanceM, int ms})>? beltReps,
+    int? warmupActiveMs,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -449,6 +474,7 @@ class RecordingSnapshot {
     treadmillMarks: treadmillMarks ?? this.treadmillMarks,
     treadmillInclinePct: treadmillInclinePct ?? this.treadmillInclinePct,
     beltReps: beltReps ?? this.beltReps,
+    warmupActiveMs: warmupActiveMs ?? this.warmupActiveMs,
   );
 }
 
@@ -791,6 +817,12 @@ class RecordingController extends ChangeNotifier {
       beltReps: s.treadmillInclinePct != null && s.mode == RecordMode.intervals
           ? beltRepsFromLaps(s.laps, s.spec)
           : const [],
+      warmupActiveMs:
+          s.treadmillInclinePct != null &&
+              s.mode == RecordMode.cooper &&
+              s.laps.isNotEmpty
+          ? s.laps.first.activeMs
+          : null,
       autoPaused: s.autoPaused ?? false,
       elevGainM: s.elevGainM,
       elevLossM: s.elevLossM,
