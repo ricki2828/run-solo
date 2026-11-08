@@ -466,7 +466,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
       const SizedBox(height: Space.x8),
       if (widget.beltChoice case final belt?) ...[
         SurfaceChoiceRow(
-          compact: widget.structure != null,
+          compact: widget.structure != null || widget.asksCoachChoice,
           onTreadmill: belt.value,
           incline: s.treadmillIncline,
           onGround: (ink: _ink, onInk: _chipInk),
@@ -483,11 +483,18 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
           onGround: (ink: _ink, onInk: _chipInk),
           onSelect: _pickChoice,
         ),
-        const SizedBox(height: Space.x12),
+        SizedBox(
+          height: (widget.asksCoachChoice && widget.beltChoice != null)
+              ? Space.x4
+              : Space.x12,
+        ),
       ],
       // At large text on a small phone the chips give way so START stays on
       // the first screen; the same settings sit one tap away in Settings.
-      if (big && compact)
+      // A goal with the surface row and the coach choice: the three setting
+      // chips give way too (Settings has them) so the run's name keeps its room.
+      if ((big && compact) ||
+          (widget.asksCoachChoice && widget.beltChoice != null))
         const SizedBox.shrink()
       else if (compact)
         Row(
@@ -500,7 +507,11 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
         )
       else
         Wrap(spacing: Space.x8, runSpacing: Space.x8, children: onChips),
-      const SizedBox(height: Space.x12),
+      SizedBox(
+        height: (widget.asksCoachChoice && widget.beltChoice != null)
+            ? Space.x4
+            : Space.x12,
+      ),
       ValueListenableBuilder<GpsProbeEvent?>(
         valueListenable: widget.probe,
         builder: (context, probe, _) {
