@@ -129,13 +129,16 @@ void main() {
       await pumpTimes(tester, 3);
       await tester.tap(find.byKey(const ValueKey('start-test')));
       await pumpTimes(tester, 4);
-      fake.advance(const Duration(minutes: 3));
-      await fake.addTreadmillMark(500);
-      await services.recording.refreshStatus();
       fake.advance(const Duration(minutes: 2));
+      await fake.addTreadmillMark(500);
+      fake.advance(const Duration(minutes: 2));
+      await fake.addTreadmillMark(1000);
+      await services.recording.refreshStatus();
+      fake.advance(const Duration(seconds: 30));
       await pumpTimes(tester, 6);
       await tester.pump(const Duration(seconds: 1));
       await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('belt-cooper-estimate')), findsOne);
       await golden(tester, 'record_treadmill_cooper_360x$h');
     });
 

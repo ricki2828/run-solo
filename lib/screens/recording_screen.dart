@@ -4290,6 +4290,20 @@ class _TreadmillPanel extends StatelessWidget {
         ],
       ),
     );
+    // The test's warm-up: markers count from BEGIN TEST, so the strip waits.
+    if (s.isCooper && s.phase != Phase.work) {
+      return Center(
+        child: Text(
+          s.phase == Phase.warmup
+              ? 'Reset the treadmill distance, then tap BEGIN TEST'
+              : 'Test over',
+          key: const ValueKey('treadmill-test-reset'),
+          textAlign: TextAlign.center,
+          style: RunSoloType.runNote.copyWith(color: secondary),
+        ),
+      );
+    }
+    final estimate = s.beltCooperEstimate;
     return Center(
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -4299,7 +4313,15 @@ class _TreadmillPanel extends StatelessWidget {
             key: const ValueKey('treadmill-panel'),
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (marks.isNotEmpty) ...[
+              if (estimate != null) ...[
+                _BeltCooperEstimate(
+                  estimate: estimate,
+                  secondary: secondary,
+                  primary: primary,
+                ),
+                const SizedBox(height: Space.x8),
+              ],
+              if (marks.isNotEmpty && estimate == null) ...[
                 Row(
                   key: const ValueKey('treadmill-speeds'),
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -4350,6 +4372,43 @@ class _TreadmillPanel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The live 12-minute projection on a belt: where the markers say the test is
+/// heading (the outdoor voice line's figures, on screen) and the VO2 estimate
+/// with its likely range. Always an estimate, never without its range.
+class _BeltCooperEstimate extends StatelessWidget {
+  const _BeltCooperEstimate({
+    required this.estimate,
+    required this.secondary,
+    required this.primary,
+  });
+  final engine.CooperEstimate estimate;
+  final Color secondary;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = RunLabelScope.style(context, secondary);
+    return Column(
+      key: const ValueKey('belt-cooper-estimate'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('HEADING FOR ABOUT', style: label),
+        Text(
+          metresText((estimate.distanceM / 10).round() * 10.0),
+          key: const ValueKey('belt-cooper-distance'),
+          style: RunSoloType.display44.copyWith(color: primary),
+        ),
+        Text(
+          '${engine.CooperEstimate.rangeLabel.toUpperCase()} '
+          '${estimate.rangeText}',
+          key: const ValueKey('belt-cooper-vo2'),
+          style: label,
+        ),
+      ],
     );
   }
 }
