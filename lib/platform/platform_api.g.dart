@@ -4602,8 +4602,7 @@ class RecorderApi {
   /// a minute): the session is inside the step the tap ended, its clock
   /// unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
   Future<void> undoRepDone() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.run_solo.RecorderApi.undoRepDone$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.undoRepDone$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -4613,10 +4612,11 @@ class RecorderApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: true,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
   }
 
   Future<String?> stop() async {
