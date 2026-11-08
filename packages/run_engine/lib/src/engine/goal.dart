@@ -100,6 +100,28 @@ class GoalResult {
 
     bool gapBefore(int t) => run.gaps.any((g) => g.t0Ms < t);
 
+    // A distance goal on a treadmill: no distance stream. The goal is reached
+    // when the runner's GOAL DONE tap ended its step, a lap before the
+    // cool-down's own (an untouched run has the one lap to Stop).
+    if (run.onTreadmill && step.target == TargetKind.distance) {
+      final laps = [
+        for (final l in run.laps)
+          if (l.kind != LapKind.pause) l,
+      ];
+      final at = laps.length >= 2 ? laps.first.t1Ms : null;
+      return GoalResult(
+        interrupted: gapBefore(at ?? run.elapsedMs),
+        kind: GoalKind.distance,
+        target: step.value,
+        name: spec.name,
+        reached: at != null,
+        goalMs: at == null ? null : at - pausedBefore(at),
+        atRunMs: at,
+        stoppedAtM: at != null
+            ? step.value.toDouble()
+            : (run.treadmillDistanceM ?? 0),
+      );
+    }
     if (step.target == TargetKind.distance) {
       final at = _timeAtDistance(run.samples, d0 + step.value);
       return GoalResult(

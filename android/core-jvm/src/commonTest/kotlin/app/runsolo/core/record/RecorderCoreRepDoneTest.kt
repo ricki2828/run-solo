@@ -172,4 +172,29 @@ class RecorderCoreRepDoneTest {
         val outdoor = CueWords.text(CueKind.start, null, threeReps, Phase.work, 1, 0)
         assertTrue(!outdoor!!.contains("tap"), outdoor)
     }
+
+    @Test
+    fun `a treadmill goal ends on a tap and says so at the start`() {
+        val goal = SessionSpec.goalDistance(5_000, "5K")
+        val core = RecorderCore(RunMode.intervals, goal, RecorderCore.Config(volumeKeyLaps = false, treadmill = true))
+        core.start(t0)
+        assertEquals(Phase.work, core.phase)
+        // Outdoors a lap in a goal's step marks a lap and no more.
+        val outdoor = RecorderCore(RunMode.intervals, goal)
+        outdoor.start(t0)
+        outdoor.lap(LapSource.button, t0 + 30_000)
+        assertEquals(Phase.work, outdoor.phase)
+        for (i in 1..600) core.tick(t0 + i * 1_000L, 0.0)
+        assertEquals(Phase.work, core.phase, "no GPS, so the goal does not end on its own")
+        val (decision, _) = core.lap(LapSource.button, t0 + 601_000)
+        assertEquals(RecorderCore.LapDecision.accepted, decision)
+        assertEquals(Phase.cooldown, core.phase)
+        assertNotNull(core.finalStepEnd)
+        assertNotNull(core.undoLap(t0 + 603_000))
+        assertEquals(Phase.work, core.phase)
+        assertNull(core.finalStepEnd, "the undo takes the goal's end back too")
+        val said = CueWords.text(CueKind.start, null, goal, Phase.work, 1, 0, treadmill = true)!!
+        assertTrue(said.contains("Tap when the treadmill shows it"), said)
+        assertTrue(!CueWords.text(CueKind.start, null, goal, Phase.work, 1, 0)!!.contains("Tap"))
+    }
 }

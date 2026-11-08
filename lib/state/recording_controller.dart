@@ -309,6 +309,12 @@ class RecordingSnapshot {
   double? get metresToGo {
     final st = currentStep;
     if (st == null || st.target != TargetKind.distance) return null;
+    // A goal on a treadmill: no GPS, so the distance run is what the last
+    // marker said (the runner resets the treadmill at Start).
+    if (indoor && isGoal) {
+      final done = treadmillMarks.isEmpty ? 0.0 : treadmillMarks.last.distanceM;
+      return (st.value - done).clamp(0, st.value.toDouble());
+    }
     final native = stepRemainingM;
     if (native == null) return st.value.toDouble();
     return native.clamp(0, st.value.toDouble());

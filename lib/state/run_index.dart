@@ -127,9 +127,12 @@ class RunIndexEntry {
       efforts: derived?.bestEfforts.efforts ?? const {},
       // §G time boards (30 min, 1 hour, custom time goals) read these.
       distances: derived?.bestEfforts.distances ?? const {},
-      goal: row?.goal,
+      // A goal run on a treadmill stays off the outdoor goal boards (7-Nov).
+      goal: row?.treadmillInclinePct == null ? row?.goal : null,
       goalBoardKey:
-          row?.session?.isGoal == true && row!.session!.workSteps.length == 1
+          row?.treadmillInclinePct == null &&
+              row?.session?.isGoal == true &&
+              row!.session!.workSteps.length == 1
           ? engine.GoalCatalogue.boardKeyOf(row!.session!)
           : null,
       headlineSecPerKm: headlineSecPerKm,

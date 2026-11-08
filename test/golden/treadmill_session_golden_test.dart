@@ -230,4 +230,59 @@ void main() {
       await golden(tester, 'record_treadmill_repundo_360x$h');
     });
   }
+
+  for (final h in [800, 640]) {
+    Future<(FakeRecorderGateway, AppServices)> goalRun(
+      WidgetTester tester,
+      double h,
+    ) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(5000, '5K').toPigeon(),
+        Units.km,
+        treadmillInclinePct: 1,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      tester.view.physicalSize = Size(1080, h * 3.0);
+      await pumpTimes(tester, 4);
+      return (fake, services);
+    }
+
+    testWidgets('a 5K goal on a treadmill after two marks at 360 x $h', (
+      tester,
+    ) async {
+      final (fake, services) = await goalRun(tester, h.toDouble());
+      fake.advance(const Duration(seconds: 150));
+      await fake.addTreadmillMark(500);
+      fake.advance(const Duration(seconds: 140));
+      await fake.addTreadmillMark(1000);
+      await services.recording.refreshStatus();
+      fake.advance(const Duration(seconds: 45));
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(seconds: 1));
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('goal-done-target')), findsOne);
+      await golden(tester, 'record_treadmill_goal_360x$h');
+    });
+
+    testWidgets('a 5K goal on a treadmill, GOAL DONE tapped at 360 x $h', (
+      tester,
+    ) async {
+      final (fake, services) = await goalRun(tester, h.toDouble());
+      fake.advance(const Duration(minutes: 24, seconds: 41));
+      await services.recording.repDone();
+      fake.advance(const Duration(seconds: 4));
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 6);
+      await tester.pump(const Duration(seconds: 1));
+      await settleAnimations(tester);
+      expect(find.byKey(const ValueKey('undo-rep-done')), findsOne);
+      await golden(tester, 'record_treadmill_goal_done_360x$h');
+    });
+  }
 }

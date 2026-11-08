@@ -82,6 +82,11 @@ class RecorderCore(
         val unstructuredDebounceMs: Long = 1_500,
         /** The Cooper fade curve (Phase 4 §3.3): the LiveContext's personal curve, else the default. */
         val cooperCurve: CooperCurve = CooperCurve.DEFAULT,
+        /**
+         * The session runs on a treadmill: no distance stream, so a distance goal ends on the runner's tap (GOAL DONE,
+         * a manual lap) where outdoors a lap in a goal's step marks a lap and no more (§G).
+         */
+        val treadmill: Boolean = false,
     )
 
     sealed class Output {
@@ -413,7 +418,7 @@ class RecorderCore(
         lastManualLapT = t
         val out = ArrayList<Output>()
         // A goal's step ends on its distance or time only (§G): a LAP in it marks a lap, no more.
-        val goalStep = spec?.isGoal == true && phase == Phase.work
+        val goalStep = spec?.isGoal == true && phase == Phase.work && !config.treadmill
         val realigns = structured && source != LapSource.volumeKey && !goalStep
         noteLapStep(lapCount, realigns)
         out.add(Output.Lap(lapCount++, t, source))

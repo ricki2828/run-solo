@@ -6,6 +6,7 @@ import 'package:run_solo/app/services.dart';
 import 'package:run_solo/platform/fake_gateway.dart';
 import 'package:run_solo/platform/gateway.dart';
 import 'package:run_solo/platform/session_codec.dart';
+import 'package:run_solo/screens/recording_screen.dart' show eventFinishText;
 import 'package:run_solo/screens/start_screen.dart';
 import 'package:run_solo/state/settings.dart';
 import 'package:run_solo/widgets/gps_bar.dart';
@@ -364,6 +365,177 @@ void main() {
         services.recording.snapshot.beltCooperEstimate!.distanceM,
         closeTo(e1.distanceM, 1),
       );
+      await fake.discard();
+    });
+  });
+
+  group('goal runs on a belt', () {
+    Future<FakeRecorderGateway> goalReady(
+      WidgetTester tester, {
+      String goalId = 'd5000',
+    }) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: AppSettings(
+          onboardingDone: true,
+          lastMode: RecordMode.intervals,
+          goalRun: true,
+          goalId: goalId,
+          countdownSeconds: 0,
+        ),
+      );
+      await pumpApp(
+        tester,
+        services,
+        pushRoute: Routes.start,
+        pushArguments: const StartArgs(readyFirst: true),
+      );
+      await pumpTimes(tester, 5);
+      await settleAnimations(tester);
+      return fake;
+    }
+
+    testWidgets('a distance goal offers the belt and starts with no GPS', (
+      tester,
+    ) async {
+      final fake = await goalReady(tester);
+      await tester.tap(find.byKey(SurfaceChoiceRow.treadmillKey));
+      await pumpTimes(tester, 3);
+      // A goal outdoors waits for a good fix; on a belt START is open.
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const ValueKey('ready-start')))
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byKey(const ValueKey('ready-start')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await pumpTimes(tester, 8);
+      final call = fake.startCalls.single;
+      expect(call.mode, RecordMode.intervals);
+      expect(call.spec!.templateId, engine.SessionSpec.goalId);
+      expect(call.treadmillInclinePct, 1.0);
+      expect(call.liveContext, isNull);
+      await fake.discard();
+    });
+
+    testWidgets('a time goal and the event stay outdoors', (tester) async {
+      await goalReady(tester, goalId: 't1800');
+      expect(find.byKey(SurfaceChoiceRow.treadmillKey), findsNothing);
+      await goalReady(tester, goalId: 'parkrun');
+      expect(find.byKey(SurfaceChoiceRow.treadmillKey), findsNothing);
+    });
+
+    testWidgets('the finish estimate follows the markers, UNDO included', (
+      tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(5000, '5K').toPigeon(),
+        Units.km,
+        treadmillInclinePct: 1,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      // No marker yet: nothing projected, the whole goal to go.
+      fake.advance(const Duration(seconds: 60));
+      await pumpTimes(tester, 3);
+      expect(find.text('--'), findsWidgets);
+      expect(services.recording.snapshot.metresToGo, 5000);
+      // 500 m at 2:30: 25:00 for 5K, 4.50 km to go.
+      fake.advance(const Duration(seconds: 90));
+      await fake.addTreadmillMark(500);
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 3);
+      expect(services.recording.snapshot.metresToGo, 4500);
+      expect(
+        eventFinishText(
+          services.recording.snapshot,
+          services.recording,
+          Units.km,
+        ),
+        '25:00',
+      );
+      // 1 km at 4:50: 24:10.
+      fake.advance(const Duration(seconds: 140));
+      await fake.addTreadmillMark(1000);
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 3);
+      expect(
+        eventFinishText(
+          services.recording.snapshot,
+          services.recording,
+          Units.km,
+        ),
+        '24:10',
+      );
+      // Between markers it does not move.
+      fake.advance(const Duration(seconds: 30));
+      await pumpTimes(tester, 3);
+      expect(
+        eventFinishText(
+          services.recording.snapshot,
+          services.recording,
+          Units.km,
+        ),
+        '24:10',
+      );
+      // UNDO goes back to the first marker's estimate.
+      await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
+      await pumpTimes(tester, 4);
+      expect(
+        eventFinishText(
+          services.recording.snapshot,
+          services.recording,
+          Units.km,
+        ),
+        '25:00',
+      );
+      expect(find.byKey(const ValueKey('event-to-go')), findsOneWidget);
+      await fake.discard();
+    });
+
+    testWidgets('GOAL DONE ends the goal and UNDO takes it back', (
+      tester,
+    ) async {
+      final fake = FakeRecorderGateway(now: now);
+      final services = fakeServices(
+        recorder: fake,
+        settings: const AppSettings(onboardingDone: true),
+      );
+      await services.recording.start(
+        RecordMode.intervals,
+        engine.SessionSpec.goalDistance(5000, '5K').toPigeon(),
+        Units.km,
+        treadmillInclinePct: 1,
+      );
+      await pumpApp(tester, services, pushRoute: Routes.recording);
+      await pumpTimes(tester, 4);
+      fake.advance(const Duration(minutes: 25));
+      await pumpTimes(tester, 3);
+      final target = find.byKey(const ValueKey('goal-done-target'));
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(72));
+      await tester.tap(target);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(services.recording.snapshot.phase, Phase.work, reason: 'one tap');
+      await tester.tap(target);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(target);
+      await pumpTimes(tester, 4);
+      await services.recording.refreshStatus();
+      await pumpTimes(tester, 3);
+      expect(services.recording.snapshot.phase, Phase.cooldown);
+      expect(find.byKey(const ValueKey('goal-done')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('undo-rep-done')));
+      await pumpTimes(tester, 4);
+      expect(services.recording.snapshot.phase, Phase.work);
+      await tester.pump(const Duration(seconds: 1));
       await fake.discard();
     });
   });

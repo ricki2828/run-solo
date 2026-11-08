@@ -243,4 +243,56 @@ void main() {
       expect(kmSplitWindows(run), isEmpty);
     });
   });
+
+  group('distance goal on a belt', () {
+    RunFile goalRun({required List<Lap> laps, double? distance}) => belt(
+      mode: RunMode.intervals,
+      distance: distance,
+      endS: 1700,
+    ).copyWith(session: SessionSpec.goalDistance(5000, '5K'), laps: laps);
+
+    const l0 = Lap(
+      index: 0,
+      t0Ms: 0,
+      t1Ms: 1500000,
+      d0M: 0,
+      d1M: 0,
+      kind: LapKind.manual,
+    );
+    const l1 = Lap(
+      index: 1,
+      t0Ms: 1500000,
+      t1Ms: 1700000,
+      d0M: 0,
+      d1M: 0,
+      kind: LapKind.manual,
+    );
+
+    test('a GOAL DONE tap is the goal reached, its time the tap', () {
+      final g = GoalResult.of(
+        goalRun(laps: const [l0, l1]),
+        SessionSpec.goalDistance(5000, '5K'),
+      )!;
+      expect(g.reached, isTrue);
+      expect(g.goalMs, 1500000);
+      expect(g.resultLine, '5K in 25:00');
+      expect(g.stoppedAtM, 5000);
+    });
+
+    test('a pause before the tap is not goal time', () {
+      final run = goalRun(laps: const [l0, l1]);
+      final paused = run.copyWith(pauses: const [Span(600000, 660000)]);
+      final g = GoalResult.of(paused, SessionSpec.goalDistance(5000, '5K'))!;
+      expect(g.goalMs, 1500000 - 60000);
+    });
+
+    test('stopped before the tap: not reached, the typed distance shows', () {
+      final g = GoalResult.of(
+        goalRun(laps: const [l0], distance: 3200),
+        SessionSpec.goalDistance(5000, '5K'),
+      )!;
+      expect(g.reached, isFalse);
+      expect(g.stoppedAtM, 3200);
+    });
+  });
 }

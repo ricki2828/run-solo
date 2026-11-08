@@ -228,7 +228,7 @@ class RecordingSession(
 
     /** The Cooper fade curve: the engine's personal curve from the LiveContext, else the default (§3.3). */
     private val coreConfig: RecorderCore.Config
-        get() = RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled, cooperCurve = CooperCurve.fromFractions(liveContext?.cooperCurve) ?: CooperCurve.DEFAULT)
+        get() = RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled, cooperCurve = CooperCurve.fromFractions(liveContext?.cooperCurve) ?: CooperCurve.DEFAULT, treadmill = indoor)
 
     /** Live "you vs you" (LV1); rebuilt from the journal's `cf` lines on resume. */
     private var coach = LiveCoach(liveContext, mode, spec)

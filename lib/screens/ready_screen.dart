@@ -545,7 +545,7 @@ class _ReadyScreenState extends State<ReadyScreen> with WidgetsBindingObserver {
               const SizedBox(height: Space.x8),
               FilledButton(
                 key: const ValueKey('ready-start'),
-                onPressed: widget.requiresGps && gps != _Gps.good
+                onPressed: widget.requiresGps && !_indoor && gps != _Gps.good
                     ? null
                     : _tapStart,
                 style: FilledButton.styleFrom(

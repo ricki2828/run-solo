@@ -845,14 +845,33 @@ class _RecordingScreenState extends State<RecordingScreen>
               // 29-Sep field test: the run's own numbers under
               // the countdown (big screens only; compact keeps
               // the two-number budget).
-              if (!compact) ...[
-                const SizedBox(height: Space.x16),
-                _PausedHidden(
-                  paused: s.paused,
-                  child: _EventStats(s: s, ctl: ctl, units: settings.units),
+              if (s.indoor) ...[
+                // A goal on a treadmill: the markers and GOAL DONE take the
+                // room the GPS figures would (no distance, pace or splits).
+                _CoachSlot(coach, flex: 1),
+                Expanded(
+                  flex: 5,
+                  child: _PausedHidden(
+                    paused: s.paused,
+                    child: _TreadmillPanel(
+                      s: s,
+                      ctl: ctl,
+                      units: ctl.runUnits ??= settings.units,
+                      secondary: t.inkSecondary,
+                      primary: t.inkPrimary,
+                    ),
+                  ),
                 ),
+              ] else ...[
+                if (!compact) ...[
+                  const SizedBox(height: Space.x16),
+                  _PausedHidden(
+                    paused: s.paused,
+                    child: _EventStats(s: s, ctl: ctl, units: settings.units),
+                  ),
+                ],
+                _CoachSlot(coach),
               ],
-              _CoachSlot(coach),
             ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
               // G3: after the goal, the cool-down's time is
               // primary and the goal's result sits locked below.
@@ -866,6 +885,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                   targetMs: _goalTargetFor(s),
                 ),
               ),
+              if (s.indoor && ctl.repUndoAvailable) ...[
+                const SizedBox(height: Space.x16),
+                _UndoRepDone(
+                  ctl: ctl,
+                  primary: t.inkPrimary,
+                  secondary: t.inkSecondary,
+                  label: 'UNDO GOAL DONE',
+                ),
+              ],
               const Spacer(),
             ] else if (s.isPreset) ...[
               // 4x4 (founder field test 25-Sep): no big LAP.
@@ -3757,6 +3785,16 @@ String eventDistanceToGo(double metres, Units units) {
 /// 200 m and without a good fix (A10.10: never extrapolated).
 double? eventProjectedSeconds(RecordingSnapshot s, int stepElapsedMs) {
   final st = s.currentStep;
+  // A goal on a treadmill: the speed since Start as the last marker gave it
+  // (its moving time over its distance), carried over the whole goal. Moves
+  // only when a marker is tapped or taken back, never between them.
+  if (s.indoor && s.isGoal) {
+    final m = s.treadmillMarks.lastOrNull;
+    if (st == null || m == null || m.distanceM < 200 || m.activeMs <= 0) {
+      return null;
+    }
+    return m.activeMs / 1000 / m.distanceM * st.value;
+  }
   final togo = s.metresToGo;
   if (st == null || togo == null || s.gpsLost || s.gpsWeak) return null;
   final run = st.value - togo;
@@ -4325,7 +4363,7 @@ class _TreadmillPanel extends StatelessWidget {
     // A distance rep (or distance recovery): the app cannot measure it, so the
     // runner double-taps REP DONE when the treadmill shows the distance. The
     // strip is for time reps; here the target takes the room.
-    if (ctl.canRepDone) {
+    if (ctl.canRepDone && !s.isGoal) {
       return _RepDoneBlock(
         s: s,
         ctl: ctl,
@@ -4404,6 +4442,10 @@ class _TreadmillPanel extends StatelessWidget {
                     ),
                 ],
               ),
+              if (ctl.canRepDone && s.isGoal) ...[
+                const SizedBox(height: Space.x8),
+                _GoalDoneTarget(ctl: ctl, s: s, primary: primary),
+              ],
               if (marks.isEmpty)
                 Text(
                   'Double-tap a marker as you pass it',
@@ -4558,6 +4600,55 @@ class _RepDoneBlock extends StatelessWidget {
   }
 }
 
+/// GOAL DONE: the distance goal's end on a treadmill, a double-tap when the
+/// treadmill shows the goal distance (a goal such as a half marathon is not a
+/// marker chip). The goal's time is the tap's; the cool-down starts. At least
+/// 72 dp tall.
+class _GoalDoneTarget extends StatelessWidget {
+  const _GoalDoneTarget({
+    required this.ctl,
+    required this.s,
+    required this.primary,
+  });
+  final RecordingController ctl;
+  final RecordingSnapshot s;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: 'Goal done',
+      hint: 'Double-tap',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('goal-done-target'),
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: s.paused ? null : ctl.repDone,
+        child: Container(
+          height: 72,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: primary,
+            borderRadius: BorderRadius.circular(Radii.card),
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'GOAL DONE · DOUBLE-TAP',
+              style: RunSoloType.display44.copyWith(
+                color: t.bgBase,
+                fontSize: 36,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// UNDO REP DONE: takes the last tap back while it is the latest thing that
 /// happened (a mis-tap). Shown for a few seconds after a tap.
 class _UndoRepDone extends StatelessWidget {
@@ -4565,7 +4656,9 @@ class _UndoRepDone extends StatelessWidget {
     required this.ctl,
     required this.primary,
     required this.secondary,
+    this.label = 'UNDO REP DONE',
   });
+  final String label;
   final RecordingController ctl;
   final Color primary;
   final Color secondary;
@@ -4580,7 +4673,7 @@ class _UndoRepDone extends StatelessWidget {
       side: BorderSide(color: secondary, width: 2),
       shape: const StadiumBorder(),
     ),
-    child: Text('UNDO REP DONE', style: RunLabelScope.style(context, primary)),
+    child: Text(label, style: RunLabelScope.style(context, primary)),
   );
 }
 

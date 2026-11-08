@@ -98,8 +98,16 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   /// the event or a Bronco; not on iOS, whose recorder has no treadmill
   /// sessions yet.
   bool _beltAllowed(AppSettings s, {RecordMode? testMode}) {
-    if (testMode != null || s.goalRun) return false;
+    if (testMode != null) return false;
     if (defaultTargetPlatform == TargetPlatform.iOS) return false;
+    if (s.goalRun) {
+      // A distance goal (not the event, not a time goal): GOAL DONE ends it.
+      final goal = s.goalSpec(kEventNames.parkrun);
+      return goal != null &&
+          goal.templateId != engine.SessionSpec.parkrunId &&
+          goal.workSteps.length == 1 &&
+          goal.workSteps.single.target == engine.TargetKind.distance;
+    }
     switch (s.lastMode) {
       case RecordMode.cooper:
         return _pickedTest == 'cooper';

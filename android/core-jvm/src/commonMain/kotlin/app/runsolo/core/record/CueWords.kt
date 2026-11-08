@@ -59,6 +59,9 @@ object CueWords {
                 step == null -> null
                 step.kind == StepKind.work && cooper -> "Twelve minutes. Go"
                 // A goal or the timed 5 km is one step, not reps: say what it is ("10 K. Go", "30 minutes. Go").
+                // Treadmill goal: the runner double-taps GOAL DONE when the belt's display shows the goal distance.
+                treadmill && step.kind == StepKind.work && step.target == TargetKind.distance && spec!!.isGoal ->
+                    "${spec.spoken}. Tap when the treadmill shows it"
                 step.kind == StepKind.work && (spec!!.isGoal || spec.isEvent) -> "${spec.spoken}. Go"
                 // The last rep says so in its own start line (#79 review: "Rep 8 of 8" + "Last rep"
                 // were two lines at once); the `lastRep` cue itself is silent.
