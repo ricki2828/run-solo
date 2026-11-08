@@ -139,6 +139,13 @@ abstract class RecorderGateway {
   Future<void> startGpsProbe();
   Future<void> stopGpsProbe();
 
+  /// Start/Ready is on screen: the saved HR strap is wanted (hunted and
+  /// connected) so GO finds it connected, whatever the run type: a treadmill
+  /// run has no GPS probe and still needs it. Idempotent; native lets the
+  /// strap go 5 s after nobody wants it.
+  Future<void> startStrapHunt();
+  Future<void> stopStrapHunt();
+
   /// Voice → "Km splits": a Free run says each km. Persisted natively.
   Future<void> setKmSplits(bool enabled);
 

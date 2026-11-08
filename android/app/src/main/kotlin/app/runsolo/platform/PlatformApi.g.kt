@@ -4528,6 +4528,14 @@ interface RecorderApi {
   fun startGpsProbe()
   fun stopGpsProbe()
   /**
+   * Start/Ready is on screen: hunt and connect the saved HR strap so GO finds
+   * it connected, for every run type. Separate from the GPS probe (a treadmill
+   * run has no probe and still wants its strap). Idempotent; the strap is let
+   * go of 5 s after nobody wants it (no run, no Start/Ready).
+   */
+  fun startStrapHunt()
+  fun stopStrapHunt()
+  /**
    * Settings → Voice → "Km splits" (default on): a Free run says each km
    * ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
    * in progress too.
@@ -4971,6 +4979,38 @@ interface RecorderApi {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               api.stopGpsProbe()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.startStrapHunt$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.startStrapHunt()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.stopStrapHunt$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopStrapHunt()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

@@ -83,6 +83,12 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<void> stopGpsProbe() => _api.stopGpsProbe();
 
   @override
+  Future<void> startStrapHunt() => _api.startStrapHunt();
+
+  @override
+  Future<void> stopStrapHunt() => _api.stopStrapHunt();
+
+  @override
   Future<void> setKmSplits(bool enabled) => _api.setKmSplits(enabled);
 
   @override

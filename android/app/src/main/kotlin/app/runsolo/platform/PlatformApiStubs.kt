@@ -58,6 +58,10 @@ class RecorderApiStub : RecorderApi {
 
     override fun stopGpsProbe() = Unit
 
+    override fun startStrapHunt() = Unit
+
+    override fun stopStrapHunt() = Unit
+
     override fun setKmSplits(enabled: Boolean) = Unit
     override fun setSpokenSummary(enabled: Boolean) = Unit
     override fun setVoiceCoach(config: VoiceCoachConfig) = Unit

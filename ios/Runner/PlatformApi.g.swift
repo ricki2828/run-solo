@@ -4155,6 +4155,12 @@ protocol RecorderApi {
   /// leaves the foreground; foreground only, no service.
   func startGpsProbe() throws
   func stopGpsProbe() throws
+  /// Start/Ready is on screen: hunt and connect the saved HR strap so GO finds
+  /// it connected, for every run type. Separate from the GPS probe (a treadmill
+  /// run has no probe and still wants its strap). Idempotent; the strap is let
+  /// go of 5 s after nobody wants it (no run, no Start/Ready).
+  func startStrapHunt() throws
+  func stopStrapHunt() throws
   /// Settings → Voice → "Km splits" (default on): a Free run says each km
   /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
   /// in progress too.
@@ -4569,6 +4575,36 @@ class RecorderApiSetup {
       }
     } else {
       stopGpsProbeChannel.setMessageHandler(nil)
+    }
+    /// Start/Ready is on screen: hunt and connect the saved HR strap so GO finds
+    /// it connected, for every run type. Separate from the GPS probe (a treadmill
+    /// run has no probe and still wants its strap). Idempotent; the strap is let
+    /// go of 5 s after nobody wants it (no run, no Start/Ready).
+    let startStrapHuntChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.startStrapHunt\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startStrapHuntChannel.setMessageHandler { _, reply in
+        do {
+          try api.startStrapHunt()
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      startStrapHuntChannel.setMessageHandler(nil)
+    }
+    let stopStrapHuntChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.stopStrapHunt\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopStrapHuntChannel.setMessageHandler { _, reply in
+        do {
+          try api.stopStrapHunt()
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      stopStrapHuntChannel.setMessageHandler(nil)
     }
     /// Settings → Voice → "Km splits" (default on): a Free run says each km
     /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run

@@ -999,6 +999,13 @@ abstract class RecorderApi {
   void startGpsProbe();
   void stopGpsProbe();
 
+  /// Start/Ready is on screen: hunt and connect the saved HR strap so GO finds
+  /// it connected, for every run type. Separate from the GPS probe (a treadmill
+  /// run has no probe and still wants its strap). Idempotent; the strap is let
+  /// go of 5 s after nobody wants it (no run, no Start/Ready).
+  void startStrapHunt();
+  void stopStrapHunt();
+
   /// Settings → Voice → "Km splits" (default on): a Free run says each km
   /// ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
   /// in progress too.

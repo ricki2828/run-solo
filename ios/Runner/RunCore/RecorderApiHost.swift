@@ -87,18 +87,19 @@ final class RecorderApiHost: RecorderApi {
   }
 
   func setCues(enabled: Bool) throws { cues?.enabled = enabled }
-  /// The probe runs while Start/Ready is on screen: that is also when the saved strap is wanted, so GO finds it connected.
+  /// The GPS probe runs while a run that uses GPS is on Start/Ready; the strap is its own want (below).
   func startGpsProbe() throws {
-    DispatchQueue.main.async {
-      self.probe?.start()
-      self.strap?.startScreenWants()
-    }
+    DispatchQueue.main.async { self.probe?.start() }
   }
   func stopGpsProbe() throws {
-    DispatchQueue.main.async {
-      self.probe?.stop()
-      self.strap?.startScreenReleases()
-    }
+    DispatchQueue.main.async { self.probe?.stop() }
+  }
+  /// Start/Ready is on screen: the saved strap is wanted for every run type, so GO finds it connected.
+  func startStrapHunt() throws {
+    DispatchQueue.main.async { self.strap?.startScreenWants() }
+  }
+  func stopStrapHunt() throws {
+    DispatchQueue.main.async { self.strap?.startScreenReleases() }
   }
   func setKmSplits(enabled: Bool) throws { host.setKmSplits(enabled) }
   func setSpokenSummary(enabled: Bool) throws {}

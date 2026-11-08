@@ -209,6 +209,7 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
     _onBelt.dispose();
     _plans?.removeListener(_onPlanChanged);
     _stopProbe();
+    _stopStrap();
     _probeLive.dispose();
     super.dispose();
   }
@@ -221,11 +222,41 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
       _reloadRuns();
     } else {
       _stopProbe();
+      _stopStrap();
+    }
+  }
+
+  /// The saved HR strap is wanted while Start/Ready is up, for every run type:
+  /// a treadmill run has no GPS probe and still needs its strap connected at GO.
+  /// Separate from the GPS probe, so the belt switch on Ready (which stops the
+  /// probe) never lets the strap go.
+  bool _hunting = false;
+
+  void _syncStrap() {
+    if (!mounted) return;
+    final want =
+        AppServices.of(context).settings.settings.goalRun || _readyOpen;
+    final rec = AppServices.of(context).recorder;
+    if (want && !_hunting) {
+      _hunting = true;
+      unawaited(rec.startStrapHunt().catchError((_) {}));
+    } else if (!want && _hunting) {
+      _stopStrap();
+    }
+  }
+
+  void _stopStrap() {
+    if (!_hunting) return;
+    _hunting = false;
+    final services = _services;
+    if (services != null) {
+      unawaited(services.recorder.stopStrapHunt().catchError((_) {}));
     }
   }
 
   void _syncProbe() {
     if (!mounted) return;
+    _syncStrap();
     // The probe runs for every goal: each starts at the Start press and
     // counts distance from the first fix (plan §G, Q1).
     final want =

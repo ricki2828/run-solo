@@ -762,6 +762,19 @@ class FakeRecorderGateway implements RecorderGateway {
   @override
   Future<void> stopGpsProbe() async => gpsProbeRunning = false;
 
+  /// Whether Start/Ready wants the saved strap right now, and how many times it was asked.
+  bool strapHuntRunning = false;
+  int strapHuntStarts = 0;
+
+  @override
+  Future<void> startStrapHunt() async {
+    strapHuntRunning = true;
+    strapHuntStarts += 1;
+  }
+
+  @override
+  Future<void> stopStrapHunt() async => strapHuntRunning = false;
+
   void emitGpsProbe(GpsProbeEvent e) => _emit(e);
 
   bool kmSplits = true;

@@ -43,7 +43,22 @@ import java.util.UUID
  * `RecorderApi` backed by [RecorderService]. Lives in the Activity so `start` runs while it is
  * visible (B2). Every method is idempotent (plan §2): the UI may be recreated mid-run.
  */
-class RecorderApiImpl(private val context: Context) : RecorderApi {
+/** What the Start/Ready screen asks of the saved HR strap, apart from GPS: want it (hunt and connect) / let it go. */
+interface StrapScreenWant {
+    fun wants()
+    fun releases()
+}
+
+/** The real strap: [BleHolder]'s client, owner "start" (it lets go [app.runsolo.ble.BleHrClient]'s 5 s after nobody wants it). */
+private class BleStrapScreenWant(private val context: Context) : StrapScreenWant {
+    override fun wants() = BleHolder.client(context).startScreenWants()
+    override fun releases() = BleHolder.client(context).startScreenReleases()
+}
+
+class RecorderApiImpl(
+    private val context: Context,
+    private val strap: StrapScreenWant = BleStrapScreenWant(context),
+) : RecorderApi {
     private val fs = JvmFileSystem(context.filesDir.toPath())
     private val prefs = context.getSharedPreferences(RecorderService.PREFS, Context.MODE_PRIVATE)
 
@@ -58,16 +73,30 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         )
     }
 
-    /** The probe runs while Start/Ready is on screen: that is also when the saved HR strap is wanted, so GO finds it connected. */
+    /** The GPS probe runs while a run that uses GPS is on Start/Ready. It no longer carries the strap (see [startStrapHunt]). */
     override fun startGpsProbe() {
         probe.start()
-        BleHolder.client(context).startScreenWants()
     }
 
     override fun stopGpsProbe() {
         probe.stop()
-        BleHolder.client(context).startScreenReleases()
     }
+
+    /**
+     * Start/Ready is on screen: the saved HR strap is wanted, so GO finds it connected. For every run type, a treadmill
+     * run (no GPS, no probe) included: it was tied to the GPS probe (#336), so an indoor run never hunted the strap.
+     * The strap is let go of 5 s after the last want ends ([app.runsolo.ble.BleHrClient]).
+     */
+    override fun startStrapHunt() {
+        strap.wants()
+    }
+
+    override fun stopStrapHunt() {
+        strap.releases()
+    }
+
+    /** Whether the Start/Ready GPS probe is requesting fixes (tests). */
+    internal val gpsProbeRunning: Boolean get() = probe.running
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
