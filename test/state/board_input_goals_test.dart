@@ -91,4 +91,95 @@ void main() {
     expect(row.goal!.reached, isTrue);
     expect(IndexRow.fromJson(row.toJson())!.goal!.toJson(), row.goal!.toJson());
   });
+
+  group('a run on a treadmill stays off the outdoor boards (7-Nov)', () {
+    final spec = engine.SessionSpec.goalDistance(5000, '5K');
+
+    engine.RunFile beltGoal(int n) =>
+        cooperBeltFile(
+          n: n,
+          start: d1.add(Duration(days: n)),
+          distanceM: 5000,
+        ).copyWith(
+          mode: engine.RunMode.intervals,
+          session: spec,
+          laps: const [
+            engine.Lap(
+              index: 0,
+              t0Ms: 0,
+              t1Ms: 1500000,
+              d0M: 0,
+              d1M: 0,
+              kind: engine.LapKind.manual,
+            ),
+            engine.Lap(
+              index: 1,
+              t0Ms: 1500000,
+              t1Ms: 1700000,
+              d0M: 0,
+              d1M: 0,
+              kind: engine.LapKind.manual,
+            ),
+          ],
+        );
+
+    Future<List<RunIndexEntry>> entriesOf(List<engine.RunFile> runs) async {
+      final store = FileRunStore(Directory('${dir.path}/runs'));
+      store.deriveBatch = FileRunStore.deriveInIsolate;
+      stores.add(store);
+      await store.importBundles([
+        for (final r in runs) engine.RunBundle(run: r),
+      ]);
+      await store.list();
+      await store.derivedIdle;
+      final index = await RunIndex.read(store.indexFile);
+      return index.entries.values.toList();
+    }
+
+    test('a goal run on a belt has no goal result for the boards', () async {
+      final run = beltGoal(10);
+      final entries = await entriesOf([run]);
+      final e = entries.single;
+      // The index keeps the run and its goal result for History...
+      expect(e.row!.treadmillInclinePct, 1.0);
+      expect(e.row!.goal?.reached, isTrue);
+      // ...but the boards never see it.
+      final input = e.boardInput();
+      expect(input.goal, isNull);
+      expect(input.goalBoardKey, isNull);
+      expect(input.efforts, isEmpty);
+      final boards = engine.Leaderboards.fold([input]);
+      expect(boards.values.every((b) => b.rankOf(run.id) == null), isTrue);
+    });
+
+    test('the same goal outdoors does reach the goal board', () async {
+      final outdoor = freeRunFile(
+        n: 11,
+        start: d1.add(const Duration(days: 11)),
+        seconds: 2000,
+      ).copyWith(mode: engine.RunMode.intervals, session: spec);
+      final e = (await entriesOf([outdoor])).single;
+      expect(e.boardInput().goalBoardKey, isNotNull);
+    });
+
+    test(
+      'a belt test is not on the Cooper board beside an outdoor one',
+      () async {
+        final outdoor = cooperTestFile(n: 12, start: d1, mps: 3.8);
+        final belt = cooperBeltFile(
+          n: 13,
+          start: d1.add(const Duration(days: 7)),
+          distanceM: 3400,
+        );
+        final entries = await entriesOf([outdoor, belt]);
+        final boards = engine.Leaderboards.fold(
+          entries.map((e) => e.boardInput()),
+        );
+        final b = boards[engine.ComparisonKey.cooper]!;
+        expect(b.length, 1);
+        expect(b.rankOf(belt.id), isNull);
+        expect(b.pb!.runId, outdoor.id);
+      },
+    );
+  });
 }
