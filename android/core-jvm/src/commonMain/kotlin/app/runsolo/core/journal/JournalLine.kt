@@ -31,7 +31,15 @@ sealed class JournalLine {
         /** The full expanded session (schema 3), so restore needs nothing else. */
         val session: SessionSpec?,
         val units: Units,
-    ) : JournalLine()
+        /**
+         * The session runs on a treadmill at this incline (percent, 0 = flat; 3 stands for "3 or more"). Null = outdoors.
+         * Header key `ti`, left out when null: an older build reads the key as unknown and ignores it.
+         */
+        val treadmillInclinePct: Double? = null,
+    ) : JournalLine() {
+        /** No GPS anywhere: a free treadmill run, or a session run on the belt. */
+        val indoor: Boolean get() = mode == RunMode.treadmill || treadmillInclinePct != null
+    }
 
     /**
      * One 1 Hz tick. With a fix: the raw location (nothing is filtered before journaling so

@@ -108,6 +108,8 @@ class RecordingSnapshot {
     this.trail,
     this.questDoneId,
     this.treadmillMarks = const [],
+    this.treadmillInclinePct,
+    this.warmupActiveMs,
   });
 
   final RecorderState state;
@@ -230,6 +232,38 @@ class RecordingSnapshot {
 
   /// Treadmill markers standing (native's), in order; empty elsewhere.
   final List<engine.TreadmillMark> treadmillMarks;
+
+  /// A session run on a treadmill: the incline in percent as Start sent it.
+  /// Null = outdoors, or a free treadmill run.
+  final double? treadmillInclinePct;
+
+  /// No GPS: a free treadmill run, or a session on the belt. The screen shows
+  /// no map or GPS status and the marker strip.
+  bool get indoor =>
+      mode == RecordMode.treadmill || treadmillInclinePct != null;
+
+  /// A 12-minute test on a treadmill: the active time the warm-up lasted (the
+  /// first lap, ended by BEGIN TEST), so a marker's moving time maps to time in
+  /// the test. Null before BEGIN TEST and outside such a test.
+  final int? warmupActiveMs;
+
+  /// The live Cooper projection on a belt, from the markers as outdoor GPS
+  /// distance does it: the last marker's distance at its time into the test,
+  /// through the same fade curve ([engine.CooperProjection.project], nothing
+  /// before the first minute). Null before the first marker, in the warm-up
+  /// and outside a belt test. Markers count from BEGIN TEST (the runner resets
+  /// the treadmill's distance there), so an UNDO moves it back with the marks.
+  engine.CooperEstimate? get beltCooperEstimate {
+    final w = warmupActiveMs;
+    if (!isCooper || !indoor || phase != Phase.work || w == null) return null;
+    if (treadmillMarks.isEmpty) return null;
+    final m = treadmillMarks.last;
+    return engine.CooperProjection.project(
+      engine.CooperCurve.defaultCurve,
+      elapsedSeconds: (m.activeMs - w) / 1000,
+      distanceM: m.distanceM,
+    );
+  }
 
   /// The run follows a route.
   bool get followsRoute => route != null;
@@ -376,6 +410,8 @@ class RecordingSnapshot {
     bool clearTrail = false,
     String? questDoneId,
     List<engine.TreadmillMark>? treadmillMarks,
+    double? treadmillInclinePct,
+    int? warmupActiveMs,
   }) => RecordingSnapshot(
     state: state ?? this.state,
     runId: runId ?? this.runId,
@@ -422,6 +458,8 @@ class RecordingSnapshot {
     trail: clearTrail ? null : (trail ?? this.trail),
     questDoneId: questDoneId ?? this.questDoneId,
     treadmillMarks: treadmillMarks ?? this.treadmillMarks,
+    treadmillInclinePct: treadmillInclinePct ?? this.treadmillInclinePct,
+    warmupActiveMs: warmupActiveMs ?? this.warmupActiveMs,
   );
 }
 
@@ -760,6 +798,13 @@ class RecordingController extends ChangeNotifier {
       tipsMuted: s.tipsMuted,
       clearTipsMuted: s.tipsMuted == null,
       treadmillMarks: marksFromFlat(s.treadmillMarks),
+      treadmillInclinePct: s.treadmillInclinePct,
+      warmupActiveMs:
+          s.treadmillInclinePct != null &&
+              s.mode == RecordMode.cooper &&
+              s.laps.isNotEmpty
+          ? s.laps.first.activeMs
+          : null,
       autoPaused: s.autoPaused ?? false,
       elevGainM: s.elevGainM,
       elevLossM: s.elevLossM,
@@ -781,7 +826,9 @@ class RecordingController extends ChangeNotifier {
       hrPaired: s.hrConnected || _snap.hrPaired,
       goalLapMs: goalLap?.activeMs,
       goalLapM: goalLap?.distanceM,
-      gpsLost: s.mode != RecordMode.treadmill && !s.gpsFix,
+      gpsLost:
+          !(s.mode == RecordMode.treadmill || s.treadmillInclinePct != null) &&
+          !s.gpsFix,
       hadFix: _snap.hadFix || s.gpsFix,
       fault: s.journalOk ? null : 'Journal write failed',
       clearFault: s.journalOk,
@@ -797,6 +844,7 @@ class RecordingController extends ChangeNotifier {
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   }) async {
     momentUnits = units;
     final result = await _gateway.start(
@@ -805,6 +853,7 @@ class RecordingController extends ChangeNotifier {
       units,
       liveContext: liveContext,
       route: route,
+      treadmillInclinePct: treadmillInclinePct,
     );
     if (result.error == null) {
       // A goal run's target as Start showed it, kept to go with the run (the
@@ -819,7 +868,7 @@ class RecordingController extends ChangeNotifier {
       _goalRunId = result.runId;
     }
     if (result.error == null || result.error == StartError.alreadyRunning) {
-      _reset(mode, spec);
+      _reset(mode, spec, treadmillInclinePct: treadmillInclinePct);
       runUnits = units;
       // The planned line for the map: native streams only what the runner has run.
       followedRoute = route;
@@ -898,7 +947,11 @@ class RecordingController extends ChangeNotifier {
     await attach();
   }
 
-  void _reset(RecordMode mode, SessionSpec? spec) {
+  void _reset(
+    RecordMode mode,
+    SessionSpec? spec, {
+    double? treadmillInclinePct,
+  }) {
     runUnits = null;
     liveRoute.clear();
     followedRoute = null;
@@ -922,6 +975,7 @@ class RecordingController extends ChangeNotifier {
         RecordMode.free || RecordMode.treadmill || RecordMode.trail => null,
       },
       hrPaired: _snap.hrPaired,
+      treadmillInclinePct: treadmillInclinePct,
     );
   }
 
@@ -1153,7 +1207,7 @@ class RecordingController extends ChangeNotifier {
       hrPaired: _snap.hrPaired || t.hr != null,
       gpsAccuracyM: t.gpsAccuracyM,
       clearGps: !fix,
-      gpsLost: _snap.mode != RecordMode.treadmill && !fix,
+      gpsLost: !_snap.indoor && !fix,
       hadFix: _snap.hadFix || fix,
       phaseRemainingMs: t.phaseRemainingMs,
       stepIndex: t.stepIndex,
@@ -1328,7 +1382,7 @@ class RecordingController extends ChangeNotifier {
   }
 
   void _onFault(FaultEvent f) {
-    if (_snap.mode == RecordMode.treadmill &&
+    if (_snap.indoor &&
         (f.kind == FaultKind.gpsLost || f.kind == FaultKind.gpsWeak)) {
       return;
     }

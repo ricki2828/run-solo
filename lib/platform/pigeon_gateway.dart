@@ -22,7 +22,8 @@ class PigeonRecorderGateway implements RecorderGateway {
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
-  }) => _api.start(mode, spec, units, liveContext, route);
+    double? treadmillInclinePct,
+  }) => _api.start(mode, spec, units, liveContext, route, treadmillInclinePct);
 
   @override
   Future<void> pause() => _api.pause();
@@ -80,6 +81,12 @@ class PigeonRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> stopGpsProbe() => _api.stopGpsProbe();
+
+  @override
+  Future<void> startStrapHunt() => _api.startStrapHunt();
+
+  @override
+  Future<void> stopStrapHunt() => _api.stopStrapHunt();
 
   @override
   Future<void> setKmSplits(bool enabled) => _api.setKmSplits(enabled);

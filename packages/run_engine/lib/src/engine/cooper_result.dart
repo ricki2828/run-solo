@@ -18,6 +18,13 @@ enum CooperInvalid {
 
   /// GPS too noisy to trust the distance.
   noisy,
+
+  /// On a treadmill and no distance was entered at the finish.
+  noDistance,
+
+  /// On a treadmill and the typed distance is outside what 12 minutes can
+  /// be (a typo such as 28 for 2.8 km, or miles for km).
+  implausible,
 }
 
 /// The 12-minute test's result (Phase 3 C1, v1 plan §18.4, Phase 4 CO2):
@@ -33,6 +40,7 @@ class CooperResult {
     required this.minuteM,
     required this.invalid,
     required this.heat,
+    this.treadmillInclinePct,
   });
 
   /// Reads [run]'s test window (the lap [CooperProjection.testStartMs]
@@ -45,6 +53,7 @@ class CooperResult {
   }) {
     final start = CooperProjection.testStartMs(run);
     final end = start + CooperProjection.testSeconds * 1000;
+    if (run.onTreadmill) return CooperResult._onTreadmill(run, start, end);
     final trace = Trace(run.samples);
     final reachedMs = run.elapsedMs < end ? run.elapsedMs : end;
     final covered = reachedMs <= start
@@ -67,6 +76,52 @@ class CooperResult {
       invalid: invalid,
       heat: invalid == null ? CooperHeat.of(weather) : null,
     );
+  }
+
+  /// A typed belt test distance outside this range is not believed: under
+  /// 800 m is barely a walk, over 5,000 m in 12 minutes beats the world
+  /// record. No VO2 is shown for it.
+  static const double beltMinM = 800;
+  static const double beltMaxM = 5000;
+
+  /// The test on a belt: no GPS, so the distance is the one the runner typed
+  /// in from the treadmill's display (it covers the 12:00, the display reset
+  /// when the test started). No per-minute curve, no weather, no heat twin.
+  factory CooperResult._onTreadmill(RunFile run, int start, int end) {
+    final paused = run.pauses.any((p) => p.t0Ms < end && p.t1Ms > start);
+    final distance = run.treadmillDistanceM;
+    final invalid = paused
+        ? CooperInvalid.paused
+        : run.elapsedMs < end - 1000
+        ? CooperInvalid.short
+        : distance == null
+        ? CooperInvalid.noDistance
+        : distance < beltMinM || distance > beltMaxM
+        ? CooperInvalid.implausible
+        : null;
+    return CooperResult._(
+      testDistanceM: distance ?? 0,
+      minuteM: null,
+      invalid: invalid,
+      heat: null,
+      treadmillInclinePct: run.treadmillInclinePct ?? 0,
+    );
+  }
+
+  /// Set when the test was run on a treadmill: its incline in percent.
+  /// Such a test is kept out of the outdoor boards and the live compare.
+  final double? treadmillInclinePct;
+
+  bool get onTreadmill => treadmillInclinePct != null;
+
+  /// "Treadmill · 1%": the tag under the result and on the trend.
+  String? get treadmillTag =>
+      treadmillInclinePct == null ? null : treadmillTagOf(treadmillInclinePct!);
+
+  /// "Treadmill · 1%" ("3+%" at the top chip) for an incline in percent.
+  static String treadmillTagOf(double inclinePct) {
+    final n = inclinePct.round();
+    return 'Treadmill · ${n >= 3 ? '3+' : '$n'}%';
   }
 
   /// Metres run in the 12:00 (as far as the test got when it is invalid).
@@ -130,6 +185,11 @@ class CooperResult {
     CooperInvalid.short => 'Stopped before 12:00, so there is no estimate.',
     CooperInvalid.indoor => 'No GPS, so there is no estimate.',
     CooperInvalid.noisy => 'GPS was too noisy for an estimate.',
+    CooperInvalid.noDistance =>
+      'No distance was entered, so there is no estimate.',
+    CooperInvalid.implausible =>
+      'That distance is not possible in 12 minutes, so there is no '
+          'estimate. Check it was kilometres.',
     null => null,
   };
 

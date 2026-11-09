@@ -43,7 +43,9 @@ class Coaching {
             comparisonKey: e.comparisonKey,
             // Prime (heat twin when it exists): coaching reasons over the
             // figure he sees (product call 27-Sep).
-            cooperVo2: e.row?.cooper?.valid == true
+            // A treadmill test is not an outdoor reading (7-Nov).
+            cooperVo2:
+                e.row?.cooper?.valid == true && !e.row!.cooper!.onTreadmill
                 ? e.row!.cooper!.primeVo2
                 : null,
           ),

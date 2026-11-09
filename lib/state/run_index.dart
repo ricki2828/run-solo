@@ -139,8 +139,11 @@ class RunIndexEntry {
           : null,
       // C1: a valid test's raw VO2 estimate and its HV1 twin (the Cooper
       // board, LC1's cooperHistory).
-      cooperVo2: row?.cooper?.valid == true ? row!.cooper!.vo2 : null,
-      cooperVo2Adj: row?.cooper?.valid == true
+      // A treadmill test stays off the boards and the live compare (7-Nov).
+      cooperVo2: row?.cooper?.valid == true && !row!.cooper!.onTreadmill
+          ? row!.cooper!.vo2
+          : null,
+      cooperVo2Adj: row?.cooper?.valid == true && !row!.cooper!.onTreadmill
           ? row!.cooper!.vo2Adjusted
           : null,
       heatFraction: heatAdj,
@@ -384,6 +387,7 @@ class IndexRow {
     this.routeOffMs,
     this.restingHrBpm,
     this.hrHist,
+    this.treadmillInclinePct,
   });
 
   /// Bump when a field is added, so old rows are rebuilt once.
@@ -404,10 +408,16 @@ class IndexRow {
   /// 15: [hrHist] (moving seconds per bpm: zone charts and strips).
   /// 16: [route] is also kept for Free runs (they join a trail they match).
   /// 17: [trailOverride] (the runner's split / merge of a trail).
-  static const int currentVersion = 17;
+  /// 18: [treadmillInclinePct] (a session run on a treadmill) and the Cooper
+  /// figures' treadmill tag.
+  static const int currentVersion = 18;
 
   final int version;
   final int lapCount;
+
+  /// A session run on a treadmill: the incline in percent (run file
+  /// `treadmillInclinePct`); null for an outdoor run and a free treadmill run.
+  final double? treadmillInclinePct;
 
   /// The recorded session (run file `session`).
   final engine.SessionSpec? session;
@@ -628,6 +638,7 @@ class IndexRow {
       routeOffMs: run.route?.offRouteMs,
       restingHrBpm: engine.RestingHr.of(run),
       hrHist: HrHist.of(run),
+      treadmillInclinePct: run.treadmillInclinePct,
     );
   }
 
@@ -674,6 +685,7 @@ class IndexRow {
     'route_off_ms': ?routeOffMs,
     'rest_hr': ?restingHrBpm,
     'hr_hist': ?hrHist?.toJson(),
+    'tm_incline': ?treadmillInclinePct,
   };
 
   /// null for a missing or unreadable row (the entry is then stale).
@@ -739,6 +751,7 @@ class IndexRow {
         routeOffMs: j['route_off_ms'] as int?,
         restingHrBpm: j['rest_hr'] as int?,
         hrHist: HrHist.fromJson(j['hr_hist']),
+        treadmillInclinePct: d('tm_incline'),
       );
     } catch (e) {
       debugPrint('index: unreadable row ($e)');
@@ -757,6 +770,7 @@ class CooperFigures {
     this.vo2,
     this.vo2Adjusted,
     this.minuteM = const [],
+    this.treadmillInclinePct,
   });
 
   static CooperFigures? of(engine.CooperResult? c) => c == null
@@ -767,7 +781,15 @@ class CooperFigures {
           vo2: c.estimate?.vo2,
           vo2Adjusted: c.vo2Adjusted,
           minuteM: c.minuteM ?? const [],
+          treadmillInclinePct: c.treadmillInclinePct,
         );
+
+  /// The test was run on a treadmill at this incline (percent). Such a test
+  /// is kept out of the boards, the live compare and the coach's VO2 reading;
+  /// the VO2 trend shows it as a hollow bar.
+  final double? treadmillInclinePct;
+
+  bool get onTreadmill => treadmillInclinePct != null;
 
   /// Gives a VO2 estimate (not paused, short, indoor or noisy).
   final bool valid;
@@ -793,6 +815,7 @@ class CooperFigures {
     'vo2': vo2,
     'vo2_adj': vo2Adjusted,
     'minute_m': minuteM,
+    'tm_incline': ?treadmillInclinePct,
   };
 
   static CooperFigures? fromJson(Map<String, Object?>? j) {
@@ -807,6 +830,7 @@ class CooperFigures {
         for (final v in (j['minute_m'] as List?) ?? const [])
           (v as num).toDouble(),
       ],
+      treadmillInclinePct: d('tm_incline'),
     );
   }
 }

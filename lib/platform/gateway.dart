@@ -81,12 +81,15 @@ abstract class RecorderGateway {
   /// null for free (CONTRACT.md I1). [liveContext]: the live compare's
   /// history (Phase 4 §3.2), or null for none. [route]: a route to follow
   /// (Follow a route; Free, Trail and Goal runs), or null for none.
+  /// [treadmillInclinePct]: an intervals or Cooper session run on a treadmill
+  /// at this incline (percent, 3 = "3+"): no GPS; null = outdoors.
   Future<StartResult> start(
     RecordMode mode,
     SessionSpec? spec,
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   });
   Future<void> pause();
   Future<void> resume();
@@ -135,6 +138,13 @@ abstract class RecorderGateway {
   /// [stopGpsProbe] (or any start). Call stop when the screen closes.
   Future<void> startGpsProbe();
   Future<void> stopGpsProbe();
+
+  /// Start/Ready is on screen: the saved HR strap is wanted (hunted and
+  /// connected) so GO finds it connected, whatever the run type: a treadmill
+  /// run has no GPS probe and still needs it. Idempotent; native lets the
+  /// strap go 5 s after nobody wants it.
+  Future<void> startStrapHunt();
+  Future<void> stopStrapHunt();
 
   /// Voice → "Km splits": a Free run says each km. Persisted natively.
   Future<void> setKmSplits(bool enabled);

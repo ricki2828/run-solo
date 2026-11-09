@@ -1780,7 +1780,12 @@ data class RecorderStatus (
    * Treadmill: the markers standing, flat `[movingMs, metres, ...]`, so a
    * recreated screen or a restored run shows them. Null/empty = none.
    */
-  val treadmillMarks: List<Double>? = null
+  val treadmillMarks: List<Double>? = null,
+  /**
+   * A session (intervals, the 12-minute test) run on a treadmill: the incline
+   * in percent as sent at Start. Null = outdoors, or a free treadmill run.
+   */
+  val treadmillInclinePct: Double? = null
 )
  {
   companion object {
@@ -1821,7 +1826,8 @@ data class RecorderStatus (
       val goalEased = pigeonVar_list[33] as Boolean?
       val goalTargetMs = pigeonVar_list[34] as Long?
       val treadmillMarks = pigeonVar_list[35] as List<Double>?
-      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, prompt, autoPaused, elevGainM, elevLossM, gradePct, retracing, retraceSame, backToStartM, climbAheadM, descentAheadM, heightVsStartM, route, trail, questDoneId, goalEased, goalTargetMs, treadmillMarks)
+      val treadmillInclinePct = pigeonVar_list[36] as Double?
+      return RecorderStatus(state, runId, mode, laps, elapsedMs, lapIndex, gpsFix, hrConnected, phase, repIndex, phaseRemainingMs, spec, stepIndex, stepRemainingMs, stepRemainingM, journalOk, pausedAtElapsedMs, finishRequests, tipsMuted, prompt, autoPaused, elevGainM, elevLossM, gradePct, retracing, retraceSame, backToStartM, climbAheadM, descentAheadM, heightVsStartM, route, trail, questDoneId, goalEased, goalTargetMs, treadmillMarks, treadmillInclinePct)
     }
   }
   fun toList(): List<Any?> {
@@ -1862,6 +1868,7 @@ data class RecorderStatus (
       goalEased,
       goalTargetMs,
       treadmillMarks,
+      treadmillInclinePct,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1872,7 +1879,7 @@ data class RecorderStatus (
       return true
     }
     val other = other as RecorderStatus
-    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.prompt, other.prompt) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.retracing, other.retracing) && PlatformApiPigeonUtils.deepEquals(this.retraceSame, other.retraceSame) && PlatformApiPigeonUtils.deepEquals(this.backToStartM, other.backToStartM) && PlatformApiPigeonUtils.deepEquals(this.climbAheadM, other.climbAheadM) && PlatformApiPigeonUtils.deepEquals(this.descentAheadM, other.descentAheadM) && PlatformApiPigeonUtils.deepEquals(this.heightVsStartM, other.heightVsStartM) && PlatformApiPigeonUtils.deepEquals(this.route, other.route) && PlatformApiPigeonUtils.deepEquals(this.trail, other.trail) && PlatformApiPigeonUtils.deepEquals(this.questDoneId, other.questDoneId) && PlatformApiPigeonUtils.deepEquals(this.goalEased, other.goalEased) && PlatformApiPigeonUtils.deepEquals(this.goalTargetMs, other.goalTargetMs) && PlatformApiPigeonUtils.deepEquals(this.treadmillMarks, other.treadmillMarks)
+    return PlatformApiPigeonUtils.deepEquals(this.state, other.state) && PlatformApiPigeonUtils.deepEquals(this.runId, other.runId) && PlatformApiPigeonUtils.deepEquals(this.mode, other.mode) && PlatformApiPigeonUtils.deepEquals(this.laps, other.laps) && PlatformApiPigeonUtils.deepEquals(this.elapsedMs, other.elapsedMs) && PlatformApiPigeonUtils.deepEquals(this.lapIndex, other.lapIndex) && PlatformApiPigeonUtils.deepEquals(this.gpsFix, other.gpsFix) && PlatformApiPigeonUtils.deepEquals(this.hrConnected, other.hrConnected) && PlatformApiPigeonUtils.deepEquals(this.phase, other.phase) && PlatformApiPigeonUtils.deepEquals(this.repIndex, other.repIndex) && PlatformApiPigeonUtils.deepEquals(this.phaseRemainingMs, other.phaseRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.spec, other.spec) && PlatformApiPigeonUtils.deepEquals(this.stepIndex, other.stepIndex) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingMs, other.stepRemainingMs) && PlatformApiPigeonUtils.deepEquals(this.stepRemainingM, other.stepRemainingM) && PlatformApiPigeonUtils.deepEquals(this.journalOk, other.journalOk) && PlatformApiPigeonUtils.deepEquals(this.pausedAtElapsedMs, other.pausedAtElapsedMs) && PlatformApiPigeonUtils.deepEquals(this.finishRequests, other.finishRequests) && PlatformApiPigeonUtils.deepEquals(this.tipsMuted, other.tipsMuted) && PlatformApiPigeonUtils.deepEquals(this.prompt, other.prompt) && PlatformApiPigeonUtils.deepEquals(this.autoPaused, other.autoPaused) && PlatformApiPigeonUtils.deepEquals(this.elevGainM, other.elevGainM) && PlatformApiPigeonUtils.deepEquals(this.elevLossM, other.elevLossM) && PlatformApiPigeonUtils.deepEquals(this.gradePct, other.gradePct) && PlatformApiPigeonUtils.deepEquals(this.retracing, other.retracing) && PlatformApiPigeonUtils.deepEquals(this.retraceSame, other.retraceSame) && PlatformApiPigeonUtils.deepEquals(this.backToStartM, other.backToStartM) && PlatformApiPigeonUtils.deepEquals(this.climbAheadM, other.climbAheadM) && PlatformApiPigeonUtils.deepEquals(this.descentAheadM, other.descentAheadM) && PlatformApiPigeonUtils.deepEquals(this.heightVsStartM, other.heightVsStartM) && PlatformApiPigeonUtils.deepEquals(this.route, other.route) && PlatformApiPigeonUtils.deepEquals(this.trail, other.trail) && PlatformApiPigeonUtils.deepEquals(this.questDoneId, other.questDoneId) && PlatformApiPigeonUtils.deepEquals(this.goalEased, other.goalEased) && PlatformApiPigeonUtils.deepEquals(this.goalTargetMs, other.goalTargetMs) && PlatformApiPigeonUtils.deepEquals(this.treadmillMarks, other.treadmillMarks) && PlatformApiPigeonUtils.deepEquals(this.treadmillInclinePct, other.treadmillInclinePct)
   }
 
   override fun hashCode(): Int {
@@ -1913,6 +1920,7 @@ data class RecorderStatus (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.goalEased)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.goalTargetMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.treadmillMarks)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.treadmillInclinePct)
     return result
   }
 }
@@ -4451,8 +4459,12 @@ interface RecorderApi {
    * `cooperHistory` entry.
    * `route`: a route to follow (Free, Trail and Goal runs), journaled as the
    * `route` line; null = follow nothing.
+   * `treadmillInclinePct`: the session (intervals, `cooper`) runs on a
+   * treadmill at this incline (percent, 3 = "3 or more"): no GPS, no fix
+   * permission needed, journaled in the header. Null = outdoors. A free
+   * treadmill run is `RecordMode.treadmill` and sends null.
    */
-  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult
+  fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?, treadmillInclinePct: Double?): StartResult
   /** Debug builds only: like `start`, fed from a fixture instead of GPS/BLE. */
   fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult
   /**
@@ -4515,6 +4527,14 @@ interface RecorderApi {
    */
   fun startGpsProbe()
   fun stopGpsProbe()
+  /**
+   * Start/Ready is on screen: hunt and connect the saved HR strap so GO finds
+   * it connected, for every run type. Separate from the GPS probe (a treadmill
+   * run has no probe and still wants its strap). Idempotent; the strap is let
+   * go of 5 s after nobody wants it (no run, no Start/Ready).
+   */
+  fun startStrapHunt()
+  fun stopStrapHunt()
   /**
    * Settings → Voice → "Km splits" (default on): a Free run says each km
    * ("3 k, 15 minutes 20, pace 5:07."). Persisted natively; applies to a run
@@ -4640,8 +4660,9 @@ interface RecorderApi {
             val unitsArg = args[2] as Units
             val liveContextArg = args[3] as LiveContext?
             val routeArg = args[4] as FollowRoute?
+            val treadmillInclinePctArg = args[5] as Double?
             val wrapped: List<Any?> = try {
-              listOf(api.start(modeArg, specArg, unitsArg, liveContextArg, routeArg))
+              listOf(api.start(modeArg, specArg, unitsArg, liveContextArg, routeArg, treadmillInclinePctArg))
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)
             }
@@ -4958,6 +4979,38 @@ interface RecorderApi {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
               api.stopGpsProbe()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.startStrapHunt$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.startStrapHunt()
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.run_solo.RecorderApi.stopStrapHunt$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopStrapHunt()
               listOf(null)
             } catch (exception: Throwable) {
               PlatformApiPigeonUtils.wrapError(exception)

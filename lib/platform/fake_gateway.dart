@@ -279,12 +279,14 @@ class FakeRecorderGateway implements RecorderGateway {
     Units units, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   }) async {
     startCalls.add((
       mode: mode,
       spec: spec,
       liveContext: liveContext,
       route: route,
+      treadmillInclinePct: treadmillInclinePct,
     ));
     gpsProbeRunning = false; // as native: any start ends the probe
     if (startError != null) return StartResult(error: startError);
@@ -299,6 +301,7 @@ class FakeRecorderGateway implements RecorderGateway {
     _routeLengthM = route == null ? 0 : _routeLength(route);
     _routeClimbM = route?.elevM == null ? null : _routeClimb(route!.elevM!);
     _runCounter += 1;
+    _inclinePct = treadmillInclinePct;
     _begin(
       'fake-${_runCounter.toString().padLeft(3, '0')}',
       mode,
@@ -317,9 +320,16 @@ class FakeRecorderGateway implements RecorderGateway {
       SessionSpec? spec,
       LiveContext? liveContext,
       FollowRoute? route,
+      double? treadmillInclinePct,
     })
   >
   startCalls = [];
+
+  /// The incline the live run was started with (a session on a treadmill).
+  double? _inclinePct;
+
+  /// No GPS: a free treadmill run, or a session on the belt.
+  bool get _indoor => _mode == RecordMode.treadmill || _inclinePct != null;
 
   static double _routeClimb(List<double> elev) {
     var up = 0.0;
@@ -545,7 +555,7 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> setTreadmillDistance(double distanceM) async {
-    if (_mode != RecordMode.treadmill ||
+    if (!_indoor ||
         !distanceM.isFinite ||
         distanceM <= 0 ||
         distanceM > 500000) {
@@ -562,7 +572,7 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<List<double>> addTreadmillMark(double distanceM) async {
-    if (_mode != RecordMode.treadmill || _state == RecorderState.idle) {
+    if (!_indoor || _state == RecorderState.idle) {
       throw StateError('No treadmill run');
     }
     // As native: not while paused, past the last mark in distance and in time.
@@ -579,7 +589,7 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<List<double>> undoTreadmillMark() async {
-    if (_mode != RecordMode.treadmill || _state == RecorderState.idle) {
+    if (!_indoor || _state == RecorderState.idle) {
       throw StateError('No treadmill run');
     }
     if (_marks.isNotEmpty) _marks.removeLast();
@@ -657,6 +667,7 @@ class FakeRecorderGateway implements RecorderGateway {
     treadmillMarks: _state == RecorderState.idle || _marks.isEmpty
         ? null
         : _marksFlat,
+    treadmillInclinePct: _state == RecorderState.idle ? null : _inclinePct,
     mode: _state == RecorderState.idle ? RecordMode.free : _mode,
     laps: List.of(_laps),
   );
@@ -750,6 +761,19 @@ class FakeRecorderGateway implements RecorderGateway {
 
   @override
   Future<void> stopGpsProbe() async => gpsProbeRunning = false;
+
+  /// Whether Start/Ready wants the saved strap right now, and how many times it was asked.
+  bool strapHuntRunning = false;
+  int strapHuntStarts = 0;
+
+  @override
+  Future<void> startStrapHunt() async {
+    strapHuntRunning = true;
+    strapHuntStarts += 1;
+  }
+
+  @override
+  Future<void> stopStrapHunt() async => strapHuntRunning = false;
 
   void emitGpsProbe(GpsProbeEvent e) => _emit(e);
 
@@ -873,7 +897,7 @@ class FakeRecorderGateway implements RecorderGateway {
       final step = toBoundary > 0 ? math.min(remaining, toBoundary) : remaining;
       _elapsedMs += step;
       _activeMs += step;
-      if (_mode != RecordMode.treadmill && !_gpsLost) {
+      if (!_indoor && !_gpsLost) {
         _totalDistanceM += step / liveSecPerKm;
       }
       remaining -= step;
@@ -1064,23 +1088,19 @@ class FakeRecorderGateway implements RecorderGateway {
   }
 
   void _emitTick() {
-    if (_mode != RecordMode.treadmill) _extendRoute();
+    if (!_indoor) _extendRoute();
     final jitter = (_rng.nextDouble() - 0.5) * 6;
     _emit(
       TickEvent(
         elapsedMs: _elapsedMs,
         lapElapsedMs: _elapsedMs - _lapStartElapsedMs,
         lapDistanceM: _totalDistanceM - _lapStartDistanceM,
-        lapPaceLiveSecPerKm: _mode == RecordMode.treadmill || _gpsLost
-            ? null
-            : liveSecPerKm + jitter,
+        lapPaceLiveSecPerKm: _indoor || _gpsLost ? null : liveSecPerKm + jitter,
         totalDistanceM: _totalDistanceM,
         hr: (!hrPaired || _strapDropped)
             ? null
             : (scriptedHr ?? _hrFor(_phase)),
-        gpsAccuracyM: _mode == RecordMode.treadmill || _gpsLost
-            ? null
-            : gpsAccuracyM,
+        gpsAccuracyM: _indoor || _gpsLost ? null : gpsAccuracyM,
         state: _state,
         phase: _phase,
         repIndex: _repIndex,

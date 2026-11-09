@@ -241,6 +241,7 @@ class TraceGateway implements RecorderGateway {
     Units u, {
     LiveContext? liveContext,
     FollowRoute? route,
+    double? treadmillInclinePct,
   }) => throw UnimplementedError();
   @override
   Future<void> pause() => throw UnimplementedError();
@@ -282,6 +283,10 @@ class TraceGateway implements RecorderGateway {
   Future<void> startGpsProbe() => throw UnimplementedError();
   @override
   Future<void> stopGpsProbe() => throw UnimplementedError();
+  @override
+  Future<void> startStrapHunt() => throw UnimplementedError();
+  @override
+  Future<void> stopStrapHunt() => throw UnimplementedError();
   @override
   Future<void> setKmSplits(bool e) => throw UnimplementedError();
   @override

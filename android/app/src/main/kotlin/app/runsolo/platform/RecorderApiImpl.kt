@@ -43,7 +43,22 @@ import java.util.UUID
  * `RecorderApi` backed by [RecorderService]. Lives in the Activity so `start` runs while it is
  * visible (B2). Every method is idempotent (plan §2): the UI may be recreated mid-run.
  */
-class RecorderApiImpl(private val context: Context) : RecorderApi {
+/** What the Start/Ready screen asks of the saved HR strap, apart from GPS: want it (hunt and connect) / let it go. */
+interface StrapScreenWant {
+    fun wants()
+    fun releases()
+}
+
+/** The real strap: [BleHolder]'s client, owner "start" (it lets go [app.runsolo.ble.BleHrClient]'s 5 s after nobody wants it). */
+private class BleStrapScreenWant(private val context: Context) : StrapScreenWant {
+    override fun wants() = BleHolder.client(context).startScreenWants()
+    override fun releases() = BleHolder.client(context).startScreenReleases()
+}
+
+class RecorderApiImpl(
+    private val context: Context,
+    private val strap: StrapScreenWant = BleStrapScreenWant(context),
+) : RecorderApi {
     private val fs = JvmFileSystem(context.filesDir.toPath())
     private val prefs = context.getSharedPreferences(RecorderService.PREFS, Context.MODE_PRIVATE)
 
@@ -58,16 +73,30 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         )
     }
 
-    /** The probe runs while Start/Ready is on screen: that is also when the saved HR strap is wanted, so GO finds it connected. */
+    /** The GPS probe runs while a run that uses GPS is on Start/Ready. It no longer carries the strap (see [startStrapHunt]). */
     override fun startGpsProbe() {
         probe.start()
-        BleHolder.client(context).startScreenWants()
     }
 
     override fun stopGpsProbe() {
         probe.stop()
-        BleHolder.client(context).startScreenReleases()
     }
+
+    /**
+     * Start/Ready is on screen: the saved HR strap is wanted, so GO finds it connected. For every run type, a treadmill
+     * run (no GPS, no probe) included: it was tied to the GPS probe (#336), so an indoor run never hunted the strap.
+     * The strap is let go of 5 s after the last want ends ([app.runsolo.ble.BleHrClient]).
+     */
+    override fun startStrapHunt() {
+        strap.wants()
+    }
+
+    override fun stopStrapHunt() {
+        strap.releases()
+    }
+
+    /** Whether the Start/Ready GPS probe is requesting fixes (tests). */
+    internal val gpsProbeRunning: Boolean get() = probe.running
 
     private fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
 
@@ -133,8 +162,8 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
         return Result.success(core)
     }
 
-    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?, route: CoreFollowRoute?): RecordingSession =
-        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext, route)
+    private fun newSession(mode: app.runsolo.core.model.RunMode, spec: CoreSpec?, units: Units, replay: ReplayRunner?, liveContext: CoreLiveContext?, route: CoreFollowRoute?, treadmillInclinePct: Double? = null): RecordingSession =
+        RecordingSession(context, UUID.randomUUID().toString(), mode, spec, units.toCore(), replay, volumeKeyLaps(mode), liveContext, route, treadmillInclinePct)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.voiceCoach = voiceCoachFromPrefs() }
@@ -149,7 +178,7 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
     internal fun volumeKeyLaps(mode: app.runsolo.core.model.RunMode): Boolean =
         mode == app.runsolo.core.model.RunMode.laps && prefs.getBoolean(RecorderService.PREF_VOLUME_KEY_LAPS, mode.volumeKeyLapsDefault)
 
-    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null, route: FollowRoute? = null): StartResult {
+    private fun startWith(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ((CoreSpec?) -> ReplayRunner?)?, liveContext: LiveContext? = null, route: FollowRoute? = null, treadmillInclinePct: Double? = null): StartResult {
         probe.stop() // the run's own location request takes over
         active()?.let { return StartResult(runId = it.runId, error = null) }
         val coreMode = mode.toCore()
@@ -157,7 +186,15 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             Log.w(TAG, "start refused: $it")
             return StartResult(runId = null, error = StartError.UNSUPPORTED_SESSION)
         }
-        precondition(coreMode == app.runsolo.core.model.RunMode.treadmill)?.let { return StartResult(runId = null, error = it) }
+        // The belt is for sessions only (a free treadmill run is its own mode), and the incline must be a real percent.
+        if (treadmillInclinePct != null) {
+            val sessionOk = coreMode == app.runsolo.core.model.RunMode.intervals || coreMode == app.runsolo.core.model.RunMode.cooper
+            if (!sessionOk || !treadmillInclinePct.isFinite() || treadmillInclinePct < 0 || treadmillInclinePct > 15) {
+                Log.w(TAG, "start refused: treadmill surface for $coreMode at $treadmillInclinePct")
+                return StartResult(runId = null, error = StartError.UNSUPPORTED_SESSION)
+            }
+        }
+        precondition(coreMode == app.runsolo.core.model.RunMode.treadmill || treadmillInclinePct != null)?.let { return StartResult(runId = null, error = it) }
         val runner = replay?.let { make -> make(coreSpec) ?: return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE) }
         // A context that breaks the contract never blocks Start: the run is just silent (WARN-3).
         val coreContext = liveContext?.let { ctx ->
@@ -178,15 +215,15 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             }
         }
         // A T4 replay kind brings its own context (the debug intent has no app to build one).
-        val session = newSession(coreMode, coreSpec, units, runner, coreContext ?: runner?.context, coreRoute)
+        val session = newSession(coreMode, coreSpec, units, runner, coreContext ?: runner?.context, coreRoute, treadmillInclinePct)
         return begin(session) {
             it.startNew(device = "${Build.MANUFACTURER} ${Build.MODEL}", app = BuildConfig.VERSION_NAME, tz = TimeZone.getDefault().id)
         }
     }
 
     /** [liveContext]: the live compare's history (Phase 4 §3.2), journaled after the header. */
-    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?): StartResult =
-        startWith(mode, spec, units, null, liveContext, route)
+    override fun start(mode: RecordMode, spec: SessionSpec?, units: Units, liveContext: LiveContext?, route: FollowRoute?, treadmillInclinePct: Double?): StartResult =
+        startWith(mode, spec, units, null, liveContext, route, treadmillInclinePct)
 
     override fun startReplay(mode: RecordMode, spec: SessionSpec?, units: Units, replay: ReplayConfig): StartResult {
         if (!BuildConfig.REPLAY_ENABLED) return StartResult(runId = null, error = StartError.REPLAY_UNAVAILABLE)
@@ -204,14 +241,14 @@ class RecorderApiImpl(private val context: Context) : RecorderApi {
             Log.w(TAG, "resume: unreadable journal $runId: $e")
             return StartResult(runId = null, error = StartError.NO_SUCH_JOURNAL)
         }
-        precondition(replayed.header.mode == app.runsolo.core.model.RunMode.treadmill)?.let { return StartResult(runId = null, error = it) }
+        precondition(replayed.header.indoor)?.let { return StartResult(runId = null, error = it) }
         return begin(resumeSession(runId, replayed)) { it.startResumed(replayed) }
     }
 
     /** The session [resumeRecovered] continues: the journaled live context comes back with the run (BLOCK-1), so it keeps comparing. */
     internal fun resumeSession(runId: String, replayed: Replay): RecordingSession {
         val h = replayed.header
-        return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext, replayed.route)
+        return RecordingSession(context, runId, h.mode, h.session, h.units, null, volumeKeyLaps(h.mode), replayed.liveContext, replayed.route, h.treadmillInclinePct)
             .also { it.kmSplits = prefs.getBoolean(RecorderService.PREF_KM_SPLITS, true) }
             .also { it.spokenSummary = prefs.getBoolean(RecorderService.PREF_SPOKEN_SUMMARY, true) }
             .also { it.voiceCoach = voiceCoachFromPrefs() }

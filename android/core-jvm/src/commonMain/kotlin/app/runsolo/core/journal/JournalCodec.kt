@@ -47,6 +47,7 @@ object JournalCodec {
                 m["mode"] = line.mode.name
                 m["session"] = line.session?.toJson()
                 m["units"] = line.units.name
+                line.treadmillInclinePct.finiteOrNull()?.let { m["ti"] = it }
             }
             is JournalLine.Sample -> {
                 m["k"] = "s"
@@ -146,6 +147,7 @@ object JournalCodec {
                     mode = mode,
                     session = decodeSession(m, mode, schema),
                     units = Units.valueOf(m.string("units")),
+                    treadmillInclinePct = m.doubleOrNull("ti"),
                 )
             }
             "s" -> {
