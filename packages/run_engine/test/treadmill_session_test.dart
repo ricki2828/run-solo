@@ -189,6 +189,17 @@ void main() {
       expect(none.estimate, isNull);
     });
 
+    test('a typed distance outside 800-5000 m is invalid, not a VO2', () {
+      for (final d in [28000.0, 5001.0, 799.0, 0.0]) {
+        final c = cooperOf(belt(distance: d));
+        expect(c.invalid, CooperInvalid.implausible, reason: '$d');
+        expect(c.estimate, isNull);
+        expect(c.invalidLine, contains('not possible'));
+      }
+      expect(cooperOf(belt(distance: 800)).valid, isTrue);
+      expect(cooperOf(belt(distance: 5000)).valid, isTrue);
+    });
+
     test('an outdoor test is untouched', () {
       final c = CooperResult.of(
         belt(incline: null, distance: null),

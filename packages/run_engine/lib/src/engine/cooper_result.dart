@@ -21,6 +21,10 @@ enum CooperInvalid {
 
   /// On a treadmill and no distance was entered at the finish.
   noDistance,
+
+  /// On a treadmill and the typed distance is outside what 12 minutes can
+  /// be (a typo such as 28 for 2.8 km, or miles for km).
+  implausible,
 }
 
 /// The 12-minute test's result (Phase 3 C1, v1 plan §18.4, Phase 4 CO2):
@@ -74,6 +78,12 @@ class CooperResult {
     );
   }
 
+  /// A typed belt test distance outside this range is not believed: under
+  /// 800 m is barely a walk, over 5,000 m in 12 minutes beats the world
+  /// record. No VO2 is shown for it.
+  static const double beltMinM = 800;
+  static const double beltMaxM = 5000;
+
   /// The test on a belt: no GPS, so the distance is the one the runner typed
   /// in from the treadmill's display (it covers the 12:00, the display reset
   /// when the test started). No per-minute curve, no weather, no heat twin.
@@ -86,6 +96,8 @@ class CooperResult {
         ? CooperInvalid.short
         : distance == null
         ? CooperInvalid.noDistance
+        : distance < beltMinM || distance > beltMaxM
+        ? CooperInvalid.implausible
         : null;
     return CooperResult._(
       testDistanceM: distance ?? 0,
@@ -175,6 +187,9 @@ class CooperResult {
     CooperInvalid.noisy => 'GPS was too noisy for an estimate.',
     CooperInvalid.noDistance =>
       'No distance was entered, so there is no estimate.',
+    CooperInvalid.implausible =>
+      'That distance is not possible in 12 minutes, so there is no '
+          'estimate. Check it was kilometres.',
     null => null,
   };
 
