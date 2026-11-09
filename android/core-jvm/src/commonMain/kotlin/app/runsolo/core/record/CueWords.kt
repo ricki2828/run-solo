@@ -48,6 +48,8 @@ object CueWords {
         coach: Boolean = false,
         /** Ease off on a goal run: the projection is the plain "On track for about 31 minutes", no clock and no target. */
         easeProjection: Boolean = false,
+        /** The session runs on a treadmill: a distance step cannot be measured, so the start cue says to tap. */
+        treadmill: Boolean = false,
     ): String? {
         val step = stepIndex?.let { spec?.steps?.getOrNull(it) }
         val cooper = spec?.cueProfile == CueProfile.cooper
@@ -57,9 +59,15 @@ object CueWords {
                 step == null -> null
                 step.kind == StepKind.work && cooper -> "Twelve minutes. Go"
                 // A goal or the timed 5 km is one step, not reps: say what it is ("10 K. Go", "30 minutes. Go").
+                // Treadmill goal: the runner double-taps GOAL DONE when the belt's display shows the goal distance.
+                treadmill && step.kind == StepKind.work && step.target == TargetKind.distance && spec!!.isGoal ->
+                    "${spec.spoken}. Tap when the treadmill shows it"
                 step.kind == StepKind.work && (spec!!.isGoal || spec.isEvent) -> "${spec.spoken}. Go"
                 // The last rep says so in its own start line (#79 review: "Rep 8 of 8" + "Last rep"
                 // were two lines at once); the `lastRep` cue itself is silent.
+                // Treadmill: the app cannot measure the step, the runner taps REP DONE when the belt's display shows it.
+                treadmill && step.target == TargetKind.distance ->
+                    metres(step.value.toDouble()) + (if (step.kind == StepKind.work) " rep" else " recovery") + ": tap when the treadmill shows it"
                 step.kind == StepKind.work && short -> if (lastRep(spec!!, repIndex)) "Last rep. Go" else "Go"
                 step.kind == StepKind.work && step.target == TargetKind.distance ->
                     (if (lastRep(spec!!, repIndex)) "Last rep, $repIndex of ${spec.reps}, " else "Rep $repIndex of ${spec.reps}, ") +

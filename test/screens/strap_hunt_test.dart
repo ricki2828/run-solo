@@ -50,6 +50,7 @@ void main() {
   for (final (name, mode, goal) in [
     ('the 12-minute test', RecordMode.cooper, false),
     ('intervals', RecordMode.intervals, false),
+    ('a goal run', RecordMode.intervals, true),
   ]) {
     testWidgets('$name on a treadmill keeps the strap with GPS off', (
       tester,

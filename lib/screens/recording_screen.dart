@@ -824,7 +824,7 @@ class _RecordingScreenState extends State<RecordingScreen>
           );
           final page1 = <Widget>[
             // The Free / Trail block takes the room itself.
-            if (!freeBlock) const Spacer(),
+            if (!freeBlock && !(s.isPreset && s.indoor)) const Spacer(),
             if ((isEventRun(s) || s.isGoal) && s.phase == Phase.work) ...[
               // K1 / A10.10, G3 (A8): distance or time to go is
               // the biggest number, projected finish second;
@@ -845,14 +845,33 @@ class _RecordingScreenState extends State<RecordingScreen>
               // 29-Sep field test: the run's own numbers under
               // the countdown (big screens only; compact keeps
               // the two-number budget).
-              if (!compact) ...[
-                const SizedBox(height: Space.x16),
-                _PausedHidden(
-                  paused: s.paused,
-                  child: _EventStats(s: s, ctl: ctl, units: settings.units),
+              if (s.indoor) ...[
+                // A goal on a treadmill: the markers and GOAL DONE take the
+                // room the GPS figures would (no distance, pace or splits).
+                _CoachSlot(coach, flex: 1),
+                Expanded(
+                  flex: 5,
+                  child: _PausedHidden(
+                    paused: s.paused,
+                    child: _TreadmillPanel(
+                      s: s,
+                      ctl: ctl,
+                      units: ctl.runUnits ??= settings.units,
+                      secondary: t.inkSecondary,
+                      primary: t.inkPrimary,
+                    ),
+                  ),
                 ),
+              ] else ...[
+                if (!compact) ...[
+                  const SizedBox(height: Space.x16),
+                  _PausedHidden(
+                    paused: s.paused,
+                    child: _EventStats(s: s, ctl: ctl, units: settings.units),
+                  ),
+                ],
+                _CoachSlot(coach),
               ],
-              _CoachSlot(coach),
             ] else if (s.isGoal && s.phase == Phase.cooldown) ...[
               // G3: after the goal, the cool-down's time is
               // primary and the goal's result sits locked below.
@@ -866,6 +885,15 @@ class _RecordingScreenState extends State<RecordingScreen>
                   targetMs: _goalTargetFor(s),
                 ),
               ),
+              if (s.indoor && ctl.repUndoAvailable) ...[
+                const SizedBox(height: Space.x16),
+                _UndoRepDone(
+                  ctl: ctl,
+                  primary: t.inkPrimary,
+                  secondary: t.inkSecondary,
+                  label: 'UNDO GOAL DONE',
+                ),
+              ],
               const Spacer(),
             ] else if (s.isPreset) ...[
               // 4x4 (founder field test 25-Sep): no big LAP.
@@ -895,33 +923,42 @@ class _RecordingScreenState extends State<RecordingScreen>
                   },
                 ),
               ),
-              _CoachSlot(coach),
-              CompareSlot(
-                link: s.phase == Phase.warmup ? null : _cardLink,
-                child: Visibility(
-                  visible: !s.paused,
-                  maintainSize: true,
-                  maintainAnimation: true,
-                  maintainState: true,
-                  child: s.indoor
-                      ? _TreadmillPanel(
-                          s: s,
-                          ctl: ctl,
-                          units: ctl.runUnits ??= settings.units,
-                          secondary: t.inkSecondary,
-                          primary: t.inkPrimary,
-                        )
-                      : s.phase == Phase.warmup
-                      ? _Stats(s: s, units: settings.units)
-                      : _SegmentPace(
-                          s: s,
-                          ctl: ctl,
-                          units: settings.units,
-                          compact: compact,
-                          hideAverage: cardShowing,
-                        ),
+              _CoachSlot(coach, flex: s.indoor ? 1 : 3),
+              if (s.indoor)
+                // The belt panel takes what the timer leaves and scales down
+                // inside it (no Spacers around it on a belt).
+                Expanded(
+                  flex: 5,
+                  child: _PausedHidden(
+                    paused: s.paused,
+                    child: _TreadmillPanel(
+                      s: s,
+                      ctl: ctl,
+                      units: ctl.runUnits ??= settings.units,
+                      secondary: t.inkSecondary,
+                      primary: t.inkPrimary,
+                    ),
+                  ),
+                )
+              else
+                CompareSlot(
+                  link: s.phase == Phase.warmup ? null : _cardLink,
+                  child: Visibility(
+                    visible: !s.paused,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: s.phase == Phase.warmup
+                        ? _Stats(s: s, units: settings.units)
+                        : _SegmentPace(
+                            s: s,
+                            ctl: ctl,
+                            units: settings.units,
+                            compact: compact,
+                            hideAverage: cardShowing,
+                          ),
+                  ),
                 ),
-              ),
             ] else if (s.isCooper) ...[
               // Scales down rather than overflow when a banner
               // and the GPS wait share a short screen with it;
@@ -1023,7 +1060,8 @@ class _RecordingScreenState extends State<RecordingScreen>
                     : GpsBar(accuracyM: s.gpsAccuracyM, lost: s.gpsLost),
               ),
             ],
-            if (lapGap && !freeBlock) const Spacer(),
+            if (lapGap && !freeBlock && !(s.isPreset && s.indoor))
+              const Spacer(),
           ];
           final scaffold = Scaffold(
             backgroundColor: Colors.transparent,
@@ -1384,6 +1422,8 @@ const String kCooperCooldownCaption = 'Cool down, then stop';
 
 /// A4: with no fix the metres never extrapolate; they read "--".
 String timerFigureText(RecordingSnapshot s, RecordingController ctl) {
+  // A treadmill distance step cannot be measured: its clock counts the rep up.
+  if (s.indoor && s.distanceStep) return Fmt.clock(ctl.displayLapElapsedMs);
   final toGo = s.metresToGo;
   if (toGo == null) return Fmt.clock(timerFigureMs(s, ctl));
   return s.gpsLost ? '--' : metresText(toGo);
@@ -1392,6 +1432,7 @@ String timerFigureText(RecordingSnapshot s, RecordingController ctl) {
 /// The 4x4 / Laps timer's milliseconds: a timed phase (and a fixed warm-up)
 /// counts down, anything else counts up through the lap.
 int timerFigureMs(RecordingSnapshot s, RecordingController ctl) {
+  if (s.indoor && s.distanceStep) return ctl.displayLapElapsedMs;
   final fixedWarmup = s.phase == Phase.warmup && s.spec?.warmupSeconds != null;
   return s.timed || fixedWarmup
       ? ctl.displayRemainingMs
@@ -1742,6 +1783,8 @@ String timerCaption(RecordingSnapshot s) {
   return switch (s.phase) {
     Phase.warmup when s.spec?.warmupSeconds != null => 'warm-up left',
     Phase.warmup => 'warm up, then tap BEGIN REPS',
+    Phase.work when s.indoor && s.distanceStep => 'rep time',
+    Phase.recovery when s.indoor && s.distanceStep => 'recovery time',
     Phase.work when s.distanceStep => 'to go',
     Phase.work => 'left in rep',
     Phase.recovery => 'to rep ${s.repIndex + 1}',
@@ -2775,7 +2818,7 @@ class _TimerBlock extends StatelessWidget {
     final secondary = t.inkSecondary;
     final recovery = s.phase == Phase.recovery;
     final ms = timerFigureMs(s, ctl);
-    final toGo = s.metresToGo;
+    final toGo = s.indoor ? null : s.metresToGo;
     final target = s.currentStep?.value ?? 0;
     final total = !recovery && s.phase != Phase.work
         ? 0
@@ -3384,14 +3427,17 @@ class _FinishScreen extends StatelessWidget {
 /// it fits, and the room stays empty when it does not (short phones), so it
 /// never pushes the numbers or the controls.
 class _CoachSlot extends StatelessWidget {
-  const _CoachSlot(this.coach);
+  const _CoachSlot(this.coach, {this.flex = 3});
   final _CoachLayer? coach;
+
+  /// 3, or 1 where the treadmill panel below needs the room.
+  final int flex;
 
   @override
   // Flex 3 against the lone Spacer above the numbers: the coach layer gets
   // the room first, so the 16 sp label floor never costs the next-step line.
   Widget build(BuildContext context) => Expanded(
-    flex: 3,
+    flex: flex,
     child: LayoutBuilder(
       builder: (context, box) {
         final c = coach;
@@ -3739,6 +3785,16 @@ String eventDistanceToGo(double metres, Units units) {
 /// 200 m and without a good fix (A10.10: never extrapolated).
 double? eventProjectedSeconds(RecordingSnapshot s, int stepElapsedMs) {
   final st = s.currentStep;
+  // A goal on a treadmill: the speed since Start as the last marker gave it
+  // (its moving time over its distance), carried over the whole goal. Moves
+  // only when a marker is tapped or taken back, never between them.
+  if (s.indoor && s.isGoal) {
+    final m = s.treadmillMarks.lastOrNull;
+    if (st == null || m == null || m.distanceM < 200 || m.activeMs <= 0) {
+      return null;
+    }
+    return m.activeMs / 1000 / m.distanceM * st.value;
+  }
   final togo = s.metresToGo;
   if (st == null || togo == null || s.gpsLost || s.gpsWeak) return null;
   final run = st.value - togo;
@@ -4304,6 +4360,18 @@ class _TreadmillPanel extends StatelessWidget {
       );
     }
     final estimate = s.beltCooperEstimate;
+    // A distance rep (or distance recovery): the app cannot measure it, so the
+    // runner double-taps REP DONE when the treadmill shows the distance. The
+    // strip is for time reps; here the target takes the room.
+    if (ctl.canRepDone && !s.isGoal) {
+      return _RepDoneBlock(
+        s: s,
+        ctl: ctl,
+        units: units,
+        secondary: secondary,
+        primary: primary,
+      );
+    }
     return Center(
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -4313,9 +4381,22 @@ class _TreadmillPanel extends StatelessWidget {
             key: const ValueKey('treadmill-panel'),
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (ctl.repUndoAvailable) ...[
+                _UndoRepDone(ctl: ctl, primary: primary, secondary: secondary),
+                const SizedBox(height: Space.x8),
+              ],
               if (estimate != null) ...[
                 _BeltCooperEstimate(
                   estimate: estimate,
+                  secondary: secondary,
+                  primary: primary,
+                ),
+                const SizedBox(height: Space.x8),
+              ],
+              if (s.beltReps.isNotEmpty) ...[
+                _LastBeltRep(
+                  s: s,
+                  units: units,
                   secondary: secondary,
                   primary: primary,
                 ),
@@ -4361,6 +4442,10 @@ class _TreadmillPanel extends StatelessWidget {
                     ),
                 ],
               ),
+              if (ctl.canRepDone && s.isGoal) ...[
+                const SizedBox(height: Space.x8),
+                _GoalDoneTarget(ctl: ctl, s: s, primary: primary),
+              ],
               if (marks.isEmpty)
                 Text(
                   'Double-tap a marker as you pass it',
@@ -4407,6 +4492,228 @@ class _BeltCooperEstimate extends StatelessWidget {
           '${estimate.rangeText}',
           key: const ValueKey('belt-cooper-vo2'),
           style: label,
+        ),
+      ],
+    );
+  }
+}
+
+/// REP DONE: a big double-tap target for a distance step on a treadmill. The
+/// app cannot see the belt, so the runner taps it (twice, so a pocket or a
+/// bumped hand does nothing) when the treadmill shows the step's distance; the
+/// step ends there, its time is the tap's. At least 72 dp tall and the label is
+/// a 44 sp figure: readable at arm's length on a moving belt.
+class _RepDoneBlock extends StatelessWidget {
+  const _RepDoneBlock({
+    required this.s,
+    required this.ctl,
+    required this.units,
+    required this.secondary,
+    required this.primary,
+  });
+
+  final RecordingSnapshot s;
+  final RecordingController ctl;
+  final Units units;
+  final Color secondary;
+  final Color primary;
+
+  /// The target's height, dp. Not under 72.
+  static const double targetHeight = 96;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    final label = RunLabelScope.style(context, secondary);
+    final recovery = s.phase == Phase.recovery;
+    final metres = s.currentStep?.value.toDouble();
+    final what = metres == null
+        ? ''
+        : '${units == Units.km ? metresText(metres) : Fmt.distance(metres, units)} '
+              '${recovery ? 'recovery' : 'rep'}';
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          width: 328,
+          child: Column(
+            key: const ValueKey('rep-done-block'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (s.beltReps.isNotEmpty) ...[
+                _LastBeltRep(
+                  s: s,
+                  units: units,
+                  secondary: secondary,
+                  primary: primary,
+                ),
+                const SizedBox(height: Space.x8),
+              ],
+              Text(
+                '$what: tap when the treadmill shows it',
+                key: const ValueKey('rep-done-prompt'),
+                textAlign: TextAlign.center,
+                style: label,
+              ),
+              const SizedBox(height: Space.x8),
+              Semantics(
+                button: true,
+                label: recovery ? 'Recovery done' : 'Rep done',
+                hint: 'Double-tap',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  key: const ValueKey('rep-done'),
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: s.paused ? null : ctl.repDone,
+                  child: Container(
+                    height: targetHeight,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: primary,
+                      borderRadius: BorderRadius.circular(Radii.card),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        recovery ? 'RECOVERY DONE' : 'REP DONE',
+                        style: RunSoloType.display44.copyWith(color: t.bgBase),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: Space.x4),
+              Text(
+                'Double-tap',
+                key: const ValueKey('rep-done-hint'),
+                style: RunSoloType.runNote.copyWith(color: secondary),
+              ),
+              if (ctl.repUndoAvailable) ...[
+                const SizedBox(height: Space.x4),
+                _UndoRepDone(ctl: ctl, primary: primary, secondary: secondary),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// GOAL DONE: the distance goal's end on a treadmill, a double-tap when the
+/// treadmill shows the goal distance (a goal such as a half marathon is not a
+/// marker chip). The goal's time is the tap's; the cool-down starts. At least
+/// 72 dp tall.
+class _GoalDoneTarget extends StatelessWidget {
+  const _GoalDoneTarget({
+    required this.ctl,
+    required this.s,
+    required this.primary,
+  });
+  final RecordingController ctl;
+  final RecordingSnapshot s;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).extension<RunSoloTokens>()!;
+    return Semantics(
+      button: true,
+      label: 'Goal done',
+      hint: 'Double-tap',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('goal-done-target'),
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: s.paused ? null : ctl.repDone,
+        child: Container(
+          height: 72,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: primary,
+            borderRadius: BorderRadius.circular(Radii.card),
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'GOAL DONE · DOUBLE-TAP',
+              style: RunSoloType.display44.copyWith(
+                color: t.bgBase,
+                fontSize: 36,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// UNDO REP DONE: takes the last tap back while it is the latest thing that
+/// happened (a mis-tap). Shown for a few seconds after a tap.
+class _UndoRepDone extends StatelessWidget {
+  const _UndoRepDone({
+    required this.ctl,
+    required this.primary,
+    required this.secondary,
+    this.label = 'UNDO REP DONE',
+  });
+  final String label;
+  final RecordingController ctl;
+  final Color primary;
+  final Color secondary;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+    key: const ValueKey('undo-rep-done'),
+    onPressed: ctl.undoRepDone,
+    style: OutlinedButton.styleFrom(
+      minimumSize: const Size.fromHeight(52),
+      foregroundColor: primary,
+      side: BorderSide(color: secondary, width: 2),
+      shape: const StadiumBorder(),
+    ),
+    child: Text(label, style: RunLabelScope.style(context, primary)),
+  );
+}
+
+/// The last finished treadmill rep: its prescribed distance over the time the
+/// tap gave, as a speed in the runner's units (the app did not measure it).
+class _LastBeltRep extends StatelessWidget {
+  const _LastBeltRep({
+    required this.s,
+    required this.units,
+    required this.secondary,
+    required this.primary,
+  });
+  final RecordingSnapshot s;
+  final Units units;
+  final Color secondary;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final mps = s.lastBeltRepMps;
+    final rep = s.beltReps.last;
+    final speed = mps == null
+        ? '--'
+        : (units == Units.mi
+                  ? engine.TreadmillSplits.mpsToMph(mps)
+                  : engine.TreadmillSplits.mpsToKmh(mps))
+              .toStringAsFixed(1);
+    final unit = units == Units.mi ? 'mph' : 'km/h';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'LAST REP ${Fmt.clock(rep.ms)}',
+          key: const ValueKey('last-belt-rep'),
+          style: RunLabelScope.style(context, secondary),
+        ),
+        Text(
+          '$speed $unit',
+          key: const ValueKey('last-belt-rep-speed'),
+          style: RunSoloType.display44.copyWith(color: primary),
         ),
       ],
     );

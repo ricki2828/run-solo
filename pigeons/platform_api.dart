@@ -972,6 +972,12 @@ abstract class RecorderApi {
 
   /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
   List<double> undoTreadmillMark();
+
+  /// Treadmill session: UNDO the latest REP DONE tap (a `lap` in a distance
+  /// step), if it is still the latest thing that happened (no later lap, within
+  /// a minute): the session is inside the step the tap ended, its clock
+  /// unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
+  void undoRepDone();
   String? stop();
   RecorderStatus status();
 

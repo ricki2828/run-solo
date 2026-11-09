@@ -82,6 +82,13 @@ sealed class JournalLine {
 
     data class Lap(override val t: Long, override val w: Long, val source: LapSource) : JournalLine()
 
+    /**
+     * `lu`: the latest [Lap] was taken back (treadmill REP DONE mis-tap, UNDO). Replay drops that lap from the
+     * timeline, so the rebuilt session is back inside the rep it ended. An older build reads it as a bad line and
+     * skips it (it would keep the lap).
+     */
+    data class LapUndo(override val t: Long, override val w: Long) : JournalLine()
+
     data class Pause(override val t: Long, override val w: Long) : JournalLine()
 
     data class Resume(override val t: Long, override val w: Long) : JournalLine()

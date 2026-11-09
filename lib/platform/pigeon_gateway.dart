@@ -52,6 +52,9 @@ class PigeonRecorderGateway implements RecorderGateway {
   Future<List<double>> undoTreadmillMark() => _api.undoTreadmillMark();
 
   @override
+  Future<void> undoRepDone() => _api.undoRepDone();
+
+  @override
   Future<String?> stop() => _api.stop();
 
   @override

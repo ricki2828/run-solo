@@ -94,19 +94,26 @@ class _StartScreenState extends State<StartScreen> with WidgetsBindingObserver {
   final ValueNotifier<bool> _onBelt = ValueNotifier<bool>(false);
 
   /// Whether this run can be run on a treadmill: the 12-minute test, and
-  /// intervals whose reps are all timed (a distance rep needs GPS or, later,
-  /// the REP DONE tap). Not a goal, the event or a Bronco; not on iOS, whose
-  /// recorder has no treadmill sessions yet.
+  /// intervals (a distance rep ends on the runner's REP DONE tap). Not a goal,
+  /// the event or a Bronco; not on iOS, whose recorder has no treadmill
+  /// sessions yet.
   bool _beltAllowed(AppSettings s, {RecordMode? testMode}) {
-    if (testMode != null || s.goalRun) return false;
+    if (testMode != null) return false;
     if (defaultTargetPlatform == TargetPlatform.iOS) return false;
+    if (s.goalRun) {
+      // A distance goal (not the event, not a time goal): GOAL DONE ends it.
+      final goal = s.goalSpec(kEventNames.parkrun);
+      return goal != null &&
+          goal.templateId != engine.SessionSpec.parkrunId &&
+          goal.workSteps.length == 1 &&
+          goal.workSteps.single.target == engine.TargetKind.distance;
+    }
     switch (s.lastMode) {
       case RecordMode.cooper:
         return _pickedTest == 'cooper';
       case RecordMode.intervals:
         final spec = AppServices.of(context).pickedSession;
-        return spec.templateId != engine.SessionSpec.parkrunId &&
-            !spec.steps.any((st) => st.target == engine.TargetKind.distance);
+        return spec.templateId != engine.SessionSpec.parkrunId;
       case RecordMode.laps ||
           RecordMode.free ||
           RecordMode.trail ||

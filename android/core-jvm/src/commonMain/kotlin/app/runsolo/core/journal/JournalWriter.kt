@@ -74,7 +74,7 @@ class JournalWriter(
             dropped++
             return
         }
-        val forced = line is JournalLine.Lap || line is JournalLine.Pause ||
+        val forced = line is JournalLine.Lap || line is JournalLine.LapUndo || line is JournalLine.Pause ||
             line is JournalLine.Resume || line is JournalLine.AutoPause || line is JournalLine.AutoResume || line is JournalLine.Gap || line is JournalLine.Header ||
             line is JournalLine.LiveContextLine || line is JournalLine.CueFired ||
             line is JournalLine.TreadmillMark || line is JournalLine.TreadmillMarkUndo || line is JournalLine.TipsMuted || line is JournalLine.QuestDone || line is JournalLine.RouteLine || line is JournalLine.PromptResolved

@@ -68,6 +68,7 @@ object JournalCodec {
                 line.hpa.finiteOrNull()?.let { m["hpa"] = (it * 100).roundToLong() / 100.0 }
             }
             is JournalLine.Lap -> { m["k"] = "lap"; m["t"] = line.t; m["w"] = line.w; m["src"] = line.source.name }
+            is JournalLine.LapUndo -> { m["k"] = "lu"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.Pause -> { m["k"] = "pause"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.Resume -> { m["k"] = "resume"; m["t"] = line.t; m["w"] = line.w }
             is JournalLine.AutoPause -> { m["k"] = "apause"; m["t"] = line.t; m["w"] = line.w }
@@ -168,6 +169,7 @@ object JournalCodec {
                 )
             }
             "lap" -> JournalLine.Lap(t, w, LapSource.valueOf(m.string("src")))
+            "lu" -> JournalLine.LapUndo(t, w)
             "pause" -> JournalLine.Pause(t, w)
             "resume" -> JournalLine.Resume(t, w)
             "apause" -> JournalLine.AutoPause(t, w)

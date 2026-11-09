@@ -228,7 +228,7 @@ class RecordingSession(
 
     /** The Cooper fade curve: the engine's personal curve from the LiveContext, else the default (§3.3). */
     private val coreConfig: RecorderCore.Config
-        get() = RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled, cooperCurve = CooperCurve.fromFractions(liveContext?.cooperCurve) ?: CooperCurve.DEFAULT)
+        get() = RecorderCore.Config(volumeKeyLaps = volumeKeyLapsEnabled, cooperCurve = CooperCurve.fromFractions(liveContext?.cooperCurve) ?: CooperCurve.DEFAULT, treadmill = indoor)
 
     /** Live "you vs you" (LV1); rebuilt from the journal's `cf` lines on resume. */
     private var coach = LiveCoach(liveContext, mode, spec)
@@ -878,6 +878,31 @@ class RecordingSession(
             treadmillMarks.add(metres, active)
         }
         return treadmillMarks.flat()
+    }
+
+    /**
+     * Treadmill: takes the latest REP DONE tap back (a lap in a distance step), if it is still the latest thing that
+     * happened: the session is inside the step the tap ended, its clock unbroken. Journaled (`lu`) so a kill after the undo
+     * rebuilds the same session. A no-op when there is nothing to take back.
+     */
+    @Synchronized
+    fun undoRepDone() {
+        require(indoor && !finished)
+        val t = clock()
+        // A press's lap waits for the next tick to be sent; send it first so what is taken back is whole.
+        dispatch.flush(t, ticker.distanceM)
+        val out = core.undoLap(t) ?: return
+        writer.append(JournalLine.LapUndo(t, System.currentTimeMillis()))
+        writer.sync()
+        check(writer.ok) { "Undo could not be saved" }
+        if (laps.isNotEmpty()) laps.removeAt(laps.lastIndex)
+        lapCount = core.lapCount
+        lapStartDist = laps.lastOrNull()?.distanceM ?: 0.0
+        lapStartActive = laps.sumOf { it.activeMs }
+        lapStartT = t - (core.status(t).elapsedMs - (laps.lastOrNull()?.tMs ?: 0L))
+        handle(out, t)
+        refreshSnapshot()
+        emitState()
     }
 
     /** Treadmill: takes the latest mark back. Answers the marks left. */
@@ -1566,7 +1591,7 @@ class RecordingSession(
 
     // Voice coaching names the next step in the ten-seconds cue; a replay's transcript stays pinned.
     private fun cueText(o: RecorderCore.Output.Cue): String? =
-        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index, coach = voiceCoach != null && replay == null, easeProjection = coach.easeMode)
+        CueWords.text(o.kind, o.value, spec, core.phase, core.repIndex, core.stepIndex, o.index, coach = voiceCoach != null && replay == null, easeProjection = coach.easeMode, treadmill = indoor)
 
     private fun emitState() {
         refreshSnapshot()
