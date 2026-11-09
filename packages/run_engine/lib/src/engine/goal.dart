@@ -101,25 +101,59 @@ class GoalResult {
     bool gapBefore(int t) => run.gaps.any((g) => g.t0Ms < t);
 
     // A distance goal on a treadmill: no distance stream. The goal is reached
-    // when the runner's GOAL DONE tap ended its step, a lap before the
-    // cool-down's own (an untouched run has the one lap to Stop).
+    // when (1) the runner's GOAL DONE tap ended its step (a lap before the
+    // cool-down's own; an untouched run has the one lap to Stop), (2) a
+    // distance marker at or past the goal was tapped, the mark's moving time
+    // being the goal time, or (3) the distance typed at Stop is at or past
+    // the goal: timed from the first mark past the goal, else estimated at
+    // an even pace over the moving time.
     if (run.onTreadmill && step.target == TargetKind.distance) {
       final laps = [
         for (final l in run.laps)
           if (l.kind != LapKind.pause) l,
       ];
-      final at = laps.length >= 2 ? laps.first.t1Ms : null;
+      int runTimeOf(int activeMs) {
+        var t = activeMs;
+        for (final s in pauses) {
+          if (s.t0Ms >= t) break;
+          t += s.durationMs;
+        }
+        return t;
+      }
+
+      final tap = laps.length >= 2 ? laps.first.t1Ms : null;
+      TreadmillMark? mark;
+      for (final m in run.treadmillMarks) {
+        if (m.distanceM >= step.value &&
+            (mark == null || m.activeMs < mark.activeMs)) {
+          mark = m;
+        }
+      }
+      final markAt = mark == null ? null : runTimeOf(mark.activeMs);
+      final typed = run.treadmillDistanceM;
+      int? at;
+      int? goalMs;
+      if (tap != null && (markAt == null || tap <= markAt)) {
+        at = tap;
+        goalMs = tap - pausedBefore(tap);
+      } else if (markAt != null) {
+        at = markAt;
+        goalMs = mark!.activeMs;
+      } else if (typed != null && typed >= step.value) {
+        at = run.elapsedMs;
+        final movingMs = run.elapsedMs - pausedBefore(run.elapsedMs);
+        goalMs = (movingMs * step.value / typed).round();
+        at = runTimeOf(goalMs);
+      }
       return GoalResult(
         interrupted: gapBefore(at ?? run.elapsedMs),
         kind: GoalKind.distance,
         target: step.value,
         name: spec.name,
         reached: at != null,
-        goalMs: at == null ? null : at - pausedBefore(at),
+        goalMs: goalMs,
         atRunMs: at,
-        stoppedAtM: at != null
-            ? step.value.toDouble()
-            : (run.treadmillDistanceM ?? 0),
+        stoppedAtM: at != null ? step.value.toDouble() : (typed ?? 0),
       );
     }
     if (step.target == TargetKind.distance) {

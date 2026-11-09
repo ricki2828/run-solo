@@ -10,6 +10,7 @@ RunFile belt({
   double? distance = 2800,
   int endS = 1300,
   List<Span> pauses = const [],
+  List<TreadmillMark> marks = const [],
 }) {
   final cooper = mode == RunMode.cooper;
   return RunFile(
@@ -51,6 +52,7 @@ RunFile belt({
     ],
     pauses: pauses,
     treadmillDistanceM: distance,
+    treadmillMarks: marks,
     treadmillInclinePct: incline,
     samples: [
       for (var i = 0; i <= endS; i++)
@@ -245,10 +247,17 @@ void main() {
   });
 
   group('distance goal on a belt', () {
-    RunFile goalRun({required List<Lap> laps, double? distance}) => belt(
+    RunFile goalRun({
+      required List<Lap> laps,
+      double? distance,
+      List<TreadmillMark> marks = const [],
+      List<Span> pauses = const [],
+    }) => belt(
       mode: RunMode.intervals,
       distance: distance,
       endS: 1700,
+      marks: marks,
+      pauses: pauses,
     ).copyWith(session: SessionSpec.goalDistance(5000, '5K'), laps: laps);
 
     const l0 = Lap(
@@ -293,6 +302,55 @@ void main() {
       )!;
       expect(g.reached, isFalse);
       expect(g.stoppedAtM, 3200);
+    });
+
+    test('a marker at the goal counts as GOAL DONE, no tap needed', () {
+      final run = goalRun(
+        laps: const [l0],
+        distance: 5300,
+        marks: const [
+          TreadmillMark(600000, 2000),
+          TreadmillMark(1490000, 5000),
+          TreadmillMark(1600000, 5300),
+        ],
+      );
+      final g = GoalResult.of(run, SessionSpec.goalDistance(5000, '5K'))!;
+      expect(g.reached, isTrue);
+      expect(g.goalMs, 1490000);
+      expect(g.resultLine, '5K in 24:50');
+      expect(g.stoppedAtM, 5000);
+    });
+
+    test('a pause before the marker is not goal time', () {
+      final run = goalRun(
+        laps: const [l0],
+        distance: 5000,
+        pauses: const [Span(600000, 660000)],
+        marks: const [TreadmillMark(1500000, 5000)],
+      );
+      final g = GoalResult.of(run, SessionSpec.goalDistance(5000, '5K'))!;
+      expect(g.goalMs, 1500000);
+      expect(g.atRunMs, 1560000);
+    });
+
+    test('typed distance past the goal with no marks: even-pace estimate', () {
+      final g = GoalResult.of(
+        goalRun(laps: const [l0], distance: 5500),
+        SessionSpec.goalDistance(5000, '5K'),
+      )!;
+      expect(g.reached, isTrue);
+      expect(g.goalMs, (1700000 * 5000 / 5500).round());
+    });
+
+    test('marks and typed distance short of the goal: not reached', () {
+      final run = goalRun(
+        laps: const [l0],
+        distance: 4800,
+        marks: const [TreadmillMark(1400000, 4800)],
+      );
+      final g = GoalResult.of(run, SessionSpec.goalDistance(5000, '5K'))!;
+      expect(g.reached, isFalse);
+      expect(g.stoppedAtM, 4800);
     });
   });
 }
