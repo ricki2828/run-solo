@@ -4597,6 +4597,28 @@ class RecorderApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<double>();
   }
 
+  /// Treadmill session: UNDO the latest REP DONE tap (a `lap` in a distance
+  /// step), if it is still the latest thing that happened (no later lap, within
+  /// a minute): the session is inside the step the tap ended, its clock
+  /// unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
+  Future<void> undoRepDone() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.undoRepDone$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   Future<String?> stop() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.run_solo.RecorderApi.stop$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(

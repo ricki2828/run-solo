@@ -341,8 +341,75 @@ class RecorderCore(
         return LapDecision.accepted to leavingAutoPause(t, applyManualLap(LapSource.button, t))
     }
 
+    /**
+     * Everything a manual lap can change, taken just before it, so [undoLap] can put the session back inside the
+     * step the lap ended (the treadmill REP DONE mis-tap). One slot: the latest manual lap only, dropped by any later
+     * lap (manual or auto).
+     */
+    private class LapCheckpoint(
+        val t: Long,
+        val lapIndex: Int,
+        val phase: Phase,
+        val repIndex: Int,
+        val stepIndex: Int?,
+        val phaseStartActive: Long,
+        val phaseStartD: Double,
+        val phaseDurationMs: Long?,
+        val phaseTargetM: Long?,
+        val pendingCues: List<CueScheduler.CuePoint>,
+        val pendingStartT: Long?,
+        val lastWorkActiveMs: Long,
+        val lastAutoLapT: Long?,
+        val lastManualLapT: Long?,
+        val finalStepEnd: StepEnd?,
+        val lastBoundaryT: Long,
+        val autoStopped: Boolean,
+    )
+
+    private var lapCheckpoint: LapCheckpoint? = null
+
+    private fun checkpoint(t: Long) = LapCheckpoint(
+        t, lapCount, phase, repIndex, stepIndex, phaseStartActive, phaseStartD, phaseDurationMs, phaseTargetM,
+        pendingCues.toList(), pendingStartT, lastWorkActiveMs, lastAutoLapT, lastManualLapT, finalStepEnd, lastBoundaryT, autoStopped,
+    )
+
+    /**
+     * Takes the latest manual lap back, if it is still the latest thing that happened and happened within
+     * [maxAgeMs]: the session is in the step the lap ended again, its clock unbroken (the step's own start is kept,
+     * so a rep keeps counting from where it began). Null when there is nothing to undo (no lap, another lap or the
+     * auto-stop came since, too old, paused, not structured). The caller journals a `LapUndo` line and, on a non-null
+     * answer, the phase change to show.
+     */
+    fun undoLap(t: Long, maxAgeMs: Long = UNDO_WINDOW_MS): List<Output>? {
+        val cp = lapCheckpoint ?: return null
+        if (!structured || state != RecorderState.recording) return null
+        // Only a lap that ended a rep or a recovery; the warm-up's end (BEGIN REPS) is not a tap to take back.
+        if (cp.phase != Phase.work && cp.phase != Phase.recovery) return null
+        if (t - cp.t > maxAgeMs || lapCount != cp.lapIndex + 1) return null
+        lapCheckpoint = null
+        lapSteps.remove(cp.lapIndex)
+        lapCount = cp.lapIndex
+        phase = cp.phase
+        repIndex = cp.repIndex
+        stepIndex = cp.stepIndex
+        phaseStartActive = cp.phaseStartActive
+        phaseStartD = cp.phaseStartD
+        phaseDurationMs = cp.phaseDurationMs
+        phaseTargetM = cp.phaseTargetM
+        pendingCues = ArrayDeque(cp.pendingCues)
+        pendingStartT = cp.pendingStartT
+        lastWorkActiveMs = cp.lastWorkActiveMs
+        lastAutoLapT = cp.lastAutoLapT
+        lastManualLapT = cp.lastManualLapT
+        finalStepEnd = cp.finalStepEnd
+        lastBoundaryT = cp.lastBoundaryT
+        autoStopped = cp.autoStopped
+        return listOf(Output.PhaseChanged(t, phase, repIndex, phaseDurationMs))
+    }
+
     /** Records a manual lap with no gate or guard: what was journaled did happen. */
     private fun applyManualLap(source: LapSource, t: Long): List<Output> {
+        lapCheckpoint = checkpoint(t)
         lastManualLapT = t
         val out = ArrayList<Output>()
         // A goal's step ends on its distance or time only (§G): a LAP in it marks a lap, no more.
@@ -512,6 +579,7 @@ class RecorderCore(
         if (!timed) return emptyList()
         val out = ArrayList<Output>()
         if (auto && !(spec?.autoStop == true && isFinalTimedPart())) {
+            lapCheckpoint = null // an auto-lap after the tap: too late to take it back
             lastAutoLapT = t
             noteLapStep(lapCount, realigns = true)
             out.add(Output.Lap(lapCount++, t, LapSource.auto))
@@ -628,6 +696,9 @@ class RecorderCore(
     }
 
     companion object {
+        /** How long after a manual lap [undoLap] may take it back. */
+        const val UNDO_WINDOW_MS = 60_000L
+
         /**
          * Why this core cannot run [spec] in [mode], or null when it can: an invalid spec, or
          * one that does not fit the mode.

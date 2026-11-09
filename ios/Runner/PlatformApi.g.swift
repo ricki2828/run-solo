@@ -4134,6 +4134,11 @@ protocol RecorderApi {
   func addTreadmillMark(distanceM: Double) throws -> [Double]
   /// Treadmill: UNDO the latest mark; answers with the marks left, same shape.
   func undoTreadmillMark() throws -> [Double]
+  /// Treadmill session: UNDO the latest REP DONE tap (a `lap` in a distance
+  /// step), if it is still the latest thing that happened (no later lap, within
+  /// a minute): the session is inside the step the tap ended, its clock
+  /// unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
+  func undoRepDone() throws
   func stop() throws -> String?
   func status() throws -> RecorderStatus
   /// Called on app open: journals without a finalised file, newest first. Never
@@ -4440,6 +4445,23 @@ class RecorderApiSetup {
       }
     } else {
       undoTreadmillMarkChannel.setMessageHandler(nil)
+    }
+    /// Treadmill session: UNDO the latest REP DONE tap (a `lap` in a distance
+    /// step), if it is still the latest thing that happened (no later lap, within
+    /// a minute): the session is inside the step the tap ended, its clock
+    /// unbroken. Journaled as a `lu` line. A no-op when there is nothing to undo.
+    let undoRepDoneChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.undoRepDone\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      undoRepDoneChannel.setMessageHandler { _, reply in
+        do {
+          try api.undoRepDone()
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      undoRepDoneChannel.setMessageHandler(nil)
     }
     let stopChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.run_solo.RecorderApi.stop\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

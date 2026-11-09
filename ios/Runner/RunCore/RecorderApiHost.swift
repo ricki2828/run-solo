@@ -68,6 +68,8 @@ final class RecorderApiHost: RecorderApi {
   func setTreadmillDistance(distanceM: Double) throws { try host.setTreadmillDistance(distanceM) }
   func addTreadmillMark(distanceM: Double) throws -> [Double] { try host.addTreadmillMark(distanceM) }
   func undoTreadmillMark() throws -> [Double] { try host.undoTreadmillMark() }
+  // Treadmill sessions are Android-only for now: nothing to undo.
+  func undoRepDone() throws {}
   func stop() throws -> String? { try host.stop() }
   func status() throws -> RecorderStatus { host.status() }
   func recover() throws -> [OrphanJournal] {

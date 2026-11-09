@@ -537,6 +537,20 @@ class FakeRecorderGateway implements RecorderGateway {
     // RecorderCore default config: volume-key laps only in Laps mode (W8);
     // in a preset they are ignored outright, never recorded or re-aligned.
     if (_timed != null && source == LapSource.volumeKey) return;
+    _undoSnap = (
+      lapIndex: _lapIndex,
+      phase: _phase,
+      repIndex: _repIndex,
+      phaseStartActiveMs: _phaseStartActiveMs,
+      phaseTargetM: _phaseTargetM,
+      phaseDurationMs: _phaseDurationMs,
+      lastWorkActiveMs: _lastWorkActiveMs,
+      halfwayCued: _halfwayCued,
+      thirtyCued: _thirtyCued,
+      lapStartElapsedMs: _lapStartElapsedMs,
+      lapStartActiveMs: _lapStartActiveMs,
+      lapStartDistanceM: _lapStartDistanceM,
+    );
     _manualLap(source, () {
       if (_timed == null) return;
       switch (_phase) {
@@ -551,6 +565,60 @@ class FakeRecorderGateway implements RecorderGateway {
           break;
       }
     });
+  }
+
+  /// What the latest manual lap changed, for [undoRepDone] (as the core's checkpoint).
+  ({
+    int lapIndex,
+    Phase phase,
+    int repIndex,
+    int phaseStartActiveMs,
+    double? phaseTargetM,
+    int? phaseDurationMs,
+    int lastWorkActiveMs,
+    bool halfwayCued,
+    bool thirtyCued,
+    int lapStartElapsedMs,
+    int lapStartActiveMs,
+    double lapStartDistanceM,
+  })?
+  _undoSnap;
+
+  /// How many times the app asked to take a REP DONE back (tests).
+  int undoRepDoneCalls = 0;
+
+  @override
+  Future<void> undoRepDone() async {
+    undoRepDoneCalls += 1;
+    final snap = _undoSnap;
+    // As native: only the latest lap, and only while it is still the latest.
+    if (!_indoor ||
+        snap == null ||
+        _state != RecorderState.recording ||
+        _lapIndex != snap.lapIndex + 1) {
+      return;
+    }
+    _undoSnap = null;
+    if (_laps.isNotEmpty) _laps.removeLast();
+    _lapIndex = snap.lapIndex;
+    _phase = snap.phase;
+    _repIndex = snap.repIndex;
+    _phaseStartActiveMs = snap.phaseStartActiveMs;
+    _phaseTargetM = snap.phaseTargetM;
+    _phaseDurationMs = snap.phaseDurationMs;
+    _lastWorkActiveMs = snap.lastWorkActiveMs;
+    _halfwayCued = snap.halfwayCued;
+    _thirtyCued = snap.thirtyCued;
+    _lapStartElapsedMs = snap.lapStartElapsedMs;
+    _lapStartActiveMs = snap.lapStartActiveMs;
+    _lapStartDistanceM = snap.lapStartDistanceM;
+    _emit(
+      PhaseEvent(
+        phase: _phase,
+        repIndex: _repIndex,
+        phaseDurationMs: _phaseDurationMs ?? 0,
+      ),
+    );
   }
 
   @override

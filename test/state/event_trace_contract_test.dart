@@ -264,6 +264,8 @@ class TraceGateway implements RecorderGateway {
 
   @override
   Future<List<double>> undoTreadmillMark() async => const [];
+  @override
+  Future<void> undoRepDone() async {}
 
   @override
   Future<String?> stop() => throw UnimplementedError();

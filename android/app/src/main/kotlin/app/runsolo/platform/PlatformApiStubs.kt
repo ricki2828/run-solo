@@ -27,6 +27,8 @@ class RecorderApiStub : RecorderApi {
     override fun setTreadmillDistance(distanceM: Double) = Unit
     override fun addTreadmillMark(distanceM: Double): List<Double> = emptyList()
     override fun undoTreadmillMark(): List<Double> = emptyList()
+
+    override fun undoRepDone() {}
     override fun stop(): String? = null
 
     override fun status(): RecorderStatus =
