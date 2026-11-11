@@ -248,13 +248,13 @@ void main() {
       expect(undoShown(tester), isTrue);
       expect(find.byKey(const ValueKey('marker-tick-0')), findsOneWidget);
       expect(text(tester, 'treadmill-chip-unit'), 'km');
-      expect(text(tester, 'treadmill-current-speed'), '10.0');
-      expect(text(tester, 'treadmill-avg-speed'), '10.0');
+      expect(text(tester, 'treadmill-current-speed'), '6:00');
+      expect(text(tester, 'treadmill-avg-speed'), '6:00');
       fake.advance(const Duration(minutes: 2, seconds: 30));
       await pumpTimes(tester, 3);
       await doubleTap(tester, 1); // next 0.5 km in 2:30 = 12 km/h
-      expect(text(tester, 'treadmill-current-speed'), '12.0');
-      expect(text(tester, 'treadmill-avg-speed'), '10.9');
+      expect(text(tester, 'treadmill-current-speed'), '5:00');
+      expect(text(tester, 'treadmill-avg-speed'), '5:30');
     });
 
     testWidgets('swipe to a later marker skips the missed one', (tester) async {
@@ -267,7 +267,7 @@ void main() {
       );
       await pumpTimes(tester, 6);
       await doubleTap(tester, 2); // 1.5 km in 6:00 = 15 km/h
-      expect(text(tester, 'treadmill-current-speed'), '15.0');
+      expect(text(tester, 'treadmill-current-speed'), '4:00');
       expect((await fake.status()).treadmillMarks, [360000.0, 1500.0]);
     });
 
@@ -291,11 +291,11 @@ void main() {
       fake.advance(const Duration(minutes: 3));
       await pumpTimes(tester, 3);
       await doubleTap(tester, 1);
-      expect(text(tester, 'treadmill-current-speed'), '10.0');
+      expect(text(tester, 'treadmill-current-speed'), '6:00');
       await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
       await pumpTimes(tester, 6);
       expect((await fake.status()).treadmillMarks, [180000.0, 500.0]);
-      expect(text(tester, 'treadmill-avg-speed'), '10.0');
+      expect(text(tester, 'treadmill-avg-speed'), '6:00');
       await tester.tap(find.byKey(const ValueKey('treadmill-undo')));
       await pumpTimes(tester, 6);
       expect(
@@ -323,7 +323,7 @@ void main() {
       fake.advance(const Duration(minutes: 2, seconds: 30));
       await pumpTimes(tester, 3);
       await doubleTap(tester, 1); // 0.5 km in 2:30 moving = 12 km/h
-      expect(text(tester, 'treadmill-current-speed'), '12.0');
+      expect(text(tester, 'treadmill-current-speed'), '5:00');
       expect((await fake.status()).treadmillMarks, [
         180000.0,
         500.0,
@@ -389,7 +389,7 @@ void main() {
         await pumpTimes(tester, 3);
         await doubleTap(tester, 0);
         expect((await fake.status()).treadmillMarks, [120000.0, 402.336]);
-        expect(find.text('mph'), findsNothing); // label reads "SPEED mph"
+        expect(find.text('min/mi'), findsNothing); // label reads "PACE min/mi"
         await tester.tap(find.byKey(const ValueKey('stop')));
         await pumpTimes(tester, 4);
         await tester.tap(find.byKey(const ValueKey('finish-save')));

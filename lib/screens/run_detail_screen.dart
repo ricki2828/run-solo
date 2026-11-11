@@ -1411,15 +1411,8 @@ class MarkerSplits extends StatelessWidget {
     final t = Theme.of(context).extension<RunSoloTokens>()!;
     final mi = units == Units.mi;
     final splits = engine.TreadmillSplits.of(marks);
-    final speedUnit = mi ? 'mph' : 'km/h';
-    String speed(engine.TreadmillSplit sp) {
-      final mps = sp.mps;
-      if (mps == null) return '--';
-      final v = mi
-          ? engine.TreadmillSplits.mpsToMph(mps)
-          : engine.TreadmillSplits.mpsToKmh(mps);
-      return v.toStringAsFixed(1);
-    }
+    final speedUnit = mi ? 'min/mi' : 'min/km';
+    String speed(engine.TreadmillSplit sp) => Fmt.beltPace(sp.mps, units);
 
     return Column(
       key: const ValueKey('run-marker-splits'),
