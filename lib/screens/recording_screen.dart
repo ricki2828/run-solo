@@ -4152,16 +4152,8 @@ class _TreadmillBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final marks = s.treadmillMarks;
-    final unit = units == Units.mi ? 'mph' : 'km/h';
-    String speed(double? mps) => mps == null
-        ? '--'
-        : (units == Units.mi
-                  ? engine.TreadmillSplits.mpsToMph(mps)
-                  : engine.TreadmillSplits.mpsToKmh(mps))
-              .toStringAsFixed(1);
-    String pace(double? mps) => mps == null
-        ? '--'
-        : Fmt.paceUnit(engine.TreadmillSplits.secPerKm(mps), units);
+    final unit = units == Units.mi ? 'min/mi' : 'min/km';
+    String speed(double? mps) => Fmt.beltPace(mps, units);
     final current = engine.TreadmillSplits.currentMps(marks);
     final average = engine.TreadmillSplits.averageMps(marks);
     final label = RunLabelScope.style(context, secondary);
@@ -4169,7 +4161,7 @@ class _TreadmillBlock extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$name $unit', style: label),
+          Text('${name == 'SPEED' ? 'PACE' : name} $unit', style: label),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
@@ -4177,10 +4169,6 @@ class _TreadmillBlock extends StatelessWidget {
               key: ValueKey(key),
               style: RunSoloType.display64.copyWith(color: primary),
             ),
-          ),
-          Text(
-            pace(mps),
-            style: RunSoloType.runNote.copyWith(color: secondary),
           ),
         ],
       ),
@@ -4282,13 +4270,8 @@ class _TreadmillPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final marks = s.treadmillMarks;
-    final unit = units == Units.mi ? 'mph' : 'km/h';
-    String speed(double? mps) => mps == null
-        ? '--'
-        : (units == Units.mi
-                  ? engine.TreadmillSplits.mpsToMph(mps)
-                  : engine.TreadmillSplits.mpsToKmh(mps))
-              .toStringAsFixed(1);
+    final unit = units == Units.mi ? 'min/mi' : 'min/km';
+    String speed(double? mps) => Fmt.beltPace(mps, units);
     final current = engine.TreadmillSplits.currentMps(marks);
     final average = engine.TreadmillSplits.averageMps(marks);
     final label = RunLabelScope.style(context, secondary);
@@ -4296,7 +4279,7 @@ class _TreadmillPanel extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$name $unit', style: label),
+          Text('${name == 'SPEED' ? 'PACE' : name} $unit', style: label),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
@@ -4602,13 +4585,8 @@ class _LastBeltRep extends StatelessWidget {
   Widget build(BuildContext context) {
     final mps = s.lastBeltRepMps;
     final rep = s.beltReps.last;
-    final speed = mps == null
-        ? '--'
-        : (units == Units.mi
-                  ? engine.TreadmillSplits.mpsToMph(mps)
-                  : engine.TreadmillSplits.mpsToKmh(mps))
-              .toStringAsFixed(1);
-    final unit = units == Units.mi ? 'mph' : 'km/h';
+    final speed = Fmt.beltPace(mps, units);
+    final unit = units == Units.mi ? 'min/mi' : 'min/km';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

@@ -27,6 +27,16 @@ abstract final class Fmt {
   static String pace(double? secPerKm, Units units) =>
       secPerKm == null ? '--' : engine.PaceFormat.paceBare(secPerKm, _u(units));
 
+  /// Treadmill belt speed shown as pace: "5:00" (min:ss per km or mi);
+  /// "--:--" when the speed is unknown or not moving.
+  static String beltPace(double? mps, Units units) =>
+      (mps == null || !mps.isFinite || mps <= 0)
+      ? '--:--'
+      : engine.PaceFormat.paceBare(
+          engine.TreadmillSplits.secPerKm(mps),
+          _u(units),
+        );
+
   /// "4:41/km".
   static String paceUnit(double? secPerKm, Units units) =>
       secPerKm == null ? '--' : engine.PaceFormat.pace(secPerKm, _u(units));

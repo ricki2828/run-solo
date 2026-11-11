@@ -28,23 +28,23 @@ void main() {
       engine.TreadmillMark(690000, 2000), // 1.5 skipped: one long stretch
     ], Units.km);
     expect(find.byKey(const ValueKey('run-marker-splits')), findsOneWidget);
-    expect(find.text('KM/H'), findsOneWidget);
-    // 0.5 km in 3:00 = 10.0, 0.5 km in 2:30 = 12.0, 1.0 km in 6:00 = 10.0
+    expect(find.text('MIN/KM'), findsOneWidget);
+    // 0.5 km in 3:00 = 6:00/km, 0.5 km in 2:30 = 5:00/km
     for (final cell in [
-      '0.50', '3:00', '10.0', //
-      '1.00', '2:30', '12.0',
+      '0.50', '3:00', '6:00', //
+      '1.00', '2:30', '5:00',
       '2.00', '6:00',
     ]) {
       expect(find.text(cell), findsWidgets, reason: cell);
     }
-    expect(find.text('10.0'), findsNWidgets(2));
+    expect(find.text('6:00'), findsNWidgets(3));
   });
 
   testWidgets('miles show mph and miles', (tester) async {
     await pump(tester, const [engine.TreadmillMark(150000, 402.336)], Units.mi);
-    expect(find.text('MPH'), findsOneWidget);
+    expect(find.text('MIN/MI'), findsOneWidget);
     expect(find.text('0.25'), findsOneWidget);
     expect(find.text('2:30'), findsOneWidget);
-    expect(find.text('6.0'), findsOneWidget); // 0.25 mi in 2:30
+    expect(find.text('10:00'), findsOneWidget); // 0.25 mi in 2:30
   });
 }
